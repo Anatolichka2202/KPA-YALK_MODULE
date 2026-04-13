@@ -1,54 +1,65 @@
-# C++ objects and libs
-*.slo
-*.lo
-*.o
-*.a
-*.la
-*.lai
-*.so
-*.so.*
-*.dll
-*.dylib
+# ========== Qt и сборка ==========
+[Bb]uild*/
+[Bb]uild-*/
+[Bb]in/
+[Oo]bj/
+[Oo]ut/
+[Dd]ebug/
+[Rr]elease/
+*.build/
+*.xcodeproj/
+*.xcworkspace/
 
-# Qt-es
-object_script.*.Release
-object_script.*.Debug
-*_plugin_import.cpp
-/.qmake.cache
-/.qmake.stash
-*.pro.user
-*.pro.user.*
-*.qbs.user
-*.qbs.user.*
-*.moc
+# Файлы и кэш CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.ninja
+.ninja_deps
+.ninja_log
+compile_commands.json
+
+# Автогенерованные файлы UI/ресурсов
+ui_*.h
 moc_*.cpp
 moc_*.h
 qrc_*.cpp
-ui_*.h
-*.qmlc
-*.jsc
-Makefile*
-*build-*
-*.qm
-*.prl
+*.moc
 
-# Qt unit tests
-target_wrapper.*
+# Исполняемые файлы и библиотеки
+*.exe
+*.app
+*.dll
+*.so
+*.dylib
+*.lib
+*.a
 
-# QtCreator
+# Логи приложения
+logs/
+*.log
+*.txt
+
+# ========== Qt Creator ==========
 *.autosave
+*.user
+*.user.*
+*.pro.user
+*.pro.user.*
+CMakeLists.txt.user
 
-# QtCreator Qml
-*.qmlproject.user
-*.qmlproject.user.*
+# Qt Creator кэш и настройки
+.qtc/
+.vs/
 
-# QtCreator CMake
-CMakeLists.txt.user*
+# ========== Системные файлы ==========
+.DS_Store
+Thumbs.db
+*.orig
+*.swp
+*~
+*.bak
 
-# QtCreator 4.8< compilation database
-compile_commands.json
-
-# QtCreator local machine specific files for imported projects
-*creator.user*
-
-*_qmlcache.qrc
+# ========== Старые версии ==========
+OLD/
