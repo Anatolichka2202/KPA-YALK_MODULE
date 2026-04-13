@@ -1,0 +1,65 @@
+# ========== Qt и сборка ==========
+[Bb]uild*/
+[Bb]uild-*/
+[Bb]in/
+[Oo]bj/
+[Oo]ut/
+[Dd]ebug/
+[Rr]elease/
+*.build/
+*.xcodeproj/
+*.xcworkspace/
+
+# Файлы и кэш CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.ninja
+.ninja_deps
+.ninja_log
+compile_commands.json
+
+# Автогенерованные файлы UI/ресурсов
+ui_*.h
+moc_*.cpp
+moc_*.h
+qrc_*.cpp
+*.moc
+
+# Исполняемые файлы и библиотеки
+*.exe
+*.app
+*.dll
+*.so
+*.dylib
+*.lib
+*.a
+
+# Логи приложения
+logs/
+*.log
+*.txt
+
+# ========== Qt Creator ==========
+*.autosave
+*.user
+*.user.*
+*.pro.user
+*.pro.user.*
+CMakeLists.txt.user
+
+# Qt Creator кэш и настройки
+.qtc/
+.vs/
+
+# ========== Системные файлы ==========
+.DS_Store
+Thumbs.db
+*.orig
+*.swp
+*~
+*.bak
+
+# ========== Старые версии ==========
+OLD/
