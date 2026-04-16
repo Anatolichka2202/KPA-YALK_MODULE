@@ -1,67 +1,85 @@
 #include "fifo_buffer.h"
-#include <string.h>
+#include <algorithm>
+#include <cstring>
 
-void orbita_fifo_init(orbita_fifo_t* fifo) {
-    memset(fifo->data, 0, FIFO_SIZE);
-    fifo->write_pos = 0;
-    fifo->read_pos = 0;
-    fifo->count = 0;
-}
+namespace orbita {
 
-void orbita_fifo_push(orbita_fifo_t* fifo, uint8_t bit) {
-    fifo->data[fifo->write_pos] = bit ? 1 : 0;
-    fifo->write_pos = (fifo->write_pos + 1) % FIFO_SIZE;
-    if (fifo->count < FIFO_SIZE) fifo->count++;
-    else {
-        // Переполнение – сдвигаем указатель чтения
-        fifo->read_pos = (fifo->read_pos + 1) % FIFO_SIZE;
+FifoBuffer::FifoBuffer()
+    : data_(FIFO_SIZE, 0)
+    , write_pos_(0)
+    , read_pos_(0)
+    , count_(0)
+{}
+
+void FifoBuffer::push(uint8_t bit) {
+    data_[write_pos_] = bit ? 1 : 0;
+    write_pos_ = (write_pos_ + 1) % FIFO_SIZE;
+    if (count_ < FIFO_SIZE) {
+        ++count_;
+    } else {
+        // Переполнение – сдвигаем указатель чтения (старые данные теряются)
+        read_pos_ = (read_pos_ + 1) % FIFO_SIZE;
     }
 }
 
-uint8_t orbita_fifo_pop(orbita_fifo_t* fifo) {
-    if (fifo->count == 0) return 0;
-    uint8_t bit = fifo->data[fifo->read_pos];
-    fifo->read_pos = (fifo->read_pos + 1) % FIFO_SIZE;
-    fifo->count--;
+uint8_t FifoBuffer::pop() {
+    if (count_ == 0) return 0;
+    uint8_t bit = data_[read_pos_];
+    read_pos_ = (read_pos_ + 1) % FIFO_SIZE;
+    --count_;
     return bit;
 }
 
-uint8_t orbita_fifo_peek(const orbita_fifo_t* fifo, size_t offset) {
-    if (offset >= fifo->count) return 0;
-    size_t pos = (fifo->read_pos + offset) % FIFO_SIZE;
-    return fifo->data[pos];
+uint8_t FifoBuffer::peek(size_t offset) const {
+    if (offset >= count_) return 0;
+    size_t pos = (read_pos_ + offset) % FIFO_SIZE;
+    return data_[pos];
 }
 
-uint8_t orbita_fifo_peek_absolute(const orbita_fifo_t* fifo, size_t pos) {
-    return fifo->data[pos % FIFO_SIZE];
+uint8_t FifoBuffer::peekAbsolute(size_t pos) const {
+    return data_[pos % FIFO_SIZE];
 }
 
-void orbita_fifo_skip(orbita_fifo_t* fifo, size_t n) {
-    if (n >= fifo->count) {
-        fifo->read_pos = fifo->write_pos;
-        fifo->count = 0;
+void FifoBuffer::skip(size_t n) {
+    if (n >= count_) {
+        read_pos_ = write_pos_;
+        count_ = 0;
     } else {
-        fifo->read_pos = (fifo->read_pos + n) % FIFO_SIZE;
-        fifo->count -= n;
+        read_pos_ = (read_pos_ + n) % FIFO_SIZE;
+        count_ -= n;
     }
 }
 
-void orbita_fifo_rewind(orbita_fifo_t* fifo, size_t n) {
-    if (n >= fifo->count) {
-        fifo->read_pos = fifo->write_pos;
-        fifo->count = 0;
+void FifoBuffer::rewind(size_t n) {
+    if (n >= count_) {
+        read_pos_ = write_pos_;
+        count_ = 0;
     } else {
-        if (n <= fifo->read_pos) fifo->read_pos -= n;
-        else fifo->read_pos = FIFO_SIZE - (n - fifo->read_pos);
-        fifo->count += n;
+        if (n <= read_pos_) {
+            read_pos_ -= n;
+        } else {
+            read_pos_ = FIFO_SIZE - (n - read_pos_);
+        }
+        count_ += n;
     }
 }
 
-size_t orbita_fifo_available(const orbita_fifo_t* fifo) {
-    return fifo->count;
+size_t FifoBuffer::available() const {
+    return count_;
 }
 
-void orbita_fifo_reset(orbita_fifo_t* fifo) {
-    fifo->read_pos = fifo->write_pos;
-    fifo->count = 0;
+bool FifoBuffer::empty() const {
+    return count_ == 0;
 }
+
+bool FifoBuffer::full() const {
+    return count_ == FIFO_SIZE;
+}
+
+void FifoBuffer::reset() {
+    read_pos_ = write_pos_;
+    count_ = 0;
+    // Очистка данных не требуется – при записи старые значения перезапишутся
+}
+
+} // namespace orbita

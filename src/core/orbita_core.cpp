@@ -1,201 +1,389 @@
 #include "orbita_core.h"
+#include "orbita.h" // для исключения orbita_error
+#include "../address/address_manager.h"
+#include "../decoder/decoder_factory.h"
 #include "data_pool.h"
-#include "thread_pool.h"
+#include "../tlm/tlm_writer.h"
+#include "../value/value_converter.h"
 #include "logger.h"
-
-#include <cstdlib>
+#include "../include/orbita_types.h"
 #include <cstring>
-
-struct orbita_context {
-    // Устройства
-    int device_type; // 0=none, 1=e2010, 2=limesdr
-    orbita_e2010_config_t e2010_cfg;
-    orbita_limesdr_config_t limesdr_cfg;
-    orbita_visa_config_t visa_cfg;
-    int invert_signal;
-
-    // Адреса и декодер
-    void* address_manager;   // orbita_address_manager_t*
-    void* decoder;           // orbita_decoder_t*
-    int group_size;
-    int cycle_size;
-
-    // Данные
-    orbita_data_pool_t* data_pool;
-
-    // TLM
-    void* tlm_writer;        // orbita_tlm_writer_t*
-
-    // Потоки
-    void* capture_thread;    // внутренний поток захвата
-    int is_running;
-
-    // Статистика
-    int phrase_errors;
-    int group_errors;
-    int total_phrases;
-    int total_groups;
-
-    // Скрипты
-    void* script_engine;     // orbita_script_engine_t*
-};
-
-// --------------------------------------------------------------
-// Реализация функций (пока заглушки)
-// --------------------------------------------------------------
-
-orbita_context_t* orbita_context_create(void) {
-    orbita_context_t* ctx = (orbita_context_t*)calloc(1, sizeof(orbita_context_t));
-    if (!ctx) return nullptr;
-    ctx->data_pool = orbita_data_pool_create();
-    if (!ctx->data_pool) {
-        free(ctx);
-        return nullptr;
+#include <algorithm>
+#include <chrono>
+#include <thread>
+#include <queue>
+namespace orbita {
+// -----------------------------------------------------------------
+// Вспомогательные функции (внутренние)
+// -----------------------------------------------------------------
+static void computeThreshold(const std::vector<int16_t>& samples, int& threshold) {
+    if (samples.size() < 100) {
+        threshold = 0;
+        return;
     }
-    LOG_INFO("Context created");
-    return ctx;
+    int minVal = samples[0], maxVal = samples[0];
+    size_t n = samples.size() / 10;
+    for (size_t i = 0; i < n; ++i) {
+        if (samples[i] < minVal) minVal = samples[i];
+        if (samples[i] > maxVal) maxVal = samples[i];
+    }
+    threshold = (minVal + maxVal) / 2;
+    LOG_INFO("Threshold computed: %d", threshold);
 }
 
-void orbita_context_destroy(orbita_context_t* ctx) {
-    if (!ctx) return;
-    orbita_context_stop(ctx);
-    orbita_data_pool_destroy(ctx->data_pool);
-    // TODO: освободить остальные ресурсы
-    free(ctx);
-    LOG_INFO("Context destroyed");
+// -----------------------------------------------------------------
+// Конструктор / деструктор
+// -----------------------------------------------------------------
+Context::Context() {
+    data_pool_ = std::make_unique<DataPool>();
+    LOG_INFO("Orbita context created");
 }
 
-int orbita_context_set_device_e2010(orbita_context_t* ctx, int channel, double sample_rate_khz) {
-    if (!ctx) return -1;
-    ctx->device_type = 1;
-    ctx->e2010_cfg.channel = channel;
-    ctx->e2010_cfg.sample_rate_khz = sample_rate_khz;
-    ctx->e2010_cfg.input_range_mv = 3000;
-    LOG_INFO("E20-10 device set: channel=%d, rate=%.1f kHz", channel, sample_rate_khz);
-    return 0;
+Context::~Context() {
+    stop();
+    LOG_INFO("Orbita context destroyed");
 }
 
-int orbita_context_set_device_limesdr(orbita_context_t* ctx, const char* params) {
-    if (!ctx || !params) return -1;
-    ctx->device_type = 2;
-    // TODO: разобрать params
-    LOG_INFO("LimeSDR device set with params: %s", params);
-    return 0;
+// -----------------------------------------------------------------
+// Настройка устройства
+// -----------------------------------------------------------------
+void Context::setDeviceE2010(int channel, double sample_rate_khz) {
+    LOG_INFO("setDeviceE2010: channel=%d, rate=%.1f", channel, sample_rate_khz);
+    auto dev = std::make_unique<E2010Device>();
+    // В E2010Device init принимает slot и sampleRateKHz, channel пока не используем
+    if (!dev->init(0, sample_rate_khz)) {
+        throw orbita_error("E2010 init failed");
+    }
+    // TODO: установить channel, если нужно – можно добавить метод setChannel позже
+    device_ = std::move(dev);
+    LOG_INFO("E2010Device init OK");
+}
+// -----------------------------------------------------------------
+// Адреса каналов
+// -----------------------------------------------------------------
+void Context::setChannelsFromFile(const std::string& filename) {
+    LOG_INFO("Loading addresses from: %s", filename.c_str());
+    auto mgr = std::make_unique<AddressManager>(informativnost_);
+    mgr->loadFromFile(filename);
+    addr_mgr_ = std::move(mgr);
+
+    // Создаём декодер на основе информативности
+    decoder_ = createFrameDecoder(addr_mgr_->getInformativnost());
+    if (!decoder_) {
+        throw orbita_error("Failed to create frame decoder");
+    }
+    decoder_->setCallback([this](const std::vector<uint16_t>& group) {
+        onDecoderGroup(group);
+    });
+
+    // Настраиваем DataPool под количество каналов каждого типа
+    const auto& channels = addr_mgr_->getChannels();
+    int analog_cnt = 0, contact_cnt = 0, fast_cnt = 0, temp_cnt = 0, bus_cnt = 0;
+    for (const auto& ch : channels) {
+        switch (ch.adressType) {
+        case ORBITA_ADDR_TYPE_ANALOG_10BIT:
+        case ORBITA_ADDR_TYPE_ANALOG_9BIT: ++analog_cnt; break;
+        case ORBITA_ADDR_TYPE_CONTACT: ++contact_cnt; break;
+        case ORBITA_ADDR_TYPE_FAST_1:
+        case ORBITA_ADDR_TYPE_FAST_2:
+        case ORBITA_ADDR_TYPE_FAST_3:
+        case ORBITA_ADDR_TYPE_FAST_4: ++fast_cnt; break;
+        case ORBITA_ADDR_TYPE_TEMPERATURE: ++temp_cnt; break;
+        case ORBITA_ADDR_TYPE_BUS: ++bus_cnt; break;
+        default: break;
+        }
+    }
+    data_pool_->resize(analog_cnt, contact_cnt, fast_cnt, temp_cnt, bus_cnt);
+    LOG_INFO("Addresses loaded: %zu channels", channels.size());
 }
 
-int orbita_context_set_voltmeter_visa(orbita_context_t* ctx, const char* resource) {
-    if (!ctx || !resource) return -1;
-    strncpy(ctx->visa_cfg.resource, resource, sizeof(ctx->visa_cfg.resource)-1);
-    ctx->visa_cfg.timeout_ms = 1000;
-    LOG_INFO("VISA voltmeter set: %s", resource);
-    return 0;
+void Context::setChannelsFromLines(const std::vector<std::string>& lines) {
+    // Аналогично, но загружаем из строк
+    auto mgr = std::make_unique<AddressManager>(informativnost_);
+    mgr->loadFromLines(lines);
+    addr_mgr_ = std::move(mgr);
+    decoder_ = createFrameDecoder(addr_mgr_->getInformativnost());
+    decoder_->setCallback([this](const std::vector<uint16_t>& group) {
+        onDecoderGroup(group);
+    });
+    const auto& channels = addr_mgr_->getChannels();
+    // ... (аналогичная настройка data_pool)
+    LOG_INFO("Addresses loaded from lines: %zu channels", channels.size());
 }
 
-int orbita_context_set_channels(orbita_context_t* ctx, const orbita_channel_desc_t* channels, int count) {
-    if (!ctx || !channels || count <= 0) return -1;
-    // TODO: передать в address_manager
-    LOG_INFO("Set %d channels", count);
-    return 0;
+// -----------------------------------------------------------------
+// Управление сбором
+// -----------------------------------------------------------------
+void Context::start() {
+    if (is_running_) {
+        throw orbita_error("Already running");
+    }
+    if (!device_) {
+        throw orbita_error("No device configured");
+    }
+    if (!decoder_) {
+        throw orbita_error("No channels configured (call setChannelsFromFile first)");
+    }
+
+    stop_worker_ = false;
+    worker_thread_ = std::thread(&Context::workerLoop, this);
+    is_running_ = true;
+    LOG_INFO("Worker thread started");
 }
 
-int orbita_context_set_channels_from_file(orbita_context_t* ctx, const char* filename) {
-    if (!ctx || !filename) return -1;
-    // TODO: загрузить через address_manager
-    LOG_INFO("Load channels from file: %s", filename);
-    return 0;
+void Context::stop() {
+    if (!is_running_) return;
+    stop_worker_ = true;
+    if (worker_thread_.joinable()) {
+        worker_thread_.join();
+    }
+    is_running_ = false;
+    LOG_INFO("Worker thread stopped");
 }
 
-int orbita_context_start(orbita_context_t* ctx) {
-    if (!ctx) return -1;
-    if (ctx->is_running) return -2;
-    // TODO: запустить поток захвата
-    ctx->is_running = 1;
-    LOG_INFO("Capture started");
-    return 0;
+void Context::setInvertSignal(bool invert) {
+    invert_signal_ = invert;
 }
 
-int orbita_context_stop(orbita_context_t* ctx) {
-    if (!ctx) return -1;
-    if (!ctx->is_running) return 0;
-    // TODO: остановить поток
-    ctx->is_running = 0;
-    LOG_INFO("Capture stopped");
-    return 0;
+// -----------------------------------------------------------------
+// TLM-запись
+// -----------------------------------------------------------------
+void Context::startRecording(const std::string& filename) {
+    if (tlm_writer_) {
+        stopRecording();
+    }
+    tlm_writer_ = std::make_unique<TlmWriter>(filename, informativnost_);
+    LOG_INFO("Recording started: %s", filename.c_str());
 }
 
-int orbita_context_set_invert_signal(orbita_context_t* ctx, int invert) {
-    if (!ctx) return -1;
-    ctx->invert_signal = invert ? 1 : 0;
-    LOG_INFO("Invert signal set to %d", ctx->invert_signal);
-    return 0;
-}
-
-int orbita_context_start_recording(orbita_context_t* ctx, const char* filename) {
-    if (!ctx || !filename) return -1;
-    // TODO: создать TLM writer
-    LOG_INFO("Recording started to %s", filename);
-    return 0;
-}
-
-int orbita_context_stop_recording(orbita_context_t* ctx) {
-    if (!ctx) return -1;
-    // TODO: закрыть TLM writer
+void Context::stopRecording() {
+    tlm_writer_.reset();
     LOG_INFO("Recording stopped");
-    return 0;
 }
 
-int orbita_context_wait_for_data(orbita_context_t* ctx, int timeout_ms) {
-    if (!ctx) return -1;
-    // TODO: ожидание новых данных от декодера
-    // Пока заглушка – имитируем успех
-    return 0;
+// -----------------------------------------------------------------
+// Рабочий цикл (поток)
+// -----------------------------------------------------------------
+void Context::workerLoop() {
+    // Очередь для сэмплов
+    std::queue<std::vector<int16_t>> sampleQueue;
+    std::mutex queueMutex;
+    std::condition_variable queueCv;
+
+    // Подписываемся на сигнал
+    QObject::connect(device_.get(), &E2010Device::samplesReady,
+                     [&](const std::vector<int16_t>& samples) {
+                         std::lock_guard<std::mutex> lock(queueMutex);
+                         sampleQueue.push(samples);
+                         queueCv.notify_one();
+                     });
+
+    if (!device_->start()) {
+        LOG_ERROR("Worker thread: failed to start device stream");
+        return;
+    }
+
+    bool threshold_computed = false;
+    int threshold = 0;
+    size_t total_samples = 0;
+
+    std::ofstream raw_file("raw_samples.bin", std::ios::binary);
+
+    while (!stop_worker_) {
+        std::unique_lock<std::mutex> lock(queueMutex);
+        if (!queueCv.wait_for(lock, std::chrono::milliseconds(100),
+                              [&]{ return !sampleQueue.empty() || stop_worker_; })) {
+            continue;
+        }
+        if (stop_worker_) break;
+
+        auto samples = std::move(sampleQueue.front());
+        sampleQueue.pop();
+        lock.unlock();
+
+        total_samples += samples.size();
+
+        if (raw_file.is_open()) {
+            raw_file.write(reinterpret_cast<const char*>(samples.data()), samples.size() * sizeof(int16_t));
+        }
+
+        if (!threshold_computed && samples.size() > 100) {
+            computeThreshold(samples, threshold);
+            threshold_computed = true;
+            LOG_INFO("Threshold computed: %d", threshold);
+        }
+
+        // Преобразуем в биты
+        std::vector<uint8_t> bits;
+        bits.reserve(samples.size());
+        for (int16_t v : samples) {
+            uint8_t bit = (v >= threshold) ? 1 : 0;
+            if (invert_signal_) bit = !bit;
+            bits.push_back(bit);
+        }
+        decoder_->feedBits(bits.data(), bits.size());
+    }
+
+    raw_file.close();
+    device_->stop();
+    LOG_INFO("Worker thread finished. Total samples processed: %zu", total_samples);
+}
+// -----------------------------------------------------------------
+// Обработка готовой группы (вызывается из callback декодера)
+// -----------------------------------------------------------------
+void Context::onDecoderGroup(const std::vector<uint16_t>& group_words) {
+    LOG_INFO("onDecoderGroup called with %zu words", group_words.size());
+    if (!addr_mgr_ || !data_pool_) return;
+
+    const auto& channels = addr_mgr_->getChannels();
+    size_t word_count = group_words.size();
+
+    int analog_idx = 0, contact_idx = 0, fast_idx = 0, temp_idx = 0, bus_idx = 0;
+
+    for (const auto& ch : channels) {
+        if (ch.numOutElemG > word_count) {
+            LOG_WARNING("Channel: word index %u out of range", ch.numOutElemG);
+            continue;
+        }
+        uint16_t word = group_words[ch.numOutElemG - 1];
+
+        switch (ch.adressType) {
+        case ORBITA_ADDR_TYPE_ANALOG_10BIT:
+            data_pool_->setAnalog(analog_idx++, analog10bitToVoltage(word));
+            break;
+        case ORBITA_ADDR_TYPE_ANALOG_9BIT:
+            data_pool_->setAnalog(analog_idx++, analog9bitToVoltage(word));
+            break;
+        case ORBITA_ADDR_TYPE_CONTACT:
+            data_pool_->setContact(contact_idx++, contactExtractBit(word, ch.bitNumber));
+            break;
+        case ORBITA_ADDR_TYPE_FAST_1:
+            data_pool_->setFast(fast_idx++, fastT21Value(word));
+            break;
+        case ORBITA_ADDR_TYPE_FAST_2: {
+            uint32_t idx2 = ch.numOutElemG + ch.stepOutG - 1;
+            if (idx2 < word_count) {
+                int val = fastT22Value(word, group_words[idx2]);
+                data_pool_->setFast(fast_idx++, val);
+            } else {
+                data_pool_->setFast(fast_idx++, 0);
+            }
+            break;
+        }
+        case ORBITA_ADDR_TYPE_FAST_3:
+        case ORBITA_ADDR_TYPE_FAST_4: {
+            uint32_t idx2 = ch.numOutElemG + ch.stepOutG - 1;
+            if (idx2 < word_count) {
+                int val = fastT24Value(word, group_words[idx2]);
+                data_pool_->setFast(fast_idx++, val);
+            } else {
+                data_pool_->setFast(fast_idx++, 0);
+            }
+            break;
+        }
+        case ORBITA_ADDR_TYPE_TEMPERATURE:
+            data_pool_->setTemperature(temp_idx++, temperatureCode(word));
+            break;
+        case ORBITA_ADDR_TYPE_BUS: {
+            uint32_t idx2 = ch.numOutElemG + ch.stepOutG - 1;
+            if (idx2 < word_count) {
+                uint16_t val = busValue(word, group_words[idx2]);
+                data_pool_->setBus(bus_idx++, val);
+            } else {
+                data_pool_->setBus(bus_idx++, 0);
+            }
+            break;
+        }
+        default:
+            break;
+        }
+    }
+
+    // Запись в TLM, если активна
+    if (tlm_writer_) {
+        // Нужно накапливать 32 группы в цикл – пока упростим: пишем каждую группу как отдельный блок?
+        // В реальности TlmWriter ожидает цикл из 32 групп. Для простоты здесь не реализуем,
+        // но можно добавить накопление в буфер cycle_buffer_ в классе Context.
+        // Пока пропускаем.
+    }
+
+    // Сигналим пользователю о новых данных
+    {
+        std::lock_guard<std::mutex> lock(data_mutex_);
+        new_data_available_ = true;
+    }
+    data_cv_.notify_one();
 }
 
-double orbita_context_get_analog(orbita_context_t* ctx, int idx) {
-    if (!ctx || !ctx->data_pool) return 0.0;
-    return orbita_data_pool_get_analog(ctx->data_pool, idx);
+// -----------------------------------------------------------------
+// Ожидание данных (публичный метод)
+// -----------------------------------------------------------------
+bool Context::waitForData(std::chrono::milliseconds timeout) {
+    std::unique_lock<std::mutex> lock(data_mutex_);
+    bool ok = data_cv_.wait_for(lock, timeout, [this] { return new_data_available_.load(); });
+    if (ok) {
+        new_data_available_ = false;
+        return true;
+    }
+    return false;
 }
 
-int orbita_context_get_contact(orbita_context_t* ctx, int idx) {
-    if (!ctx || !ctx->data_pool) return 0;
-    return orbita_data_pool_get_contact(ctx->data_pool, idx);
+// -----------------------------------------------------------------
+// Доступ к значениям каналов
+// -----------------------------------------------------------------
+double Context::getAnalog(int idx) const {
+    if (!data_pool_) return 0.0;
+    return data_pool_->getAnalog(idx);
 }
 
-int orbita_context_get_fast(orbita_context_t* ctx, int idx) {
-    if (!ctx || !ctx->data_pool) return 0;
-    return orbita_data_pool_get_fast(ctx->data_pool, idx);
+int Context::getContact(int idx) const {
+    if (!data_pool_) return 0;
+    return data_pool_->getContact(idx);
 }
 
-int orbita_context_get_temperature(orbita_context_t* ctx, int idx) {
-    if (!ctx || !ctx->data_pool) return 0;
-    return orbita_data_pool_get_temperature(ctx->data_pool, idx);
+int Context::getFast(int idx) const {
+    if (!data_pool_) return 0;
+    return data_pool_->getFast(idx);
 }
 
-int orbita_context_get_bus(orbita_context_t* ctx, int idx) {
-    if (!ctx || !ctx->data_pool) return 0;
-    return orbita_data_pool_get_bus(ctx->data_pool, idx);
+int Context::getTemperature(int idx) const {
+    if (!data_pool_) return 0;
+    return data_pool_->getTemperature(idx);
 }
 
-int orbita_context_get_phrase_error_percent(orbita_context_t* ctx) {
-    if (!ctx || ctx->total_phrases == 0) return 0;
-    return (ctx->phrase_errors * 100) / ctx->total_phrases;
+int Context::getBus(int idx) const {
+    if (!data_pool_) return 0;
+    return data_pool_->getBus(idx);
 }
 
-int orbita_context_get_group_error_percent(orbita_context_t* ctx) {
-    if (!ctx || ctx->total_groups == 0) return 0;
-    return (ctx->group_errors * 100) / ctx->total_groups;
+// -----------------------------------------------------------------
+// Статистика ошибок
+// -----------------------------------------------------------------
+int Context::getPhraseErrorPercent() const {
+    if (!decoder_) return 0;
+    int phrase_err, group_err;
+    decoder_->getErrors(phrase_err, group_err);
+    return phrase_err;
 }
 
-int orbita_context_load_script(orbita_context_t* ctx, const char* script_path) {
-    if (!ctx || !script_path) return -1;
-    // TODO: создать script_engine и загрузить
-    LOG_INFO("Script loaded: %s", script_path);
-    return 0;
+int Context::getGroupErrorPercent() const {
+    if (!decoder_) return 0;
+    int phrase_err, group_err;
+    decoder_->getErrors(phrase_err, group_err);
+    return group_err;
 }
 
-int orbita_context_run_script_function(orbita_context_t* ctx, const char* func_name, const char* args_json, char** result_json) {
-    if (!ctx || !func_name) return -1;
-    // TODO: выполнить функцию
-    if (result_json) *result_json = strdup("{}");
-    return 0;
+// -----------------------------------------------------------------
+// Lua (заглушки)
+// -----------------------------------------------------------------
+void Context::loadScript(const std::string& script_path) {
+    // TODO: реализация
+    LOG_WARNING("Lua scripting not implemented yet");
 }
+
+std::string Context::runScriptFunction(const std::string& func_name, const std::string& args_json) {
+    LOG_WARNING("Lua scripting not implemented yet");
+    return "{}";
+}
+
+} // namespace orbita

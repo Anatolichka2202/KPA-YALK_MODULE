@@ -1,44 +1,75 @@
-#include "../src/decoder/frame_decoder.h"
-#include "../src/decoder/frame_decoder_m16.h"
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+//тест декодера М16.
+//работаем в связке с устрйоством.
+//смотрим типы данных, входные/выходные данные
 
-static void on_group(orbita_frame_decoder_t* dec, const uint16_t* group, size_t word_count, void* user) {
-    static int group_counter = 0;
-    printf("Group %d received, words=%zu\n", ++group_counter, word_count);
-    // Здесь можно сравнить с эталонным массивом
-}
 
-int main(int argc, char** argv) {
-    if (argc < 2) {
-        fprintf(stderr, "Usage: %s <bits_file.bin>\n", argv[0]);
-        return 1;
+// test_decoder_m16.cpp
+#include "decoder/frame_decoder_m16.h"
+#include <cassert>
+#include <iostream>
+#include <vector>
+
+using namespace orbita;
+
+int main() {
+    // 1. Генерируем тестовую группу из 2048 слов (12 бит)
+    const size_t GROUP_SIZE = 2048;
+    std::vector<uint16_t> original_group(GROUP_SIZE);
+    for (size_t i = 0; i < GROUP_SIZE; ++i) {
+        original_group[i] = static_cast<uint16_t>(i & 0xFFF);
     }
-    FILE* f = fopen(argv[1], "rb");
-    if (!f) {
-        perror("fopen");
-        return 1;
-    }
-    orbita_frame_decoder_t* dec = orbita_frame_decoder_m16_create();
-    if (!dec) {
-        fprintf(stderr, "Failed to create decoder\n");
-        fclose(f);
-        return 1;
-    }
-    orbita_frame_decoder_set_callback(dec, on_group, nullptr);
 
-    uint8_t byte;
-    while (fread(&byte, 1, 1, f) == 1) {
-        // Предполагаем, что в файле каждый байт – это бит (0 или 1)
-        orbita_frame_decoder_feed_bit(dec, byte & 1);
+    // 2. Формируем битовый поток для одной группы
+    std::vector<uint8_t> bits;
+    // Маркер фразы (15 бит)
+    const std::vector<uint8_t> marker = {0,1,1,1,1,0,0,0,1,0,0,1,1,0,1};
+    size_t word_idx = 0;
+
+    for (int frase = 0; frase < 128; ++frase) {
+        // Маркер перед каждой нечётной фразой (1,3,5,...)
+        if ((frase & 1) == 0) {
+            bits.insert(bits.end(), marker.begin(), marker.end());
+        }
+        // 16 слов во фразе
+        for (int w = 0; w < 16; ++w) {
+            if (word_idx >= original_group.size()) break;
+            uint16_t val = original_group[word_idx++];
+            for (int bit = 11; bit >= 0; --bit) {
+                bits.push_back((val >> bit) & 1);
+            }
+        }
     }
-    fclose(f);
+    assert(word_idx == original_group.size());
 
-    int phrase_err, group_err;
-    orbita_frame_decoder_get_errors(dec, &phrase_err, &group_err);
-    printf("Errors: phrase=%d%%, group=%d%%\n", phrase_err, group_err);
+    // 3. Декодер
+    FrameDecoderM16 decoder;
+    bool group_received = false;
+    std::vector<uint16_t> decoded_group;
+    decoder.setCallback([&](const std::vector<uint16_t>& group) {
+        group_received = true;
+        decoded_group = group;
+    });
 
-    orbita_frame_decoder_destroy(dec);
+    decoder.feedBits(bits.data(), bits.size());
+
+    // 4. Проверки
+    assert(group_received);
+    assert(decoded_group.size() == GROUP_SIZE);
+
+    // Сравниваем первые 10 и последние 10 слов
+    for (size_t i = 0; i < 10; ++i) {
+        assert(decoded_group[i] == original_group[i]);
+    }
+    for (size_t i = GROUP_SIZE - 10; i < GROUP_SIZE; ++i) {
+        assert(decoded_group[i] == original_group[i]);
+    }
+
+    // Проверка ошибок синхронизации
+    int phrase_err = 0, group_err = 0;
+    decoder.getErrors(phrase_err, group_err);
+    assert(phrase_err == 0);
+    assert(group_err == 0);
+
+    std::cout << "Decoder synthetic test passed.\n";
     return 0;
 }

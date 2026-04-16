@@ -1,14 +1,22 @@
 #include "decoder_factory.h"
 #include "frame_decoder_m16.h"
-// #include "frame_decoder_m8.h" // будет добавлен позже
+#include "frame_decoder_m8.h"
+#include <stdexcept>
 
-orbita_frame_decoder_t* orbita_decoder_create(int informativnost) {
+namespace orbita {
+
+std::unique_ptr<FrameDecoder> createFrameDecoder(int informativnost) {
     switch (informativnost) {
-    case 16: return orbita_frame_decoder_m16_create();
-    // case 8:  return orbita_frame_decoder_m8_create(8);
-    // case 4:  return orbita_frame_decoder_m8_create(4);
-    // case 2:  return orbita_frame_decoder_m8_create(2);
-    // case 1:  return orbita_frame_decoder_m8_create(1);
-    default: return nullptr;
+    case 16:
+        return std::make_unique<FrameDecoderM16>();
+    case 8:
+    case 4:
+    case 2:
+    case 1:
+        return std::make_unique<FrameDecoderM8>(informativnost);
+    default:
+        throw std::runtime_error("Unsupported informativnost: " + std::to_string(informativnost));
     }
 }
+
+} // namespace orbita

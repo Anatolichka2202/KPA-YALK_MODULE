@@ -1,49 +1,106 @@
 /**
- * @file value_converter.h
- * @brief Фасад для преобразования 12-битных слов в физические величины.
+ * @file value_converter.hpp
+ * @brief Преобразование 12‑битных слов в физические значения (аналоговые, контактные, быстрые, температурные, БУС).
  */
 
-#ifndef ORBITA_VALUE_CONVERTER_H
-#define ORBITA_VALUE_CONVERTER_H
+#ifndef ORBITA_VALUE_CONVERTER_HPP
+#define ORBITA_VALUE_CONVERTER_HPP
 
-#include <stdint.h>
+#include <cstdint>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+namespace orbita {
 
-// Преобразование аналогового 10-битного значения (T01) в напряжение (В)
-// word - 12-битное слово (младшие 10 бит – данные)
-// scale - коэффициент пересчёта (например, 10.0 / 1023.0)
-double orbita_analog_10bit_to_voltage(uint16_t word, double scale);
+// -----------------------------------------------------------------
+// Аналоговые значения (T01, T01-01)
+// -----------------------------------------------------------------
 
-// Преобразование аналогового 9-битного значения (T01-01) в напряжение (В)
-double orbita_analog_9bit_to_voltage(uint16_t word, double scale);
+/**
+ * @brief Преобразование 10‑битного кода в напряжение (В).
+ * @param word 12-битное слово (младшие 10 бит значащие)
+ * @param scale коэффициент пересчёта (В на единицу кода), по умолчанию 10.0/1023.0
+ * @return напряжение в вольтах
+ */
+double analog10bitToVoltage(uint16_t word, double scale = 10.0 / 1023.0);
 
-// Извлечение контактного бита (T05). bitNum = 1..10
-int orbita_contact_extract_bit(uint16_t word, int bitNum);
+/**
+ * @brief Преобразование 9‑битного кода в напряжение (В).
+ * @param word 12-битное слово (младшие 9 бит значащие)
+ * @param scale коэффициент пересчёта (В на единицу кода), по умолчанию 10.0/511.0
+ * @return напряжение в вольтах
+ */
+double analog9bitToVoltage(uint16_t word, double scale = 10.0 / 511.0);
 
-// Быстрый параметр T21: 8 бит (0..255)
-int orbita_fast_t21_value(uint16_t word);
+// -----------------------------------------------------------------
+// Контактные сигналы (T05)
+// -----------------------------------------------------------------
 
-// Быстрый параметр T22: 6 бит, собирается из двух слов
-// first_word, second_word – два последовательных 12-битных слова
-int orbita_fast_t22_value(uint16_t first_word, uint16_t second_word);
+/**
+ * @brief Извлечение бита из 10-битного контактного поля.
+ * @param word    12-битное слово (после сдвига на 1 бит, биты 1..10 значащие)
+ * @param bitNum  номер бита (1 – старший, 10 – младший)
+ * @return 0 или 1
+ */
+int contactExtractBit(uint16_t word, int bitNum);
 
-// Быстрый параметр T24: 6 бит, аналогично T22
-int orbita_fast_t24_value(uint16_t first_word, uint16_t second_word);
+// -----------------------------------------------------------------
+// Быстрые параметры (T21, T22, T24)
+// -----------------------------------------------------------------
 
-// Температурный код T11: 8 бит (0..255)
-int orbita_temperature_code(uint16_t word);
+/**
+ * @brief Быстрый параметр T21: 8 бит (0..255).
+ * @param word 12-битное слово (биты 3..10 значащие)
+ * @return значение 0..255
+ */
+int fastT21Value(uint16_t word);
 
-// Преобразование кода температуры в градусы Цельсия (линейное)
-double orbita_temperature_code_to_celsius(int code, double offset, double scale);
+/**
+ * @brief Быстрый параметр T22: 6 бит, собирается из двух слов.
+ * @param first_word  первое 12-битное слово
+ * @param second_word второе 12-битное слово
+ * @return значение 0..63
+ */
+int fastT22Value(uint16_t first_word, uint16_t second_word);
 
-// Преобразование БУС (T25): сборка 16-битного значения из двух 12-битных слов
-uint16_t orbita_bus_value(uint16_t high_word, uint16_t low_word);
+/**
+ * @brief Быстрый параметр T24: 6 бит, собирается из двух слов.
+ * @param first_word  первое 12-битное слово
+ * @param second_word второе 12-битное слово
+ * @return значение 0..63
+ */
+int fastT24Value(uint16_t first_word, uint16_t second_word);
 
-#ifdef __cplusplus
-}
-#endif
+// -----------------------------------------------------------------
+// Температурные параметры (T11)
+// -----------------------------------------------------------------
 
-#endif // ORBITA_VALUE_CONVERTER_H
+/**
+ * @brief Извлечение 8-битного кода температуры.
+ * @param word 12-битное слово (биты 1..8 значащие)
+ * @return код 0..255
+ */
+int temperatureCode(uint16_t word);
+
+/**
+ * @brief Преобразование кода температуры в градусы Цельсия.
+ * @param code   код 0..255
+ * @param offset смещение (градусы)
+ * @param scale  коэффициент (градусы на единицу кода), по умолчанию 0.1
+ * @return температура в градусах Цельсия
+ */
+double temperatureCodeToCelsius(int code, double offset = 0.0, double scale = 0.1);
+
+// -----------------------------------------------------------------
+// БУС (T25)
+// -----------------------------------------------------------------
+
+/**
+ * @brief Сборка 16-битного значения БУС из двух 12-битных слов.
+ * @param high_word слово, содержащее старшие 8 бит (биты 3..10)
+ * @param low_word  слово, содержащее младшие 8 бит (биты 3..10)
+ * @return 16-битное значение
+ */
+uint16_t busValue(uint16_t high_word, uint16_t low_word);
+
+} // namespace orbita
+
+#endif // ORBITA_VALUE_CONVERTER_HPP

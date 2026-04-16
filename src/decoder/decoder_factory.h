@@ -6,17 +6,13 @@
 #ifndef ORBITA_DECODER_FACTORY_H
 #define ORBITA_DECODER_FACTORY_H
 
+#include <memory>
 #include "frame_decoder.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+namespace orbita {
 
-// Создание декодера для заданной информативности (1,2,4,8,16)
-orbita_frame_decoder_t* orbita_decoder_create(int informativnost);
+std::unique_ptr<FrameDecoder> createFrameDecoder(int informativnost);
 
-#ifdef __cplusplus
-}
-#endif
+} // namespace orbita
 
 #endif // ORBITA_DECODER_FACTORY_H

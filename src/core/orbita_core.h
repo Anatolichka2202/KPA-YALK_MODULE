@@ -1,67 +1,108 @@
 /**
  * @file orbita_core.h
- * @brief Внутреннее ядро библиотеки – реализация главного API.
- *
- * Содержит структуру orbita_context_t (opaque pointer для orbita_handle_t).
- * Управляет устройствами, декодером, менеджером адресов, пулом данных, TLM-записью.
+ * @brief Внутренний контекст библиотеки Orbita (скрытая реализация).
  */
 
-#ifndef ORBITA_CORE_H
-#define ORBITA_CORE_H
+#pragma once
 
-#include "orbita.h"
-#include "orbita_address.h"
-#include "orbita_device.h"
+#include <memory>
+#include <atomic>
+#include <thread>
+#include <mutex>
+#include <condition_variable>
+#include <chrono>
+#include <string>
+#include <vector>
+#include "../device/e2010_device.h"
+namespace orbita {
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+// Предварительные объявления
+//class E2010Device;
+class FrameDecoder;
+class AddressManager;
+class DataPool;
+class TlmWriter;
 
-// Внутренний контекст (определение скрыто)
-typedef struct orbita_context orbita_context_t;
+/**
+ * @brief Внутренний контекст, содержащий все компоненты системы.
+ *        Создаётся и управляется классом Orbita.
+ */
+class Context {
+public:
+    Context();
+    ~Context();
 
-// Создание/уничтожение (вызывается из orbita_create/destroy)
-orbita_context_t* orbita_context_create(void);
-void orbita_context_destroy(orbita_context_t* ctx);
+    // Запрет копирования
+    Context(const Context&) = delete;
+    Context& operator=(const Context&) = delete;
 
-// Настройка устройств
-int orbita_context_set_device_e2010(orbita_context_t* ctx, int channel, double sample_rate_khz);
-int orbita_context_set_device_limesdr(orbita_context_t* ctx, const char* params);
-int orbita_context_set_voltmeter_visa(orbita_context_t* ctx, const char* resource);
+    // Разрешение перемещения (опционально)
+    Context(Context&&) = delete;
 
-// Адреса
-int orbita_context_set_channels(orbita_context_t* ctx, const orbita_channel_desc_t* channels, int count);
-int orbita_context_set_channels_from_file(orbita_context_t* ctx, const char* filename);
+    // -----------------------------------------------------------------
+    // Настройка устройств
+    void setDeviceE2010(int channel, double sample_rate_khz);
 
-// Управление сбором
-int orbita_context_start(orbita_context_t* ctx);
-int orbita_context_stop(orbita_context_t* ctx);
-int orbita_context_set_invert_signal(orbita_context_t* ctx, int invert);
+    // -----------------------------------------------------------------
+    // Адреса каналов
+    void setChannelsFromFile(const std::string& filename);
+    void setChannelsFromLines(const std::vector<std::string>& lines);
 
-// TLM
-int orbita_context_start_recording(orbita_context_t* ctx, const char* filename);
-int orbita_context_stop_recording(orbita_context_t* ctx);
+    // -----------------------------------------------------------------
+    // Управление сбором
+    void start();
+    void stop();
+    void setInvertSignal(bool invert);
 
-// Ожидание данных
-int orbita_context_wait_for_data(orbita_context_t* ctx, int timeout_ms);
+    // -----------------------------------------------------------------
+    // TLM-запись
+    void startRecording(const std::string& filename);
+    void stopRecording();
 
-// Получение значений (по индексу канала)
-double orbita_context_get_analog(orbita_context_t* ctx, int idx);
-int    orbita_context_get_contact(orbita_context_t* ctx, int idx);
-int    orbita_context_get_fast(orbita_context_t* ctx, int idx);
-int    orbita_context_get_temperature(orbita_context_t* ctx, int idx);
-int    orbita_context_get_bus(orbita_context_t* ctx, int idx);
+    // -----------------------------------------------------------------
+    // Получение данных
+    bool waitForData(std::chrono::milliseconds timeout);
+    double getAnalog(int idx) const;
+    int getContact(int idx) const;
+    int getFast(int idx) const;
+    int getTemperature(int idx) const;
+    int getBus(int idx) const;
 
-// Статистика
-int orbita_context_get_phrase_error_percent(orbita_context_t* ctx);
-int orbita_context_get_group_error_percent(orbita_context_t* ctx);
+    // -----------------------------------------------------------------
+    // Статистика
+    int getPhraseErrorPercent() const;
+    int getGroupErrorPercent() const;
 
-// Скрипты (прокси)
-int orbita_context_load_script(orbita_context_t* ctx, const char* script_path);
-int orbita_context_run_script_function(orbita_context_t* ctx, const char* func_name, const char* args_json, char** result_json);
+    // -----------------------------------------------------------------
+    // Lua (заглушки)
+    void loadScript(const std::string& script_path);
+    std::string runScriptFunction(const std::string& func_name, const std::string& args_json);
 
-#ifdef __cplusplus
-}
-#endif
+private:
+    // Компоненты
+    std::unique_ptr<E2010Device> device_;
+    std::unique_ptr<FrameDecoder> decoder_;
+    std::unique_ptr<AddressManager> addr_mgr_;
+    std::unique_ptr<DataPool> data_pool_;
+    std::unique_ptr<TlmWriter> tlm_writer_;
 
-#endif // ORBITA_CORE_H
+    // Параметры
+    bool invert_signal_ = false;
+    int informativnost_ = 16;
+
+    // Поток захвата данных
+    std::thread worker_thread_;
+    std::atomic<bool> stop_worker_{false};
+    std::atomic<bool> is_running_{false};
+
+    // Синхронизация для пользовательских данных
+    mutable std::mutex data_mutex_;
+    std::condition_variable data_cv_;
+    std::atomic<bool> new_data_available_{false};
+
+    // Внутренние методы
+    void workerLoop();
+    void onDecoderGroup(const std::vector<uint16_t>& group_words);
+};
+
+} // namespace orbita

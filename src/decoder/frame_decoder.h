@@ -3,45 +3,56 @@
  * @brief Абстрактный интерфейс декодера телеметрического кадра.
  *
  * Декодер получает биты (0/1), ищет маркеры синхронизации, собирает 12-битные слова.
- * При накоплении полной группы вызывает callback или устанавливает флаг.
+ * При накоплении полной группы вызывает callback.
  */
 
 #ifndef ORBITA_FRAME_DECODER_H
 #define ORBITA_FRAME_DECODER_H
 
-#include <stdint.h>
-#include <stddef.h>
+#include <cstdint>
+#include <functional>
+#include <vector>
 
-// Структура-дескриптор декодера (opaque)
-typedef struct orbita_frame_decoder orbita_frame_decoder_t;
+namespace orbita {
 
 // Тип callback-а для уведомления о готовности группы
-// Параметры: decoder, указатель на массив 12-битных слов, количество слов, пользовательские данные
-typedef void (*orbita_decoder_callback_t)(orbita_frame_decoder_t* dec, const uint16_t* group_words, size_t word_count, void* user_data);
+using DecoderCallback = std::function<void(const std::vector<uint16_t>& group_words)>;
 
-// Создание декодера под заданную информативность (1,2,4,8,16)
-// Возвращает NULL при ошибке.
-orbita_frame_decoder_t* orbita_frame_decoder_create(int informativnost);
+class FrameDecoder {
+public:
+    virtual ~FrameDecoder() = default;
 
-// Уничтожение декодера
-void orbita_frame_decoder_destroy(orbita_frame_decoder_t* dec);
+    // Подача одного бита (0 или 1)
+    virtual void feedBit(uint8_t bit) = 0;
 
-// Установка callback-а (если не установлен, группа сохраняется во внутреннем буфере)
-void orbita_frame_decoder_set_callback(orbita_frame_decoder_t* dec, orbita_decoder_callback_t callback, void* user_data);
+    // Подача массива битов
+    virtual void feedBits(const uint8_t* bits, size_t count) {
+        for (size_t i = 0; i < count; ++i) {
+            feedBit(bits[i]);
+        }
+    }
 
-// Подача одного бита (0 или 1)
-void orbita_frame_decoder_feed_bit(orbita_frame_decoder_t* dec, uint8_t bit);
+    // Проверка, накоплена ли новая группа (если callback не используется)
+    virtual bool hasGroup() const = 0;
 
-// Проверка, накоплена ли новая группа (если callback не используется)
-int orbita_frame_decoder_has_group(orbita_frame_decoder_t* dec);
+    // Получить последнюю накопленную группу (12-битные слова)
+    virtual std::vector<uint16_t> getGroup() = 0;
 
-// Получить последнюю накопленную группу (12-битные слова). Возвращает указатель на внутренний буфер.
-const uint16_t* orbita_frame_decoder_get_group(orbita_frame_decoder_t* dec, size_t* out_word_count);
+    // Получить статистику ошибок синхронизации (проценты)
+    virtual void getErrors(int& phrase_error_percent, int& group_error_percent) const = 0;
 
-// Получить статистику ошибок синхронизации (проценты)
-void orbita_frame_decoder_get_errors(orbita_frame_decoder_t* dec, int* phrase_error_percent, int* group_error_percent);
+    // Сброс состояния (при потере сигнала)
+    virtual void reset() = 0;
 
-// Сброс состояния (при потере сигнала)
-void orbita_frame_decoder_reset(orbita_frame_decoder_t* dec);
+    // Установка callback (если не установлен, группа сохраняется во внутреннем буфере)
+    void setCallback(DecoderCallback callback) {
+        callback_ = std::move(callback);
+    }
+
+protected:
+    DecoderCallback callback_;
+};
+
+} // namespace orbita
 
 #endif // ORBITA_FRAME_DECODER_H

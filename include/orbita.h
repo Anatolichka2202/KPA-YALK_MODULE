@@ -1,78 +1,142 @@
 /**
  * @file orbita.h
- * @brief Главный API библиотеки сбора телеметрии "Орбита-IV".
+ * @brief Главный API библиотеки сбора телеметрии "Орбита-IV" (C++ версия).
  *
- * Объединяет все подсистемы: устройства, адреса, декодирование, TLM, скрипты.
- * Работа через непрозрачный указатель orbita_handle_t.
- *
- * Типовой сценарий:
- * 1. orbita_create()
- * 2. orbita_set_device_e2010() или orbita_set_device_limesdr()
- * 3. orbita_set_channels_from_file()
- * 4. orbita_start()
- * 5. В цикле: orbita_wait_for_data() -> orbita_get_analog() и т.д.
- * 6. orbita_stop(), orbita_destroy()
+ * Использование:
+ *   orbita::Orbita orb;
+ *   orb.setDeviceE2010(0, 10000.0);
+ *   orb.setChannelsFromFile("addresses.txt");
+ *   orb.start();
+ *   while (orb.waitForData(std::chrono::milliseconds(1000))) {
+ *       double volt = orb.getAnalog(0);
+ *       // ...
+ *   }
+ *   orb.stop();
  */
 
+#pragma once
 
-#ifndef ORBITA_H
-#define ORBITA_H
+#include <string>
+#include <chrono>
+#include <memory>
+#include <stdexcept>
 
-#include "orbita_address.h"
-#include "orbita_device.h"
-#include <stdint.h>
+namespace orbita {
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+// Базовый класс для всех исключений библиотеки
+class orbita_error : public std::runtime_error {
+public:
+    using std::runtime_error::runtime_error;
+};
 
-// Контекст (opaque pointer)
-typedef void* orbita_handle_t;
+// -----------------------------------------------------------------
+// Основной класс контекста (скрытая реализация)
+// -----------------------------------------------------------------
+class Context;
 
-// Создание/уничтожение контекста
-orbita_handle_t orbita_create(void);
-void orbita_destroy(orbita_handle_t h);
+// -----------------------------------------------------------------
+// Главный API класс
+// -----------------------------------------------------------------
+class Orbita {
+public:
+    Orbita();
+    ~Orbita();
 
-// Настройка устройства (до вызова orbita_start)
-int orbita_set_device_e2010(orbita_handle_t h, int channel, double sample_rate_khz);
-int orbita_set_device_limesdr(orbita_handle_t h, const char* params); // params = "freq=2.2994e6,gain=40,..."
-int orbita_set_voltmeter_visa(orbita_handle_t h, const char* resource); // опционально
+    // Запрет копирования
+    Orbita(const Orbita&) = delete;
+    Orbita& operator=(const Orbita&) = delete;
 
-// Загрузка адресов (очищает предыдущие)
-int orbita_set_channels(orbita_handle_t h, const orbita_channel_desc_t* channels, int count);
-// Удобная обёртка: загрузить из файла
-int orbita_set_channels_from_file(orbita_handle_t h, const char* filename);
+    // Разрешение перемещения
+    Orbita(Orbita&&) noexcept;
+    Orbita& operator=(Orbita&&) noexcept;
 
-// Управление сбором
-int orbita_start(orbita_handle_t h);
-int orbita_stop(orbita_handle_t h);
-int orbita_set_invert_signal(orbita_handle_t h, int invert); // 1 – инвертировать биты
+    // -----------------------------------------------------------------
+    // Настройка устройств
+    // -----------------------------------------------------------------
 
-// Запись TLM
-int orbita_start_recording(orbita_handle_t h, const char* filename);
-int orbita_stop_recording(orbita_handle_t h);
+    /// АЦП E20-10
+    /// @param channel         номер канала 0..3
+    /// @param sample_rate_khz частота дискретизации в кГц (обычно 10000)
+    /// @throws orbita_error при ошибке инициализации
+    void setDeviceE2010(int channel, double sample_rate_khz);
 
-// Получение данных (блокирующее ожидание новых данных, timeout_ms)
-// Возвращает 0 при успехе, -1 при ошибке, -2 по таймауту.
-int orbita_wait_for_data(orbita_handle_t h, int timeout_ms);
+    // LimeSDR (будет позже)
+    // void setDeviceLimeSDR(const std::string& params);
 
-// Доступ к текущим значениям каналов (по индексу в порядке загрузки)
-double orbita_get_analog(orbita_handle_t h, int channel_index);
-int    orbita_get_contact(orbita_handle_t h, int channel_index);
-int    orbita_get_fast(orbita_handle_t h, int channel_index);
-int    orbita_get_temperature(orbita_handle_t h, int channel_index);
-int    orbita_get_bus(orbita_handle_t h, int channel_index);
+    // Вольтметр через VISA
+    // void setVoltmeterVISA(const std::string& resource);
 
-// Статистика ошибок синхронизации (проценты)
-int orbita_get_phrase_error_percent(orbita_handle_t h);
-int orbita_get_group_error_percent(orbita_handle_t h);
+    // -----------------------------------------------------------------
+    // Загрузка адресов (список каналов)
+    // -----------------------------------------------------------------
 
-// Управление Lua-скриптами
-int orbita_load_script(orbita_handle_t h, const char* script_path);
-int orbita_run_script_function(orbita_handle_t h, const char* func_name, const char* args_json, char** result_json);
+    /// Загрузить адреса из текстового файла (формат "M16...Txx")
+    /// @throws orbita_error при ошибках чтения/парсинга
+    void setChannelsFromFile(const std::string& filename);
 
-#ifdef __cplusplus
-}
-#endif
+    /// Альтернатива: передать список строк напрямую
+    void setChannelsFromLines(const std::vector<std::string>& lines);
 
-#endif // ORBITA_H
+    // -----------------------------------------------------------------
+    // Управление сбором данных
+    // -----------------------------------------------------------------
+
+    /// Запуск непрерывного сбора и декодирования
+    /// @throws orbita_error при ошибке запуска
+    void start();
+
+    /// Остановка сбора (ждёт завершения рабочего потока)
+    void stop();
+
+    /// Инвертировать битовый сигнал (если полярность инверсная)
+    void setInvertSignal(bool invert);
+
+    // -----------------------------------------------------------------
+    // Запись телеметрии в TLM-файл
+    // -----------------------------------------------------------------
+
+    /// Начать запись в файл (формат .tlm). Запись идёт в фоне.
+    void startRecording(const std::string& filename);
+
+    /// Остановить запись и закрыть файл
+    void stopRecording();
+
+    // -----------------------------------------------------------------
+    // Получение данных (блокирующее ожидание)
+    // -----------------------------------------------------------------
+
+    /// Ожидать поступления новой группы кадров (все 32 группы цикла)
+    /// @param timeout максимальное время ожидания
+    /// @return true – данные готовы, false – таймаут
+    bool waitForData(std::chrono::milliseconds timeout);
+
+    // -----------------------------------------------------------------
+    // Доступ к текущим значениям каналов
+    // (индексы соответствуют порядку добавления каналов в setChannels*)
+    // -----------------------------------------------------------------
+
+    double getAnalog(int idx) const;
+    int    getContact(int idx) const;
+    int    getFast(int idx) const;
+    int    getTemperature(int idx) const;
+    int    getBus(int idx) const;
+
+    // -----------------------------------------------------------------
+    // Статистика декодирования (проценты ошибок маркеров)
+    // -----------------------------------------------------------------
+
+    int getPhraseErrorPercent() const;
+    int getGroupErrorPercent() const;
+
+    // -----------------------------------------------------------------
+    // Lua-скриптинг (опционально)
+    // -----------------------------------------------------------------
+
+    void loadScript(const std::string& script_path);
+    std::string runScriptFunction(const std::string& func_name, const std::string& args_json);
+
+private:
+    std::unique_ptr<Context> ctx_;
+};
+
+} // namespace orbita

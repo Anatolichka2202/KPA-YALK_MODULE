@@ -10,7 +10,7 @@
 #include <vector>
 #include <windows.h>
 
-class LimeSDRDevice : public DeviceInterface {
+class LimeSDRDevice : public orbita::DeviceInterface {
 public:
     LimeSDRDevice();
     ~LimeSDRDevice() override;

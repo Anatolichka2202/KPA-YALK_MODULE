@@ -1,25 +1,23 @@
-/**
- * @file address_parser.h
- * @brief Внутренний парсинг строки адреса (без обрезания комментариев).
- *
- * Используется address_manager для разбора строк из файла.
- */
+#pragma once
+#include <string>
+#include <vector>
 
-#ifndef ORBITA_ADDRESS_PARSER_H
-#define ORBITA_ADDRESS_PARSER_H
+namespace orbita {
 
-#include "orbita_address.h"
+struct ChannelDesc {
+    uint32_t numOutElemG = 0;
+    uint32_t stepOutG = 0;
+    uint8_t adressType = 0;
+    uint8_t bitNumber = 0;
+    std::vector<uint16_t> groups;
+    std::vector<uint16_t> cycles;
+};
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+class AddressParser {
+public:
+    static ChannelDesc parseLine(const std::string& line);
+    static std::vector<ChannelDesc> loadFile(const std::string& filename);
+    static std::vector<ChannelDesc> loadLines(const std::vector<std::string>& lines);
+};
 
-// Разбор одной строки (без удаления комментариев – строка должна быть уже очищена)
-// Возвращает 0 при успехе, иначе код ошибки.
-int address_parse_line(const char* line, orbita_channel_desc_t* out_desc);
-
-#ifdef __cplusplus
-}
-#endif
-
-#endif // ORBITA_ADDRESS_PARSER_H
+} // namespace orbita

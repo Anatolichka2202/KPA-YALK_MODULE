@@ -1,59 +1,72 @@
 /**
- * @file fifo_buffer.h
+ * @file fifo_buffer.hpp
  * @brief Кольцевой буфер для хранения битов (0/1) телеметрического потока.
  *
  * Размер буфера задаётся константой FIFO_SIZE (2 500 000, как в оригинале).
  * Поддерживает добавление бита, чтение бита, чтение со смещением, сдвиг указателей.
  */
 
-#ifndef ORBITA_FIFO_BUFFER_H
-#define ORBITA_FIFO_BUFFER_H
+#ifndef ORBITA_FIFO_BUFFER_HPP
+#define ORBITA_FIFO_BUFFER_HPP
 
-#include <stdint.h>
-#include <stddef.h>
+#include <cstddef>
+#include <cstdint>
+#include <vector>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+namespace orbita {
 
-#define FIFO_SIZE 2500000
+class FifoBuffer {
+public:
+    static constexpr size_t FIFO_SIZE = 2500000;
 
-typedef struct {
-    uint8_t data[FIFO_SIZE];  // храним биты как 0/1 (можно использовать uint8_t)
-    size_t write_pos;         // позиция записи (0..FIFO_SIZE-1)
-    size_t read_pos;          // позиция чтения
-    size_t count;             // количество накопленных битов
-} orbita_fifo_t;
+    FifoBuffer();
+    ~FifoBuffer() = default;
 
-// Инициализация буфера (обнуление)
-void orbita_fifo_init(orbita_fifo_t* fifo);
+    // Запрет копирования
+    FifoBuffer(const FifoBuffer&) = delete;
+    FifoBuffer& operator=(const FifoBuffer&) = delete;
 
-// Добавить бит (0 или 1)
-void orbita_fifo_push(orbita_fifo_t* fifo, uint8_t bit);
+    // Разрешение перемещения
+    FifoBuffer(FifoBuffer&&) = default;
+    FifoBuffer& operator=(FifoBuffer&&) = default;
 
-// Прочитать текущий бит и сдвинуть указатель чтения
-uint8_t orbita_fifo_pop(orbita_fifo_t* fifo);
+    // Добавить бит (0 или 1)
+    void push(uint8_t bit);
 
-// Прочитать бит со смещением (без сдвига) offset = 0..(count-1)
-uint8_t orbita_fifo_peek(const orbita_fifo_t* fifo, size_t offset);
+    // Прочитать текущий бит и сдвинуть указатель чтения
+    uint8_t pop();
 
-// Прочитать бит с абсолютным смещением от начала буфера (по модулю размера)
-uint8_t orbita_fifo_peek_absolute(const orbita_fifo_t* fifo, size_t pos);
+    // Прочитать бит со смещением (без сдвига) offset = 0..(available-1)
+    uint8_t peek(size_t offset) const;
 
-// Сдвинуть указатель чтения вперёд на n битов
-void orbita_fifo_skip(orbita_fifo_t* fifo, size_t n);
+    // Прочитать бит с абсолютным смещением от начала буфера (по модулю размера)
+    uint8_t peekAbsolute(size_t pos) const;
 
-// Сдвинуть указатель чтения назад на n битов
-void orbita_fifo_rewind(orbita_fifo_t* fifo, size_t n);
+    // Сдвинуть указатель чтения вперёд на n битов
+    void skip(size_t n);
 
-// Получить количество доступных битов
-size_t orbita_fifo_available(const orbita_fifo_t* fifo);
+    // Сдвинуть указатель чтения назад на n битов
+    void rewind(size_t n);
 
-// Сброс буфера (очистка)
-void orbita_fifo_reset(orbita_fifo_t* fifo);
+    // Получить количество доступных битов
+    size_t available() const;
 
-#ifdef __cplusplus
-}
-#endif
+    // Проверить, пуст ли буфер
+    bool empty() const;
 
-#endif // ORBITA_FIFO_BUFFER_H
+    // Проверить, полон ли буфер
+    bool full() const;
+
+    // Сброс буфера (очистка)
+    void reset();
+
+private:
+    std::vector<uint8_t> data_;
+    size_t write_pos_;
+    size_t read_pos_;
+    size_t count_;
+};
+
+} // namespace orbita
+
+#endif // ORBITA_FIFO_BUFFER_HPP

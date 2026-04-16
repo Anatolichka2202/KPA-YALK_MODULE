@@ -18,7 +18,7 @@ typedef char ViChar;
 #define VI_NULL 0
 #define VI_SUCCESS 0
 
-class VISADevice : public DeviceInterface {
+class VISADevice : public orbita::DeviceInterface {
 public:
     VISADevice();
     ~VISADevice() override;
