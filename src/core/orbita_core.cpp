@@ -51,7 +51,7 @@ void Context::setDeviceE2010(int channel, double sample_rate_khz) {
     LOG_INFO("setDeviceE2010: channel=%d, rate=%.1f", channel, sample_rate_khz);
     auto dev = std::make_unique<E2010Device>();
     // В E2010Device init принимает slot и sampleRateKHz, channel пока не используем
-    if (!dev->init(0, sample_rate_khz)) {
+    if (!dev->init(0, channel, sample_rate_khz)) {
         throw orbita_error("E2010 init failed");
     }
     // TODO: установить channel, если нужно – можно добавить метод setChannel позже

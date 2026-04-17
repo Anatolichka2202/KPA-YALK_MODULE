@@ -13,7 +13,7 @@ int main(int argc, char *argv[])
 
     E2010Device device;
     qDebug() << "Initializing E2010Device...";
-    if (!device.init(0, 10000.0)) {
+    if (!device.init(0, 1, 10000.0)) {
         qCritical() << "Failed to init device";
         return 1;
     }

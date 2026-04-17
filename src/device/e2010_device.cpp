@@ -22,7 +22,7 @@ E2010Device::~E2010Device()
 }
 
 bool E2010Device::init() {
-    return init(0, 10000.0);
+    return init(0, 1, 10000.0);
 }
 
 bool E2010Device::setParam(const char* param, double value) {
@@ -71,8 +71,9 @@ int E2010Device::readSamples(int16_t* buffer, int max_samples, int timeout_ms)
     return n;
 }
 
-bool E2010Device::init(int slot, double sampleRateKHz)
+bool E2010Device::init(int slot, int ch, double sampleRateKHz)
 {
+     channel = ch; // сохраняем
     lcompHandle = LoadLibraryA("lcomp64.dll");
     if (!lcompHandle) return false;
 
@@ -98,6 +99,11 @@ bool E2010Device::init(int slot, double sampleRateKHz)
         return false;
     }
 
+    PLATA_DESCR_U2 descr;
+    if (dev->ReadPlataDescr(&descr) != L_SUCCESS) {
+        qDebug() << "ReadPlataDescr failed, but continuing...";
+    }
+
     device = dev;
 
     ADC_PAR adcParams{};
@@ -105,8 +111,8 @@ bool E2010Device::init(int slot, double sampleRateKHz)
     adcParams.t2.AutoInit = 1;
     adcParams.t2.dRate = sampleRateKHz;
     adcParams.t2.dKadr = 0.00;   // частота кадра в кГц
-    adcParams.t2.SynchroType = 0x01;
-    adcParams.t2.SynchroSrc = 0x00;
+    adcParams.t2.SynchroType = 0x81; //INT_START
+    adcParams.t2.SynchroSrc = 0x40; //INT_CLK
     adcParams.t2.AdcIMask = (channel == 0) ? 0x0400 : 0x0200;
     adcParams.t2.NCh = 1;
     adcParams.t2.Chn[0] = channel;
@@ -116,6 +122,8 @@ bool E2010Device::init(int slot, double sampleRateKHz)
     adcParams.t2.Pages = 32;
     adcParams.t2.IrqStep = 32768;
     adcParams.t2.FIFO = 32768;
+
+
 
     if (dev->FillDAQparameters((PDAQ_PAR)&adcParams.t2) != 0) return false;
 
@@ -128,6 +136,10 @@ bool E2010Device::init(int slot, double sampleRateKHz)
     if (dev->SetParametersStream((PDAQ_PAR)&adcParams.t2, &usedSize,
                                  &dataBuffer, (void**)&syncCounter, L_STREAM_ADC) != 0)
         return false;
+
+
+    //автоматическая корректировка (взято из делфи кода)
+    dev->EnableCorrection(1);
 
     hEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
     if (!hEvent) return false;
@@ -206,9 +218,14 @@ void E2010Device::readerLoop()
                 dataReady = true;
                 bufferCond.wakeOne();
             }
+
+            static int dbg_sample = 0;
+            if (dbg_sample < 20) {
+                qDebug() << "sample" << dbg_sample << "=" << ptr[start];
+                ++dbg_sample;
+            }
         }
-        // Небольшая задержка, чтобы не грузить процессор
-        QThread::msleep(10);
+
     }
     qDebug() << "Reader loop finished";
 }

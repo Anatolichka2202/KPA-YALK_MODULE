@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <stdexcept>
 #include "../core/logger.h"
-
+#include <QDebug>
 namespace orbita {
 
 FrameDecoderM16::FrameDecoderM16()
@@ -37,6 +37,9 @@ FrameDecoderM16::FrameDecoderM16()
     reset();
 
     group_buffer_.resize(GROUP_SIZE);
+
+    start_write_group_ = true;
+    fl_kadr_ = true;
 }
 
 void FrameDecoderM16::pushBit(uint8_t bit) {
@@ -95,12 +98,13 @@ size_t FrameDecoderM16::available() const {
 void FrameDecoderM16::fillBitInWord() {
     uint8_t bit = popBit();
     cod_str_ = (cod_str_ << 1) | bit;
+    qDebug() << "bit:" << (int)bit << " cod_str:" << cod_str_;
 }
 
 void FrameDecoderM16::fillArrayGroup() {
     group_buffer_[group_word_count_ - 1] = cod_str_;
     ++group_word_count_;
-    LOG_INFO("fillArrayGroup: group_word_count=%d, cod_str=%04X", group_word_count_ - 1, cod_str_);
+     qDebug() << "fillArrayGroup: group_word_count=" << group_word_count_;
 }
 
 void FrameDecoderM16::collectMarkNumGroup() {
@@ -128,73 +132,53 @@ void FrameDecoderM16::collectMarkGroup() {
 }
 
 void FrameDecoderM16::wordProcessing() {
-
-    LOG_INFO("wordProcessing: word_num=%d, group_word_count=%d, group_size=%d", word_num_, group_word_count_, GROUP_SIZE);
-    printf("wordProcessing: word_num=%d, frase_num=%d, group_word_count=%d\n",
-           word_num_, frase_num_, group_word_count_);
-    if (group_word_count_ > GROUP_SIZE) {
-        has_new_group_ = true;
-        if (callback_) callback_(group_buffer_);
-        group_word_count_ = 1; // сброс для следующей группы
-        ++total_groups_;
-    }
-
+    // Начало новой фразы
     if (word_num_ == 1) {
-        // Начало новой фразы
         ++frase_num_;
         if (frase_num_ > 128) frase_num_ = 1;
 
         // Маркер кадра: frase 16, группа 1, 12-й бит = 1
         if (frase_num_ == 16 && group_num_ == 1) {
-            if (cod_str_ & 0x800) fl_kadr_ = 1;
+            if (cod_str_ & 0x800) fl_kadr_ = true;
         }
+    }
 
-        // Для чётных фраз собираем маркеры
-        if ((frase_num_ & 1) == 0) {
-            collectMarkNumGroup();
-            collectMarkGroup();
-            ++count_even_frase_;   // увеличиваем счётчик чётных фраз
+    // Для чётных фраз собираем маркеры
+    if ((frase_num_ & 1) == 0) {
+        collectMarkNumGroup();
+        collectMarkGroup();
+        ++count_even_frase_;
 
-            if (marker_group_ == 114 || marker_group_ == 141) {
-                // Проверка корректности расстояния (должно быть 64)
-                if (count_even_frase_ != 64) {
-                    ++group_errors_;
+        if (marker_group_ == 114 || marker_group_ == 141) {
+            if (count_even_frase_ != 64) ++group_errors_;
+            count_even_frase_ = 0;
+
+            if (marker_group_ == 114) {
+                ++group_num_;
+                if (group_num_ > 32) group_num_ = 1;
+                marker_group_ = 0;
+                ++count_for_mg_;
+                if (count_for_mg_ >= 32) {
+                    total_groups_ += count_for_mg_;
+                    count_for_mg_ = 0;
                 }
-                // Сброс счётчика **после** проверки
-                count_even_frase_ = 0;
-
-                if (marker_group_ == 114) {
-                    // Маркер группы
-                    ++group_num_;
-                    if (group_num_ > 32) group_num_ = 1;
-                    marker_group_ = 0;
-                    ++count_for_mg_;
-                    if (count_for_mg_ >= 32) {
-                        total_groups_ += count_for_mg_;
-                        count_for_mg_ = 0;
-                    }
-                } else if (marker_group_ == 141) {
-                    // Маркер цикла
-                    ++cikl_num_;
-                    if (cikl_num_ > 4) cikl_num_ = 1;
-                    marker_group_ = 0;
-                    if (fl_kadr_ && cikl_num_ == 1) {
-                        fl_sinx_c_ = true;
-                    }
+            } else if (marker_group_ == 141) {
+                ++cikl_num_;
+                if (cikl_num_ > 4) cikl_num_ = 1;
+                marker_group_ = 0;
+                if (fl_kadr_ && cikl_num_ == 1) {
+                    fl_sinx_c_ = true;
                 }
             }
         }
+    }
 
     // Запись слова в группу
     if (start_write_group_) {
         fillArrayGroup();
         if (group_word_count_ > static_cast<int>(GROUP_SIZE)) {
-            // Группа заполнена
             has_new_group_ = true;
-              printf("Group completed, size=%d\n", group_word_count_-1);
-            if (callback_) {
-                callback_(group_buffer_);
-            }
+            if (callback_) callback_(group_buffer_);
             group_word_count_ = 1;
             ++total_groups_;
         }
@@ -203,15 +187,24 @@ void FrameDecoderM16::wordProcessing() {
     cod_str_ = 0;
     ++word_num_;
     if (word_num_ > 16) word_num_ = 1;
+
+    // Отладка каждые 100 слов
+    if (group_word_count_ % 100 == 0) {
+        qDebug() << "group_word_count:" << group_word_count_
+                 << "frase:" << frase_num_
+                 << "group:" << group_num_
+                 << "cikl:" << cikl_num_;
     }
 }
+
 void FrameDecoderM16::analyseFrase() {
     for (int i = 0; i < 12; ++i) {
-        printf("analyseFrase: point_count=%d\n", point_count_);
-        if (point_count_ > 0) --point_count_; // не уходим в минус
         fillBitInWord();
         if (i == 11) wordProcessing();
-        LOG_INFO("analyseFrase: point_count=%d, i=%d", point_count_, i);
+    }
+    point_count_ -= 12;
+    if (point_count_ <= 0) {
+        first_frase_found_ = false;
     }
 }
 
@@ -237,28 +230,30 @@ void FrameDecoderM16::searchFirstFraseMarker() {
     if (b0 == 0 && b24 == 1 && b48 == 1 && b72 == 1 && b96 == 1 &&
         b120 == 0 && b144 == 0 && b168 == 0 && b216 == 1 &&
         b240 == 0 && b264 == 0 && b288 == 1 && b312 == 1 && b336 == 0 && b360 == 1) {
+       // qDebug() << "!!! First frase marker found at read_pos =" << read_pos_;
         first_frase_found_ = true;
-        LOG_INFO("First frase marker found!");
         point_count_ = 383;
         rewindBits(1);
-        printf("First frase marker found!\n");
         ++count_for_mf_;
         if (count_for_mf_ >= 127) {
             total_phrases_ += count_for_mf_;
             count_for_mf_ = 0;
         }
     } else {
+        static int dbg = 0;
+        if (++dbg % 10000 == 0) {
+           // qDebug() << "Searching... first bits:"
+                   //  << (int)b0 << (int)peekBit(1) << (int)peekBit(2) << (int)peekBit(3);
         skipBits(1);
-        printf("First frase marker NOT found, skipping bit\n");
         ++phrase_errors_;
         ++count_for_mf_;
         if (count_for_mf_ >= 127) {
             total_phrases_ += count_for_mf_;
             count_for_mf_ = 0;
         }
+        }
     }
 }
-
 void FrameDecoderM16::feedBits(const uint8_t* bits, size_t count) {
     std::lock_guard<std::mutex> lock(mutex_);
     for (size_t i = 0; i < count; ++i) {

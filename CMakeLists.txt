@@ -34,7 +34,10 @@ set(LIBORBITA_SOURCES
     src/core/orbita.cpp
 )
 
-add_library(liborbita STATIC ${LIBORBITA_SOURCES})
+add_library(liborbita STATIC ${LIBORBITA_SOURCES}
+    src/decoder/bitstream_recoverer.h src/decoder/bitstream_recoverer.cpp)
+
+target_compile_definitions(liborbita PRIVATE DEBUG_RECOVERER) # условная компиляция
 
 target_include_directories(liborbita PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include

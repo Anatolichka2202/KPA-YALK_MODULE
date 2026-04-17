@@ -24,7 +24,7 @@ public:
     int readSamples(int16_t* buffer, int max_samples, int timeout_ms);
 
     // Оригинальные методы
-    bool init(int slot, double sampleRateKHz);
+    bool init(int slot, int channel, double sampleRateKHz);
     bool start();
     void stop();
 
