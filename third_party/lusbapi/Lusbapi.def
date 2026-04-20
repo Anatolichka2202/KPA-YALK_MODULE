@@ -1,0 +1,6 @@
+LIBRARY				LUSBAPI.DLL
+DESCRIPTION			'(c) 2006 L-Card'
+
+EXPORTS
+	GetDllVersion		@1
+	CreateLInstance	@2

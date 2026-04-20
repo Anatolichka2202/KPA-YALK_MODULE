@@ -1,12 +1,16 @@
+// e2010_device.h
 #pragma once
+
 #include <QObject>
-#include <QThread>
-#include <QMutex>
-#include <QWaitCondition>
-#include <QAtomicInt>
+#include <thread>
 #include <vector>
-#include <cstdint>
 #include <windows.h>
+#include <cstdint>
+#include <atomic>
+
+#include "Lusbapi.h"
+
+namespace orbita {
 
 class E2010Device : public QObject
 {
@@ -15,47 +19,41 @@ public:
     explicit E2010Device(QObject *parent = nullptr);
     ~E2010Device();
 
-    // Методы, используемые в orbita_core
-    bool init();   // вызовет init(0, 10000.0)
-    bool setParam(const char* param, double value);
-    const char* getInfo() const;
-    bool startStream();
-    void stopStream();
-    int readSamples(int16_t* buffer, int max_samples, int timeout_ms);
-
-    // Оригинальные методы
-    bool init(int slot, int channel, double sampleRateKHz);
+    bool init(int slot = 0, int channel = 0, double sampleRateKHz = 10000.0);
     bool start();
     void stop();
 
+    bool isRunning() const { return isRunning_.loadRelaxed(); }
+
 signals:
     void samplesReady(const std::vector<int16_t>& samples);
+    void error(const QString& message);
 
 private:
     void readerLoop();
+    bool configureAndStart();
+    void cleanup();
 
-    QThread workerThread;
-    QAtomicInt isRunning;
-    QMutex mutex;
-    QWaitCondition cond;
+   std::thread readerThread_;
+    QAtomicInt isRunning_{0};
+    std::atomic<bool> stopRequested_{false};
 
-    // Для блокирующего чтения (readSamples)
-    QMutex bufferMutex;
-    QWaitCondition bufferCond;
-    std::vector<int16_t> pendingBuffer;
-    bool dataReady = false;
+    ILE2010* pModule_ = nullptr; // Указатель на интерфейс из Lusbapi
+    HANDLE hStopEvent_ = nullptr; // Событие для пробуждения потока при остановке
 
-    HMODULE lcompHandle = nullptr;
-    void* device = nullptr;
-    void* dataBuffer = nullptr;
-    unsigned long* syncCounter = nullptr;
-    unsigned long bufferSizeSamples = 0;
-    unsigned long lastSync = 0;
-    HANDLE hEvent = nullptr;
+    // Параметры сбора
+    int channel_ = 0;
+    double sampleRateKHz_ = 10000.0;
+    DWORD dataStep_ = 1024 * 1024; // Размер одного буфера в отсчётах
 
-    std::atomic<bool> stop_requested{false};
+    // Двойной буфер
+    std::vector<int16_t> buffer_[2];
+    OVERLAPPED overlap_[2];
+    IO_REQUEST_LUSBAPI ioReq_[2];
+    WORD requestNumber_ = 0; // 0 или 1, как в Delphi
+    ADC_PARS_E2010 adcParams_;   // Параметры АЦП
 
-    int channel = 0;
-    double sampleRate = 10000.0;
-    int inputRange = 3000;
+    HANDLE hModuleHandle_ = nullptr;
 };
+
+} // namespace orbita

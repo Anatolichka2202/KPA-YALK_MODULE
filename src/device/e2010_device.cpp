@@ -1,231 +1,230 @@
 #include "e2010_device.h"
-#include <windows.h>
-#include "../include/ioctl.h"
-#include "../include/e2010cmd.h"
-#include "../include/ifc_ldev.h"
-#include <cstring>
-
-#include <atomic>
-#include <algorithm>
 #include <QDebug>
-typedef IDaqLDevice* (__cdecl *CreateInstance_t)(ULONG Slot);
+#include <windows.h>
+
+// Типы указателей на функции из Lusbapi.dll
+typedef DWORD (WINAPI *GetDllVersion_t)(void);
+typedef ILE2010* (WINAPI *CreateLInstance_t)(const char*);
+
+// Глобальные указатели (можно сделать статическими членами)
+static GetDllVersion_t pGetDllVersion = nullptr;
+static CreateLInstance_t pCreateLInstance = nullptr;
+static HMODULE hLusbapiDll = nullptr;
+
+using namespace orbita;
 
 E2010Device::E2010Device(QObject *parent) : QObject(parent) {}
 
-E2010Device::~E2010Device()
-{
-    stopStream();
-    if (workerThread.isRunning()) {
-        workerThread.quit();
-        workerThread.wait();
-    }
-}
-
-bool E2010Device::init() {
-    return init(0, 1, 10000.0);
-}
-
-bool E2010Device::setParam(const char* param, double value) {
-    if (strcmp(param, "channel") == 0) {
-        channel = static_cast<int>(value);
-        return true;
-    }
-    if (strcmp(param, "sample_rate") == 0) {
-        sampleRate = value;
-        return true;
-    }
-    if (strcmp(param, "input_range") == 0) {
-        inputRange = static_cast<int>(value);
-        return true;
-    }
-    return false;
-}
-
-const char* E2010Device::getInfo() const {
-    return "E20-10 (LCard)";
-}
-
-bool E2010Device::startStream() {
-    start();
-    return true;
-}
-
-void E2010Device::stopStream() {
+E2010Device::~E2010Device() {
     stop();
+    if (readerThread_.joinable()) readerThread_.join();
+    if (hLusbapiDll) {
+        FreeLibrary(hLusbapiDll);
+        hLusbapiDll = nullptr;
+    }
 }
 
-int E2010Device::readSamples(int16_t* buffer, int max_samples, int timeout_ms)
-{
-    QMutexLocker lock(&bufferMutex);
-    // Ждём данные с таймаутом
-    while (!dataReady && !stop_requested) {
-        if (!bufferCond.wait(&bufferMutex, timeout_ms)) {
-            return 0; // таймаут
+bool E2010Device::init(int slot, int channel, double sampleRateKHz) {
+
+    channel_ = channel;
+    sampleRateKHz_ = sampleRateKHz;
+
+    if (channel < 0 || channel >= 4) {  // ADC_CHANNELS_QUANTITY_E2010 = 4
+        qCritical() << "Invalid channel number:" << channel;
+        return false;
+    }
+
+    // 1. Загружаем Lusbapi.dll
+    hLusbapiDll = LoadLibraryA("Lusbapi64.dll");
+    if (!hLusbapiDll) {
+        qCritical() << "Failed to load Lusbapi.dll";
+        return false;
+    }
+
+    // 2. Получаем функции
+    pGetDllVersion = (GetDllVersion_t)GetProcAddress(hLusbapiDll, "GetDllVersion");
+    pCreateLInstance = (CreateLInstance_t)GetProcAddress(hLusbapiDll, "CreateLInstance");
+    if (!pGetDllVersion || !pCreateLInstance) {
+        qCritical() << "Failed to get Lusbapi functions";
+        return false;
+    }
+
+    // 3. Проверка версии
+    if (pGetDllVersion() != CURRENT_VERSION_LUSBAPI) {
+        qCritical() << "Incorrect Lusbapi.dll version";
+        return false;
+    }
+
+    // 4. Создаём экземпляр интерфейса E2010
+    pModule_ = pCreateLInstance("e2010");
+    if (!pModule_) {
+        qCritical() << "CreateLInstance failed";
+        return false;
+    }
+
+    // 5. Открываем устройство
+    if (!pModule_->OpenLDevice(slot)) {
+        qCritical() << "OpenLDevice failed";
+        return false;
+    }
+
+    hModuleHandle_ = pModule_->GetModuleHandle();
+    if (!hModuleHandle_) {
+        qCritical() << "GetModuleHandle failed";
+        return false;
+    }
+
+    // 6. Загружаем прошивку ПЛИС
+    if (!pModule_->LOAD_MODULE(nullptr)) {
+        qCritical() << "LOAD_MODULE failed";
+        return false;
+    }
+
+    // 7. Настройка параметров АЦП
+    ADC_PARS_E2010 ap = {};
+    pModule_->GET_ADC_PARS(&ap);
+
+    ap.IsAdcCorrectionEnabled = TRUE;
+    ap.SynchroPars.StartSource = INT_ADC_START_E2010;
+    ap.SynchroPars.SynhroSource = INT_ADC_CLOCK_E2010;
+    ap.OverloadMode = CLIPPING_OVERLOAD_E2010;
+    ap.ChannelsQuantity = 1;
+    ap.ControlTable[0] = channel_;
+    ap.AdcRate = sampleRateKHz_;
+    ap.InterKadrDelay = 0.0;
+    ap.InputRange[0] = ADC_INPUT_RANGE_3000mV_E2010;
+    ap.InputSwitch[0] = ADC_INPUT_SIGNAL_E2010;
+
+    ap.SynchroPars.StartDelay = 0;
+    ap.SynchroPars.StopAfterNKadrs = 0;
+    ap.SynchroPars.SynchroAdMode = NO_ANALOG_SYNCHRO_E2010;
+    ap.SynchroPars.SynchroAdChannel = 0;
+    ap.SynchroPars.SynchroAdPorog = 0;
+    ap.SynchroPars.IsBlockDataMarkerEnabled = 0;
+
+    if (!pModule_->SET_ADC_PARS(&ap)) {
+        qCritical() << "SET_ADC_PARS failed";
+        return false;
+    }
+    adcParams_ = ap;
+
+    // 8. Выделяем память под двойной буфер
+    for (int i = 0; i < 2; ++i) {
+        buffer_[i].resize(dataStep_);
+    }
+
+
+     pModule_->STOP_ADC();
+    return true;
+}
+
+bool E2010Device::start() {
+    if (isRunning_.fetchAndStoreRelaxed(1)) return false;
+    if (!pModule_) return false;
+
+
+
+    hStopEvent_ = CreateEvent(nullptr, TRUE, FALSE, nullptr);
+
+    for (int i = 0; i < 2; ++i) {
+        ZeroMemory(&overlap_[i], sizeof(OVERLAPPED));
+        overlap_[i].hEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+
+        ioReq_[i].Buffer = buffer_[i].data();
+        ioReq_[i].NumberOfWordsToPass = dataStep_;
+        ioReq_[i].NumberOfWordsPassed = 0;
+        ioReq_[i].Overlapped = &overlap_[i];
+        ioReq_[i].TimeOut = (DWORD)(dataStep_ / adcParams_.AdcRate) + 1000;
+    }
+
+    requestNumber_ = 0;
+    if (!pModule_->ReadData(&ioReq_[requestNumber_])) {
+        qCritical() << "Initial ReadData failed";
+        return false;
+    }
+
+    if (!pModule_->START_ADC()) {
+        qCritical() << "START_ADC failed";
+        return false;
+    }
+
+    stopRequested_ = false;
+    readerThread_ = std::thread(&E2010Device::readerLoop, this);
+
+    return true;
+}
+
+void E2010Device::stop() {
+    if (!isRunning_.fetchAndStoreRelaxed(0)) return;
+    stopRequested_ = true;
+    if (hStopEvent_) SetEvent(hStopEvent_);
+    if (readerThread_.joinable()) readerThread_.join();
+
+    if (pModule_) {
+        pModule_->STOP_ADC();
+        pModule_->CloseLDevice();
+        pModule_->ReleaseLInstance();
+        pModule_ = nullptr;
+    }
+    for (int i = 0; i < 2; ++i) {
+        if (overlap_[i].hEvent) CloseHandle(overlap_[i].hEvent);
+        overlap_[i].hEvent = nullptr;
+    }
+    if (hStopEvent_) CloseHandle(hStopEvent_);
+    hStopEvent_ = nullptr;
+}
+
+void E2010Device::readerLoop() {
+    HANDLE stopEvent = hStopEvent_;
+    HANDLE hModule = hModuleHandle_;
+    DWORD bytesTransferred = 0;
+
+    while (!stopRequested_) {
+        requestNumber_ ^= 1;
+
+        if (!pModule_->ReadData(&ioReq_[requestNumber_])) {
+            emit error("ReadData failed");
+            break;
         }
-    }
-    if (!dataReady) return 0; // возможно, остановлено
-    int n = std::min(max_samples, (int)pendingBuffer.size());
-    memcpy(buffer, pendingBuffer.data(), n * sizeof(int16_t));
-    pendingBuffer.clear();
-    dataReady = false;
-    return n;
-}
 
-bool E2010Device::init(int slot, int ch, double sampleRateKHz)
-{
-     channel = ch; // сохраняем
-    lcompHandle = LoadLibraryA("lcomp64.dll");
-    if (!lcompHandle) return false;
+        HANDLE waitObjects[2] = {
+            ioReq_[requestNumber_ ^ 1].Overlapped->hEvent,
+            stopEvent
+        };
+        DWORD waitResult = WaitForMultipleObjects(2, waitObjects, FALSE,
+                                                  ioReq_[requestNumber_ ^ 1].TimeOut);
 
-    auto create = (CreateInstance_t)GetProcAddress(lcompHandle, "CreateInstance");
-    if (!create) {
-        FreeLibrary(lcompHandle);
-        lcompHandle = nullptr;
-        return false;
-    }
-    IDaqLDevice* dev = create(slot);
-    if (!dev) return false;
-
-    HANDLE h = dev->OpenLDevice();
-    if (h == INVALID_HANDLE_VALUE) {
-        dev->Release();
-        return false;
-    }
-
-    char bios[] = "e2010";
-    if (dev->LoadBios(bios) != 0) {
-        dev->CloseLDevice();
-        dev->Release();
-        return false;
-    }
-
-    PLATA_DESCR_U2 descr;
-    if (dev->ReadPlataDescr(&descr) != L_SUCCESS) {
-        qDebug() << "ReadPlataDescr failed, but continuing...";
-    }
-
-    device = dev;
-
-    ADC_PAR adcParams{};
-    adcParams.t2.s_Type = L_ADC_PARAM;
-    adcParams.t2.AutoInit = 1;
-    adcParams.t2.dRate = sampleRateKHz;
-    adcParams.t2.dKadr = 0.00;   // частота кадра в кГц
-    adcParams.t2.SynchroType = 0x81; //INT_START
-    adcParams.t2.SynchroSrc = 0x40; //INT_CLK
-    adcParams.t2.AdcIMask = (channel == 0) ? 0x0400 : 0x0200;
-    adcParams.t2.NCh = 1;
-    adcParams.t2.Chn[0] = channel;
-    adcParams.t2.Chn[1] = 1;
-    adcParams.t2.AdcEna = 1;
-    adcParams.t2.IrqEna = 1;
-    adcParams.t2.Pages = 32;
-    adcParams.t2.IrqStep = 32768;
-    adcParams.t2.FIFO = 32768;
-
-
-
-    if (dev->FillDAQparameters((PDAQ_PAR)&adcParams.t2) != 0) return false;
-
-    bufferSizeSamples = adcParams.t2.Pages * adcParams.t2.IrqStep;
-    ULONG reqSize = bufferSizeSamples;
-    if (dev->RequestBufferStream(&reqSize, L_STREAM_ADC) != 0) return false;
-    bufferSizeSamples = reqSize;
-
-    ULONG usedSize = 0;
-    if (dev->SetParametersStream((PDAQ_PAR)&adcParams.t2, &usedSize,
-                                 &dataBuffer, (void**)&syncCounter, L_STREAM_ADC) != 0)
-        return false;
-
-
-    //автоматическая корректировка (взято из делфи кода)
-    dev->EnableCorrection(1);
-
-    hEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
-    if (!hEvent) return false;
-    dev->SetLDeviceEvent(hEvent, L_STREAM_ADC);
-
-    lastSync = 0;
-    return true;
-}
-
-bool E2010Device::start()
-{
-    if (isRunning.fetchAndStoreRelaxed(1)) return false;
-    if (!device) return false;
-
-    IDaqLDevice* dev = static_cast<IDaqLDevice*>(device);
-    if (dev->InitStartLDevice() != 0 || dev->StartLDevice() != 0) {
-        isRunning = 0;
-        return false;
-    }
-
-    workerThread.quit();
-    workerThread.wait();
-    moveToThread(&workerThread);
-    connect(&workerThread, &QThread::started, this, &E2010Device::readerLoop);
-    workerThread.start();
-    return true;
-}
-
-void E2010Device::stop()
-{
-    if (!isRunning.fetchAndStoreRelaxed(0)) return;
-    stop_requested = true;
-    cond.wakeAll();
-    bufferCond.wakeAll(); // разбудить readSamples
-    if (workerThread.isRunning()) {
-        workerThread.quit();
-        workerThread.wait();
-    }
-    if (device) {
-        IDaqLDevice* dev = static_cast<IDaqLDevice*>(device);
-        dev->StopLDevice();
-        dev->CloseLDevice();
-        dev->Release();
-        device = nullptr;
-    }
-    if (hEvent) CloseHandle(hEvent);
-    if (lcompHandle) FreeLibrary(lcompHandle);
-}
-
-void E2010Device::readerLoop()
-{
-    qDebug() << "Reader loop started (polling mode)";
-    while (isRunning.loadRelaxed() && !stop_requested) {
-        ULONG cur = *syncCounter;
-        ULONG diff = (cur >= lastSync) ? (cur - lastSync) : (0xFFFFFFFF - lastSync + cur + 1);
-        if (diff > 0 && diff <= bufferSizeSamples * 2) {
-            ULONG start = lastSync % bufferSizeSamples;
-            ULONG end = start + diff;
-            int16_t* ptr = static_cast<int16_t*>(dataBuffer);
-            std::vector<int16_t> newData(diff);
-            if (end <= bufferSizeSamples) {
-                std::copy(ptr + start, ptr + end, newData.begin());
+        if (waitResult == WAIT_OBJECT_0) {
+            // Успешно дождались завершения предыдущего запроса
+            if (GetOverlappedResult(hModule,
+                                    ioReq_[requestNumber_ ^ 1].Overlapped,
+                                    &bytesTransferred,
+                                    FALSE)) {
+                size_t wordsTransferred = bytesTransferred / sizeof(int16_t);
+                if (wordsTransferred > 0) {
+                    std::vector<int16_t> samples(
+                        buffer_[requestNumber_ ^ 1].data(),
+                        buffer_[requestNumber_ ^ 1].data() + wordsTransferred
+                        );
+                    emit samplesReady(samples);
+                } else {
+                    qDebug() << "GetOverlappedResult returned 0 bytes";
+                }
             } else {
-                size_t first = bufferSizeSamples - start;
-                std::copy(ptr + start, ptr + bufferSizeSamples, newData.begin());
-                std::copy(ptr, ptr + (end - bufferSizeSamples), newData.begin() + first);
+                DWORD err = GetLastError();
+                emit error(QString("GetOverlappedResult failed, error code: %1").arg(err));
+                break;
             }
-            lastSync = cur;
-            qDebug() << "Got" << diff << "samples, total counter" << cur;
-
-            emit samplesReady(newData);
-
-            {
-                QMutexLocker lock(&bufferMutex);
-                pendingBuffer = std::move(newData);
-                dataReady = true;
-                bufferCond.wakeOne();
-            }
-
-            static int dbg_sample = 0;
-            if (dbg_sample < 20) {
-                qDebug() << "sample" << dbg_sample << "=" << ptr[start];
-                ++dbg_sample;
-            }
+        } else if (waitResult == WAIT_OBJECT_0 + 1) {
+            break; // стоп-событие
+        } else if (waitResult == WAIT_TIMEOUT) {
+            emit error("Data wait timeout");
+        } else {
+            emit error("WaitForMultipleObjects failed");
+            break;
         }
-
     }
+
+    pModule_->STOP_ADC();
     qDebug() << "Reader loop finished";
 }
