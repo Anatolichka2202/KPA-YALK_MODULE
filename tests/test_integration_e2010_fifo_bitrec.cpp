@@ -1,3 +1,4 @@
+//интеграционный тест ус-ва, бит-восстановителя и фифо буфера.
 #include <QtTest>
 #include <QThread>
 #include "../src/decoder/bitstream_recoverer.h"
@@ -26,7 +27,7 @@ private slots:
         QSignalSpy errorSpy(&device, &E2010Device::error);
 
         QVERIFY(device.start());
-        QTest::qWait(1000); // 1 секунда
+        QTest::qWait(60000); // 1 секунда
         device.stop();
         QTest::qWait(500);
 

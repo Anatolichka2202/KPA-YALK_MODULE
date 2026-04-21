@@ -1,3 +1,4 @@
+// тест сбора сырых данных
 #include <QtTest>
 #include <QCoreApplication>
 #include <QSignalSpy>
@@ -47,8 +48,8 @@ private slots:
 
         QVERIFY(device.init(0, 0, 10000.0));
         QVERIFY(device.start());
-
-        QTest::qWait(2000);   // 2 секунды сбора данных
+        int time_col = 2000; //ms
+        QTest::qWait(time_col);   // 2 секунд сбора данных
 
         device.stop();
         QTest::qWait(500);
@@ -62,7 +63,9 @@ private slots:
             totalSamples += samples.size();
         }
         qDebug() << "Total samples received:" << totalSamples;
+        qDebug() << "Time collection:" << time_col;
         QVERIFY(totalSamples > 0);
+
     }
 
     void testRestart() {

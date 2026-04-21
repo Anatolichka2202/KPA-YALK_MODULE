@@ -72,9 +72,9 @@ void Context::setChannelsFromFile(const std::string& filename) {
     if (!decoder_) {
         throw orbita_error("Failed to create frame decoder");
     }
-    decoder_->setCallback([this](const std::vector<uint16_t>& group) {
-        onDecoderGroup(group);
-    });
+    //decoder_->setCallback([this](const std::vector<uint16_t>& group) {
+       // onDecoderGroup(group);
+   // });
 
     // Настраиваем DataPool под количество каналов каждого типа
     const auto& channels = addr_mgr_->getChannels();
@@ -103,9 +103,9 @@ void Context::setChannelsFromLines(const std::vector<std::string>& lines) {
     mgr->loadFromLines(lines);
     addr_mgr_ = std::move(mgr);
     decoder_ = createFrameDecoder(addr_mgr_->getInformativnost());
-    decoder_->setCallback([this](const std::vector<uint16_t>& group) {
-        onDecoderGroup(group);
-    });
+    //decoder_->setCallback([this](const std::vector<uint16_t>& group) {
+    //    onDecoderGroup(group);
+   // });
     const auto& channels = addr_mgr_->getChannels();
     // ... (аналогичная настройка data_pool)
     LOG_INFO("Addresses loaded from lines: %zu channels", channels.size());
@@ -221,7 +221,7 @@ void Context::workerLoop() {
             if (invert_signal_) bit = !bit;
             bits.push_back(bit);
         }
-        decoder_->feedBits(bits.data(), bits.size());
+        //decoder_->feedBits(bits.data(), bits.size());
     }
 
     raw_file.close();

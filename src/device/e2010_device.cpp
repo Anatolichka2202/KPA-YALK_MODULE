@@ -84,6 +84,22 @@ bool E2010Device::init(int slot, int channel, double sampleRateKHz) {
     ADC_PARS_E2010 ap = {};
     pModule_->GET_ADC_PARS(&ap);
 
+    //=======================калибровочные коэфы============
+    if (!pModule_->GET_MODULE_DESCRIPTION(&moduleDesc_)) {
+        qCritical() << "GET_MODULE_DESCRIPTION failed";
+        return false;
+    }
+    calibrationLoaded_ = true;
+
+    for (int range = 0; range < ADC_INPUT_RANGES_QUANTITY_E2010; ++range) {
+        for (int ch = 0; ch < ADC_CHANNELS_QUANTITY_E2010; ++ch) {
+            int idx = ch + range * ADC_CHANNELS_QUANTITY_E2010;
+            ap.AdcOffsetCoefs[range][ch] = moduleDesc_.Adc.OffsetCalibration[idx];
+            ap.AdcScaleCoefs[range][ch] = moduleDesc_.Adc.ScaleCalibration[idx];
+        }
+    }
+    //======================================================
+
     ap.IsAdcCorrectionEnabled = TRUE;
     ap.SynchroPars.StartSource = INT_ADC_START_E2010;
     ap.SynchroPars.SynhroSource = INT_ADC_CLOCK_E2010;
@@ -150,6 +166,8 @@ bool E2010Device::start() {
 
     stopRequested_ = false;
     readerThread_ = std::thread(&E2010Device::readerLoop, this);
+
+
 
     return true;
 }
@@ -227,4 +245,28 @@ void E2010Device::readerLoop() {
 
     pModule_->STOP_ADC();
     qDebug() << "Reader loop finished";
+}
+void E2010Device::setRecoverer(BitstreamRecoverer* recoverer) {
+    if (recoverer_ == recoverer) return;
+    recoverer_ = recoverer;
+    setupRecovererConnections();
+}
+
+void E2010Device::setupRecovererConnections() {
+    if (!recoverer_) return;
+    // Отключаем старые соединения
+    disconnect(this, &E2010Device::samplesReady, nullptr, nullptr);
+    // Подключаем новое
+    connect(this, &E2010Device::samplesReady, this, [this](const std::vector<int16_t>& samples) {
+        static bool thresholdSet = false;
+        if (!thresholdSet && !samples.empty()) {
+            size_t portion = samples.size() / 10;
+            if (portion == 0) portion = samples.size();
+            recoverer_->computeThreshold(samples.data(), samples.size(), portion);
+            thresholdSet = true;
+        }
+        if (thresholdSet) {
+            recoverer_->processSamples(samples.data(), samples.size());
+        }
+    });
 }

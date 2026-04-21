@@ -1,361 +1,375 @@
 #include "frame_decoder_m16.h"
-#include <cstring>
 #include <algorithm>
-#include <stdexcept>
-#include "../core/logger.h"
+#include <cstdio>   // для printf отладки
 #include <QDebug>
 namespace orbita {
 
-FrameDecoderM16::FrameDecoderM16()
-    : fifo_(FIFO_SIZE, 0)
-    , write_pos_(0)
-    , read_pos_(0)
-    , count_(0)
-    , first_frase_found_(false)
-    , point_count_(0)
-    , word_num_(1)
-    , frase_num_(1)
-    , group_num_(1)
-    , cikl_num_(1)
-    , group_word_count_(1)
-    , cod_str_(0)
-    , group_buffer_(GROUP_SIZE, 0)
-    , start_write_group_(false)
-    , fl_sinx_c_(false)
-    , fl_kadr_(false)
-    , marker_num_group_(0)
-    , marker_group_(0)
-    , count_even_frase_(0)
-    , phrase_errors_(0)
-    , group_errors_(0)
-    , total_phrases_(0)
-    , total_groups_(0)
-    , count_for_mf_(0)
-    , count_for_mg_(0)
-    , has_new_group_(false)
+// ----------------------------------------------------------------------
+// Конструктор – инициализация всех переменных как в Delphi
+// ----------------------------------------------------------------------
+FrameDecoderM16::FrameDecoderM16(FifoBuffer& input_fifo)
+    : fifo(input_fifo)
+    , firstFraseFl(false)
+    , pointCount(0)
+    , wordNum(1)
+    , fraseNum(1)
+    , groupNum(1)
+    , ciklNum(1)
+    , groupWordCount(1)
+    , myFraseNum(1)
+    , codStr(0)
+    , startWriteMasGroup(false)
+    , flSinxC(false)
+    , flKadr(false)
+    , flBeg(false)
+    , flagOutFraseNum(false)
+    , markerNumGroup(0)
+    , markerGroup(0)
+    , countEvenFraseMGToMG(0)
+    , countForMF(0)
+    , countForMG(0)
+    , countErrorMF(0)
+    , countErrorMG(0)
+    , totalPhrases(0)
+    , totalGroups(0)
+    , flagL(true)
+    , iBit(1)
+    , masGroup(GROUP_SIZE, 0)
+    , masGroupAll(GROUP_SIZE, 0)
+    , hasNewGroup(false)
 {
-    reset();
-
-    group_buffer_.resize(GROUP_SIZE);
-    //start_write_group_ = true;
-
 }
 
-void FrameDecoderM16::pushBit(uint8_t bit) {
-    fifo_[write_pos_] = bit ? 1 : 0;
-    write_pos_ = (write_pos_ + 1) % FIFO_SIZE;
-    if (count_ < FIFO_SIZE) ++count_;
-    else {
-        // Переполнение – сдвигаем чтение
-        read_pos_ = (read_pos_ + 1) % FIFO_SIZE;
+// ----------------------------------------------------------------------
+// Сброс состояния (как в конструкторе)
+// ----------------------------------------------------------------------
+void FrameDecoderM16::reset() {
+    firstFraseFl = false;
+    pointCount = 0;
+    wordNum = 1;
+    fraseNum = 1;
+    groupNum = 1;
+    ciklNum = 1;
+    groupWordCount = 1;
+    myFraseNum = 1;
+    codStr = 0;
+    startWriteMasGroup = false;
+    flSinxC = false;
+    flKadr = false;
+    flBeg = false;
+    flagOutFraseNum = false;
+    markerNumGroup = 0;
+    markerGroup = 0;
+    countEvenFraseMGToMG = 0;
+    countForMF = 0;
+    countForMG = 0;
+    countErrorMF = 0;
+    countErrorMG = 0;
+    totalPhrases = 0;
+    totalGroups = 0;
+    flagL = true;
+    iBit = 1;
+    hasNewGroup = false;
+    std::fill(masGroup.begin(), masGroup.end(), 0);
+    std::fill(masGroupAll.begin(), masGroupAll.end(), 0);
+}
+
+// ----------------------------------------------------------------------
+// Чтение одного бита из FIFO (как функция Read в Delphi)
+// ----------------------------------------------------------------------
+uint8_t FrameDecoderM16::Read() {
+    return fifo.pop();
+}
+
+// ----------------------------------------------------------------------
+// Чтение бита со смещением (без изменения указателя чтения)
+// offset – количество битов вперёд от текущей позиции чтения
+// ----------------------------------------------------------------------
+uint8_t FrameDecoderM16::Read(int offset) {
+    // В Delphi используется fifoLevelRead + offset с циклическим пересчётом.
+    // Здесь предполагаем, что fifo.peek(offset) даёт бит на offset позиций вперёд.
+    return fifo.peek(offset);
+}
+
+// ----------------------------------------------------------------------
+// Вывод ошибок фраз (аналог OutMF) – можно заменить на лог
+// ----------------------------------------------------------------------
+void FrameDecoderM16::OutMF(int err) {
+    // Здесь можно вывести процент ошибок или просто сбросить счётчики.
+    // В Delphi выводится на прогресс-бар.
+    totalPhrases += countForMF;
+    // Процент ошибок можно вычислить позже в getErrors()
+}
+
+// ----------------------------------------------------------------------
+// Вывод ошибок групп (аналог OutMG)
+// ----------------------------------------------------------------------
+void FrameDecoderM16::OutMG(int err) {
+    totalGroups += countForMG;
+}
+
+// ----------------------------------------------------------------------
+// Поиск маркера первой фразы (SearchFirstFraseMarker)
+// ----------------------------------------------------------------------
+void FrameDecoderM16::SearchFirstFraseMarker() {
+    uint8_t current = Read();
+
+    // Отладка
+    static int dbg_count = 0;
+    if (dbg_count < 10) {
+        qDebug() << "SearchFirstFraseMarker: current=" << (int)current
+                 << " b24=" << (int)Read(24)
+                 << " b48=" << (int)Read(48)
+                 << " b72=" << (int)Read(72)
+                 << " b96=" << (int)Read(96)
+                 << " b120=" << (int)Read(120)
+                 << " b144=" << (int)Read(144)
+                 << " b168=" << (int)Read(168)
+                 << " b216=" << (int)Read(216)
+                 << " b240=" << (int)Read(240)
+                 << " b264=" << (int)Read(264)
+                 << " b288=" << (int)Read(288)
+                 << " b312=" << (int)Read(312)
+                 << " b336=" << (int)Read(336)
+                 << " b360=" << (int)Read(360);
+        dbg_count++;
     }
-}
 
-uint8_t FrameDecoderM16::popBit() {
-    if (count_ == 0) return 0;
-    uint8_t bit = fifo_[read_pos_];
-    read_pos_ = (read_pos_ + 1) % FIFO_SIZE;
-    --count_;
-    return bit;
-}
+    countForMF++;
 
-uint8_t FrameDecoderM16::peekBit(size_t offset) const {
-    if (offset >= count_) return 0;
-    size_t pos = (read_pos_ + offset) % FIFO_SIZE;
-    return fifo_[pos];
-}
-
-uint8_t FrameDecoderM16::peekAbsolute(size_t pos) const {
-    return fifo_[pos % FIFO_SIZE];
-}
-
-void FrameDecoderM16::skipBits(size_t n) {
-    if (n >= count_) {
-        read_pos_ = write_pos_;
-        count_ = 0;
+    // Проверка битов на позициях 0,24,48,... (как в Delphi)
+    if ((current == 0) && (Read(24) == 1) && (Read(48) == 1) &&
+        (Read(72) == 1) && (Read(96) == 1) && (Read(120) == 0) &&
+        (Read(144) == 0) && (Read(168) == 0) && (Read(216) == 1) &&
+        (Read(240) == 0) && (Read(264) == 0) && (Read(288) == 1) &&
+        (Read(312) == 1) && (Read(336) == 0) && (Read(360) == 1)) {
+        firstFraseFl = true;
+        pointCount = 383;
+        // Откат на один бит назад (dec(fifoLevelRead); inc(fifoBufCount))
+        fifo.rewind(1);
     } else {
-        read_pos_ = (read_pos_ + n) % FIFO_SIZE;
-        count_ -= n;
+        countErrorMF++;
+    }
+
+    if (countForMF == 127) {
+        countForMF = 0;
+        OutMF(countErrorMF);
+        countErrorMF = 0;
     }
 }
 
-void FrameDecoderM16::rewindBits(size_t n) {
-    if (n >= count_) {
-        read_pos_ = write_pos_;
-        count_ = 0;
-    } else {
-        if (n <= read_pos_) read_pos_ -= n;
-        else read_pos_ = FIFO_SIZE - (n - read_pos_);
-        count_ += n;
+// ----------------------------------------------------------------------
+// Заполнение бита в слово (FillBitInWord)
+// ----------------------------------------------------------------------
+void FrameDecoderM16::FillBitInWord() {
+    uint8_t bit = Read();
+    if (bit == 1)
+        codStr = (codStr << 1) | 1;
+    else
+        codStr = (codStr << 1);
+}
+
+// ----------------------------------------------------------------------
+// Заполнение массива группы (FillArrayGroup)
+// ----------------------------------------------------------------------
+void FrameDecoderM16::FillArrayGroup() {
+    // В Delphi: wordInfo := (codStr and 2047); masGroupAll[groupWordCount] := codStr; masGroup[groupWordCount] := wordInfo;
+    uint16_t wordInfo = codStr & 0x7FF;          // 11 младших бит
+    masGroupAll[groupWordCount - 1] = codStr;    // 0-индексация
+    masGroup[groupWordCount - 1] = wordInfo;
+    groupWordCount++;
+}
+
+// ----------------------------------------------------------------------
+// Заполнение кольцевого буфера цикла (заглушка для TLM)
+// ----------------------------------------------------------------------
+void FrameDecoderM16::FillArrayCircle() {
+    // Пока не нужно
+}
+
+// ----------------------------------------------------------------------
+// Сбор маркера номера группы (CollectMarkNumGroup)
+// ----------------------------------------------------------------------
+void FrameDecoderM16::CollectMarkNumGroup() {
+    if ((fraseNum == 2) || (fraseNum == 4) || (fraseNum == 6) ||
+        (fraseNum == 8) || (fraseNum == 10) || (fraseNum == 12) || (fraseNum == 14)) {
+        if ((codStr & 0x800) != 0)
+            markerNumGroup = (markerNumGroup << 1) | 1;
+        else
+            markerNumGroup = (markerNumGroup << 1);
+        if (fraseNum == 14) markerNumGroup = 0;
     }
 }
 
-size_t FrameDecoderM16::available() const {
-    return count_;
-}
-
-void FrameDecoderM16::fillBitInWord() {
-    uint8_t bit = popBit();
-    cod_str_ = (cod_str_ << 1) | bit;
- //   qDebug() << "bit:" << (int)bit << " cod_str:" << cod_str_;
-}
-
-void FrameDecoderM16::fillArrayGroup() {
-    group_buffer_[group_word_count_ - 1] = cod_str_;
-    ++group_word_count_;
-   //  qDebug() << "fillArrayGroup: group_word_count=" << group_word_count_;
-}
-
-void FrameDecoderM16::collectMarkNumGroup() {
-    // Сбор маркера номера группы на чётных фразах 2,4,6,8,10,12,14
-    if (frase_num_ == 2 || frase_num_ == 4 || frase_num_ == 6 ||
-        frase_num_ == 8 || frase_num_ == 10 || frase_num_ == 12 || frase_num_ == 14) {
-        if (cod_str_ & 0x800) {
-            marker_num_group_ = (marker_num_group_ << 1) | 1;
-        } else {
-            marker_num_group_ = (marker_num_group_ << 1);
-        }
-        if (frase_num_ == 14) marker_num_group_ = 0;
+// ----------------------------------------------------------------------
+// Сбор маркера группы (CollectMarkGroup)
+// ----------------------------------------------------------------------
+void FrameDecoderM16::CollectMarkGroup() {
+    if ((myFraseNum & 1) == 0) {   // чётная фраза
+        if ((codStr & 0x800) != 0)
+            markerGroup = (markerGroup << 1) | 1;
+        else
+            markerGroup = (markerGroup << 1);
     }
 }
 
-void FrameDecoderM16::collectMarkGroup() {
-    // Сбор маркера группы из 12-го бита каждой чётной фразы
-    if ((frase_num_ & 1) == 0) {
-        if (cod_str_ & 0x800) {
-            marker_group_ = (marker_group_ << 1)| 1 ;
-        } else {
-            marker_group_ = (marker_group_ << 1);
-        }
-    }
-}
+// ----------------------------------------------------------------------
+// Обработка собранного слова (WordProcessing)
+// ----------------------------------------------------------------------
+void FrameDecoderM16::WordProcessing() {
+    if (wordNum == 1) {
+        // Начало новой фразы
+        fraseNum++;
+        if (fraseNum == 129) fraseNum = 1;
 
-void FrameDecoderM16::wordProcessing() {
-    if (word_num_ == 1) {
-        // Проверка маркера кадра (используем ТЕКУЩИЙ frase_num_)
-        if (frase_num_ == 16 && group_num_ == 1) {
-            if (cod_str_ & 0x800) {
-                fl_kadr_ = true;
-                qDebug() << "!!! Kadr marker found!";
+        // Маркер кадра (1 в 1 бите 1 слова 16 фразы 1 группы)
+        if ((fraseNum == 16) && (groupNum == 1)) {
+            if ((codStr & 1) != 0) {      //
+                ciklNum = 1;
+                flKadr = true;
             }
         }
 
-        // Сбор маркеров для чётных фраз (используем ТЕКУЩИЙ frase_num_)
-        if ((frase_num_ & 1) == 0) {
-            collectMarkNumGroup();
-            collectMarkGroup();
-            ++count_even_frase_;
+        // Чётные фразы – сбор маркеров
+        if ((myFraseNum & 1) == 0) {
+            CollectMarkNumGroup();
+            CollectMarkGroup();
+            countEvenFraseMGToMG++;
 
-            if (cod_str_ & 0x800)
-                qDebug() << "MG bit 1 at frase" << frase_num_;
-            else
-                qDebug() << "MG bit 0 at frase" << frase_num_;
-
-            if (count_even_frase_ == 8) {
-                qDebug() << "marker_group_ byte =" << marker_group_;
-                if (marker_group_ != 114 && marker_group_ != 141) {
-                    marker_group_ = 0;
-                    count_even_frase_ = 0;
+            if ((markerGroup == 114) || (markerGroup == 141)) {
+                if (fraseNum != 128) {
+                    if (flagL == true) fraseNum = 128;
+                    flagL = true;
+                }
+                if (fraseNum == 128) {
+                    flagL = false;
+                    if (markerGroup == 114) {
+                        // Маркер группы
+                        if (countEvenFraseMGToMG != 64) countErrorMG++;
+                        countEvenFraseMGToMG = 0;
+                        groupNum++;
+                        if (groupNum == 33) groupNum = 1;
+                        countForMG++;
+                        if (countForMG == 32) {
+                            OutMG(countErrorMG);
+                            countErrorMG = 0;
+                            countForMG = 1;
+                        }
+                        flagOutFraseNum = true;
+                    }
+                    if (markerGroup == 141) {
+                        // Маркер цикла
+                        countEvenFraseMGToMG = 0;
+                        groupNum = 1;
+                        ciklNum++;
+                        if (ciklNum == 5) ciklNum = 1;
+                        flagOutFraseNum = true;
+                        // В Delphi здесь проверка (tlm.flagWriteTLM) and (flKadr) – можно опустить
+                        // if (tlm.flagWriteTLM && flKadr) flBeg = true;
+                    }
+                    markerGroup = 0;
                 }
             }
+        }
 
-            if (marker_group_ == 114 || marker_group_ == 141) {
-                qDebug() << ">>> Marker GROUP found! group_num =" << group_num_;
-                if (count_even_frase_ != 64) ++group_errors_;
-                count_even_frase_ = 0;
+        myFraseNum++;
+        if (myFraseNum == 129) myFraseNum = 1;
 
-                if (marker_group_ == 114) {
-                    ++group_num_;
-                    if (group_num_ > 32) group_num_ = 1;
-                    marker_group_ = 0;
-                    ++count_for_mg_;
-                    if (count_for_mg_ >= 32) {
-                        total_groups_ += count_for_mg_;
-                        count_for_mg_ = 0;
-                    }
-                } else if (marker_group_ == 141) {
-                    qDebug() << ">>> Marker CYCLE found! cikl_num =" << cikl_num_;
-                    ++cikl_num_;
-                    if (cikl_num_ > 4) cikl_num_ = 1;
-                    marker_group_ = 0;
-                    if (fl_kadr_ && cikl_num_ == 1) {
-                        fl_sinx_c_ = true;
-                    }
-                }
+        fraseNum++;
+        if (fraseNum == 129) fraseNum = 1;
+
+        if (flagOutFraseNum && flKadr && fraseNum == 1 && groupNum == 1 && ciklNum == 1) {
+            startWriteMasGroup = true;
+        }
+    }
+
+    // Запись в группу, если разрешено
+    if (startWriteMasGroup) {
+        FillArrayGroup();
+        if (groupWordCount == GROUP_SIZE + 1) {
+            // Группа заполнена – вызываем колбэк
+            if (groupCallback) {
+                groupCallback(masGroup, masGroupAll);
             }
-        }
-
-        // Инкремент номера фразы ПЕРЕД обработкой слов новой фразы
-        ++frase_num_;
-        if (frase_num_ > 128) frase_num_ = 1;
-    }
-
-    // Запись слова в группу (для всех слов)
-    if (start_write_group_) {
-        fillArrayGroup();
-        if (group_word_count_ > static_cast<int>(GROUP_SIZE)) {
-            has_new_group_ = true;
-            if (callback_) callback_(group_buffer_);
-            group_word_count_ = 1;
-            ++total_groups_;
+            hasNewGroup = true;
+            groupWordCount = 1;   // сброс для следующей группы
         }
     }
 
-    cod_str_ = 0;
-    ++word_num_;
-    if (word_num_ > 16) word_num_ = 1;
-
-    // Отладка каждые 100 слов
-    if (group_word_count_ % 100 == 0) {
-        qDebug() << "wordProcessing: group_word_count:" << group_word_count_
-                 << "frase:" << frase_num_
-                 << "group:" << group_num_
-                 << "cikl:" << cikl_num_;
-    }
+    // Сброс текущего слова и переход к следующему
+    codStr = 0;
+    wordNum++;
+    if (wordNum == 17) wordNum = 1;
 }
 
-void FrameDecoderM16::analyseFrase() {
-    for (int i = 0; i < 12; ++i) {
-        if (point_count_ < 0) {
-            first_frase_found_ = false;
-            return;
+// ----------------------------------------------------------------------
+// Анализ фразы (AnalyseFrase)
+// ----------------------------------------------------------------------
+void FrameDecoderM16::AnalyseFrase() {
+    while (iBit <= 12) {
+        if (pointCount == -1) {
+            firstFraseFl = false;
+            iBit = 1;
+            break;
         }
-        fillBitInWord();
-        --point_count_;
-        if (i == 11) wordProcessing();
-    }
-}
-
-void FrameDecoderM16::searchFirstFraseMarker() {
-    if (available() < 384) return;
-
-    // ----- ОТЛАДКА -----
-    static int debug_counter = 0;
-    if (++debug_counter <= 5) {
-        qDebug() << "searchFirstFraseMarker: peek bits:"
-                 << (int)peekBit(0) << (int)peekBit(24) << (int)peekBit(48)
-                 << (int)peekBit(72) << (int)peekBit(96) << (int)peekBit(120)
-                 << (int)peekBit(144) << (int)peekBit(168) << (int)peekBit(216)
-                 << (int)peekBit(240) << (int)peekBit(264) << (int)peekBit(288)
-                 << (int)peekBit(312) << (int)peekBit(336) << (int)peekBit(360);
-        // также выведем несколько первых битов подряд
-        qDebug() << "First 10 bits:"
-                 << (int)peekBit(0) << (int)peekBit(1) << (int)peekBit(2)
-                 << (int)peekBit(3) << (int)peekBit(4) << (int)peekBit(5)
-                 << (int)peekBit(6) << (int)peekBit(7) << (int)peekBit(8)
-                 << (int)peekBit(9);
-    }
-    // --------------------
-
-    uint8_t b0   = peekBit(0);
-    uint8_t b24  = peekBit(24);
-    uint8_t b48  = peekBit(48);
-    uint8_t b72  = peekBit(72);
-    uint8_t b96  = peekBit(96);
-    uint8_t b120 = peekBit(120);
-    uint8_t b144 = peekBit(144);
-    uint8_t b168 = peekBit(168);
-    uint8_t b216 = peekBit(216);
-    uint8_t b240 = peekBit(240);
-    uint8_t b264 = peekBit(264);
-    uint8_t b288 = peekBit(288);
-    uint8_t b312 = peekBit(312);
-    uint8_t b336 = peekBit(336);
-    uint8_t b360 = peekBit(360);
-
-    if (b0 == 0 && b24 == 1 && b48 == 1 && b72 == 1 && b96 == 1 &&
-        b120 == 0 && b144 == 0 && b168 == 0 && b216 == 1 &&
-        b240 == 0 && b264 == 0 && b288 == 1 && b312 == 1 && b336 == 0 && b360 == 1) {
-       // qDebug() << "!!! First frase marker found at read_pos =" << read_pos_;
-        first_frase_found_ = true;
-        point_count_ = 383;
-        rewindBits(1);
-        ++count_for_mf_;
-        if (count_for_mf_ >= 127) {
-            total_phrases_ += count_for_mf_;
-            count_for_mf_ = 0;
-        }
-    } else {
-        skipBits(1);
-        ++phrase_errors_;
-        ++count_for_mf_;
-        if (count_for_mf_ >= 127) {
-            total_phrases_ += count_for_mf_;
-            count_for_mf_ = 0;
-        }
-    }
-}
-void FrameDecoderM16::feedBits(const uint8_t* bits, size_t count) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    for (size_t i = 0; i < count; ++i) {
-        // Используем уже отлаженную логику feedBit
-        pushBit(bits[i]);
-        while (available() >= 384) {
-            if (!first_frase_found_) {
-                searchFirstFraseMarker();
-            } else {
-                analyseFrase();
-                if (!first_frase_found_) break;
-            }
-        }
-    }
-}
-
-void FrameDecoderM16::feedBit(uint8_t bit) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    pushBit(bit);
-    while (available() >= 384) {
-        if (!first_frase_found_) {
-            searchFirstFraseMarker();
+        pointCount--;
+        FillBitInWord();
+        if (iBit == 12) {
+            WordProcessing();
+            iBit = 1;
         } else {
-            analyseFrase();
-            if (!first_frase_found_) break;
+            iBit++;
         }
     }
 }
 
+// ----------------------------------------------------------------------
+// Основной цикл обработки (process)
+// ----------------------------------------------------------------------
+void FrameDecoderM16::process() {
+    // В Delphi: while (fifoBufCount >= 100000) and (not flagEnd) do
+    // Здесь мы обрабатываем, пока есть достаточно битов (минимум для поиска маркера)
+    while (fifo.available() >= 384) {
+        if (!firstFraseFl) {
+            SearchFirstFraseMarker();
+        } else {
+            AnalyseFrase();
+            if (!firstFraseFl) break; // если синхронизация потеряна
+        }
+    }
+}
+
+// ----------------------------------------------------------------------
+// Установка колбэка
+// ----------------------------------------------------------------------
+void FrameDecoderM16::setGroupCallback(GroupCallback cb) {
+    groupCallback = std::move(cb);
+}
+
+// ----------------------------------------------------------------------
+// Получение статистики ошибок (в процентах)
+// ----------------------------------------------------------------------
+void FrameDecoderM16::getErrors(int& phrase_err_percent, int& group_err_percent) {
+    phrase_err_percent = (totalPhrases > 0) ? (countErrorMF * 100 / totalPhrases) : 0;
+    group_err_percent  = (totalGroups  > 0) ? (countErrorMG * 100 / totalGroups)  : 0;
+}
+
+// ----------------------------------------------------------------------
+// Реализация методов базового класса FrameDecoder
+// ----------------------------------------------------------------------
 bool FrameDecoderM16::hasGroup() const {
-    std::lock_guard<std::mutex> lock(mutex_);
-    return has_new_group_;
+    return hasNewGroup;
 }
 
 std::vector<uint16_t> FrameDecoderM16::getGroup() {
-    std::lock_guard<std::mutex> lock(mutex_);
-    has_new_group_ = false;
-    return group_buffer_;
+    hasNewGroup = false;
+    // Возвращаем 11-битные слова (как в оригинальном getGroup)
+    return masGroup;
 }
 
-void FrameDecoderM16::getErrors(int& phrase_error_percent, int& group_error_percent) const {
-    std::lock_guard<std::mutex> lock(mutex_);
-    phrase_error_percent = (total_phrases_ > 0) ? (phrase_errors_ * 100 / total_phrases_) : 0;
-    group_error_percent = (total_groups_ > 0) ? (group_errors_ * 100 / total_groups_) : 0;
-}
-
-void FrameDecoderM16::reset() {
-    // Очищаем FIFO
-    write_pos_ = read_pos_ = count_ = 0;
-    first_frase_found_ = false;
-    point_count_ = 0;
-    word_num_ = 1;
-    frase_num_ = 1;
-    group_num_ = 1;
-    cikl_num_ = 1;
-    group_word_count_ = 1;
-    cod_str_ = 0;
-    start_write_group_ = false;
-    fl_sinx_c_ = false;
-    fl_kadr_ = false;
-    marker_num_group_ = 0;
-    marker_group_ = 0;
-    count_even_frase_ = 0;
-    phrase_errors_ = 0;
-    group_errors_ = 0;
-    total_phrases_ = 0;
-    total_groups_ = 0;
-    count_for_mf_ = 0;
-    count_for_mg_ = 0;
-    has_new_group_ = false;
-    std::fill(group_buffer_.begin(), group_buffer_.end(), 0);
+void FrameDecoderM16::getErrors(int& phrase_err, int& group_err) const {
+    phrase_err = (totalPhrases > 0) ? (countErrorMF * 100 / totalPhrases) : 0;
+    group_err  = (totalGroups  > 0) ? (countErrorMG * 100 / totalGroups)  : 0;
 }
 
 } // namespace orbita

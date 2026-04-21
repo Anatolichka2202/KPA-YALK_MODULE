@@ -17,7 +17,7 @@ public:
     explicit FrameDecoderM8(int informativnost); // 1,2,4,8
     ~FrameDecoderM8() override = default;
 
-    void feedBit(uint8_t bit) override;
+    void feedBit(uint8_t bit) ;
     bool hasGroup() const override;
     std::vector<uint16_t> getGroup() override;
     void getErrors(int& phrase_error_percent, int& group_error_percent) const override;

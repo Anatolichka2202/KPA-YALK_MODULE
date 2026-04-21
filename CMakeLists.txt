@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 project(liborbita LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(CMAKE_AUTOMOC ON)
@@ -53,7 +53,6 @@ set(LIBORBITA_SOURCES
 )
 
 add_library(liborbita STATIC ${LIBORBITA_SOURCES}
-
   )
 
 target_compile_definitions(liborbita PRIVATE DEBUG_RECOVERER)
@@ -82,6 +81,7 @@ endif()
 # ---------------------------------------------------------------------
 if(BUILD_TESTS)
     enable_testing()
+    target_compile_definitions(liborbita PUBLIC TESTING)
 
     file(GLOB TEST_SOURCES "tests/test_*.cpp")
 

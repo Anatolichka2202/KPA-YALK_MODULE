@@ -17,7 +17,7 @@ namespace orbita {
 
 class FifoBuffer {
 public:
-    static constexpr size_t FIFO_SIZE = 2500000;
+    static constexpr size_t FIFO_SIZE = 10485760;
 
     FifoBuffer();
     ~FifoBuffer() = default;

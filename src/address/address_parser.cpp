@@ -2,6 +2,7 @@
 #include <cctype>
 #include <stdexcept>
 #include <algorithm>
+#include <cstring>
 #include "../include/orbita_types.h"
 namespace orbita {
 

@@ -2,7 +2,7 @@
 #include <vector>
 #include <string>
 #include "address_parser.h"
-
+#include <cstdint>
 namespace orbita {
 
 class AddressManager {

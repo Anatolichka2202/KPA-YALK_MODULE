@@ -1,3 +1,4 @@
+// тест записи и чтения фифо буфера
 #include <QtTest>
 #include "../src/decoder/fifo_buffer.h"
 

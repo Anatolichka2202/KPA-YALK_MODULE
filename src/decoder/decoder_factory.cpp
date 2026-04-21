@@ -5,15 +5,15 @@
 
 namespace orbita {
 
-std::unique_ptr<FrameDecoder> createFrameDecoder(int informativnost) {
+std::unique_ptr<FrameDecoder> createFrameDecoder(int informativnost, FifoBuffer& fifo) {
     switch (informativnost) {
     case 16:
-        return std::make_unique<FrameDecoderM16>();
+        return std::make_unique<FrameDecoderM16>(fifo);
     case 8:
     case 4:
     case 2:
     case 1:
-        return std::make_unique<FrameDecoderM8>(informativnost);
+       //return std::make_unique<FrameDecoderM8>(fifo, informativnost);
     default:
         throw std::runtime_error("Unsupported informativnost: " + std::to_string(informativnost));
     }

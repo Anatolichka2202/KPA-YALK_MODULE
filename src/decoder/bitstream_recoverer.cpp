@@ -1,11 +1,37 @@
-
 #include "bitstream_recoverer.h"
 #include <cmath>
 #include <algorithm>
+#include <QDebug>
 
 namespace orbita {
 
-static constexpr double FREQ_RATIO = 10.0 / 3.145728; // ~3.179 (отношение частот)
+// Константа отношения частот: (10 МГц АЦП) / (3.145728 МГц частота битов) ≈ 3.179
+static constexpr long double FREQ_RATIO = 10.0L / 3.145728L;
+
+// Банковское округление (как в Delphi)
+int BitstreamRecoverer::bankersRound(long double value) {
+    long double frac = std::fmod(value, 1.0L);
+    long double intPart = std::floor(value);
+    if (frac < 0.5L)
+        return static_cast<int>(intPart);
+    if (frac > 0.5L)
+        return static_cast<int>(intPart + 1.0L);
+    // frac == 0.5
+    int intVal = static_cast<int>(intPart);
+    return (intVal % 2 == 0) ? intVal : intVal + 1;
+}
+
+int BitstreamRecoverer::calcOutStep(int count) {
+    if (count == 0) return 0;
+    const long double RATIO = 10.0L / 3.145728L;
+    long double value = count / RATIO;
+    long double intPart;
+    long double frac = modfl(value, &intPart);
+    int intVal = static_cast<int>(intPart);
+    if (frac < 0.5L) return intVal;
+    if (frac > 0.5L) return intVal + 1;
+    return (intVal % 2 == 0) ? intVal : intVal + 1;
+}
 
 BitstreamRecoverer::BitstreamRecoverer(FifoBuffer& output_fifo, Polarity polarity)
     : fifo_(output_fifo)
@@ -17,26 +43,25 @@ BitstreamRecoverer::BitstreamRecoverer(FifoBuffer& output_fifo, Polarity polarit
 {
 }
 
-void BitstreamRecoverer::computeThreshold(const int16_t* samples, size_t count) {
+void BitstreamRecoverer::computeThreshold(const int16_t* samples, size_t count, size_t portion_samples) {
     if (count == 0) return;
+    size_t effectiveCount = (portion_samples > 0 && portion_samples < count) ? portion_samples : count;
     int16_t minVal = samples[0];
     int16_t maxVal = samples[0];
-    for (size_t i = 1; i < count; ++i) {
+    for (size_t i = 1; i < effectiveCount; ++i) {
         if (samples[i] < minVal) minVal = samples[i];
         if (samples[i] > maxVal) maxVal = samples[i];
     }
     threshold_ = (static_cast<int>(minVal) + static_cast<int>(maxVal)) / 2;
     threshold_computed_ = true;
+    qDebug() << "[BitstreamRecoverer] Threshold computed:" << threshold_
+             << "(min=" << minVal << ", max=" << maxVal
+             << ", samples used=" << effectiveCount << ")";
 }
 
 void BitstreamRecoverer::setThreshold(int threshold) {
     threshold_ = threshold;
     threshold_computed_ = true;
-}
-
-int BitstreamRecoverer::calcOutStep(int count) {
-    if (count == 0) return 0;
-    return static_cast<int>(std::round(count / FREQ_RATIO));
 }
 
 void BitstreamRecoverer::outputBit(uint8_t bit) {
@@ -47,9 +72,12 @@ void BitstreamRecoverer::processSample(int16_t sample) {
     if (!threshold_computed_) return;
 
     bool above = (sample >= threshold_);
-    uint8_t rawBit = above ? 1 : 0;
-    // Применяем полярность: NORMAL: high->0, low->1; INVERTED: high->1, low->0
-    uint8_t outBit = (polarity_ == NORMAL) ? (1 - rawBit) : rawBit;
+    uint8_t outBit;
+    if (polarity_ == NORMAL) {
+        outBit = above ? 0 : 1;
+    } else {
+        outBit = above ? 1 : 0;
+    }
 
     if (above) {
         ++numUp_;
@@ -64,18 +92,42 @@ void BitstreamRecoverer::processSample(int16_t sample) {
         for (int i = 0; i < step; ++i) outputBit(outBit);
         numUp_ = 0;
     }
+    static int sampleCount = 0;
+    if (sampleCount++ < 200) {
+        qDebug() << "sample=" << sample << " above=" << above << " outBit=" << outBit;
+    }
 }
 
 void BitstreamRecoverer::processSamples(const int16_t* samples, size_t count) {
     for (size_t i = 0; i < count; ++i) {
+
         processSample(samples[i]);
     }
+
 }
 
 void BitstreamRecoverer::reset() {
     numUp_ = 0;
     numDown_ = 0;
-    // порог не сбрасываем
+    // Порог не сбрасываем
+}
+
+void BitstreamRecoverer::flush() {
+    if (!threshold_computed_) return;
+    // Если осталась серия выше порога
+    if (numUp_ > 0) {
+        int step = calcOutStep(numUp_);
+        uint8_t outBit = (polarity_ == NORMAL) ? 0 : 1;
+        for (int i = 0; i < step; ++i) outputBit(outBit);
+        numUp_ = 0;
+    }
+    // Если осталась серия ниже порога
+    if (numDown_ > 0) {
+        int step = calcOutStep(numDown_);
+        uint8_t outBit = (polarity_ == NORMAL) ? 1 : 0;
+        for (int i = 0; i < step; ++i) outputBit(outBit);
+        numDown_ = 0;
+    }
 }
 
 } // namespace orbita

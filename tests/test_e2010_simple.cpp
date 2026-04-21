@@ -1,3 +1,4 @@
+// тест dll и библиотек
 #include <QCoreApplication>
 #include <QTimer>
 #include <QDebug>

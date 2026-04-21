@@ -7,7 +7,7 @@
 #include <windows.h>
 #include <cstdint>
 #include <atomic>
-
+#include "../decoder/bitstream_recoverer.h"
 #include "Lusbapi.h"
 
 namespace orbita {
@@ -24,6 +24,8 @@ public:
     void stop();
 
     bool isRunning() const { return isRunning_.loadRelaxed(); }
+
+    void setRecoverer(BitstreamRecoverer* recoverer);
 
 signals:
     void samplesReady(const std::vector<int16_t>& samples);
@@ -43,7 +45,7 @@ private:
 
     // Параметры сбора
     int channel_ = 0;
-    double sampleRateKHz_ = 10000.0;
+    double sampleRateKHz_ = 10000.0; //10Мгц
     DWORD dataStep_ = 1024 * 1024; // Размер одного буфера в отсчётах
 
     // Двойной буфер
@@ -54,6 +56,12 @@ private:
     ADC_PARS_E2010 adcParams_;   // Параметры АЦП
 
     HANDLE hModuleHandle_ = nullptr;
+
+    MODULE_DESCRIPTION_E2010 moduleDesc_;
+    bool calibrationLoaded_;
+
+    BitstreamRecoverer* recoverer_ = nullptr;
+    void setupRecovererConnections();
 };
 
 } // namespace orbita

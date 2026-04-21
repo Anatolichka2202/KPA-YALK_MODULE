@@ -269,8 +269,8 @@ void FrameDecoderM8::fillMasGroup(int count_point_to_prev_m, int current_mark_be
             ++group_word_count_;
             if (group_word_count_ > group_size_) {
                 has_new_group_ = true;
-                if (callback_) {
-                    callback_(group_buffer_);
+                if (0) {
+                    //callback_(group_buffer_);
                 }
                 group_word_count_ = 1;
                 ++total_groups_;
