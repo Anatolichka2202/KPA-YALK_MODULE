@@ -1,0 +1,55 @@
+# Project: Lusbapi64
+# Makefile created by Embarcadero Dev-C++ 6.3
+
+CPP      = g++.exe -D__DEBUG__
+CC       = gcc.exe -D__DEBUG__
+WINDRES  = windres.exe -D_WIN64_
+DLLTOOL  = dlltool.exe
+RES      = ../../Obj/Lusbapi64_private.res
+OBJ      = ../../Obj/E140.o ../../Obj/E154.o ../../Obj/E310.o ../../Obj/E440.o ../../Obj/E2010.o ../../Obj/Lusbapi.o ../../Obj/Lusbbase.o $(RES)
+LINKOBJ  = ../../Obj/E140.o ../../Obj/E154.o ../../Obj/E310.o ../../Obj/E440.o ../../Obj/E2010.o ../../Obj/Lusbapi.o ../../Obj/Lusbbase.o $(RES)
+DEF      = ../../Lusbapi64.def
+LIBS     = -L"D:/Compilers/Embarcadero/Dev-Cpp/TDM-GCC-64/lib" -L"D:/Compilers/Embarcadero/Dev-Cpp/TDM-GCC-64/x86_64-w64-mingw32/lib" -static-libgcc $(DEF) -g3
+INCS     = -I"D:/Compilers/Embarcadero/Dev-Cpp/TDM-GCC-64/include" -I"D:/Compilers/Embarcadero/Dev-Cpp/TDM-GCC-64/x86_64-w64-mingw32/include" -I"D:/Compilers/Embarcadero/Dev-Cpp/TDM-GCC-64/lib/gcc/x86_64-w64-mingw32/9.2.0/include" -I"../../../../Include"
+CXXINCS  = -I"D:/Compilers/Embarcadero/Dev-Cpp/TDM-GCC-64/include" -I"D:/Compilers/Embarcadero/Dev-Cpp/TDM-GCC-64/x86_64-w64-mingw32/include" -I"D:/Compilers/Embarcadero/Dev-Cpp/TDM-GCC-64/lib/gcc/x86_64-w64-mingw32/9.2.0/include" -I"D:/Compilers/Embarcadero/Dev-Cpp/TDM-GCC-64/lib/gcc/x86_64-w64-mingw32/9.2.0/include/c++" -I"../../../../Include"
+BIN      = ../../../../Bin/Lusbapi64.dll
+CXXFLAGS = $(CXXINCS) -g3 -DBUILDING_DLL=1
+CFLAGS   = $(INCS) -g3 -DBUILDING_DLL=1
+DEL      = D:\Compilers\Embarcadero\Dev-Cpp\devcpp.exe INTERNAL_DEL
+LIBDEF   = ../../../../Bin/libLusbapi64.def
+STATIC   = ../../../../Lib/MinGW/libLusbapi64.a
+
+.PHONY: all all-before all-after clean clean-custom
+
+all: all-before $(BIN) all-after
+
+clean: clean-custom
+	${DEL} $(OBJ) $(BIN) $(LIBDEF) $(STATIC)
+
+$(BIN): $(LINKOBJ)
+	$(CPP) -shared $(LINKOBJ) -o $(BIN) $(LIBS) -Wl,--out-implib,$(STATIC),--add-stdcall-alias
+#	$(CPP) -shared $(LINKOBJ) -o $(BIN) $(LIBS) -Wl,--output-def,$(LIBDEF),--out-implib,$(STATIC),--add-stdcall-alias
+
+../../Obj/E140.o: ../../E140.cpp
+	$(CPP) -c ../../E140.cpp -o ../../Obj/E140.o $(CXXFLAGS)
+
+../../Obj/E154.o: ../../E154.cpp
+	$(CPP) -c ../../E154.cpp -o ../../Obj/E154.o $(CXXFLAGS)
+
+../../Obj/E310.o: ../../E310.cpp
+	$(CPP) -c ../../E310.cpp -o ../../Obj/E310.o $(CXXFLAGS)
+
+../../Obj/E440.o: ../../E440.cpp
+	$(CPP) -c ../../E440.cpp -o ../../Obj/E440.o $(CXXFLAGS)
+
+../../Obj/E2010.o: ../../E2010.cpp
+	$(CPP) -c ../../E2010.cpp -o ../../Obj/E2010.o $(CXXFLAGS)
+
+../../Obj/Lusbapi.o: ../../Lusbapi.cpp
+	$(CPP) -c ../../Lusbapi.cpp -o ../../Obj/Lusbapi.o $(CXXFLAGS)
+
+../../Obj/Lusbbase.o: ../../Lusbbase.cpp
+	$(CPP) -c ../../Lusbbase.cpp -o ../../Obj/Lusbbase.o $(CXXFLAGS)
+
+../../Obj/Lusbapi64_private.res: Lusbapi64_private.rc 
+	$(WINDRES) -i Lusbapi64_private.rc --input-format=rc -o ../../Obj/Lusbapi64_private.res -O coff --include-dir ../../ --include-dir ../../../../Include

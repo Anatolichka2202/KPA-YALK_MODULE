@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<CodeBlocks_project_file>
+	<FileVersion major="1" minor="6" />
+	<Project>
+		<Option title="Lusbapi" />
+		<Option pch_mode="2" />
+		<Option compiler="mingw_32-bit" />
+		<Build>
+			<Target title="Debug">
+				<Option output="../../../../Bin/Lusbapi" prefix_auto="1" extension_auto="1" />
+				<Option object_output="../../obj/" />
+				<Option type="3" />
+				<Option compiler="mingw_32-bit" />
+				<Compiler>
+					<Add option="-Wall" />
+					<Add option="-std=c++11" />
+					<Add option="-g" />
+					<Add option="-DBUILD_DLL" />
+					<Add directory="../../" />
+					<Add directory="../../../../Include" />
+				</Compiler>
+				<ResourceCompiler>
+					<Add directory="../../../../Include" />
+				</ResourceCompiler>
+				<Linker>
+					<Add option="-static-libstdc++" />
+					<Add option="-static-libgcc" />
+					<Add option="-static" />
+					<Add library="user32" />
+				</Linker>
+			</Target>
+			<Target title="Release">
+				<Option output="../../../../Bin/Lusbapi" prefix_auto="1" extension_auto="1" />
+				<Option object_output="../../obj/" />
+				<Option type="3" />
+				<Option compiler="mingw_32-bit" />
+				<Compiler>
+					<Add option="-Wall" />
+					<Add option="-DBUILD_DLL" />
+					<Add directory="../../" />
+					<Add directory="../../../../Include" />
+				</Compiler>
+				<ResourceCompiler>
+					<Add directory="../../../../Include" />
+				</ResourceCompiler>
+				<Linker>
+					<Add option="-static-libstdc++" />
+					<Add option="-static-libgcc" />
+					<Add option="-static" />
+					<Add option="../../Lusbapi_mingw.def" />
+					<Add option="-Wl,--kill-at" />
+					<Add library="user32" />
+				</Linker>
+				<ExtraCommands>
+					<Add after="$(TARGET_COMPILER_DIR)dlltool.exe --as-flags --32 --machine i386 --input-def ../../Lusbapi_mingw.def --output-lib ../../../../Lib/MinGW/libLusbapi.a --kill-at" />
+				</ExtraCommands>
+			</Target>
+		</Build>
+		<Unit filename="../../E140.cpp" />
+		<Unit filename="../../E140.rc">
+			<Option compilerVar="WINDRES" />
+		</Unit>
+		<Unit filename="../../E154.cpp" />
+		<Unit filename="../../E154.rc">
+			<Option compilerVar="WINDRES" />
+		</Unit>
+		<Unit filename="../../E2010.cpp" />
+		<Unit filename="../../E2010.rc">
+			<Option compilerVar="WINDRES" />
+		</Unit>
+		<Unit filename="../../E310.cpp" />
+		<Unit filename="../../E310.rc">
+			<Option compilerVar="WINDRES" />
+		</Unit>
+		<Unit filename="../../E440.cpp" />
+		<Unit filename="../../E440.rc">
+			<Option compilerVar="WINDRES" />
+		</Unit>
+		<Unit filename="../../Lusbapi.cpp" />
+		<Unit filename="../../Lusbapi.rc">
+			<Option compilerVar="WINDRES" />
+		</Unit>
+		<Unit filename="../../Lusbapi_mingw.def" />
+		<Unit filename="../../Lusbbase.cpp" />
+		<Unit filename="../../Lusbbase.rc">
+			<Option compilerVar="WINDRES" />
+		</Unit>
+		<Unit filename="../../winxp.rc">
+			<Option compilerVar="WINDRES" />
+		</Unit>
+		<Extensions />
+	</Project>
+</CodeBlocks_project_file>

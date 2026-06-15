@@ -1,0 +1,57 @@
+/****************************************************************************
+Lusbbase.rc
+produced by Borland Resource Workshop
+*****************************************************************************/
+#include "ErrorBaseIds.h"
+
+// LUSBBASE
+//#define	LUSBBASE_BASE_ERROR_ID				(100)
+#define	LUSBBASE_ERROR_ID_00					(LUSBBASE_BASE_ERROR_ID + 0)
+#define	LUSBBASE_ERROR_ID_01					(LUSBBASE_BASE_ERROR_ID + 1)
+#define	LUSBBASE_ERROR_ID_02					(LUSBBASE_BASE_ERROR_ID + 2)
+#define	LUSBBASE_ERROR_ID_03					(LUSBBASE_BASE_ERROR_ID + 3)
+#define	LUSBBASE_ERROR_ID_04					(LUSBBASE_BASE_ERROR_ID + 4)
+#define	LUSBBASE_ERROR_ID_05					(LUSBBASE_BASE_ERROR_ID + 5)
+#define	LUSBBASE_ERROR_ID_06					(LUSBBASE_BASE_ERROR_ID + 6)
+#define	LUSBBASE_ERROR_ID_07					(LUSBBASE_BASE_ERROR_ID + 7)
+#define	LUSBBASE_ERROR_ID_08					(LUSBBASE_BASE_ERROR_ID + 8)
+#define	LUSBBASE_ERROR_ID_09					(LUSBBASE_BASE_ERROR_ID + 9)
+#define	LUSBBASE_ERROR_ID_10					(LUSBBASE_BASE_ERROR_ID + 10)
+#define	LUSBBASE_ERROR_ID_11					(LUSBBASE_BASE_ERROR_ID + 11)
+#define	LUSBBASE_ERROR_ID_12					(LUSBBASE_BASE_ERROR_ID + 12)
+#define	LUSBBASE_ERROR_ID_13					(LUSBBASE_BASE_ERROR_ID + 13)
+#define	LUSBBASE_ERROR_ID_14					(LUSBBASE_BASE_ERROR_ID + 14)
+
+// специфический номер ошибки
+#define	LUSBBASE_ERROR_ID_99					(LUSBBASE_BASE_ERROR_ID + 99)
+// признак отсутствия ошибок
+#define	LUSBBASE_NO_ERROR_ID					LUSBBASE_ERROR_ID_00
+
+//------------------------------------------------------------------------------
+// описание возможных ошибок модуля LUSBBASE
+//------------------------------------------------------------------------------
+STRINGTABLE
+{
+	LUSBBASE_ERROR_ID_00,	"В Багдаде все спокойно! УРА!!!"
+	LUSBBASE_ERROR_ID_01,	"Ошибка TLUSBBASE::OpenLDeviceByID(). Для работы устройства требуется Windows'XP/7/8.x/10."
+	LUSBBASE_ERROR_ID_02,	"Ошибка TLUSBBASE::OpenLDeviceByID(). Не могу открыть текущий виртуальный слот модуля."
+	LUSBBASE_ERROR_ID_03,	"Ошибка TLUSBBASE::OpenLDeviceByID(). Не выполнилась функция GetModuleName()."
+	LUSBBASE_ERROR_ID_04,	"Ошибка TLUSBBASE::OpenLDeviceByID(). Не выполнилась функция GetUsbSpeed()."
+	LUSBBASE_ERROR_ID_05,	"Ошибка TLUSBBASE::OpenLDeviceByID(). Неправильно опредилась скорость работы модуля на шине USB."
+	LUSBBASE_ERROR_ID_06,	"Ошибка TLUSBBASE::CloseLDevice(). Не выполнилась WinAPI функция CloseHandle()."
+	LUSBBASE_ERROR_ID_07,	"Ошибка TLUSBBASE. Виртуальный слот не доступен. Инициализия доступа к виртуальному слоту производится функцией OpenLDevice()."
+	LUSBBASE_ERROR_ID_08,	"Ошибка TLUSBBASE. Ошибка входных параметров. Один из указателей аргумента функции равен NULL."
+	LUSBBASE_ERROR_ID_09,	"Ошибка TLUSBBASE. Модуль не отвечает на запрос USB. Ошибка выполнения локальной функции LDeviceIoControl()."
+	LUSBBASE_ERROR_ID_10,	"Ошибка TLUSBBASE::GetUsbSpeed(). Неправильное название модуля."
+	LUSBBASE_ERROR_ID_11,	"Ошибка TLUSBBASE::GetDeviceInitialInfo(). Невозможно получить начальную информацию об USB устройстве."
+	LUSBBASE_ERROR_ID_12,	"Ошибка TLUSBBASE::OpenLDeviceByID(). Обнаружено неизвестное USB устройство."
+	LUSBBASE_ERROR_ID_13,	"Ошибка TLUSBBASE::OpenLDeviceByID(). Полученный ID USB устройства не совпадает с требуемым."
+	LUSBBASE_ERROR_ID_14,	"Ошибка TLUSBBASE::LowPowerMode(). Данная функция не поддерживается."
+
+
+// ***************************
+// специфическая строка ошибки, которая задаётся непосредственно в исходниках LUSBBASE
+//	LUSBBASE_ERROR_ID_99,	"Ошибка TLUSBBASE::GetLastErrorInfo(). Невозможно получить строку с последней ошибкой поскольку не выполнилась WinAPI функция LoadString()."
+// ***************************
+}
+

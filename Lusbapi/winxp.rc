@@ -1,0 +1,8 @@
+#define				MANIFEST				24
+#define				IDR_MANIFEST		1
+
+#ifdef _WIN64_
+	IDR_MANIFEST		MANIFEST				"winxp64.xml"
+#else
+	IDR_MANIFEST		MANIFEST				"winxp.xml"
+#endif

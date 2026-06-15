@@ -1,0 +1,185 @@
+<?xml version='1.0' encoding='utf-8' ?>
+<!-- C++Builder XML Project -->
+<PROJECT>
+  <MACROS>
+    <VERSION value="BCB.06.00"/>
+    <PROJECT value="..\..\..\..\Bin\Lusbapi.dll"/>
+    <OBJFILES value="..\..\Obj\Lusbbase.obj ..\..\Obj\E140.obj ..\..\Obj\E154.obj 
+      ..\..\Obj\E310.obj ..\..\Obj\E440.obj ..\..\Obj\E2010.obj 
+      ..\..\Obj\Lusbapi.obj"/>
+    <RESFILES value="..\..\Obj\E140.res ..\..\Obj\E154.res ..\..\Obj\E310.res 
+      ..\..\Obj\E440.res ..\..\Obj\E2010.res ..\..\Obj\Lusbapi.res 
+      ..\..\Obj\winxp.res Lusbapi.res"/>
+    <IDLFILES value=""/>
+    <IDLGENFILES value=""/>
+    <DEFFILE value="D:\PLATY\USB\Lusbapi\DLL\Source\Lusbapi\Lusbapi.def"/>
+    <RESDEPEN value="$(RESFILES)"/>
+    <LIBFILES value=""/>
+    <LIBRARIES value=""/>
+    <SPARELIBS value=""/>
+    <PACKAGES value="vcl.bpi rtl.bpi dbrtl.bpi adortl.bpi vcldb.bpi vclx.bpi bdertl.bpi 
+      vcldbx.bpi ibxpress.bpi dsnap.bpi cds.bpi bdecds.bpi qrpt.bpi teeui.bpi 
+      teedb.bpi tee.bpi dss.bpi teeqr.bpi visualclx.bpi visualdbclx.bpi 
+      dsnapcrba.bpi dsnapcon.bpi bcbsmp.bpi vclie.bpi xmlrtl.bpi inet.bpi 
+      inetdbbde.bpi inetdbxpress.bpi inetdb.bpi nmfast.bpi webdsnap.bpi 
+      bcbie.bpi websnap.bpi soaprtl.bpi dclocx.bpi dbexpress.bpi dbxcds.bpi 
+      indy.bpi bcb2kaxserver.bpi LcardCom.bpi Leds.bpi Memos.bpi lmdrtl.bpi 
+      lmdrtrtlx.bpi lmdrtcore.bpi"/>
+    <PATHCPP value=".;..\.."/>
+    <PATHPAS value=".;"/>
+    <PATHRC value=".;..\.."/>
+    <PATHASM value=".;"/>
+    <DEBUGLIBPATH value="$(BCB)\lib\debug"/>
+    <RELEASELIBPATH value="$(BCB)\lib\release"/>
+    <LINKER value="ilink32"/>
+    <USERDEFINES value=""/>
+    <SYSDEFINES value="NO_STRICT;_NO_VCL"/>
+    <MAINSOURCE value="Lusbapi.bpf"/>
+    <INCLUDEPATH value="$(BCB)\include;$(BCB)\include\vcl;..\..;..\..\..\..\Include"/>
+    <LIBPATH value="..\..;$(BCB)\lib;$(BCB)\lib\obj"/>
+    <WARNINGS value="-w-par"/>
+    <OTHERFILES value=""/>
+  </MACROS>
+  <OPTIONS>
+    <IDLCFLAGS value="-I$(BCB)\include -I$(BCB)\include\vcl -I..\.. -I..\..\..\..\Include 
+      -src_suffix cpp -boa"/>
+    <CFLAG1 value="-WD -Od -Vx -Ve -RT- -fp -ff -X- -r- -a8 -4 -b- -d -k -vi -tWD -tWM- -c"/>
+    <PFLAGS value="-N2..\..\Obj -N0..\..\Obj -$Y- -$L- -$D- -$A8 -v -JPHNE -M"/>
+    <RFLAGS value=""/>
+    <AFLAGS value="/mx /w2 /zn"/>
+    <LFLAGS value="-l..\..\..\..\Lib\Borland -I..\..\Obj -D&quot;&quot; -aa -Tpd -x -Gn -Gi"/>
+    <OTHERFILES value=""/>
+  </OPTIONS>
+  <LINKER>
+    <ALLOBJ value="c0d32.obj $(OBJFILES)"/>
+    <ALLRES value="$(RESFILES)"/>
+    <ALLLIB value="$(LIBFILES) $(LIBRARIES) import32.lib cw32.lib"/>
+    <OTHERFILES value=""/>
+  </LINKER>
+  <FILELIST>
+      <FILE FILENAME="Lusbapi.bpf" FORMNAME="" UNITNAME="Lusbapi.bpf" CONTAINERID="BPF" DESIGNCLASS="" LOCALCOMMAND=""/>
+      <FILE FILENAME="..\..\Lusbbase.cpp" FORMNAME="" UNITNAME="Lusbbase" CONTAINERID="CCompiler" DESIGNCLASS="" LOCALCOMMAND=""/>
+      <FILE FILENAME="..\..\E140.cpp" FORMNAME="" UNITNAME="E140.cpp" CONTAINERID="CCompiler" DESIGNCLASS="" LOCALCOMMAND=""/>
+      <FILE FILENAME="..\..\E154.cpp" FORMNAME="" UNITNAME="E154.cpp" CONTAINERID="CCompiler" DESIGNCLASS="" LOCALCOMMAND=""/>
+      <FILE FILENAME="..\..\E310.cpp" FORMNAME="" UNITNAME="E310.cpp" CONTAINERID="CCompiler" DESIGNCLASS="" LOCALCOMMAND=""/>
+      <FILE FILENAME="..\..\E440.cpp" FORMNAME="" UNITNAME="E440.cpp" CONTAINERID="CCompiler" DESIGNCLASS="" LOCALCOMMAND=""/>
+      <FILE FILENAME="..\..\E2010.cpp" FORMNAME="" UNITNAME="E2010.cpp" CONTAINERID="CCompiler" DESIGNCLASS="" LOCALCOMMAND=""/>
+      <FILE FILENAME="..\..\Lusbapi.cpp" FORMNAME="" UNITNAME="Lusbapi.cpp" CONTAINERID="CCompiler" DESIGNCLASS="" LOCALCOMMAND=""/>
+      <FILE FILENAME="..\..\E140.rc" FORMNAME="" UNITNAME="E140.rc" CONTAINERID="RCCompiler" DESIGNCLASS="" LOCALCOMMAND=""/>
+      <FILE FILENAME="..\..\E154.rc" FORMNAME="" UNITNAME="E154.rc" CONTAINERID="RCCompiler" DESIGNCLASS="" LOCALCOMMAND=""/>
+      <FILE FILENAME="..\..\E310.rc" FORMNAME="" UNITNAME="E310.rc" CONTAINERID="RCCompiler" DESIGNCLASS="" LOCALCOMMAND=""/>
+      <FILE FILENAME="..\..\E440.rc" FORMNAME="" UNITNAME="E440.rc" CONTAINERID="RCCompiler" DESIGNCLASS="" LOCALCOMMAND=""/>
+      <FILE FILENAME="..\..\E2010.rc" FORMNAME="" UNITNAME="E2010.rc" CONTAINERID="RCCompiler" DESIGNCLASS="" LOCALCOMMAND=""/>
+      <FILE FILENAME="..\..\Lusbapi.rc" FORMNAME="" UNITNAME="Lusbapi.rc" CONTAINERID="RCCompiler" DESIGNCLASS="" LOCALCOMMAND=""/>
+      <FILE FILENAME="D:\PLATY\USB\Lusbapi\DLL\Source\Lusbapi\Lusbapi.def" FORMNAME="" UNITNAME="Lusbapi.def" CONTAINERID="DefTool" DESIGNCLASS="" LOCALCOMMAND=""/>
+      <FILE FILENAME="..\..\winxp.rc" FORMNAME="" UNITNAME="winxp.rc" CONTAINERID="RCCompiler" DESIGNCLASS="" LOCALCOMMAND=""/>
+      <FILE FILENAME="Lusbapi.res" FORMNAME="" UNITNAME="" CONTAINERID="ResTool" DESIGNCLASS="" LOCALCOMMAND=""/>
+  </FILELIST>
+  <BUILDTOOLS>
+  </BUILDTOOLS>
+
+  <IDEOPTIONS>
+[Version Info]
+IncludeVerInfo=1
+AutoIncBuild=0
+MajorVer=3
+MinorVer=4
+Release=0
+Build=0
+Debug=0
+PreRelease=0
+Special=0
+Private=0
+DLL=0
+Locale=1049
+CodePage=1251
+
+[Version Info Keys]
+CompanyName='L Card' Ltd.
+FileDescription=DLL for 'L Card' USB devices
+FileVersion=3.4.0.0
+InternalName=Lusbapi
+LegalCopyright='L Card' Ltd., 1989-2023
+LegalTrademarks=
+OriginalFilename=Lusbapi.dll
+ProductName=Lusbapi
+ProductVersion=3.4.0.0
+Comments=Windows'98/Me/2000/XP/Vista/7/8/10/11
+
+[Excluded Packages]
+d:\compilers\borland\cbuilder6\Bin\dclite60.bpl=Borland Integrated Translation Environment
+
+[HistoryLists\hlIncludePath]
+Count=7
+Item0=$(BCB)\include;$(BCB)\include\vcl;..\..;..\..\..\..\Include
+Item1=$(BCB)\include;$(BCB)\include\vcl;..\..\;..\..\..\..\Include
+Item2=..\..;$(BCB)\include;$(BCB)\include\vcl;..\..\..\..\Include
+Item3=$(BCB)\include;$(BCB)\include\vcl;..\..\..\..\Include
+Item4=..\..;$(BCB)\include;$(BCB)\include\vcl;..\..\Include
+Item5=$(BCB)\include;$(BCB)\include\vcl;..\..\Include
+Item6=D:\PLATY\USB\Lusbapi\DLL\Source\Lusbapi;$(BCB)\include;$(BCB)\include\vcl
+
+[HistoryLists\hlLibraryPath]
+Count=3
+Item0=..\..;$(BCB)\lib;$(BCB)\lib\obj
+Item1=$(BCB)\lib;$(BCB)\lib\obj
+Item2=D:\PLATY\USB\Lusbapi\DLL\Source\Lusbapi;$(BCB)\lib\obj;$(BCB)\lib
+
+[HistoryLists\hlDebugSourcePath]
+Count=1
+Item0=$(BCB)\source\vcl
+
+[HistoryLists\hlConditionals]
+Count=1
+Item0=_DEBUG
+
+[HistoryLists\hlIntOutputDir]
+Count=2
+Item0=..\..\Obj
+Item1=Obj
+
+[HistoryLists\hlFinalOutputDir]
+Count=4
+Item0=..\..\..\..\Bin\
+Item1=..\..\Bin\
+Item2=..\..\Include\
+Item3=..\..\Include
+
+[HistoryLists\hIBPIOutputDir]
+Count=4
+Item0=..\..\..\..\Lib\Borland
+Item1=..\..\..\..\Lib\Borland\
+Item2=..\..\..\..\Bin
+Item3=..\..\..\..\Bin\
+
+[Debugging]
+DebugSourceDirs=$(BCB)\source\vcl
+
+[Parameters]
+RunParams=
+Launcher=
+UseLauncher=0
+DebugCWD=
+HostApplication=
+RemoteHost=
+RemotePath=
+RemoteLauncher=
+RemoteCWD=
+RemoteDebug=0
+
+[Compiler]
+ShowInfoMsgs=0
+LinkDebugVcl=0
+LinkCGLIB=0
+
+[CORBA]
+AddServerUnit=1
+AddClientUnit=1
+PrecompiledHeaders=1
+
+[Linker]
+LibPrefix=
+LibSuffix=
+LibVersion=
+  </IDEOPTIONS>
+</PROJECT>

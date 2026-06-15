@@ -1,0 +1,109 @@
+# depslib dependency file v1.0
+1677676280 source:d:\temp\lusbapi\dll_new\dll\source\lusbapi\e140.cpp
+	<algorithm>
+	<stdio.h>
+	<math.h>
+	"e140.h"
+	"ErrorBaseIds.h"
+
+1551870301 d:\temp\lusbapi\dll_new\dll\source\lusbapi\e140.h
+	"LUsbBase.h"
+
+1580222436 d:\temp\lusbapi\dll_new\dll\source\lusbapi\lusbbase.h
+	<windows.h>
+	<winioctl.h>
+	"Ioctl.h"
+	"Lusbapi.h"
+
+1202385620 d:\temp\lusbapi\dll_new\dll\source\lusbapi\ioctl.h
+
+1622120933 d:\temp\lusbapi\dll_new\dll\include\lusbapi.h
+	<windows.h>
+	"LusbapiTypes.h"
+
+1303394826 d:\temp\lusbapi\dll_new\dll\include\lusbapitypes.h
+	<windows.h>
+
+1302024500 d:\temp\lusbapi\dll_new\dll\source\lusbapi\errorbaseids.h
+
+1245239900 source:d:\temp\lusbapi\dll_new\dll\source\lusbapi\e140.rc
+	"ErrorBaseIds.h"
+
+1677676606 source:d:\temp\lusbapi\dll_new\dll\source\lusbapi\e154.cpp
+	<algorithm>
+	<stdio.h>
+	<math.h>
+	"e154.h"
+	"ErrorBaseIds.h"
+
+1551870310 d:\temp\lusbapi\dll_new\dll\source\lusbapi\e154.h
+	"LUsbBase.h"
+
+1205500598 source:d:\temp\lusbapi\dll_new\dll\source\lusbapi\e154.rc
+	"ErrorBaseIds.h"
+
+1677573604 source:d:\temp\lusbapi\dll_new\dll\source\lusbapi\e2010.cpp
+	<stdio.h>
+	<fcntl.h>
+	<io.h>
+	<algorithm>
+	<math.h>
+	"E2010.h"
+	"ErrorBaseIds.h"
+
+1551871308 d:\temp\lusbapi\dll_new\dll\source\lusbapi\e2010.h
+	"LUsbBase.h"
+
+1675695864 source:d:\temp\lusbapi\dll_new\dll\source\lusbapi\e2010.rc
+	"ErrorBaseIds.h"
+
+1677063036 source:d:\temp\lusbapi\dll_new\dll\source\lusbapi\e310.cpp
+	<algorithm>
+	<stdio.h>
+	<math.h>
+	"e310.h"
+	"ErrorBaseIds.h"
+
+1551870324 d:\temp\lusbapi\dll_new\dll\source\lusbapi\e310.h
+	"LUsbBase.h"
+
+1320838658 source:d:\temp\lusbapi\dll_new\dll\source\lusbapi\e310.rc
+	"ErrorBaseIds.h"
+
+1677676150 source:d:\temp\lusbapi\dll_new\dll\source\lusbapi\e440.cpp
+	<math.h>
+	<io.h>
+	<stdio.h>
+	<fcntl.h>
+	<algorithm>
+	"e440.h"
+	"ErrorBaseIds.h"
+
+1669908830 d:\temp\lusbapi\dll_new\dll\source\lusbapi\e440.h
+	"LUsbBase.h"
+
+1669734373 source:d:\temp\lusbapi\dll_new\dll\source\lusbapi\e440.rc
+	"ErrorBaseIds.h"
+
+1677597456 source:d:\temp\lusbapi\dll_new\dll\source\lusbapi\lusbapi.cpp
+	"e140.h"
+	"e154.h"
+	"e310.h"
+	"e440.h"
+	"e2010.h"
+
+1680011825 source:d:\temp\lusbapi\dll_new\dll\source\lusbapi\lusbapi.rc
+	"Lusbapi.h"
+
+1676303312 source:d:\temp\lusbapi\dll_new\dll\source\lusbapi\lusbbase.cpp
+	<algorithm>
+	<stdio.h>
+	"LUsbBase.h"
+	"ErrorBaseIds.h"
+	"Lusbapi.h"
+
+1559565677 source:d:\temp\lusbapi\dll_new\dll\source\lusbapi\lusbbase.rc
+	"ErrorBaseIds.h"
+
+1677524123 source:d:\temp\lusbapi\dll_new\dll\source\lusbapi\winxp.rc
+

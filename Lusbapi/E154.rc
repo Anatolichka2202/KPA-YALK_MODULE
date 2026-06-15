@@ -1,0 +1,68 @@
+/****************************************************************************
+E154.rc
+produced by Borland Resource Workshop
+*****************************************************************************/
+#include "ErrorBaseIds.h"
+
+#define	E154_ERROR_ID_00						(E154_BASE_ERROR_ID + 0)
+#define	E154_ERROR_ID_01						(E154_BASE_ERROR_ID + 1)
+#define	E154_ERROR_ID_02						(E154_BASE_ERROR_ID + 2)
+#define	E154_ERROR_ID_03						(E154_BASE_ERROR_ID + 3)
+#define	E154_ERROR_ID_04						(E154_BASE_ERROR_ID + 4)
+#define	E154_ERROR_ID_05						(E154_BASE_ERROR_ID + 5)
+#define	E154_ERROR_ID_06						(E154_BASE_ERROR_ID + 6)
+#define	E154_ERROR_ID_07						(E154_BASE_ERROR_ID + 7)
+#define	E154_ERROR_ID_08						(E154_BASE_ERROR_ID + 8)
+#define	E154_ERROR_ID_09						(E154_BASE_ERROR_ID + 9)
+#define	E154_ERROR_ID_10						(E154_BASE_ERROR_ID + 10)
+#define	E154_ERROR_ID_11						(E154_BASE_ERROR_ID + 11)
+#define	E154_ERROR_ID_12						(E154_BASE_ERROR_ID + 12)
+#define	E154_ERROR_ID_13						(E154_BASE_ERROR_ID + 13)
+#define	E154_ERROR_ID_14						(E154_BASE_ERROR_ID + 14)
+#define	E154_ERROR_ID_15						(E154_BASE_ERROR_ID + 15)
+#define	E154_ERROR_ID_16						(E154_BASE_ERROR_ID + 16)
+#define	E154_ERROR_ID_17						(E154_BASE_ERROR_ID + 17)
+#define	E154_ERROR_ID_18						(E154_BASE_ERROR_ID + 18)
+#define	E154_ERROR_ID_19						(E154_BASE_ERROR_ID + 19)
+#define	E154_ERROR_ID_20						(E154_BASE_ERROR_ID + 20)
+#define	E154_ERROR_ID_21						(E154_BASE_ERROR_ID + 21)
+#define	E154_ERROR_ID_22						(E154_BASE_ERROR_ID + 22)
+#define	E154_ERROR_ID_23						(E154_BASE_ERROR_ID + 23)
+#define	E154_ERROR_ID_25						(E154_BASE_ERROR_ID + 25)
+#define	E154_ERROR_ID_24						(E154_BASE_ERROR_ID + 24)
+#define	E154_ERROR_ID_25						(E154_BASE_ERROR_ID + 25)
+#define	E154_ERROR_ID_26						(E154_BASE_ERROR_ID + 26)
+
+//------------------------------------------------------------------------------
+// описание возможных ошибок библиотеки для модуля E-154
+//------------------------------------------------------------------------------
+STRINGTABLE
+{
+	E154_ERROR_ID_00,	"Обнаруженный модуль не является E-154."
+	E154_ERROR_ID_01,	"Ошибка входных параметров. Один из указателей аргумента функции равен NULL."
+	E154_ERROR_ID_02,	"Ошибка внутренней функции GetArray(). Не удалось прочитать массив данных из памяти микроконтроллера."
+	E154_ERROR_ID_03,	"Нельзя выполнять данную функцию во время потокового ввода данных. Только после выполнения функции STOP_ADC()."
+	E154_ERROR_ID_04,	"Ошибка внутренней функции PutArray(). Не удалось записать массив данных в память микроконтроллера."
+	E154_ERROR_ID_05,	"Ошибка выполнения функции TLUSBBASE::LDeviceIoControl(). Модуль не отвечает на запрос USB."
+	E154_ERROR_ID_06,	"Кол-во опрашиваемых каналов не может превышать 32."
+	E154_ERROR_ID_07,	"Ошибка выделения памяти под локальный буфер."
+	E154_ERROR_ID_08,	"Ошибка выполнения функции ReadData()."
+	E154_ERROR_ID_09,	"Не выполнилась WinAPI функция ReadFile(). Для выяснения причин следует воспользоваться WinAPI функцией GetLastError()."
+	E154_ERROR_ID_10,	"WinAPI функция CreateEvent() не смогла создать событие. Для выяснения причин следует воспользоваться WinAPI функцией GetLastError()."
+	E154_ERROR_ID_11,	"Таймаут ожидания ввода данных."
+	E154_ERROR_ID_12,	"Не выполнилась WinAPI функция GetOverlappedResult(). Для выяснения причин следует воспользоваться WinAPI функцией GetLastError()."
+	E154_ERROR_ID_13,	"Не выполнилась WinAPI функция CloseHandle(). Для выяснения причин следует воспользоваться WinAPI функцией GetLastError()."
+	E154_ERROR_ID_14,	"Ошибка в кол-ве переданных данных."
+	E154_ERROR_ID_15,	"На данном экземпляре модуля 'E-154' полностью отсутствует ЦАП."
+	E154_ERROR_ID_16,	"Номер канала ЦАП может принимать только следующие значения: 0 или 1."
+	E154_ERROR_ID_17,	"Адрес ячейки ППЗУ модуля не может быть больше 255."
+	E154_ERROR_ID_18,	"Операцию записи в пользовательское ППЗУ модуля необходимо предварительно разрешить с помощью функции ENABLE_FLASH_WRITE()."
+	E154_ERROR_ID_19,	"Невозможно распаковать полученный дескриптор модуля."
+	E154_ERROR_ID_20,	"Невозможно упаковать сформированный дескриптор модуля."
+	E154_ERROR_ID_21,	"Ошибка выполнения функции ENABLE_FLASH_WRITE()."
+	E154_ERROR_ID_22,	"Неправльный формат серийного номера модуля."
+	E154_ERROR_ID_23,	"Недопустимая ревизия модуля 'E-154'."
+	E154_ERROR_ID_24,	"Не совпадает контрольная сумма."
+	E154_ERROR_ID_25,	"Не выполнилась функция STOP_ADC()."
+	E154_ERROR_ID_26,	"Кол-во активных каналов ChannelsQuantity не может быть равно нулю."
+}

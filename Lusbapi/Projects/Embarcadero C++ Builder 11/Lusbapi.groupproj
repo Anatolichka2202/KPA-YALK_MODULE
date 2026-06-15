@@ -1,0 +1,48 @@
+﻿<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+    <PropertyGroup>
+        <ProjectGuid>{4632F660-F63B-423F-8E3B-AFFE586B45FF}</ProjectGuid>
+    </PropertyGroup>
+    <ItemGroup>
+        <Projects Include="Lusbapi.cbproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="Lusbapi64.cbproj">
+            <Dependencies/>
+        </Projects>
+    </ItemGroup>
+    <ProjectExtensions>
+        <Borland.Personality>Default.Personality.12</Borland.Personality>
+        <Borland.ProjectType/>
+        <BorlandProject>
+            <Default.Personality/>
+        </BorlandProject>
+    </ProjectExtensions>
+    <Target Name="Lusbapi">
+        <MSBuild Projects="Lusbapi.cbproj"/>
+    </Target>
+    <Target Name="Lusbapi:Clean">
+        <MSBuild Projects="Lusbapi.cbproj" Targets="Clean"/>
+    </Target>
+    <Target Name="Lusbapi:Make">
+        <MSBuild Projects="Lusbapi.cbproj" Targets="Make"/>
+    </Target>
+    <Target Name="Lusbapi64">
+        <MSBuild Projects="Lusbapi64.cbproj"/>
+    </Target>
+    <Target Name="Lusbapi64:Clean">
+        <MSBuild Projects="Lusbapi64.cbproj" Targets="Clean"/>
+    </Target>
+    <Target Name="Lusbapi64:Make">
+        <MSBuild Projects="Lusbapi64.cbproj" Targets="Make"/>
+    </Target>
+    <Target Name="Build">
+        <CallTarget Targets="Lusbapi;Lusbapi64"/>
+    </Target>
+    <Target Name="Clean">
+        <CallTarget Targets="Lusbapi:Clean;Lusbapi64:Clean"/>
+    </Target>
+    <Target Name="Make">
+        <CallTarget Targets="Lusbapi:Make;Lusbapi64:Make"/>
+    </Target>
+    <Import Project="$(BDS)\Bin\CodeGear.Group.Targets" Condition="Exists('$(BDS)\Bin\CodeGear.Group.Targets')"/>
+</Project>

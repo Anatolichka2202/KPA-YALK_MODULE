@@ -1,0 +1,6 @@
+LIBRARY				LUSBAPI.DLL
+DESCRIPTION			'(c) 2023 L-Card www.lcard.ru'
+
+EXPORTS
+	GetDllVersion		@1
+	CreateLInstance	@2

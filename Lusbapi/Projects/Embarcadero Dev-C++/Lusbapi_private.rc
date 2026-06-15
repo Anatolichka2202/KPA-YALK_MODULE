@@ -1,0 +1,11 @@
+/* THIS FILE WILL BE OVERWRITTEN BY DEV-C++ */
+/* DO NOT EDIT! */
+
+#include "../../E140.rc"
+#include "../../E154.rc"
+#include "../../E310.rc"
+#include "../../Lusbbase.rc"
+#include "../../Lusbapi.rc"
+#include "../../E2010.rc"
+#include "../../E440.rc"
+#include "../../winxp.rc"

@@ -1,0 +1,151 @@
+/****************************************************************************
+E400.rc
+produced by Borland Resource Workshop
+*****************************************************************************/
+#include "ErrorBaseIds.h"
+
+#define	E440_ERROR_ID_00						(E440_BASE_ERROR_ID + 0)
+#define	E440_ERROR_ID_01						(E440_BASE_ERROR_ID + 1)
+#define	E440_ERROR_ID_02						(E440_BASE_ERROR_ID + 2)
+#define	E440_ERROR_ID_03						(E440_BASE_ERROR_ID + 3)
+#define	E440_ERROR_ID_04						(E440_BASE_ERROR_ID + 4)
+#define	E440_ERROR_ID_05						(E440_BASE_ERROR_ID + 5)
+#define	E440_ERROR_ID_06						(E440_BASE_ERROR_ID + 6)
+#define	E440_ERROR_ID_07						(E440_BASE_ERROR_ID + 7)
+#define	E440_ERROR_ID_08						(E440_BASE_ERROR_ID + 8)
+#define	E440_ERROR_ID_09						(E440_BASE_ERROR_ID + 9)
+#define	E440_ERROR_ID_10						(E440_BASE_ERROR_ID + 10)
+#define	E440_ERROR_ID_11						(E440_BASE_ERROR_ID + 11)
+#define	E440_ERROR_ID_12						(E440_BASE_ERROR_ID + 12)
+#define	E440_ERROR_ID_13						(E440_BASE_ERROR_ID + 13)
+#define	E440_ERROR_ID_14						(E440_BASE_ERROR_ID + 14)
+#define	E440_ERROR_ID_15						(E440_BASE_ERROR_ID + 15)
+#define	E440_ERROR_ID_16						(E440_BASE_ERROR_ID + 16)
+#define	E440_ERROR_ID_17						(E440_BASE_ERROR_ID + 17)
+#define	E440_ERROR_ID_18						(E440_BASE_ERROR_ID + 18)
+#define	E440_ERROR_ID_19						(E440_BASE_ERROR_ID + 19)
+#define	E440_ERROR_ID_20						(E440_BASE_ERROR_ID + 20)
+#define	E440_ERROR_ID_21						(E440_BASE_ERROR_ID + 21)
+#define	E440_ERROR_ID_22						(E440_BASE_ERROR_ID + 22)
+#define	E440_ERROR_ID_23						(E440_BASE_ERROR_ID + 23)
+#define	E440_ERROR_ID_25						(E440_BASE_ERROR_ID + 25)
+#define	E440_ERROR_ID_24						(E440_BASE_ERROR_ID + 24)
+#define	E440_ERROR_ID_26						(E440_BASE_ERROR_ID + 26)
+#define	E440_ERROR_ID_27						(E440_BASE_ERROR_ID + 27)
+#define	E440_ERROR_ID_28						(E440_BASE_ERROR_ID + 28)
+#define	E440_ERROR_ID_29						(E440_BASE_ERROR_ID + 29)
+#define	E440_ERROR_ID_30						(E440_BASE_ERROR_ID + 30)
+#define	E440_ERROR_ID_31						(E440_BASE_ERROR_ID + 31)
+#define	E440_ERROR_ID_32						(E440_BASE_ERROR_ID + 32)
+#define	E440_ERROR_ID_33						(E440_BASE_ERROR_ID + 33)
+#define	E440_ERROR_ID_34						(E440_BASE_ERROR_ID + 34)
+#define	E440_ERROR_ID_35						(E440_BASE_ERROR_ID + 35)
+#define	E440_ERROR_ID_36						(E440_BASE_ERROR_ID + 36)
+#define	E440_ERROR_ID_37						(E440_BASE_ERROR_ID + 37)
+#define	E440_ERROR_ID_38						(E440_BASE_ERROR_ID + 38)
+#define	E440_ERROR_ID_39						(E440_BASE_ERROR_ID + 39)
+#define	E440_ERROR_ID_40						(E440_BASE_ERROR_ID + 40)
+#define	E440_ERROR_ID_41						(E440_BASE_ERROR_ID + 41)
+#define	E440_ERROR_ID_42						(E440_BASE_ERROR_ID + 42)
+#define	E440_ERROR_ID_43						(E440_BASE_ERROR_ID + 43)
+#define	E440_ERROR_ID_44						(E440_BASE_ERROR_ID + 44)
+#define	E440_ERROR_ID_45						(E440_BASE_ERROR_ID + 45)
+#define	E440_ERROR_ID_46						(E440_BASE_ERROR_ID + 46)
+#define	E440_ERROR_ID_47						(E440_BASE_ERROR_ID + 47)
+#define	E440_ERROR_ID_48						(E440_BASE_ERROR_ID + 48)
+#define	E440_ERROR_ID_49						(E440_BASE_ERROR_ID + 49)
+#define	E440_ERROR_ID_50						(E440_BASE_ERROR_ID + 50)
+#define	E440_ERROR_ID_51						(E440_BASE_ERROR_ID + 51)
+#define	E440_ERROR_ID_52						(E440_BASE_ERROR_ID + 52)
+#define	E440_ERROR_ID_53						(E440_BASE_ERROR_ID + 53)
+#define	E440_ERROR_ID_54						(E440_BASE_ERROR_ID + 54)
+#define	E440_ERROR_ID_55						(E440_BASE_ERROR_ID + 55)
+#define	E440_ERROR_ID_56						(E440_BASE_ERROR_ID + 56)
+#define	E440_ERROR_ID_57						(E440_BASE_ERROR_ID + 57)
+#define	E440_ERROR_ID_58						(E440_BASE_ERROR_ID + 58)
+#define	E440_ERROR_ID_59						(E440_BASE_ERROR_ID + 59)
+#define	E440_ERROR_ID_60						(E440_BASE_ERROR_ID + 60)
+#define	E440_ERROR_ID_61						(E440_BASE_ERROR_ID + 61)
+#define	E440_ERROR_ID_62						(E440_BASE_ERROR_ID + 62)
+#define	E440_ERROR_ID_63						(E440_BASE_ERROR_ID + 63)
+#define	E440_ERROR_ID_64						(E440_BASE_ERROR_ID + 64)
+#define	E440_ERROR_ID_65						(E440_BASE_ERROR_ID + 65)
+
+//------------------------------------------------------------------------------
+// описание возможных ошибок библиотеки для модуля E14-440
+//------------------------------------------------------------------------------
+STRINGTABLE
+{
+	E440_ERROR_ID_00,	"Обнаруженный модуль не является E14-440."
+	E440_ERROR_ID_01,	"Ошибка внутренней функции SetMcuAttributes(). Не выполнился сброс дополнительных аттрибутов работы микроконтроллера модуля."
+	E440_ERROR_ID_02,	"Ошибка входных параметров. Один из указателей аргумента функции равен NULL."
+	E440_ERROR_ID_03,	"Ошибка выполнения функции TLUSBBASE::LDeviceIoControl(). Модуль не отвечает на запрос USB."
+	E440_ERROR_ID_04,	"Не выполнилась функция RESET_MODULE(INIT_E440)."
+	E440_ERROR_ID_05,	"Ошибка обнаружения ресурса с кодом штатного LBIOS."
+	E440_ERROR_ID_06,	"Ошибка загрузки ресурса с кодом штатного LBIOS."
+	E440_ERROR_ID_07,	"Ошибка фиксирования в памяти ресурса с кодом штатного LBIOS."
+	E440_ERROR_ID_08,	"Ошибка определения размера ресурса с кодом штатного LBIOS."
+	E440_ERROR_ID_09,	"Ошибка выделения памяти под временный буфер для LBIOS."
+	E440_ERROR_ID_10,	"Ошибка открытия файла с LBIOS."
+	E440_ERROR_ID_11,	"Ошибка определения размера файла с LBIOS."
+	E440_ERROR_ID_12,	"Ошибка чтения файла с LBIOS."
+	E440_ERROR_ID_13,	"Не выполнилась функция PUT_DM_ARRAY(). В DSP модуля не загрузился сегмент данных LBIOS."
+	E440_ERROR_ID_14,	"Не выполнилась функция PUT_PM_ARRAY(). В DSP модуля не загрузился сегмент кода LBIOS."
+	E440_ERROR_ID_15,	"Не выполнилась функция GET_PM_WORD(). Из DSP модуля не удалось прочитать базовый адрес сегмента переменных LBIOS."
+	E440_ERROR_ID_16,	"Не выполнилась функция GET_LBIOS_WORD(). Из DSP модуля не удалось прочитать значение требуемой переменной LBIOS."
+	E440_ERROR_ID_17,	"Ошибка загрузки LBIOS в DSP модуля. LBIOS вернула неправильные тестовые значения."
+	E440_ERROR_ID_18,	"Не выполнилась функция PUT_LBIOS_WORD(). В DSP модуля не удалось записать значение в требуемую переменную LBIOS."
+	E440_ERROR_ID_19,	"Таймаут готовности DSP модуля после загрузки LBIOS."
+	E440_ERROR_ID_20,	"Не выполнилась функция SEND_COMMAND(). Не удалось передать номер команды в LBIOS."
+	E440_ERROR_ID_21,	"Тестовая команда LBIOS с номером 0x0 вернула неправильное тестовое значение."
+	E440_ERROR_ID_22,	"Недопустимый номер команды LBIOS."
+	E440_ERROR_ID_23,	"Таймаут выполнения команды LBIOS."
+	E440_ERROR_ID_24,	"Неизвестное название модуля. Проверьте содержимое ППЗУ модуля, выполнив функцию GET_MODULE_DESCRIPTION()."
+	E440_ERROR_ID_25,	"Из DSP модуля считывается неправильное кол-во активных каналов. Это кол-во не может быть более 128."
+	E440_ERROR_ID_26,	"Неправильная тактовая частота DSP модуля. Проверить содержимое ППЗУ модуля, выполнив функцию GET_MODULE_DESCRIPTION()."
+	E440_ERROR_ID_27,	"Ошибка внутренней функции StopAdcForOldRevision(). Не выполнилась спец.процедура зачистки потоковых USB-запросов на чтение."
+	E440_ERROR_ID_28,	"Не выполнилась функция STOP_ADC()."
+	E440_ERROR_ID_29,	"Предварительно установите параметры работы АЦП, исползуя функцию SET_ADC_PARS()."
+	E440_ERROR_ID_30,	"Длина FIFO буфера АЦП в DSP модуля должна быть больше кол-ва активных каналов."
+	E440_ERROR_ID_31,	"Не выполнилась функция GET_DM_ARRAY(). Не удалось считать заданные кол-во данных из памяти данных DSP модуля."
+	E440_ERROR_ID_32,	"Не выполнилась WinAPI функция ReadFile(). Для выяснения причин следует воспользоваться WinAPI функцией GetLastError()"
+	E440_ERROR_ID_33,	"WinAPI функция CreateEvent() не смогла создать событие. Для выяснения причин следует воспользоваться WinAPI функцией GetLastError()."
+	E440_ERROR_ID_34,	"Таймаут ожидания ввода/вывода данных."
+	E440_ERROR_ID_35,	"Не выполнилась WinAPI функция GetOverlappedResult(). Для выяснения причин следует воспользоваться WinAPI функцией GetLastError()."
+	E440_ERROR_ID_36,	"Не выполнилась WinAPI функция CloseHandle(). Для выяснения причин следует воспользоваться WinAPI функцией GetLastError()."
+	E440_ERROR_ID_37,	"Ошибка в кол-ве полученных данных."
+	E440_ERROR_ID_38,	"На данном экземпляре модуля 'E14-440' полностью отсутствует ЦАП."
+	E440_ERROR_ID_39,	"Ошибка внутренней функции StopDacForOldRevision(). Не выполнилась спец.процедура зачистки потоковых USB-запросов на запись."
+	E440_ERROR_ID_40,	"Не выполнилась WinAPI функция WriteFile(). Для выяснения причин следует воспользоваться WinAPI функцией GetLastError()"
+	E440_ERROR_ID_41,	"Номер канала ЦАП может быть только 0 или 1."
+	E440_ERROR_ID_42,	"Работу с выходными цифровыми линиями необходимо предварительно разрешить с помощью функции ENABLE_TTL_OUT()."
+	E440_ERROR_ID_43,	"Адрес ячейки ППЗУ модуля не может быть больше 63."
+	E440_ERROR_ID_44,	"Операцию записи в ППЗУ модуля необходимо предварительно разрешить с помощью функции ENABLE_FLASH_WRITE()."
+	E440_ERROR_ID_45,	"Попытка записи в служебную область ППЗУ модуля."
+	E440_ERROR_ID_46,	"Ошибка внутренней функции GetModuleDescriptor(). Не выполнилось чтение информации о модуле из служебной область ППЗУ модуля."
+	E440_ERROR_ID_47,	"Ошибка внутренней функции GetDspDescriptor(). Не выполнилось чтение информации о LBIOS из DSP модуля."
+	E440_ERROR_ID_48,	"Ошибка внутренней функции GetMcuDescriptor(). Не выполнилось чтение информации о драйвере микроконтроллера модуля."
+	E440_ERROR_ID_49,	"Ошибка внутренней функции SetMcuAttributes(). Не выполнилась установка дополнительных аттрибутов работы микроконтроллера модуля."
+	E440_ERROR_ID_50,	"В структуре с информацией об модуле E14-440 указан неправильный тип DSP. Должен быть 'ADSP-2185M'"
+	E440_ERROR_ID_51,	"Ошибка внутренней функции PutModuleDescriptor(). Не выполнась запись информации о модуле в служебную область ППЗУ модуля."
+	E440_ERROR_ID_52,	"Недопустимый адрес переменной LBIOS."
+	E440_ERROR_ID_53,	"Не выполнилась функция PUT_PM_WORD(). Не удалось записать слово данных в память программ DSP модуля."
+	E440_ERROR_ID_54,	"Не выполнена функция READ_FLASH_WORD(). Не удалось считать слово из ППЗУ модуля."
+	E440_ERROR_ID_55,	"Не выполнена функция ENABLE_FLASH_WRITE(TRUE). Не удалось разрешить процедуру записи в ППЗУ модуля."
+	E440_ERROR_ID_56,	"Не выполнена функция WRITE_FLASH_WORD(). Не удалось записать слово в ППЗУ модуля."
+	E440_ERROR_ID_57,	"Не выполнена функция ENABLE_FLASH_WRITE(FALSE). Не удалось запретить процедуру записи в ППЗУ модуля."
+	E440_ERROR_ID_58,	"Ошибка номера команды для DSP модуля. LBIOS возвратил признак несуществующей команды."
+	E440_ERROR_ID_59,	"Не выполнилась WinAPI функция ReadFile(). Для выяснения причин следует воспользоваться WinAPI функцией GetLastError()."
+	E440_ERROR_ID_60,	"Не выполнилась WinAPI функция WriteFile(). Для выяснения причин следует воспользоваться WinAPI функцией GetLastError()."
+	E440_ERROR_ID_61,	"Один из аргументов функции содержит недопустимое значение."
+	E440_ERROR_ID_62,	"Кол-во активных каналов ChannelsQuantity не может быть равно нулю."
+	E440_ERROR_ID_63,	"Недопустимая ревизия модуля 'E14-440'."
+	E440_ERROR_ID_64,	"Недопустимый источник тактовых импульсов запуска АЦП."
+	E440_ERROR_ID_65,	"Ошибка загрузки LBIOS из загрузочного ППЗУ."
+}
+
+//------------------------------------------------------------------------------
+// образ файла с LBIOS
+//------------------------------------------------------------------------------
+LBIOSDATA RCDATA e440.bio
+
