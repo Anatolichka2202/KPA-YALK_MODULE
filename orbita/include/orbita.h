@@ -1,15 +1,21 @@
 /**
  * @file orbita.h
- * @brief Главный API библиотеки сбора телеметрии "Орбита-IV" (C++ версия).
+ * @brief Публичный API библиотеки сбора телеметрии «Орбита-IV» (C++17).
  *
- * Использование:
+ * Контракт (заморожен 2026-06-15):
+ *   • Ядро НЕ знает про файлы, кодировки, SQLite, Qt, графики, пороги.
+ *   • Вход — std::vector<ChannelSpec> (адрес уже нормализован UI-слоем).
+ *   • Выход — Snapshot со значениями ПО АДРЕСУ (а не по индексу).
+ *
+ * Пример:
  *   orbita::Orbita orb;
  *   orb.setDeviceE2010(0, 10000.0);
- *   orb.setChannelsFromFile("addresses.txt");
+ *   orb.setChannels({ {"M16P1A70B12C10D10T01", "Давление БС", "Давления"} });
  *   orb.start();
  *   while (orb.waitForData(std::chrono::milliseconds(1000))) {
- *       double volt = orb.getAnalog(0);
- *       // ...
+ *       auto snap = orb.getSnapshot();
+ *       for (const auto& v : snap.values)
+ *           if (v.valid) use(v.address, v.value);
  *   }
  *   orb.stop();
  */
@@ -22,132 +28,121 @@
 #include <memory>
 #include <stdexcept>
 #include <cstdint>
+#include <optional>
+#include <functional>
 
 namespace orbita {
 
-// Базовый класс для всех исключений библиотеки
+/// Базовый класс для всех исключений библиотеки.
 class orbita_error : public std::runtime_error {
 public:
     using std::runtime_error::runtime_error;
 };
 
 // -----------------------------------------------------------------
-// Основной класс контекста (скрытая реализация)
+//  POD-структуры контракта
+// -----------------------------------------------------------------
+
+/// Один канал на входе. Адрес уже нормализован UI-слоем.
+struct ChannelSpec {
+    std::string address;    ///< нормализованный адрес, напр. "M16P1A70B12C10D10T01"
+    std::string name;       ///< имя параметра (для оператора), может быть пустым
+    std::string category;   ///< категория (для группировки), может быть пустой
+};
+
+/// Значение одного канала на выходе.
+struct ChannelValue {
+    std::string address;    ///< тот же ключ, что во входном ChannelSpec
+    double      value = 0.0;///< декодированное значение (сырой код канала)
+    bool        valid = false; ///< было ли значение обновлено в последнем цикле
+};
+
+/// Статистика декодирования.
+struct Stats {
+    int      phrase_error_percent = 0;
+    int      group_error_percent  = 0;
+    uint64_t frames_processed     = 0;   ///< счётчик обработанных групп
+    double   mb_per_second        = 0.0; ///< пропускная способность входного потока
+};
+
+/// Согласованный срез состояния (значения из одного цикла + МТВ + статистика).
+struct Snapshot {
+    uint32_t                  mtv_seconds = 0;
+    std::vector<ChannelValue> values;
+    Stats                     stats;
+};
+
+/// Колбэк новых данных. Вызывается из декодерного потока (push-модель).
+using DataCallback = std::function<void(const Snapshot&)>;
+
+// -----------------------------------------------------------------
+//  Скрытая реализация
 // -----------------------------------------------------------------
 class Context;
 
 // -----------------------------------------------------------------
-// Главный API класс
+//  Главный API класс
 // -----------------------------------------------------------------
 class Orbita {
 public:
     Orbita();
     ~Orbita();
 
-    // Запрет копирования
     Orbita(const Orbita&) = delete;
     Orbita& operator=(const Orbita&) = delete;
-
-    // Разрешение перемещения
     Orbita(Orbita&&) noexcept;
     Orbita& operator=(Orbita&&) noexcept;
 
-    // -----------------------------------------------------------------
-    // Настройка устройств
-    // -----------------------------------------------------------------
+    // ----- Источник данных -----
+    /// АЦП E20-10. @param channel 0..3, @param rate_khz частота кГц (обычно 10000).
+    /// @throws orbita_error при ошибке инициализации (окно UI должно это пережить).
+    void setDeviceE2010(int channel, double rate_khz);
 
-    /// АЦП E20-10
-    /// @param channel         номер канала 0..3
-    /// @param sample_rate_khz частота дискретизации в кГц (обычно 10000)
-    /// @throws orbita_error при ошибке инициализации
-    void setDeviceE2010(int channel, double sample_rate_khz);
+    /// Без устройства (значения только через декодирование внешнего потока).
+    /// Безопасный режим по умолчанию — приложение стартует без оборудования.
+    void setDeviceNone();
 
-    // LimeSDR (будет позже)
-    // void setDeviceLimeSDR(const std::string& params);
+    // ----- Каналы (горячая замена на лету) -----
+    /// Атомарно заменяет набор каналов. Можно вызывать во время сбора.
+    void setChannels(const std::vector<ChannelSpec>& specs);
 
-    // Вольтметр через VISA
-    // void setVoltmeterVISA(const std::string& resource);
+    /// Текущий активный набор каналов.
+    std::vector<ChannelSpec> getChannels() const;
 
-    // -----------------------------------------------------------------
-    // Загрузка адресов (список каналов)
-    // -----------------------------------------------------------------
-
-    /// Загрузить адреса из текстового файла (формат "M16...Txx")
-    /// @throws orbita_error при ошибках чтения/парсинга
-    void setChannelsFromFile(const std::string& filename);
-
-    /// Альтернатива: передать список строк напрямую
-    void setChannelsFromLines(const std::vector<std::string>& lines);
-
-    // -----------------------------------------------------------------
-    // Управление сбором данных
-    // -----------------------------------------------------------------
-
-    /// Запуск непрерывного сбора и декодирования
-    /// @throws orbita_error при ошибке запуска
+    // ----- Жизненный цикл -----
     void start();
-
-    /// Остановка сбора (ждёт завершения рабочего потока)
     void stop();
+    void pause();           ///< заморозить значения без остановки сбора
+    void resume();
+    bool isRunning() const;
+    bool isPaused() const;
 
-    /// Инвертировать битовый сигнал (если полярность инверсная)
+    /// Инвертировать битовый сигнал (если полярность инверсная).
     void setInvertSignal(bool invert);
 
-    ///чтение из файла
-    void feedRawData(const int16_t* samples, size_t count);
-
-    // -----------------------------------------------------------------
-    // Запись телеметрии в TLM-файл
-    // -----------------------------------------------------------------
-
-    /// Начать запись в файл (формат .tlm). Запись идёт в фоне.
+    // ----- Запись телеметрии -----
     void startRecording(const std::string& filename);
-
-    /// Остановить запись и закрыть файл
     void stopRecording();
+    bool isRecording() const;
 
-    // -----------------------------------------------------------------
-    // Получение данных (блокирующее ожидание)
-    // -----------------------------------------------------------------
-
-    /// Ожидать поступления новой группы кадров (все 32 группы цикла)
-    /// @param timeout максимальное время ожидания
-    /// @return true – данные готовы, false – таймаут
+    // ----- Получение данных -----
+    /// Ожидать поступления новых данных. @return true — данные готовы, false — таймаут.
     bool waitForData(std::chrono::milliseconds timeout);
 
-    // -----------------------------------------------------------------
-    // Доступ к текущим значениям каналов
-    // (индексы соответствуют порядку добавления каналов в setChannels*)
-    // -----------------------------------------------------------------
+    /// Согласованный срез всех значений за один цикл.
+    Snapshot getSnapshot() const;
 
-    double getAnalog(int idx) const;
-    int    getContact(int idx) const;
-    int    getFast(int idx) const;
-    int    getTemperature(int idx) const;
-    int    getBus(int idx) const;
+    /// Значение конкретного канала по адресу (nullopt — нет такого канала).
+    std::optional<double> getValueByAddress(const std::string& address) const;
 
-    int getAnalogCount() const;
-    int getContactCount() const;
+    /// Статистика декодирования.
+    Stats getStats() const;
 
-    void setChannelsFromPairs(const std::vector<std::pair<std::string, std::string>>& addressNamePairs);
-    std::string getAnalogChannelName(int idx) const;
-
-    // -----------------------------------------------------------------
-    // Статистика декодирования (проценты ошибок маркеров)
-    // -----------------------------------------------------------------
-
-    int getPhraseErrorPercent() const;
-    int getGroupErrorPercent() const;
-
-    // -----------------------------------------------------------------
-    // Lua-скриптинг (опционально)
-    // -----------------------------------------------------------------
-
-    void loadScript(const std::string& script_path);
-    std::string runScriptFunction(const std::string& func_name, const std::string& args_json);
-
+    /// Бортовое время в секундах.
     uint32_t getCurrentTimeSeconds() const;
 
+    /// Push-уведомление о новых данных (для серверного режима / RuleEngine).
+    void setDataCallback(DataCallback cb);
 
 private:
     std::unique_ptr<Context> ctx_;

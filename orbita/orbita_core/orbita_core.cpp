@@ -1,23 +1,21 @@
 #include "orbita_core.h"
-#include "../include/orbita.h"
 #include "../address/address_manager.h"
-#include "data_pool.h"
+#include "../address/address_parser.h"
 #include "../value/value_converter.h"
-#include "logger.h"
 #include "../include/orbita_types.h"
+#include "logger.h"
 #include <algorithm>
 #include <chrono>
-#include <thread>
 
 namespace orbita {
 
 // ------------------------------------------------------------------
-// Конструктор / деструктор
+//  Конструктор / деструктор
 // ------------------------------------------------------------------
 Context::Context()
     : recoverer_(bitFifo_, BitstreamRecoverer::NORMAL)
 {
-    data_pool_ = std::make_unique<DataPool>();
+    start_time_ = std::chrono::steady_clock::now();
     LOG_INFO("Orbita context created");
 }
 
@@ -27,7 +25,7 @@ Context::~Context() {
 }
 
 // ------------------------------------------------------------------
-// Вспомогательные: декодер и конфиг
+//  Декодер
 // ------------------------------------------------------------------
 void Context::ensureDecoder() {
     if (decoder_) return;
@@ -40,93 +38,86 @@ void Context::ensureDecoder() {
         });
 }
 
-void Context::applyChannels(std::vector<ChannelDesc> descs) {
-    // Назначаем poolIndex — порядковый индекс внутри каждого типа
-    int analog_cnt = 0, contact_cnt = 0, fast_cnt = 0, temp_cnt = 0, bus_cnt = 0;
-    for (auto& ch : descs) {
-        switch (ch.adressType) {
-        case ORBITA_ADDR_TYPE_ANALOG_10BIT:
-        case ORBITA_ADDR_TYPE_ANALOG_9BIT:
-            ch.poolIndex = analog_cnt++;   break;
-        case ORBITA_ADDR_TYPE_CONTACT:
-            ch.poolIndex = contact_cnt++;  break;
-        case ORBITA_ADDR_TYPE_FAST_1:
-        case ORBITA_ADDR_TYPE_FAST_2:
-        case ORBITA_ADDR_TYPE_FAST_3:
-        case ORBITA_ADDR_TYPE_FAST_4:
-            ch.poolIndex = fast_cnt++;     break;
-        case ORBITA_ADDR_TYPE_TEMPERATURE:
-            ch.poolIndex = temp_cnt++;     break;
-        case ORBITA_ADDR_TYPE_BUS:
-            ch.poolIndex = bus_cnt++;      break;
-        default:
-            break;
-        }
-    }
-
-    std::lock_guard<std::mutex> lock(channels_mutex_);
-    channels_ = std::move(descs);
-    data_pool_->resize(analog_cnt, contact_cnt, fast_cnt, temp_cnt, bus_cnt);
-    LOG_INFO("Config applied: %d analog, %d contact, %d fast, %d temp, %d bus",
-             analog_cnt, contact_cnt, fast_cnt, temp_cnt, bus_cnt);
-}
-
 // ------------------------------------------------------------------
-// Загрузка адресов
+//  Источник данных
 // ------------------------------------------------------------------
-void Context::setChannelsFromFile(const std::string& filename) {
-    AddressManager addrMgr(informativnost_);
-    addrMgr.loadFromFile(filename);
-    ensureDecoder();
-    applyChannels(addrMgr.getChannels());
-}
-
-void Context::setChannelsFromLines(const std::vector<std::string>& lines) {
-    AddressManager addrMgr(informativnost_);
-    addrMgr.loadFromLines(lines);
-    ensureDecoder();
-    applyChannels(addrMgr.getChannels());
-}
-
-void Context::setChannelsFromPairs(
-    const std::vector<std::pair<std::string, std::string>>& addressNamePairs)
-{
-    std::vector<ChannelDesc> descs;
-    descs.reserve(addressNamePairs.size());
-    for (const auto& p : addressNamePairs) {
-        try {
-            ChannelDesc desc = AddressParser::parseLine(p.first);
-            desc.userName = p.second;
-            descs.push_back(std::move(desc));
-        } catch (const std::exception& e) {
-            LOG_WARNING("Parse error for '%s': %s", p.first.c_str(), e.what());
-        }
-    }
-    AddressManager addrMgr(informativnost_);
-    addrMgr.addChannels(descs);
-    addrMgr.finalize();
-    ensureDecoder();
-    applyChannels(addrMgr.getChannels());
-}
-
-// ------------------------------------------------------------------
-// Управление сбором
-// ------------------------------------------------------------------
-void Context::setDeviceE2010(int channel, double sample_rate_khz) {
+void Context::setDeviceE2010(int channel, double rate_khz) {
     auto dev = std::make_unique<E2010Device>();
-    if (!dev->init(0, channel, sample_rate_khz))
+    if (!dev->init(0, channel, rate_khz))
         throw orbita_error("E2010 init failed");
     device_ = std::move(dev);
+    LOG_INFO("Device E20-10 set (channel %d, %.0f kHz)", channel, rate_khz);
 }
 
-void Context::start() {
-    if (is_running_) throw orbita_error("Already running");
-    if (!decoder_)   throw orbita_error("No channels configured. Call setChannels* first.");
+void Context::setDeviceNone() {
+    device_.reset();
+    LOG_INFO("Device: none (decode-only mode)");
+}
 
+// ------------------------------------------------------------------
+//  Каналы (горячая замена)
+// ------------------------------------------------------------------
+void Context::setChannels(const std::vector<ChannelSpec>& specs) {
+    std::vector<ChannelDesc> descs;
+    std::vector<std::string> addrs, names, cats;
+    descs.reserve(specs.size());
+
+    for (const auto& s : specs) {
+        try {
+            ChannelDesc d = AddressParser::parseLine(s.address);
+            d.userName = s.name;
+            d.category = s.category;
+            descs.push_back(std::move(d));
+            addrs.push_back(s.address);
+            names.push_back(s.name);
+            cats.push_back(s.category);
+        } catch (const std::exception& e) {
+            LOG_WARNING("setChannels: parse error for '%s': %s",
+                        s.address.c_str(), e.what());
+        }
+    }
+
+    // finalize() заполняет wordIndex / groups / cycles, сохраняя порядок и число
+    AddressManager mgr(informativnost_);
+    mgr.addChannels(descs);
+    mgr.finalize();
+
+    ensureDecoder();
+    auto snap = registry_.update(mgr.getChannels(), addrs, names, cats);
+
+    {
+        std::lock_guard<std::mutex> lock(values_mutex_);
+        values_.assign(snap->entries.size(), 0.0);
+        valid_.assign(snap->entries.size(), 0);
+    }
+    LOG_INFO("setChannels: %zu channels active", snap->entries.size());
+}
+
+std::vector<ChannelSpec> Context::getChannels() const {
+    std::vector<ChannelSpec> result;
+    auto cfg = registry_.get();
+    if (!cfg) return result;
+    result.reserve(cfg->entries.size());
+    for (const auto& e : cfg->entries)
+        result.push_back(ChannelSpec{e.address, e.name, e.category});
+    return result;
+}
+
+// ------------------------------------------------------------------
+//  Жизненный цикл
+// ------------------------------------------------------------------
+void Context::start() {
+    if (is_running_.load()) throw orbita_error("Already running");
+    if (!registry_.hasChannels())
+        throw orbita_error("No channels configured. Call setChannels() first.");
+
+    ensureDecoder();
     stop_worker_ = false;
+    paused_ = false;
+    samples_processed_ = 0;
+    start_time_ = std::chrono::steady_clock::now();
 
     if (device_) {
-        // Колбэк вызывается из потока устройства — потокобезопасно через очередь
         device_->setSamplesCallback([this](const std::vector<int16_t>& s) {
             pushToQueue(s);
         });
@@ -136,7 +127,7 @@ void Context::start() {
         if (!device_->start())
             throw orbita_error("Failed to start device");
     } else {
-        LOG_INFO("Starting in feed mode (no device)");
+        LOG_INFO("Starting in decode-only mode (no device)");
     }
 
     decoder_thread_ = std::thread(&Context::decoderLoop, this);
@@ -145,10 +136,9 @@ void Context::start() {
 }
 
 void Context::stop() {
-    if (!is_running_) return;
+    if (!is_running_.load()) return;
 
-    // Сначала останавливаем устройство — больше колбэков не будет
-    if (device_) device_->stop();
+    if (device_) device_->stop();   // больше колбэков не будет
 
     stop_worker_ = true;
     queue_cv_.notify_all();
@@ -158,14 +148,23 @@ void Context::stop() {
     LOG_INFO("Orbita stopped");
 }
 
+void Context::pause() {
+    paused_ = true;
+    LOG_INFO("Orbita paused (values frozen)");
+}
+
+void Context::resume() {
+    paused_ = false;
+    LOG_INFO("Orbita resumed");
+}
+
 void Context::setInvertSignal(bool invert) {
     invert_signal_ = invert;
-    // BitstreamRecoverer не имеет метода setPolarity — пересоздаём при следующем старте
     LOG_INFO("Signal inversion: %s", invert ? "ON" : "OFF");
 }
 
 // ------------------------------------------------------------------
-// TLM-запись — делегируем декодеру, он владеет TlmWriter
+//  Запись TLM (делегируем декодеру)
 // ------------------------------------------------------------------
 void Context::startRecording(const std::string& filename) {
     if (decoder_) decoder_->startTlm(filename);
@@ -176,13 +175,13 @@ void Context::stopRecording() {
     if (decoder_) decoder_->stopTlm();
 }
 
-// ------------------------------------------------------------------
-// Инъекция сырых данных (воспроизведение из файла)
-// ------------------------------------------------------------------
-void Context::feedRawData(const int16_t* samples, size_t count) {
-    pushToQueue(std::vector<int16_t>(samples, samples + count));
+bool Context::isRecording() const {
+    return decoder_ && decoder_->isTlmActive();
 }
 
+// ------------------------------------------------------------------
+//  Очередь отсчётов
+// ------------------------------------------------------------------
 void Context::pushToQueue(const std::vector<int16_t>& samples) {
     std::lock_guard<std::mutex> lock(queue_mutex_);
     sample_queue_.push(samples);
@@ -190,11 +189,10 @@ void Context::pushToQueue(const std::vector<int16_t>& samples) {
 }
 
 // ------------------------------------------------------------------
-// Декодерный поток
+//  Декодерный поток
 // ------------------------------------------------------------------
 void Context::decoderLoop() {
     bool threshold_computed = false;
-    size_t samples_processed = 0;
     LOG_INFO("Decoder thread started");
 
     while (!stop_worker_) {
@@ -217,75 +215,93 @@ void Context::decoderLoop() {
         recoverer_.processSamples(samples.data(), samples.size());
         decoder_->process();
 
-        samples_processed += samples.size();
-        if (samples_processed % 1'000'000 == 0)
-            LOG_INFO("Decoder: %zu Msamples processed", samples_processed / 1'000'000);
+        samples_processed_ += samples.size();
     }
 
     recoverer_.flush();
-    decoder_->process();
-    LOG_INFO("Decoder thread finished. Total: %zu samples", samples_processed);
+    if (decoder_) decoder_->process();
+    LOG_INFO("Decoder thread finished. Total: %llu samples",
+             (unsigned long long)samples_processed_.load());
 }
 
 // ------------------------------------------------------------------
-// Колбэк декодера: готова одна группа (2048 слов)
+//  Колбэк декодера: готова одна группа (2048 слов)
 // ------------------------------------------------------------------
 void Context::onDecoderGroup(const std::vector<uint16_t>& group12,
                              int groupNum, int ciklNum)
 {
-    // Держим channels_mutex_ на всё время обработки: гарантирует, что
-    // applyChannels() (включая data_pool_->resize()) не запустится одновременно
-    // с нашими вызовами data_pool_->setAnalog/setContact и т.д.
-    std::lock_guard<std::mutex> lock(channels_mutex_);
+    if (paused_.load()) return;
 
+    auto cfg = registry_.get();
+    if (!cfg) return;
+
+    Snapshot pushSnap;
     bool anyUpdated = false;
-    for (const auto& ch : channels_) {
-        // Проверяем принадлежность группы/цикла к данному каналу
-        if (!ch.groups.empty() &&
-            std::find(ch.groups.begin(), ch.groups.end(), groupNum) == ch.groups.end())
-            continue;
-        if (!ch.cycles.empty() &&
-            std::find(ch.cycles.begin(), ch.cycles.end(), ciklNum) == ch.cycles.end())
-            continue;
 
-        int idx = ch.wordIndex;
-        if (idx < 0 || idx >= static_cast<int>(group12.size())) continue;
-        if (ch.poolIndex < 0) continue;
+    {
+        std::lock_guard<std::mutex> lock(values_mutex_);
+        // Конфиг мог смениться между get() и блокировкой — пропускаем группу
+        if (values_.size() != cfg->entries.size())
+            return;
 
-        uint16_t word = group12[idx];
+        for (size_t e = 0; e < cfg->entries.size(); ++e) {
+            const ChannelDesc& ch = cfg->entries[e].desc;
 
-        switch (ch.adressType) {
-        case ORBITA_ADDR_TYPE_ANALOG_10BIT:
-            data_pool_->setAnalog(ch.poolIndex, static_cast<double>(analog10bitCode(word)));
+            if (!ch.groups.empty() &&
+                std::find(ch.groups.begin(), ch.groups.end(), groupNum) == ch.groups.end())
+                continue;
+            if (!ch.cycles.empty() &&
+                std::find(ch.cycles.begin(), ch.cycles.end(), ciklNum) == ch.cycles.end())
+                continue;
+
+            int idx = ch.wordIndex;
+            if (idx < 0 || idx >= static_cast<int>(group12.size())) continue;
+
+            uint16_t w  = group12[idx];
+            uint16_t w2 = (idx + 1 < static_cast<int>(group12.size()))
+                              ? group12[idx + 1] : 0;
+            double v;
+
+            switch (ch.adressType) {
+            case ORBITA_ADDR_TYPE_ANALOG_10BIT: v = analog10bitCode(w);              break;
+            case ORBITA_ADDR_TYPE_ANALOG_9BIT:  v = analog9bitCode(w);               break;
+            case ORBITA_ADDR_TYPE_CONTACT:      v = contactExtractBit(w, ch.bitNumber); break;
+            case ORBITA_ADDR_TYPE_FAST_1:       v = fastT21Value(w);                 break;
+            case ORBITA_ADDR_TYPE_FAST_2:       v = fastT22Value(w, w2);             break;
+            case ORBITA_ADDR_TYPE_FAST_4:       v = fastT24Value(w, w2);             break;
+            case ORBITA_ADDR_TYPE_TEMPERATURE:  v = temperatureCode(w);              break;
+            case ORBITA_ADDR_TYPE_BUS:          v = busValue(w, w2);                 break;
+            case ORBITA_ADDR_TYPE_FAST_3:       v = (w & 0x0FFF);                    break; // T23: сырое слово
+            default: continue;
+            }
+
+            values_[e] = v;
+            valid_[e]  = 1;
             anyUpdated = true;
-            break;
-        case ORBITA_ADDR_TYPE_ANALOG_9BIT:
-            data_pool_->setAnalog(ch.poolIndex, static_cast<double>(analog9bitCode(word)));
-            anyUpdated = true;
-            break;
-        case ORBITA_ADDR_TYPE_CONTACT:
-            data_pool_->setContact(ch.poolIndex, contactExtractBit(word, ch.bitNumber));
-            anyUpdated = true;
-            break;
-        case ORBITA_ADDR_TYPE_FAST_1:
-            data_pool_->setFast(ch.poolIndex, fastT21Value(word));
-            anyUpdated = true;
-            break;
-        // FAST_2, FAST_3, FAST_4, TEMPERATURE, BUS — будет позже
-        default:
-            break;
         }
+
+        if (anyUpdated) fillValuesLocked(*cfg, pushSnap);
     }
 
-    if (anyUpdated) {
-        std::lock_guard<std::mutex> lock(data_mutex_);
+    if (!anyUpdated) return;
+
+    {
+        std::lock_guard<std::mutex> lk(data_mutex_);
         data_updated_ = true;
-        data_cv_.notify_one();
+    }
+    data_cv_.notify_one();
+
+    DataCallback cb;
+    { std::lock_guard<std::mutex> lk(callback_mutex_); cb = data_callback_; }
+    if (cb) {
+        pushSnap.mtv_seconds = getCurrentTimeSeconds();
+        pushSnap.stats       = getStats();
+        cb(pushSnap);
     }
 }
 
 // ------------------------------------------------------------------
-// Ожидание данных
+//  Доступ к данным
 // ------------------------------------------------------------------
 bool Context::waitForData(std::chrono::milliseconds timeout) {
     std::unique_lock<std::mutex> lock(data_mutex_);
@@ -295,59 +311,65 @@ bool Context::waitForData(std::chrono::milliseconds timeout) {
     return ok;
 }
 
+void Context::fillValuesLocked(const ChannelRegistry::Snapshot& cfg, Snapshot& out) const {
+    out.values.resize(cfg.entries.size());
+    for (size_t i = 0; i < cfg.entries.size(); ++i) {
+        out.values[i].address = cfg.entries[i].address;
+        out.values[i].value   = values_[i];
+        out.values[i].valid   = valid_[i] != 0;
+    }
+}
+
+Snapshot Context::getSnapshot() const {
+    Snapshot snap;
+    auto cfg = registry_.get();
+    if (cfg) {
+        std::lock_guard<std::mutex> lock(values_mutex_);
+        if (values_.size() == cfg->entries.size())
+            fillValuesLocked(*cfg, snap);
+    }
+    snap.mtv_seconds = getCurrentTimeSeconds();
+    snap.stats       = getStats();
+    return snap;
+}
+
+std::optional<double> Context::getValueByAddress(const std::string& address) const {
+    auto cfg = registry_.get();
+    if (!cfg) return std::nullopt;
+    auto it = cfg->addrIndex.find(address);
+    if (it == cfg->addrIndex.end()) return std::nullopt;
+
+    std::lock_guard<std::mutex> lock(values_mutex_);
+    if (it->second >= values_.size())  return std::nullopt;
+    if (!valid_[it->second])           return std::nullopt;
+    return values_[it->second];
+}
+
+Stats Context::getStats() const {
+    Stats s;
+    if (decoder_) {
+        int pe = 0, ge = 0;
+        decoder_->getErrors(pe, ge);
+        s.phrase_error_percent = pe;
+        s.group_error_percent  = ge;
+        s.frames_processed     = static_cast<uint64_t>(decoder_->getTotalGroups());
+    }
+    double secs = std::chrono::duration<double>(
+                      std::chrono::steady_clock::now() - start_time_).count();
+    if (secs > 0.0)
+        s.mb_per_second = static_cast<double>(samples_processed_.load())
+                          * sizeof(int16_t) / 1e6 / secs;
+    return s;
+}
+
 uint32_t Context::getCurrentTimeSeconds() const {
-    // Берём время напрямую из декодера — он его уже извлёк из МТВ
     if (decoder_) return decoder_->getCurrentTimeSeconds();
     return 0;
 }
 
-// ------------------------------------------------------------------
-// Доступ к каналам
-// ------------------------------------------------------------------
-double Context::getAnalog(int idx) const      { return data_pool_->getAnalog(idx); }
-int    Context::getContact(int idx) const     { return data_pool_->getContact(idx); }
-int    Context::getFast(int idx) const        { return data_pool_->getFast(idx); }
-int    Context::getTemperature(int idx) const { return data_pool_->getTemperature(idx); }
-int    Context::getBus(int idx) const         { return data_pool_->getBus(idx); }
-int    Context::getAnalogCount() const        { return data_pool_->analogCount(); }
-int    Context::getContactCount() const       { return data_pool_->contactCount(); }
-
-std::string Context::getAnalogChannelName(int idx) const {
-    std::lock_guard<std::mutex> lock(channels_mutex_);
-    for (const auto& ch : channels_) {
-        if ((ch.adressType == ORBITA_ADDR_TYPE_ANALOG_10BIT ||
-             ch.adressType == ORBITA_ADDR_TYPE_ANALOG_9BIT) &&
-            ch.poolIndex == idx)
-            return ch.userName;
-    }
-    return {};
-}
-
-// ------------------------------------------------------------------
-// Статистика
-// ------------------------------------------------------------------
-int Context::getPhraseErrorPercent() const {
-    if (!decoder_) return 0;
-    int pe, ge;
-    decoder_->getErrors(pe, ge);
-    return pe;
-}
-
-int Context::getGroupErrorPercent() const {
-    if (!decoder_) return 0;
-    int pe, ge;
-    decoder_->getErrors(pe, ge);
-    return ge;
-}
-
-// ------------------------------------------------------------------
-// Lua-заглушки
-// ------------------------------------------------------------------
-void Context::loadScript(const std::string&) {
-    LOG_WARNING("Lua not implemented");
-}
-std::string Context::runScriptFunction(const std::string&, const std::string&) {
-    return "{}";
+void Context::setDataCallback(DataCallback cb) {
+    std::lock_guard<std::mutex> lock(callback_mutex_);
+    data_callback_ = std::move(cb);
 }
 
 } // namespace orbita

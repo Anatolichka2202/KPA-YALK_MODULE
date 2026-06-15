@@ -8,7 +8,7 @@ set(CMAKE_AUTOMOC OFF)
 add_library(orbita STATIC
     orbita_core/orbita.cpp
     orbita_core/orbita_core.cpp
-    orbita_core/data_pool.cpp
+    orbita_core/channel_registry.cpp
     orbita_core/logger.cpp
     decoder/frame_decoder_m16.cpp
     decoder/bitstream_recover.cpp

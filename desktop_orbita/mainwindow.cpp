@@ -60,8 +60,17 @@ MainWindow::MainWindow(QWidget* parent)
     connect(updateTimer_, &QTimer::timeout, this, &MainWindow::updateData);
     updateTimer_->start(100);
 
-    orbita_->setDeviceE2010(0, 10000.0);
-    log("Система инициализирована. Загрузите конфигурацию адресов.");
+    // Инициализация устройства не должна валить приложение: если E20-10 не
+    // найден (нет DLL/железа), работаем в режиме без устройства.
+    try {
+        orbita_->setDeviceE2010(0, 10000.0);
+        log("Устройство E20-10 найдено");
+    } catch (const std::exception& e) {
+        orbita_->setDeviceNone();
+        log(QString("E20-10 недоступно (%1). Режим без устройства.")
+                .arg(QString::fromLocal8Bit(e.what())));
+    }
+    log("Система инициализирована. Выберите конфигурацию.");
 }
 
 MainWindow::~MainWindow() = default;
@@ -225,20 +234,22 @@ void MainWindow::updateData()
     if (!isRunning_) return;
 
     if (orbita_->waitForData(std::chrono::milliseconds(50))) {
+        orbita::Snapshot snap = orbita_->getSnapshot();
+
         // МТВ
-        uint32_t sec = orbita_->getCurrentTimeSeconds();
+        uint32_t sec = snap.mtv_seconds;
         mtvLabel_->setText(QString("%1:%2:%3")
             .arg(sec / 3600,      2, 10, QChar('0'))
             .arg((sec % 3600)/60, 2, 10, QChar('0'))
             .arg(sec % 60,        2, 10, QChar('0')));
 
-        // Данные на графике
-        int n = orbita_->getAnalogCount();
-        if (n > 0) {
+        // Данные на графике (сырые коды каналов в порядке конфигурации)
+        if (!snap.values.empty()) {
             double t = elapsedTimer_.elapsed() / 1000.0;
-            std::vector<double> values(n);
-            for (int i = 0; i < n; ++i)
-                values[i] = orbita_->getAnalog(i);
+            std::vector<double> values;
+            values.reserve(snap.values.size());
+            for (const auto& v : snap.values)
+                values.push_back(v.value);
             plotWidget_->addSamples(t, values, currentChannelNames_);
         }
     }
@@ -257,24 +268,26 @@ void MainWindow::applyConfiguration(const QString& fileName)
         return;
     }
 
-    std::vector<std::pair<std::string, std::string>> pairs;
+    std::vector<orbita::ChannelSpec> specs;
     std::istringstream iss(content);
     std::string line;
     while (std::getline(iss, line)) {
-        if (line.empty()) continue;
+        // Пустые строки — визуальные разделители параметров в файле, пропускаем.
+        // normalizeAddress сам обрежет комментарий после адреса и приведёт регистр.
         std::string normAddr = encoding::normalizeAddress(line);
         if (normAddr.empty()) continue;
         QString qnorm = QString::fromStdString(normAddr);
-        QString name  = dbProvider_ ? dbProvider_->getName(qnorm) : QString();
-        pairs.emplace_back(normAddr, name.toStdString());
+        QString name  = dbProvider_ ? dbProvider_->getName(qnorm)     : QString();
+        QString cat   = dbProvider_ ? dbProvider_->getCategory(qnorm) : QString();
+        specs.push_back(orbita::ChannelSpec{normAddr, name.toStdString(), cat.toStdString()});
     }
 
-    if (pairs.empty()) { log("Конфигурация пуста"); return; }
+    if (specs.empty()) { log("Конфигурация пуста"); return; }
 
     try {
-        orbita_->setChannelsFromPairs(pairs);
+        orbita_->setChannels(specs);
         log(QString("Конфигурация применена: %1 (%2 каналов)")
-                .arg(fileName).arg(pairs.size()));
+                .arg(fileName).arg(specs.size()));
         updatePlotLabels();
         plotWidget_->clearAll();
         startBtn_->setEnabled(true);
@@ -286,10 +299,12 @@ void MainWindow::applyConfiguration(const QString& fileName)
 
 void MainWindow::updatePlotLabels()
 {
-    int n = orbita_->getAnalogCount();
-    currentChannelNames_.resize(n);
-    for (int i = 0; i < n; ++i)
-        currentChannelNames_[i] = orbita_->getAnalogChannelName(i);
+    // Имена в том же порядке, что и snap.values (порядок конфигурации).
+    std::vector<orbita::ChannelSpec> chans = orbita_->getChannels();
+    currentChannelNames_.clear();
+    currentChannelNames_.reserve(chans.size());
+    for (const auto& c : chans)
+        currentChannelNames_.push_back(c.name.empty() ? c.address : c.name);
 }
 
 void MainWindow::onRefreshMetadata()

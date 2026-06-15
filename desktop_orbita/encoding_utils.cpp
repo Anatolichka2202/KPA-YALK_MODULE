@@ -46,7 +46,8 @@ std::string readFileToUtf8(const std::string& path) {
 }
 
 std::string normalizeAddress(const std::string& utf8_address) {
-    QString qstr = QString::fromUtf8(utf8_address.c_str());
+    // Адрес — первый токен строки; trimmed() убирает ведущие пробелы и \r.
+    QString qstr = QString::fromUtf8(utf8_address.c_str()).trimmed();
     static const std::unordered_map<QChar, QChar> mapping = {
         // Заглавные кириллические -> латиница
         { QChar(0x0410), QChar('A') }, // А
@@ -91,12 +92,11 @@ std::string normalizeAddress(const std::string& utf8_address) {
     };
     QString result;
     for (QChar ch : qstr) {
-        if (ch.isSpace()) continue;          // убираем пробелы/табуляции
+        if (ch.isSpace()) break;             // адрес кончился — дальше комментарий оператора
         auto it = mapping.find(ch);
         result.append(it != mapping.end() ? it->second : ch);
     }
-    result = result.toUpper();
-    return result.toStdString();
+    return result.toUpper().toStdString();
 }
 
 } // namespace encoding
