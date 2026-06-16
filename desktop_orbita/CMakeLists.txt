@@ -37,6 +37,9 @@ add_executable(OrbitaDesktop
     readout_widget.h readout_widget.cpp
     channel_status.h
     plot_theme.h
+    scenario_model.h
+    scenario_io.h scenario_io.cpp
+    scenario_wizard.h scenario_wizard.cpp
 )
 
 target_include_directories(OrbitaDesktop PRIVATE

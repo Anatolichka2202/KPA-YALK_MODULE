@@ -366,6 +366,25 @@ void MainWindow::setupToolBar()
 
     // --- Действия для док-виджетов (показывать/скрывать) ---
     // Добавим переключатели видимости доков в меню View (можно позже)
+
+    // --- Кнопка «Сценарий проверки» ---
+    toolbar->addSeparator();
+    actScenario_ = toolbar->addAction("◇ Сценарий");
+    connect(actScenario_, &QAction::triggered, this, &MainWindow::onOpenScenario);
+}
+
+// ----------------------------------------------------------------------------
+//  Сценарий проверки
+// ----------------------------------------------------------------------------
+void MainWindow::onOpenScenario()
+{
+    // Передаём провайдер значений как лямбду — ScenarioWizard не зависит от ядра напрямую
+    ValueProvider provider = [this](const QString& addr) -> std::optional<double> {
+        return orbita_->getValueByAddress(addr.toStdString());
+    };
+
+    ScenarioWizard wizard(provider, this);
+    wizard.exec();
 }
 
 // ----------------------------------------------------------------------------

@@ -16,6 +16,7 @@
 
 #include "orbita.h"
 #include "metadata_service.h"
+#include "scenario_wizard.h"
 #include "main_page.h"
 #include "detail_view.h"
 #include "parameter_browser.h"
@@ -121,6 +122,12 @@ private:
     QAction* actDetail_ = nullptr;
     QAction* actConfig_ = nullptr;
     QAction* actDb_ = nullptr;
+
+    // Сценарий проверки
+    QAction* actScenario_ = nullptr;
+
+private slots:
+    void onOpenScenario();
 };
 
 #endif // MAINWINDOW_H
