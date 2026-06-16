@@ -22,6 +22,12 @@ QHeaderView::section {
     text-transform: uppercase;
 }
 
+/* Левый верхний угол таблиц (был белый — QSS его по умолчанию не красит) */
+QTableCornerButton::section {
+    background-color: #0e1115;
+    border: none;
+}
+
 /* Кнопки */
 QPushButton {
     background-color: #1b2129;

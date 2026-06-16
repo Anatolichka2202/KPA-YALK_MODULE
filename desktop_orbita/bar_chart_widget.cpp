@@ -17,12 +17,14 @@ void BarChartWidget::setupPlot()
 {
     plottheme::apply(m_plot);
     m_plot->setInteractions(QCP::iRangeDrag | QCP::iRangeZoom);
-    m_plot->xAxis->setLabel("Каналы");
+    // Масштабировать/таскать только по X — Y зафиксирован, нельзя улететь в минус
+    m_plot->axisRect()->setRangeDrag(Qt::Horizontal);
+    m_plot->axisRect()->setRangeZoom(Qt::Horizontal);
     m_plot->yAxis->setLabel("Код");
     m_plot->yAxis->setRange(0, 1023);
     m_plot->xAxis->setTickLabelRotation(60);
     m_plot->xAxis->setSubTicks(false);
-    m_plot->xAxis->setTicks(false);
+    m_plot->xAxis->setTicks(true);   // подписи имён каналов под столбцами
 
     m_bars = new QCPBars(m_plot->xAxis, m_plot->yAxis);
     m_bars->setPen(QPen(QColor(0x5e, 0x93, 0xb8)));
@@ -81,6 +83,12 @@ void BarChartWidget::updatePlot()
         ticker->addTicks(tickLabels);
     }
     m_plot->xAxis->setRange(-0.5, n - 0.5);
+
+    // Y: всегда от 0, потолок по данным (но не ниже 1023) — без отрицательных
+    double maxVal = 0.0;
+    for (double v : m_valuesPlot) maxVal = qMax(maxVal, v);
+    m_plot->yAxis->setRange(0, qMax(1023.0, maxVal * 1.05));
+
     m_plot->replot();
 }
 
