@@ -1,8 +1,12 @@
 #include "encoding_utils.h"
 #include <QFile>
 #include <QDebug>
-#include <windows.h>
 #include <vector>
+#include <unordered_map>
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 namespace encoding {
 
@@ -22,6 +26,7 @@ std::string readFileToUtf8(const std::string& path) {
         return std::string(raw.constData() + 3, raw.size() - 3);
     }
 
+#ifdef _WIN32
     // Try UTF-8 validation (MB_ERR_INVALID_CHARS rejects invalid sequences)
     if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS,
                             raw.constData(), (int)raw.size(), nullptr, 0) > 0) {
@@ -43,6 +48,10 @@ std::string readFileToUtf8(const std::string& path) {
     WideCharToMultiByte(CP_UTF8, 0, wbuf.data(), wlen,
                         utf8buf.data(), utf8len, nullptr, nullptr);
     return std::string(utf8buf.data(), utf8len);
+#else
+    // Linux: return as-is (assume UTF-8 or ignore encoding issues)
+    return std::string(raw.constData(), raw.size());
+#endif
 }
 
 std::string normalizeAddress(const std::string& utf8_address) {
