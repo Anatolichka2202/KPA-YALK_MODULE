@@ -159,14 +159,10 @@ void DetailView::setChannel(const orbita::ChannelSpec& spec)
         ));
     m_nameLabel->setText(QString::fromStdString(spec.name.empty() ? spec.address : spec.name));
 
+    m_tol = chstatus::forAddress(m_db, spec.address);
     if (m_db) {
         auto info = m_db->lookup(QString::fromStdString(spec.address));
-        if (info) {
-            m_catLabel->setText(info->category);
-            // Здесь можно получить допуски из БД
-        } else {
-            m_catLabel->setText("");
-        }
+        m_catLabel->setText(info ? info->category : QString());
     }
 
     // Сбрасываем историю
@@ -213,36 +209,22 @@ void DetailView::updateUI()
 
     // Шкала допуска
     m_toleranceBar->setValue((int)m_currentValue);
-    m_rangeLabel->setText(QString("допуск: %1 – %2 – %3").arg(m_low).arg(m_nominal).arg(m_high));
+    chstatus::Level lvl = chstatus::evaluate(m_currentValue, m_tol);
 
-    // Статус
-    QString statusText, color, bg, border;
-    if (m_currentValue < m_low || m_currentValue > m_high) {
-        statusText = "Вне допуска";
-        color = "#e89089";
-        bg = "#2a1718";
-        border = "#4a2426";
-    } else if (m_currentValue < m_low + 20 || m_currentValue > m_high - 20) {
-        statusText = "У предела";
-        color = "#e6b878";
-        bg = "#2a2117";
-        border = "#4a3a24";
-    } else {
-        statusText = "Норма";
-        color = "#7fc79a";
-        bg = "#13251a";
-        border = "#244a33";
-    }
-    m_statusLabel->setText(statusText);
-    m_statusLabel->setStyleSheet(QString("padding: 4px 10px; border-radius: 6px; background: %1; border: 1px solid %2; color: %3;")
-                                     .arg(bg).arg(border).arg(color));
+    if (m_tol.set)
+        m_rangeLabel->setText(QString("допуск: %1 – %2 – %3")
+                                  .arg(m_tol.lo).arg(m_tol.nominal).arg(m_tol.hi));
+    else
+        m_rangeLabel->setText("допуск не задан");
 
-    // Цвет шкалы
-    QString barColor = (statusText == "Норма") ? "#5e93b8" : "#cf5b52";
+    m_statusLabel->setText(chstatus::text(lvl));
+    m_statusLabel->setStyleSheet(QString("padding: 4px 10px; border-radius: 6px; color: %1;")
+                                     .arg(chstatus::textColor(lvl).name()));
+
     m_toleranceBar->setStyleSheet(
         QString("QProgressBar { background-color: #1c222a; border-radius: 4px; height: 8px; } "
-                "QProgressBar::chunk { background-color: %1; border-radius: 4px; }").arg(barColor)
-        );
+                "QProgressBar::chunk { background-color: %1; border-radius: 4px; }")
+            .arg(chstatus::barColor(lvl).name()));
 
     // Статистика
     if (m_history.size() > 1) {
@@ -272,14 +254,19 @@ void DetailView::updatePlot()
 
     m_graph->setData(keys, values);
 
-    // Линии допуска
-    QVector<double> lowData(m_history.size(), m_low);
-    QVector<double> highData(m_history.size(), m_high);
-    QVector<double> nomData(m_history.size(), m_nominal);
-
-    m_lowLine->setData(keys, lowData);
-    m_highLine->setData(keys, highData);
-    m_nomLine->setData(keys, nomData);
+    // Линии допуска — только если допуск задан, иначе скрываем (пустые данные)
+    if (m_tol.set) {
+        QVector<double> lowData(m_history.size(), m_tol.lo);
+        QVector<double> highData(m_history.size(), m_tol.hi);
+        QVector<double> nomData(m_history.size(), m_tol.nominal);
+        m_lowLine->setData(keys, lowData);
+        m_highLine->setData(keys, highData);
+        m_nomLine->setData(keys, nomData);
+    } else {
+        m_lowLine->data()->clear();
+        m_highLine->data()->clear();
+        m_nomLine->data()->clear();
+    }
 
     // Авто-масштаб Y
     m_plot->rescaleAxes();

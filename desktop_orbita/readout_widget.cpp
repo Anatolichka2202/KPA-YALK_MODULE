@@ -1,4 +1,5 @@
 #include "readout_widget.h"
+#include "channel_status.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -86,34 +87,22 @@ void ReadoutWidget::updateUI()
 
     m_valueLabel->setText(QString::number(m_currentValue, 'f', 0));
     m_toleranceBar->setValue((int)m_currentValue);
-    m_rangeLabel->setText(QString("допуск: %1 – %2 – %3").arg(m_low).arg(m_nominal).arg(m_high));
 
-    // Определяем статус
-    QString statusText, color, bg, border;
-    if (m_currentValue < m_low || m_currentValue > m_high) {
-        statusText = "Вне допуска";
-        color = "#e89089";
-        bg = "#2a1718";
-        border = "#4a2426";
-    } else if (m_currentValue < m_low + 20 || m_currentValue > m_high - 20) {
-        statusText = "У предела";
-        color = "#e6b878";
-        bg = "#2a2117";
-        border = "#4a3a24";
-    } else {
-        statusText = "Норма";
-        color = "#7fc79a";
-        bg = "#13251a";
-        border = "#244a33";
-    }
-    m_statusLabel->setText(statusText);
-    m_statusLabel->setStyleSheet(QString("padding: 4px 10px; border-radius: 6px; background: %1; border: 1px solid %2; color: %3;")
-                                     .arg(bg).arg(border).arg(color));
+    chstatus::Tolerance tol = chstatus::forAddress(m_db, m_spec.address);
+    chstatus::Level lvl = chstatus::evaluate(m_currentValue, tol);
 
-    // Цвет шкалы (можно менять)
-    QString barColor = (statusText == "Норма") ? "#5e93b8" : "#cf5b52";
+    if (tol.set)
+        m_rangeLabel->setText(QString("допуск: %1 – %2 – %3")
+                                  .arg(tol.lo).arg(tol.nominal).arg(tol.hi));
+    else
+        m_rangeLabel->setText("допуск не задан");
+
+    m_statusLabel->setText(chstatus::text(lvl));
+    m_statusLabel->setStyleSheet(QString("padding: 4px 10px; border-radius: 6px; color: %1;")
+                                     .arg(chstatus::textColor(lvl).name()));
+
     m_toleranceBar->setStyleSheet(
         QString("QProgressBar { background-color: #1c222a; border-radius: 3px; height: 8px; } "
-                "QProgressBar::chunk { background-color: %1; border-radius: 3px; }").arg(barColor)
-        );
+                "QProgressBar::chunk { background-color: %1; border-radius: 3px; }")
+            .arg(chstatus::barColor(lvl).name()));
 }

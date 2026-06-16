@@ -9,6 +9,7 @@
 #include <QTimer>
 #include "orbita.h"
 #include "metadata_service.h"
+#include "channel_status.h"
 
 class DetailView : public QWidget
 {
@@ -46,10 +47,8 @@ private:
     double m_currentValue = 0.0;
     bool m_isValid = false;
 
-    // Допуски (заглушка, позже можно брать из БД)
-    int m_low = 200;
-    int m_high = 800;
-    int m_nominal = 500;
+    // Допуск канала (из БД/rules; пока не задан → нейтральный статус, линии скрыты)
+    chstatus::Tolerance m_tol;
 
     // UI элементы
     QLabel* m_numLabel;

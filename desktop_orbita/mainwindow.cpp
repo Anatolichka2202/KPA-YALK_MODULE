@@ -534,6 +534,9 @@ void MainWindow::onWatchSetChanged(const std::vector<orbita::ChannelSpec>& specs
     // Если выбранный индекс выходит за пределы, сбрасываем
     if (selectedChannelIndex_ >= (int)specs.size())
         selectedChannelIndex_ = -1;
+    // Авто-выбор первого канала, чтобы отсчёт не висел на "---"
+    if (selectedChannelIndex_ < 0 && !specs.empty())
+        selectedChannelIndex_ = 0;
     if (selectedChannelIndex_ >= 0 && !specs.empty())
         onChannelSelected(selectedChannelIndex_);
 }

@@ -1,4 +1,5 @@
 #include "table_widget.h"
+#include "channel_status.h"
 #include <QVBoxLayout>
 #include <QHeaderView>
 #include <QProgressBar>
@@ -94,25 +95,27 @@ void TableWidget::updateTable()
         // Код
         m_table->setItem(i, 3, new QTableWidgetItem(QString::number(val, 'f', 0)));
 
-        // Допуск (заглушка)
-        m_table->setItem(i, 4, new QTableWidgetItem("200–500–800"));
+        chstatus::Tolerance tol = chstatus::forAddress(m_db, spec.address);
+        chstatus::Level lvl = chstatus::evaluate(val, tol);
+
+        // Допуск
+        m_table->setItem(i, 4, new QTableWidgetItem(
+            tol.set ? QString("%1–%2–%3").arg(tol.lo).arg(tol.nominal).arg(tol.hi)
+                    : QStringLiteral("—")));
 
         // Уровень (QProgressBar)
         QProgressBar* bar = new QProgressBar;
         bar->setRange(0, 1023);
         bar->setValue((int)val);
         bar->setTextVisible(false);
-        bar->setStyleSheet("QProgressBar { background-color: #1c222a; border-radius: 3px; height: 6px; } QProgressBar::chunk { background-color: #5e93b8; border-radius: 3px; }");
+        bar->setStyleSheet(QString("QProgressBar { background-color: #1c222a; border-radius: 3px; height: 6px; } "
+                                   "QProgressBar::chunk { background-color: %1; border-radius: 3px; }")
+                               .arg(chstatus::barColor(lvl).name()));
         m_table->setCellWidget(i, 5, bar);
 
         // Статус
-        QString statusText, color;
-        if (val < 200) { statusText = "Ниже"; color = "#cf5b52"; }
-        else if (val > 800) { statusText = "Выше"; color = "#cf5b52"; }
-        else if (val < 220 || val > 780) { statusText = "У предела"; color = "#d99a4a"; }
-        else { statusText = "Норма"; color = "#7fc79a"; }
-        QLabel* statusLabel = new QLabel(statusText);
-        statusLabel->setStyleSheet(QString("color: %1;").arg(color));
+        QLabel* statusLabel = new QLabel(chstatus::text(lvl));
+        statusLabel->setStyleSheet(QString("color: %1;").arg(chstatus::textColor(lvl).name()));
         m_table->setCellWidget(i, 6, statusLabel);
     }
     m_table->resizeColumnsToContents();

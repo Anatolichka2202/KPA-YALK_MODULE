@@ -1,4 +1,5 @@
 #include "category_card_widget.h"
+#include "channel_status.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -73,12 +74,13 @@ void CategoryCardWidget::updateValues(const QMap<QString, double>& values)
     double avg = count ? sum / count : 0;
     m_avgLabel->setText(QString("средний %1").arg(avg, 0, 'f', 0));
 
-    // Подсчёт аномалий
+    // Подсчёт аномалий (нет допуска → не аномалия)
     int anom = 0;
     for (int idx : m_indices) {
         const auto& spec = m_specs[idx];
         double v = values.value(QString::fromStdString(spec.address), 0.0);
-        if (v < 200 || v > 800) anom++;
+        chstatus::Tolerance tol = chstatus::forAddress(m_db, spec.address);
+        if (chstatus::isAnomaly(chstatus::evaluate(v, tol))) anom++;
     }
     m_anomalyLabel->setText(anom ? QString("%1 вне нормы").arg(anom) : "все в норме");
     m_anomalyLabel->setStyleSheet(anom ? "color: #e6b878;" : "color: #7fc79a;");

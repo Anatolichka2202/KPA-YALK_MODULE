@@ -35,6 +35,7 @@ add_executable(OrbitaDesktop
     resources/resources.qrc
     channel_list_widget.h channel_list_widget.cpp
     readout_widget.h readout_widget.cpp
+    channel_status.h
 )
 
 target_include_directories(OrbitaDesktop PRIVATE

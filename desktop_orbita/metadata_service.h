@@ -27,6 +27,9 @@ struct ParamInfo {
     QString componentKey;   // адрес без M, напр. "P1A70B12C10D10T01"
     int     informativnost = -1;  // -1 если в БД не задана (M берём из UI/конфига)
     bool    isZu = false;   // адрес запоминающего устройства (резервный дубль)
+    // Допуск (сырой код АЦП). Пока БД его не хранит → hasTolerance=false (нейтральный статус).
+    double  lo = 0, nominal = 0, hi = 0;
+    bool    hasTolerance = false;
 };
 
 class MetadataService : public QObject {

@@ -1,4 +1,5 @@
 #include "anomaly_widget.h"
+#include "channel_status.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -75,16 +76,14 @@ void AnomalyWidget::updateAnomalies()
     for (int i = 0; i < m_specs.size(); ++i) {
         const auto& spec = m_specs[i];
         double val = m_values.value(QString::fromStdString(spec.address), 0.0);
-        // Заглушка: допустим норм 200-800
-        bool isAnomaly = (val < 200 || val > 800);
-        if (isAnomaly) {
+        chstatus::Tolerance tol = chstatus::forAddress(m_db, spec.address);
+        chstatus::Level lvl = chstatus::evaluate(val, tol);
+        if (chstatus::isAnomaly(lvl)) {
             anom++;
             QString name = QString::fromStdString(spec.name.empty() ? spec.address : spec.name);
             QListWidgetItem* item = new QListWidgetItem(QString("КАН %1  %2  %3").arg(i+1).arg(name).arg(val, 0, 'f', 0));
             item->setData(Qt::UserRole, i);
-            // цвет
-            if (val < 200) item->setForeground(QColor("#cf5b52"));
-            else item->setForeground(QColor("#cf5b52"));
+            item->setForeground(chstatus::textColor(lvl));
             m_anomalyList->addItem(item);
         } else {
             norm++;
