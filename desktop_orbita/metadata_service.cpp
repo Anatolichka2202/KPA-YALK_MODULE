@@ -68,17 +68,19 @@ void MetadataService::loadMetadata() {
     if (!db_->isOpen()) return;
 
     QSqlQuery q(*db_);
+    // Сначала live (is_zu=0), потом ЗУ — чтобы при совпадении ключа выигрывал live.
     q.prepare(
         "SELECT p.name, p.category, p.signal_type, "
-        "       a.stream, a.a, a.b, a.c, a.d, a.e, a.x, a.t, a.p, a.informativnost "
+        "       a.stream, a.a, a.b, a.c, a.d, a.e, a.x, a.t, a.p, a.informativnost, a.is_zu "
         "FROM parameters p JOIN addresses a ON a.param_id = p.id "
-        "WHERE a.is_zu = 0");
+        "ORDER BY a.is_zu ASC");
     if (!q.exec()) {
         emit loadError(q.lastError().text());
         qWarning() << "MetadataService: query failed" << q.lastError().text();
         return;
     }
 
+    int liveCount = 0, zuCount = 0;
     while (q.next()) {
         ParamInfo info;
         info.name       = q.value(0).toString();
@@ -89,13 +91,15 @@ void MetadataService::loadMetadata() {
             q.value(6).toString(), q.value(7).toString(), q.value(8).toString(),
             q.value(9).toString(), q.value(10).toString(), q.value(11).toString());
         info.informativnost = q.value(12).isNull() ? -1 : q.value(12).toInt();
+        info.isZu = q.value(13).toInt() != 0;
 
         if (info.componentKey.isEmpty()) continue;
-        if (byKey_.contains(info.componentKey)) continue; // первый выигрывает
+        if (byKey_.contains(info.componentKey)) continue; // первый (live) выигрывает
         byKey_.insert(info.componentKey, params_.size());
         params_.push_back(info);
+        if (info.isZu) ++zuCount; else ++liveCount;
     }
-    qDebug() << "MetadataService: loaded" << params_.size() << "parameters";
+    qDebug() << "MetadataService: loaded" << liveCount << "live +" << zuCount << "ЗУ addresses";
 }
 
 // ── lookup ───────────────────────────────────────────────────────────────
@@ -125,17 +129,24 @@ QStringList MetadataService::getAllCategories() const {
     return list;
 }
 
+QList<ParamInfo> MetadataService::allParams() const {
+    QList<ParamInfo> out;
+    for (const auto& p : params_)
+        if (!p.isZu) out.push_back(p);
+    return out;
+}
+
 QList<ParamInfo> MetadataService::paramsInCategory(const QString& category) const {
     QList<ParamInfo> out;
     for (const auto& p : params_)
-        if (p.category == category) out.push_back(p);
+        if (!p.isZu && p.category == category) out.push_back(p);
     return out;
 }
 
 QHash<QString, QString> MetadataService::getParametersByCategory(const QString& category) const {
     QHash<QString, QString> out;
     for (const auto& p : params_)
-        if (p.category == category)
+        if (!p.isZu && p.category == category)
             out.insert(buildFullAddress(p), p.name);  // ключ — M16-адрес для отслеживания
     return out;
 }

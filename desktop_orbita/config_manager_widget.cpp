@@ -14,6 +14,15 @@
 #include <QColor>
 #include "encoding_utils.h"
 
+static QString signalTypeLabel(const QString& st) {
+    if (st == "analog10")    return "аналог";
+    if (st == "contact")     return "контакт";
+    if (st.startsWith("fast")) return "быстрый";
+    if (st == "temperature") return "темп.";
+    if (st == "bus")         return "БУС";
+    return "?";
+}
+
 ConfigManagerWidget::ConfigManagerWidget(MetadataService* db, QWidget* parent)
     : QWidget(parent), db_(db)
 {
@@ -22,8 +31,8 @@ ConfigManagerWidget::ConfigManagerWidget(MetadataService* db, QWidget* parent)
     auto* splitter = new QSplitter(Qt::Horizontal);
     fileList_     = new QListWidget;
     previewTable_ = new QTableWidget;
-    previewTable_->setColumnCount(3);
-    previewTable_->setHorizontalHeaderLabels({"Адрес", "Параметр", "Категория"});
+    previewTable_->setColumnCount(4);
+    previewTable_->setHorizontalHeaderLabels({"Адрес", "Параметр", "Категория", "Тип"});
     previewTable_->horizontalHeader()->setStretchLastSection(true);
 
     splitter->addWidget(fileList_);
@@ -80,25 +89,29 @@ void ConfigManagerWidget::loadFilePreview(const QString& fileName) {
 
         if (addr.isEmpty()) {
             // Пустая строка-разделитель — показываем как визуальный разрыв
-            auto* sep = new QTableWidgetItem(QString());
-            sep->setBackground(QColor(0, 0, 0, 20));
-            sep->setFlags(Qt::NoItemFlags);
-            previewTable_->setItem(row, 0, sep);
-            previewTable_->setItem(row, 1, new QTableWidgetItem(QString()));
-            previewTable_->setItem(row, 2, new QTableWidgetItem(QString()));
+            for (int col = 0; col < 4; ++col) {
+                auto* sep = new QTableWidgetItem(QString());
+                sep->setBackground(QColor(0, 0, 0, 20));
+                sep->setFlags(Qt::NoItemFlags);
+                previewTable_->setItem(row, col, sep);
+            }
             ++row;
             continue;
         }
 
-        // Каноническая нормализация (одна на весь проект)
-        std::string norm = encoding::normalizeAddress(addr.toStdString());
-        QString normAddr = QString::fromStdString(norm);
-        QString name     = db_ ? db_->getName(normAddr)     : normAddr;
-        QString category = db_ ? db_->getCategory(normAddr) : QString();
+        auto info = db_ ? db_->lookup(addr) : std::nullopt;
+        QString name, category, typeLabel;
+        if (info) {
+            name      = info->name;
+            category  = info->category;
+            typeLabel = signalTypeLabel(info->signalType);
+            if (info->isZu) typeLabel += " · ЗУ";
+        }
 
         previewTable_->setItem(row, 0, new QTableWidgetItem(addr));
         previewTable_->setItem(row, 1, new QTableWidgetItem(name));
         previewTable_->setItem(row, 2, new QTableWidgetItem(category));
+        previewTable_->setItem(row, 3, new QTableWidgetItem(typeLabel));
         ++row;
     }
     previewTable_->setRowCount(row);

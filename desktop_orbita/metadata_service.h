@@ -26,6 +26,7 @@ struct ParamInfo {
     QString signalType;     // analog10/contact/fast1.../bus/unknown
     QString componentKey;   // адрес без M, напр. "P1A70B12C10D10T01"
     int     informativnost = -1;  // -1 если в БД не задана (M берём из UI/конфига)
+    bool    isZu = false;   // адрес запоминающего устройства (резервный дубль)
 };
 
 class MetadataService : public QObject {
@@ -45,9 +46,9 @@ public:
     QHash<QString, QString> getParametersByCategory(const QString& category) const; // {M16-адрес: имя}
 
     // ── Богатый API ──
-    std::optional<ParamInfo> lookup(const QString& address) const;
-    QList<ParamInfo> allParams() const { return params_; }
-    QList<ParamInfo> paramsInCategory(const QString& category) const;
+    std::optional<ParamInfo> lookup(const QString& address) const;  // live + ЗУ
+    QList<ParamInfo> allParams() const;            // только live (каталог)
+    QList<ParamInfo> paramsInCategory(const QString& category) const;  // только live
 
     // ── Утилиты ──
     static QString buildFullAddress(const ParamInfo& p, int informativnost = 16);
