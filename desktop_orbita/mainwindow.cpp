@@ -19,9 +19,11 @@ MainWindow::MainWindow(QWidget* parent)
     , orbita_(std::make_unique<orbita::Orbita>())
     , updateTimer_(new QTimer(this))
 {
+    // Порядок важен: тулбар создаёт startBtn_/actMain_ и пр., которые нужны
+    // в setupDockWidgets() (там вызывается onWatchSetChanged) и в setMode().
     setupUi();
-    setupDockWidgets();
     setupToolBar();
+    setupDockWidgets();
 
     // Теперь все элементы созданы — можно выставить начальный режим
     setMode(ModeMain);
