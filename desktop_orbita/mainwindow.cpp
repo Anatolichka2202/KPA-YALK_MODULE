@@ -8,6 +8,8 @@
 #include <QDateTime>
 #include <QDir>
 #include <QActionGroup>
+#include <QMenu>
+#include <QMenuBar>
 #include <sstream>
 #include <regex>
 
@@ -219,6 +221,17 @@ void MainWindow::setupDockWidgets()
     mainPage_->setMetadataService(dbProvider_.get());
     detailView_->setMetadataService(dbProvider_.get());
 
+    // Доки скрыты по умолчанию — экран Сбор чистый. Вызвать можно через меню «Вид».
+    configDock_->hide();
+    paramDock_->hide();
+    watchSetDock_->hide();
+
+    QMenu* viewMenu = menuBar()->addMenu("Вид");
+    viewMenu->addAction(watchSetDock_->toggleViewAction());
+    viewMenu->addAction(configDock_->toggleViewAction());
+    viewMenu->addAction(paramDock_->toggleViewAction());
+    viewMenu->addAction(logDock_->toggleViewAction());
+
     // Устанавливаем начальный набор (пустой)
     onWatchSetChanged({});
 }
@@ -340,12 +353,7 @@ void MainWindow::setMode(int mode)
     actConfig_->setChecked(mode == ModeConfig);
     actDb_->setChecked(mode == ModeDb);
 
-    // Показываем/скрываем док-виджеты в зависимости от режима
-    bool showDocks = (mode == ModeMain);
-    if (configDock_) configDock_->setVisible(showDocks);
-    if (paramDock_) paramDock_->setVisible(showDocks);
-    if (watchSetDock_) watchSetDock_->setVisible(showDocks);
-    if (logDock_) logDock_->setVisible(showDocks); // лог показываем всегда, но для единообразия
+    // Доки пользователь сам показывает/прячет через меню «Вид» — не навязываем по режиму.
 
     // Если перешли в детальный режим и есть выбранный канал – обновляем DetailView
     if (mode == ModeDetail && selectedChannelIndex_ >= 0) {
