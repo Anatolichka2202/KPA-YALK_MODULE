@@ -1,88 +1,32 @@
 #include "mainwindow.h"
-#include "plot_widget.h"
-#include "config_manager_widget.h"
-#include "parameter_browser.h"
+#include "encoding_utils.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
-#include <QPushButton>
-#include <QLabel>
-#include <QLineEdit>
 #include <QFileDialog>
-#include <QCheckBox>
-#include <QGroupBox>
 #include <QMessageBox>
-#include <QTextEdit>
-#include <QSpinBox>
-#include <QDebug>
-#include <QDockWidget>
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
-#include <QFile>
+#include <QActionGroup>
 #include <sstream>
-#include "encoding_utils.h"
+#include <regex>
 
+// ----------------------------------------------------------------------------
+//  Конструктор / Деструктор
+// ----------------------------------------------------------------------------
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
     , orbita_(std::make_unique<orbita::Orbita>())
     , updateTimer_(new QTimer(this))
-    , configWidget_(nullptr)
-    , paramBrowser(nullptr)
 {
     setupUi();
+    setupDockWidgets();
+    setupToolBar();
 
-    dbProvider_ = std::make_unique<MetadataService>(this);
-    if (!dbProvider_->open()) {
-        log("Ошибка открытия БД parameters.db");
-    } else {
-        configWidget_ = new ConfigManagerWidget(dbProvider_.get(), this);
-        paramBrowser  = new ParameterBrowser(dbProvider_.get(), this);
+    // Теперь все элементы созданы — можно выставить начальный режим
+    setMode(ModeMain);
 
-        QDockWidget* cfgDock = new QDockWidget("Конфигурации", this);
-        cfgDock->setWidget(configWidget_);
-        addDockWidget(Qt::LeftDockWidgetArea, cfgDock);
-
-        QDockWidget* dbDock = new QDockWidget("Библиотека параметров", this);
-        dbDock->setWidget(paramBrowser);
-        addDockWidget(Qt::RightDockWidgetArea, dbDock);
-
-        // Активный набор — единый источник истины
-        watchSetWidget_ = new WatchSetWidget(dbProvider_.get(), this);
-        QDockWidget* wsDock = new QDockWidget("Активный набор", this);
-        wsDock->setWidget(watchSetWidget_);
-        addDockWidget(Qt::RightDockWidgetArea, wsDock);
-
-        connect(configWidget_, &ConfigManagerWidget::applyConfigRequested,
-                this, &MainWindow::applyConfiguration);
-        connect(configWidget_, &ConfigManagerWidget::refreshMetadataRequested,
-                this, &MainWindow::onRefreshMetadata);
-
-        // Библиотека -> активный набор (добавление на лету)
-        connect(paramBrowser, &ParameterBrowser::parametersSelected,
-                [this](const QList<QString>& addresses, const QList<QString>& names) {
-                    std::vector<orbita::ChannelSpec> specs;
-                    for (int i = 0; i < addresses.size(); ++i) {
-                        std::string norm = encoding::normalizeAddress(addresses[i].toStdString());
-                        if (norm.empty()) continue;
-                        QString cat = dbProvider_ ? dbProvider_->getCategory(addresses[i]) : QString();
-                        specs.push_back(orbita::ChannelSpec{
-                            norm, names[i].toStdString(), cat.toStdString()});
-                    }
-                    if (watchSetWidget_) watchSetWidget_->addParams(specs);
-                });
-
-        // Активный набор -> ядро (горячая замена)
-        connect(watchSetWidget_, &WatchSetWidget::watchSetChanged,
-                this, &MainWindow::onWatchSetChanged);
-        connect(watchSetWidget_, &WatchSetWidget::configSaved,
-                [this]() { if (configWidget_) configWidget_->refreshFileList(); });
-    }
-
-    connect(updateTimer_, &QTimer::timeout, this, &MainWindow::updateData);
-    updateTimer_->start(100);
-
-    // Инициализация устройства не должна валить приложение: если E20-10 не
-    // найден (нет DLL/железа), работаем в режиме без устройства.
+    // Инициализация устройства
     try {
         orbita_->setDeviceE2010(0, 10000.0);
         log("Устройство E20-10 найдено");
@@ -91,117 +35,344 @@ MainWindow::MainWindow(QWidget* parent)
         log(QString("E20-10 недоступно (%1). Режим без устройства.")
                 .arg(QString::fromLocal8Bit(e.what())));
     }
+
+    // Таймер обновления
+    connect(updateTimer_, &QTimer::timeout, this, &MainWindow::updateData);
+    updateTimer_->start(100);
+
     log("Система инициализирована. Выберите конфигурацию.");
 }
 
 MainWindow::~MainWindow() = default;
 
+// ----------------------------------------------------------------------------
+//  Инициализация UI
+// ----------------------------------------------------------------------------
 void MainWindow::setupUi()
 {
     setWindowTitle("Орбита-IV — Телеметрия");
-    resize(1200, 700);
+    resize(1280, 800);
 
-    auto* central    = new QWidget;
-    auto* mainLayout = new QVBoxLayout(central);
+    // Центральный стек
+    centralStack_ = new QStackedWidget;
+    setCentralWidget(centralStack_);
 
-    // ---- Панель управления ----
-    auto* controlGroup  = new QGroupBox("Управление");
-    auto* controlLayout = new QHBoxLayout;
+    // --- Создаём страницы ---
+    // Страница "Сбор"
+    mainPage_ = new MainPage;
+    centralStack_->addWidget(mainPage_);
 
-    startBtn_    = new QPushButton("▶ Старт");
-    stopBtn_     = new QPushButton("■ Стоп");
-    invertCheck_ = new QCheckBox("Инверт.");
+    // Страница "Детальный просмотр"
+    detailView_ = new DetailView;
+    centralStack_->addWidget(detailView_);
 
-    startBtn_->setEnabled(false);
-    stopBtn_->setEnabled(false);
+    // Страница "Конфигуратор" (пока временная, будет заменена после открытия БД)
+    QWidget* configPlaceholder = new QWidget;
+    configPlaceholder->setStyleSheet("background: #14171c;");
+    QVBoxLayout* cfgLayout = new QVBoxLayout(configPlaceholder);
+    cfgLayout->addWidget(new QLabel("Загрузка конфигуратора..."));
+    cfgLayout->setAlignment(Qt::AlignCenter);
+    centralStack_->addWidget(configPlaceholder);
 
-    controlLayout->addWidget(startBtn_);
-    controlLayout->addWidget(stopBtn_);
-    controlLayout->addWidget(invertCheck_);
-    controlLayout->addStretch();
-    controlGroup->setLayout(controlLayout);
-    mainLayout->addWidget(controlGroup);
+    // Страница "База параметров" (временная)
+    QWidget* dbPlaceholder = new QWidget;
+    dbPlaceholder->setStyleSheet("background: #14171c;");
+    QVBoxLayout* dbLayout = new QVBoxLayout(dbPlaceholder);
+    dbLayout->addWidget(new QLabel("Загрузка базы параметров..."));
+    dbLayout->setAlignment(Qt::AlignCenter);
+    centralStack_->addWidget(dbPlaceholder);
+    // Начальный режим выставляется в конце конструктора — после setupToolBar()/setupDockWidgets(),
+    // т.к. setMode() обращается к actMain_ и докам, которых здесь ещё нет.
 
-    // ---- Панель записи и настроек графика ----
-    auto* recGroup  = new QGroupBox("Запись и отображение");
-    auto* recLayout = new QHBoxLayout;
-
-    recordBtn_      = new QPushButton("⏺ Запись");
-    recordBtn_->setEnabled(false);
-    recordingLabel_ = new QLabel("—");
-    recordingLabel_->setMinimumWidth(180);
-
-    auto* winLabel = new QLabel("Окно:");
-    windowSpin_    = new QSpinBox;
-    windowSpin_->setRange(5, 300);
-    windowSpin_->setValue(30);
-    windowSpin_->setSuffix(" с");
-
-    recLayout->addWidget(recordBtn_);
-    recLayout->addWidget(recordingLabel_);
-    recLayout->addStretch();
-    recLayout->addWidget(winLabel);
-    recLayout->addWidget(windowSpin_);
-    recGroup->setLayout(recLayout);
-    mainLayout->addWidget(recGroup);
-
-    // ---- График ----
-    plotWidget_ = new PlotWidget(this);
-    plotWidget_->setMinimumHeight(380);
-    mainLayout->addWidget(plotWidget_, 1);
-
-    // ---- Статус-бар бортового времени ----
-    auto* infoGroup  = new QGroupBox("МТВ (бортовое время)");
-    auto* infoLayout = new QHBoxLayout;
-    mtvLabel_ = new QLabel("--:--:--");
-    mtvLabel_->setFont(QFont("Courier New", 14, QFont::Bold));
-    infoLayout->addWidget(mtvLabel_);
-    infoLayout->addStretch();
-    infoGroup->setLayout(infoLayout);
-    mainLayout->addWidget(infoGroup);
-
-    // ---- Лог ----
+    // --- Лог (нижняя панель) ---
     logEdit_ = new QTextEdit;
     logEdit_->setMaximumHeight(120);
     logEdit_->setReadOnly(true);
     logEdit_->setFont(QFont("Courier New", 9));
-    mainLayout->addWidget(logEdit_);
+    logEdit_->setStyleSheet("QTextEdit { background: #0e1115; color: #aab4c0; border: 1px solid #2a313b; }");
+}
 
-    setCentralWidget(central);
+void MainWindow::setupDockWidgets()
+{
+    // Открываем БД
+    dbProvider_ = std::make_unique<MetadataService>(this);
+    if (!dbProvider_->open()) {
+        log("Ошибка открытия БД parameters.db");
+        // Создаём заглушки для док-виджетов, чтобы приложение не падало
+        QWidget* dummy = new QWidget;
+        dummy->setStyleSheet("background: #14171c;");
+        QLabel* errLabel = new QLabel("БД не загружена");
+        errLabel->setStyleSheet("color: #cf5b52;");
+        QVBoxLayout* l = new QVBoxLayout(dummy);
+        l->addWidget(errLabel);
+        l->setAlignment(Qt::AlignCenter);
 
-    // ---- Сигналы ----
-    connect(startBtn_,  &QPushButton::clicked, this, &MainWindow::onStart);
-    connect(stopBtn_,   &QPushButton::clicked, this, &MainWindow::onStop);
+        configDock_ = new QDockWidget("Конфигурации", this);
+        configDock_->setWidget(dummy);
+        addDockWidget(Qt::LeftDockWidgetArea, configDock_);
+
+        paramDock_ = new QDockWidget("Библиотека параметров", this);
+        paramDock_->setWidget(new QWidget);
+        addDockWidget(Qt::RightDockWidgetArea, paramDock_);
+
+        watchSetDock_ = new QDockWidget("Активный набор", this);
+        watchSetDock_->setWidget(new QWidget);
+        addDockWidget(Qt::RightDockWidgetArea, watchSetDock_);
+
+        // Страницы Конфиг и БД оставляем с заглушками
+        return;
+    }
+
+    // --- Создаём виджеты ---
+    configDockWidget_ = new ConfigManagerWidget(dbProvider_.get(), this);
+    paramDockWidget_ = new ParameterBrowser(dbProvider_.get(), this);
+    watchSetDockWidget_ = new WatchSetWidget(dbProvider_.get(), this);
+
+    // --- Док-виджеты ---
+    configDock_ = new QDockWidget("Конфигурации", this);
+    configDock_->setWidget(configDockWidget_);
+    configDock_->setMinimumWidth(280);
+    addDockWidget(Qt::LeftDockWidgetArea, configDock_);
+
+    paramDock_ = new QDockWidget("Библиотека параметров", this);
+    paramDock_->setWidget(paramDockWidget_);
+    paramDock_->setMinimumWidth(300);
+    addDockWidget(Qt::RightDockWidgetArea, paramDock_);
+
+    watchSetDock_ = new QDockWidget("Активный набор", this);
+    watchSetDock_->setWidget(watchSetDockWidget_);
+    watchSetDock_->setMinimumWidth(300);
+    addDockWidget(Qt::RightDockWidgetArea, watchSetDock_);
+
+    // --- Лог как док-виджет (уже создан, но добавим как док, чтобы его можно было скрыть) ---
+    logDock_ = new QDockWidget("Лог", this);
+    logDock_->setWidget(logEdit_);
+    logDock_->setMaximumHeight(150);
+    addDockWidget(Qt::BottomDockWidgetArea, logDock_);
+
+    // --- Подключаем сигналы ---
+    connect(configDockWidget_, &ConfigManagerWidget::applyConfigRequested,
+            this, &MainWindow::applyConfiguration);
+    connect(configDockWidget_, &ConfigManagerWidget::refreshMetadataRequested,
+            this, &MainWindow::onRefreshMetadata);
+
+    connect(paramDockWidget_, &ParameterBrowser::parametersSelected,
+            [this](const QList<QString>& addresses, const QList<QString>& names) {
+                std::vector<orbita::ChannelSpec> specs;
+                for (int i = 0; i < addresses.size(); ++i) {
+                    std::string norm = encoding::normalizeAddress(addresses[i].toStdString());
+                    if (norm.empty()) continue;
+                    // Категорию возьмём из БД
+                    QString cat = dbProvider_ ? dbProvider_->getCategory(addresses[i]) : QString();
+                    specs.push_back({norm, names[i].toStdString(), cat.toStdString()});
+                }
+                if (watchSetDockWidget_)
+                    watchSetDockWidget_->addParams(specs);
+            });
+
+    connect(watchSetDockWidget_, &WatchSetWidget::watchSetChanged,
+            this, &MainWindow::onWatchSetChanged);
+    connect(watchSetDockWidget_, &WatchSetWidget::configSaved,
+            [this]() { if (configDockWidget_) configDockWidget_->refreshFileList(); });
+
+    // --- Заменяем страницы Конфиг и БД в центральном стеке на реальные виджеты ---
+    // Удаляем временные placeholder'ы
+    QWidget* oldConfig = centralStack_->widget(ModeConfig);
+    QWidget* oldDb = centralStack_->widget(ModeDb);
+    centralStack_->removeWidget(oldConfig);
+    centralStack_->removeWidget(oldDb);
+    delete oldConfig;
+    delete oldDb;
+
+    // Создаём новые страницы с реальными виджетами
+    // Для Конфига используем тот же виджет, что и в доке, но он не может быть одновременно в двух местах.
+    // Поэтому создадим отдельный экземпляр для страницы.
+    configPage_ = new ConfigManagerWidget(dbProvider_.get(), this);
+    centralStack_->insertWidget(ModeConfig, configPage_);
+
+    dbPage_ = new ParameterBrowser(dbProvider_.get(), this);
+    centralStack_->insertWidget(ModeDb, dbPage_);
+
+    // Подключаем сигналы страниц (если нужны)
+    connect(configPage_, &ConfigManagerWidget::applyConfigRequested,
+            this, &MainWindow::applyConfiguration);
+    connect(configPage_, &ConfigManagerWidget::refreshMetadataRequested,
+            this, &MainWindow::onRefreshMetadata);
+
+    connect(dbPage_, &ParameterBrowser::parametersSelected,
+            [this](const QList<QString>& addresses, const QList<QString>& names) {
+                // Аналогично добавлению из док-виджета
+                std::vector<orbita::ChannelSpec> specs;
+                for (int i = 0; i < addresses.size(); ++i) {
+                    std::string norm = encoding::normalizeAddress(addresses[i].toStdString());
+                    if (norm.empty()) continue;
+                    QString cat = dbProvider_ ? dbProvider_->getCategory(addresses[i]) : QString();
+                    specs.push_back({norm, names[i].toStdString(), cat.toStdString()});
+                }
+                if (watchSetDockWidget_)
+                    watchSetDockWidget_->addParams(specs);
+            });
+
+    // Передаём БД в MainPage и DetailView
+    mainPage_->setMetadataService(dbProvider_.get());
+    detailView_->setMetadataService(dbProvider_.get());
+
+    // Устанавливаем начальный набор (пустой)
+    onWatchSetChanged({});
+}
+
+void MainWindow::setupToolBar()
+{
+    QToolBar* toolbar = addToolBar("Управление");
+    toolbar->setMovable(false);
+    toolbar->setStyleSheet("QToolBar { spacing: 4px; }");
+
+    // --- Группа переключения режимов ---
+    QActionGroup* modeGroup = new QActionGroup(this);
+    modeGroup->setExclusive(true);
+
+    actMain_ = toolbar->addAction("Сбор");
+    actDetail_ = toolbar->addAction("Детально");
+    actConfig_ = toolbar->addAction("Конфиг");
+    actDb_ = toolbar->addAction("БД");
+
+    actMain_->setCheckable(true);
+    actDetail_->setCheckable(true);
+    actConfig_->setCheckable(true);
+    actDb_->setCheckable(true);
+    actMain_->setChecked(true);
+
+    modeGroup->addAction(actMain_);
+    modeGroup->addAction(actDetail_);
+    modeGroup->addAction(actConfig_);
+    modeGroup->addAction(actDb_);
+
+    connect(actMain_, &QAction::triggered, [this]() { setMode(ModeMain); });
+    connect(actDetail_, &QAction::triggered, [this]() { setMode(ModeDetail); });
+    connect(actConfig_, &QAction::triggered, [this]() { setMode(ModeConfig); });
+    connect(actDb_, &QAction::triggered, [this]() { setMode(ModeDb); });
+
+    toolbar->addSeparator();
+
+    // --- Кнопки Старт/Стоп ---
+    startBtn_ = new QPushButton("▶ Старт");
+    stopBtn_ = new QPushButton("■ Стоп");
+    startBtn_->setEnabled(false);
+    stopBtn_->setEnabled(false);
+    startBtn_->setFixedWidth(70);
+    stopBtn_->setFixedWidth(70);
+    toolbar->addWidget(startBtn_);
+    toolbar->addWidget(stopBtn_);
+
+    toolbar->addSeparator();
+
+    // --- Запись ---
+    recordBtn_ = new QPushButton("⏺ Запись");
+    recordBtn_->setEnabled(false);
+    recordBtn_->setFixedWidth(80);
+    toolbar->addWidget(recordBtn_);
+
+    recordingLabel_ = new QLabel("—");
+    recordingLabel_->setMinimumWidth(150);
+    recordingLabel_->setStyleSheet("color: #7e8a98; font-size: 11px;");
+    toolbar->addWidget(recordingLabel_);
+
+    toolbar->addSeparator();
+
+    // --- Инверт ---
+    invertCheck_ = new QCheckBox("Инверт.");
+    invertCheck_->setStyleSheet("QCheckBox { color: #aab4c0; }");
+    toolbar->addWidget(invertCheck_);
+
+    toolbar->addSeparator();
+
+    // --- МТВ и статус ---
+    mtvLabel_ = new QLabel("--:--:--");
+    mtvLabel_->setFont(QFont("Courier New", 14, QFont::Bold));
+    mtvLabel_->setStyleSheet("color: #dfe6ee;");
+    toolbar->addWidget(mtvLabel_);
+
+    statusLabel_ = new QLabel("● Сбор остановлен");
+    statusLabel_->setStyleSheet("color: #d99a4a; font-weight: 500;");
+    toolbar->addWidget(statusLabel_);
+
+    toolbar->addSeparator();
+
+    // --- Ошибки ---
+    errPhraseLabel_ = new QLabel("ошибки фраз: 0%");
+    errGroupLabel_ = new QLabel("групп: 0%");
+    errPhraseLabel_->setStyleSheet("color: #8b95a3; font-size: 11px; font-family: 'IBM Plex Mono';");
+    errGroupLabel_->setStyleSheet("color: #8b95a3; font-size: 11px; font-family: 'IBM Plex Mono';");
+    toolbar->addWidget(errPhraseLabel_);
+    toolbar->addWidget(errGroupLabel_);
+
+    // --- Подключаем сигналы кнопок ---
+    connect(startBtn_, &QPushButton::clicked, this, &MainWindow::onStart);
+    connect(stopBtn_, &QPushButton::clicked, this, &MainWindow::onStop);
     connect(recordBtn_, &QPushButton::clicked, this, &MainWindow::onToggleRecording);
     connect(invertCheck_, &QCheckBox::toggled,
             [this](bool v){ orbita_->setInvertSignal(v); });
-    connect(windowSpin_, QOverload<int>::of(&QSpinBox::valueChanged),
-            [this](int v){ plotWidget_->setWindowSeconds(v); });
+
+    // --- Подключаем сигналы DetailView ---
+    connect(detailView_, &DetailView::backToMain, [this]() { setMode(ModeMain); });
+    connect(detailView_, &DetailView::navigateChannel, this, &MainWindow::onNavigateChannel);
+
+    // --- Подключаем сигналы MainPage ---
+    connect(mainPage_, &MainPage::channelSelected, this, &MainWindow::onChannelSelected);
+    connect(mainPage_, &MainPage::channelDoubleClicked, this, &MainWindow::onChannelDoubleClicked);
+
+    // --- Действия для док-виджетов (показывать/скрывать) ---
+    // Добавим переключатели видимости доков в меню View (можно позже)
 }
 
-void MainWindow::log(const QString& msg)
+// ----------------------------------------------------------------------------
+//  Управление режимами
+// ----------------------------------------------------------------------------
+void MainWindow::setMode(int mode)
 {
-    QString ts = QDateTime::currentDateTime().toString("hh:mm:ss");
-    logEdit_->append(QString("[%1] %2").arg(ts, msg));
-    qDebug() << msg;
+    centralStack_->setCurrentIndex(mode);
+
+    // Обновляем состояние кнопок на панели
+    actMain_->setChecked(mode == ModeMain);
+    actDetail_->setChecked(mode == ModeDetail);
+    actConfig_->setChecked(mode == ModeConfig);
+    actDb_->setChecked(mode == ModeDb);
+
+    // Показываем/скрываем док-виджеты в зависимости от режима
+    bool showDocks = (mode == ModeMain);
+    if (configDock_) configDock_->setVisible(showDocks);
+    if (paramDock_) paramDock_->setVisible(showDocks);
+    if (watchSetDock_) watchSetDock_->setVisible(showDocks);
+    if (logDock_) logDock_->setVisible(showDocks); // лог показываем всегда, но для единообразия
+
+    // Если перешли в детальный режим и есть выбранный канал – обновляем DetailView
+    if (mode == ModeDetail && selectedChannelIndex_ >= 0) {
+        const auto& specs = orbita_->getChannels();
+        if (selectedChannelIndex_ < (int)specs.size()) {
+            detailView_->setChannel(specs[selectedChannelIndex_]);
+            // Значение обновится в updateData
+        }
+    }
 }
 
-// ============================================================
-//  Старт / Стоп аппаратного сбора
-// ============================================================
+// ----------------------------------------------------------------------------
+//  Управление сбором
+// ----------------------------------------------------------------------------
 void MainWindow::onStart()
 {
     try {
         orbita_->start();
         elapsedTimer_.restart();
         isRunning_ = true;
-        plotWidget_->clearAll();
         startBtn_->setEnabled(false);
         stopBtn_->setEnabled(true);
         recordBtn_->setEnabled(true);
+        statusLabel_->setText("● Сбор идёт");
+        statusLabel_->setStyleSheet("color: #7fc79a; font-weight: 500;");
         log("Старт сбора данных (E20-10)");
     } catch (const std::exception& e) {
         QMessageBox::critical(this, "Ошибка запуска", e.what());
+        log("Ошибка запуска: " + QString::fromLocal8Bit(e.what()));
     }
 }
 
@@ -209,16 +380,18 @@ void MainWindow::onStop()
 {
     orbita_->stop();
     isRunning_ = false;
-    if (isRecording_) onToggleRecording();  // остановить запись
-    startBtn_->setEnabled(true);
+    if (isRecording_) onToggleRecording(); // остановить запись
+    startBtn_->setEnabled(!currentSpecs_.empty());
     stopBtn_->setEnabled(false);
     recordBtn_->setEnabled(false);
+    statusLabel_->setText("● Сбор остановлен");
+    statusLabel_->setStyleSheet("color: #d99a4a; font-weight: 500;");
     log("Стоп сбора данных");
 }
 
-// ============================================================
+// ----------------------------------------------------------------------------
 //  Запись TLM
-// ============================================================
+// ----------------------------------------------------------------------------
 QString MainWindow::nextRecordingPath() const
 {
     QString dir = QCoreApplication::applicationDirPath() + "/records";
@@ -233,23 +406,23 @@ void MainWindow::onToggleRecording()
         QString path = nextRecordingPath();
         orbita_->startRecording(path.toStdString());
         isRecording_ = true;
-        recordBtn_->setText("⏹ Стоп запись");
+        recordBtn_->setText("⏹ Стоп");
         recordingLabel_->setText("● " + path.section('/', -1));
-        recordingLabel_->setStyleSheet("color: red; font-weight: bold");
+        recordingLabel_->setStyleSheet("color: #cf5b52; font-weight: bold;");
         log("Запись: " + path);
     } else {
         orbita_->stopRecording();
         isRecording_ = false;
         recordBtn_->setText("⏺ Запись");
         recordingLabel_->setText("—");
-        recordingLabel_->setStyleSheet("");
+        recordingLabel_->setStyleSheet("color: #7e8a98;");
         log("Запись остановлена");
     }
 }
 
-// ============================================================
-//  Периодическое обновление графика
-// ============================================================
+// ----------------------------------------------------------------------------
+//  Обновление данных
+// ----------------------------------------------------------------------------
 void MainWindow::updateData()
 {
     if (!isRunning_) return;
@@ -260,24 +433,39 @@ void MainWindow::updateData()
         // МТВ
         uint32_t sec = snap.mtv_seconds;
         mtvLabel_->setText(QString("%1:%2:%3")
-            .arg(sec / 3600,      2, 10, QChar('0'))
-            .arg((sec % 3600)/60, 2, 10, QChar('0'))
-            .arg(sec % 60,        2, 10, QChar('0')));
+                               .arg(sec / 3600, 2, 10, QChar('0'))
+                               .arg((sec % 3600) / 60, 2, 10, QChar('0'))
+                               .arg(sec % 60, 2, 10, QChar('0')));
 
-        // Данные на столбчатой диаграмме (сырые коды в порядке конфигурации)
-        if (!snap.values.empty()) {
-            std::vector<double> values;
-            values.reserve(snap.values.size());
-            for (const auto& v : snap.values)
-                values.push_back(v.value);
-            plotWidget_->setValues(values, currentChannelNames_);
+        // Ошибки
+        errPhraseLabel_->setText(QString("ошибки фраз: %1%").arg(snap.stats.phrase_error_percent));
+        errGroupLabel_->setText(QString("групп: %1%").arg(snap.stats.group_error_percent));
+
+        // Обновляем MainPage
+        if (mainPage_)
+            mainPage_->updateData(snap);
+
+        // Если в режиме детального просмотра – обновляем DetailView
+        if (centralStack_->currentIndex() == ModeDetail && selectedChannelIndex_ >= 0) {
+            const auto& specs = orbita_->getChannels();
+            if (selectedChannelIndex_ < (int)specs.size()) {
+                const auto& spec = specs[selectedChannelIndex_];
+                double val = 0.0;
+                for (const auto& v : snap.values) {
+                    if (v.address == spec.address) {
+                        val = v.value;
+                        break;
+                    }
+                }
+                detailView_->updateValue(val);
+            }
         }
     }
 }
 
-// ============================================================
-//  Применение конфигурации из ConfigManagerWidget
-// ============================================================
+// ----------------------------------------------------------------------------
+//  Конфигурация и метаданные
+// ----------------------------------------------------------------------------
 void MainWindow::applyConfiguration(const QString& fileName)
 {
     if (fileName.isEmpty()) return;
@@ -292,27 +480,38 @@ void MainWindow::applyConfiguration(const QString& fileName)
     std::istringstream iss(content);
     std::string line;
     while (std::getline(iss, line)) {
-        // Пустые строки — визуальные разделители параметров в файле, пропускаем.
-        // normalizeAddress сам обрежет комментарий после адреса и приведёт регистр.
         std::string normAddr = encoding::normalizeAddress(line);
         if (normAddr.empty()) continue;
         QString qnorm = QString::fromStdString(normAddr);
-        QString name  = dbProvider_ ? dbProvider_->getName(qnorm)     : QString();
-        QString cat   = dbProvider_ ? dbProvider_->getCategory(qnorm) : QString();
-        specs.push_back(orbita::ChannelSpec{normAddr, name.toStdString(), cat.toStdString()});
+        QString name = dbProvider_ ? dbProvider_->getName(qnorm) : QString();
+        QString cat = dbProvider_ ? dbProvider_->getCategory(qnorm) : QString();
+        specs.push_back({normAddr, name.toStdString(), cat.toStdString()});
     }
 
-    if (specs.empty()) { log("Конфигурация пуста"); return; }
+    if (specs.empty()) {
+        log("Конфигурация пуста");
+        return;
+    }
 
-    // Конфиг заменяет активный набор; WatchSet эмитит изменение -> onWatchSetChanged.
-    if (watchSetWidget_) watchSetWidget_->setFromSpecs(specs);
+    if (watchSetDockWidget_)
+        watchSetDockWidget_->setFromSpecs(specs);
     log(QString("Конфигурация загружена: %1 (%2 каналов)")
             .arg(fileName).arg(specs.size()));
 }
 
-// ============================================================
-//  Активный набор изменился -> горячая замена в ядре
-// ============================================================
+void MainWindow::onRefreshMetadata()
+{
+    if (dbProvider_) dbProvider_->refresh();
+    if (configDockWidget_) configDockWidget_->updateMetadata();
+    if (configPage_) configPage_->updateMetadata();
+    if (paramDockWidget_) paramDockWidget_->rebuildTree();
+    if (dbPage_) dbPage_->rebuildTree();
+    log("Метаданные обновлены");
+}
+
+// ----------------------------------------------------------------------------
+//  Активный набор
+// ----------------------------------------------------------------------------
 void MainWindow::onWatchSetChanged(const std::vector<orbita::ChannelSpec>& specs)
 {
     try {
@@ -321,28 +520,76 @@ void MainWindow::onWatchSetChanged(const std::vector<orbita::ChannelSpec>& specs
         log("Ошибка набора: " + QString::fromLocal8Bit(e.what()));
         return;
     }
-    updatePlotLabels();
-    plotWidget_->clearAll();
-    // Горячая замена: если сбор идёт — кнопки не трогаем. Иначе старт по наличию каналов.
-    if (!isRunning_) {
-        startBtn_->setEnabled(!specs.empty());
-        stopBtn_->setEnabled(false);
+
+    currentSpecs_ = specs;
+    if (mainPage_)
+        mainPage_->setChannels(specs);
+
+    startBtn_->setEnabled(!specs.empty() && !isRunning_);
+    stopBtn_->setEnabled(isRunning_);
+    recordBtn_->setEnabled(isRunning_);
+
+    // Если выбранный индекс выходит за пределы, сбрасываем
+    if (selectedChannelIndex_ >= (int)specs.size())
+        selectedChannelIndex_ = -1;
+    if (selectedChannelIndex_ >= 0 && !specs.empty())
+        onChannelSelected(selectedChannelIndex_);
+}
+
+// ----------------------------------------------------------------------------
+//  Выбор канала
+// ----------------------------------------------------------------------------
+void MainWindow::onChannelSelected(int index)
+{
+    selectedChannelIndex_ = index;
+    if (mainPage_)
+        mainPage_->setSelectedChannel(index);
+
+    if (centralStack_->currentIndex() == ModeDetail) {
+        const auto& specs = orbita_->getChannels();
+        if (index >= 0 && index < (int)specs.size()) {
+            detailView_->setChannel(specs[index]);
+            // Значение будет обновлено в updateData
+        }
     }
 }
 
-void MainWindow::updatePlotLabels()
+void MainWindow::onChannelDoubleClicked(int index)
 {
-    // Имена в том же порядке, что и snap.values (порядок конфигурации).
-    std::vector<orbita::ChannelSpec> chans = orbita_->getChannels();
-    currentChannelNames_.clear();
-    currentChannelNames_.reserve(chans.size());
-    for (const auto& c : chans)
-        currentChannelNames_.push_back(c.name.empty() ? c.address : c.name);
+    setMode(ModeDetail);
+    onChannelSelected(index);
 }
 
-void MainWindow::onRefreshMetadata()
+void MainWindow::onNavigateChannel(int delta)
 {
-    if (dbProvider_) dbProvider_->refresh();
-    if (configWidget_) configWidget_->updateMetadata();
-    if (paramBrowser)  paramBrowser->rebuildTree();
+    int newIdx = selectedChannelIndex_ + delta;
+    const auto& specs = orbita_->getChannels();
+    if (newIdx >= 0 && newIdx < (int)specs.size()) {
+        onChannelSelected(newIdx);
+    }
+}
+
+// ----------------------------------------------------------------------------
+//  Вспомогательные методы
+// ----------------------------------------------------------------------------
+void MainWindow::log(const QString& msg)
+{
+    QString ts = QDateTime::currentDateTime().toString("hh:mm:ss");
+    if (logEdit_) {
+        logEdit_->append(QString("[%1] %2").arg(ts, msg));
+        logEdit_->moveCursor(QTextCursor::End);
+    }
+    qDebug() << msg;
+}
+
+// ----------------------------------------------------------------------------
+//  Извлечение номера канала из адреса (пример: "M16P1A70B12C10D10T01" -> ?)
+//  В прототипе номер канала – это порядковый индекс в конфигурации, а не из адреса.
+//  Поэтому мы используем индекс, переданный из виджетов.
+//  Оставим этот метод как заглушку, если понадобится.
+// ----------------------------------------------------------------------------
+int MainWindow::extractChannelNumber(const std::string& address)
+{
+    // Пока не используется, но можно реализовать парсинг, если нужно
+    return -1;
 }

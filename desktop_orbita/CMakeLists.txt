@@ -24,6 +24,16 @@ add_executable(OrbitaDesktop
     parameter_browser.h
     encoding_utils.cpp
     encoding_utils.h
+    bar_chart_widget.h bar_chart_widget.cpp
+    table_widget.h table_widget.cpp
+    anomaly_widget.h anomaly_widget.cpp
+    category_card_widget.h category_card_widget.cpp
+    category_grid_widget.h category_grid_widget.cpp
+    detail_view.h detail_view.cpp
+    main_page.h main_page.cpp
+    resources/resources.qrc
+    channel_list_widget.h channel_list_widget.cpp
+    readout_widget.h readout_widget.cpp
 )
 
 target_include_directories(OrbitaDesktop PRIVATE
