@@ -1,4 +1,5 @@
 #include "readout_widget.h"
+#include "tolerance_resolver.h"
 #include "channel_status.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -58,6 +59,11 @@ void ReadoutWidget::setMetadataService(MetadataService* db)
     m_db = db;
 }
 
+void ReadoutWidget::setToleranceResolver(ToleranceResolver* r)
+{
+    m_resolver = r;
+}
+
 void ReadoutWidget::setChannel(const orbita::ChannelSpec& spec)
 {
     m_spec = spec;
@@ -88,7 +94,7 @@ void ReadoutWidget::updateUI()
     m_valueLabel->setText(QString::number(m_currentValue, 'f', 0));
     m_toleranceBar->setValue((int)m_currentValue);
 
-    chstatus::Tolerance tol = chstatus::forAddress(m_db, m_spec.address);
+    chstatus::Tolerance tol = (m_resolver ? m_resolver->resolve(QString::fromStdString(m_spec.address)) : chstatus::forAddress(m_db, m_spec.address));
     chstatus::Level lvl = chstatus::evaluate(m_currentValue, tol);
 
     if (tol.set)

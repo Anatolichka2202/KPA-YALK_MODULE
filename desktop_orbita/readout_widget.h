@@ -6,6 +6,8 @@
 #include "orbita.h"
 #include "metadata_service.h"
 
+class ToleranceResolver;
+
 class ReadoutWidget : public QWidget
 {
     Q_OBJECT
@@ -13,6 +15,7 @@ public:
     explicit ReadoutWidget(QWidget *parent = nullptr);
 
     void setMetadataService(MetadataService* db);
+    void setToleranceResolver(ToleranceResolver* r);
     void setChannel(const orbita::ChannelSpec& spec);
     void updateValue(double value);
 
@@ -20,6 +23,7 @@ private:
     void updateUI();
 
     MetadataService* m_db = nullptr;
+    ToleranceResolver* m_resolver = nullptr;
     orbita::ChannelSpec m_spec;
     double m_currentValue = 0.0;
 

@@ -1,4 +1,5 @@
 #include "main_page.h"
+#include "tolerance_resolver.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QSplitter>
@@ -132,6 +133,17 @@ void MainPage::setMetadataService(MetadataService* db)
     m_barChartB->setMetadataService(db);
     m_table->setMetadataService(db);
     m_categoryGrid->setMetadataService(db);
+}
+
+void MainPage::setToleranceResolver(ToleranceResolver* r)
+{
+    m_resolver = r;
+    m_readout->setToleranceResolver(r);
+    m_anomaly->setToleranceResolver(r);
+    m_barChartA->setToleranceResolver(r);
+    m_barChartB->setToleranceResolver(r);
+    m_table->setToleranceResolver(r);
+    m_categoryGrid->setToleranceResolver(r);
 }
 
 void MainPage::setChannels(const std::vector<orbita::ChannelSpec>& specs)

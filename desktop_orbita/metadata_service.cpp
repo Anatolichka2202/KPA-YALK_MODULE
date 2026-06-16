@@ -71,7 +71,7 @@ void MetadataService::loadMetadata() {
     // Сначала live (is_zu=0), потом ЗУ — чтобы при совпадении ключа выигрывал live.
     q.prepare(
         "SELECT p.name, p.category, p.signal_type, "
-        "       a.stream, a.a, a.b, a.c, a.d, a.e, a.x, a.t, a.p, a.informativnost, a.is_zu "
+        "       a.stream, a.a, a.b, a.c, a.d, a.e, a.x, a.t, a.p, a.informativnost, a.is_zu, p.min_nominal, p.max_nominal "
         "FROM parameters p JOIN addresses a ON a.param_id = p.id "
         "ORDER BY a.is_zu ASC");
     if (!q.exec()) {
@@ -92,6 +92,13 @@ void MetadataService::loadMetadata() {
             q.value(9).toString(), q.value(10).toString(), q.value(11).toString());
         info.informativnost = q.value(12).isNull() ? -1 : q.value(12).toInt();
         info.isZu = q.value(13).toInt() != 0;
+        QVariant vlo = q.value(14), vhi = q.value(15);
+        if (!vlo.isNull() && !vhi.isNull()) {
+            info.lo = vlo.toDouble();
+            info.hi = vhi.toDouble();
+            info.nominal = (info.lo + info.hi) / 2.0;
+            info.hasTolerance = true;
+        }
 
         if (info.componentKey.isEmpty()) continue;
         if (byKey_.contains(info.componentKey)) continue; // первый (live) выигрывает

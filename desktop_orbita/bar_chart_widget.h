@@ -7,12 +7,15 @@
 #include "orbita.h"
 #include "metadata_service.h"
 
+class ToleranceResolver;
+
 class BarChartWidget : public QWidget
 {
     Q_OBJECT
 public:
     explicit BarChartWidget(QWidget *parent = nullptr);
     void setMetadataService(MetadataService* db);
+    void setToleranceResolver(ToleranceResolver* r);
     void setChannels(const std::vector<orbita::ChannelSpec>& specs);
     void updateValues(const QMap<QString, double>& values);
     void setSelectedBar(int index);
@@ -39,6 +42,7 @@ private:
     std::vector<orbita::ChannelSpec> m_specs;
     QMap<QString, double> m_values;
     MetadataService* m_db = nullptr;
+    ToleranceResolver* m_resolver = nullptr;
     int m_selectedIndex = -1;
     int m_hoveredIndex = -1;
     bool m_mouseTracking = false;

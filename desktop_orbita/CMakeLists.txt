@@ -19,6 +19,8 @@ add_executable(OrbitaDesktop
     config_manager_widget.h
     metadata_service.cpp
     metadata_service.h
+    tolerance_resolver.h
+    tolerance_resolver.cpp
     watch_set_widget.cpp
     watch_set_widget.h
     parameter_browser.cpp

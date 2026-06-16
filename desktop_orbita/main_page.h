@@ -11,6 +11,8 @@
 #include "table_widget.h"
 #include "category_grid_widget.h"
 
+class ToleranceResolver;
+
 class MainPage : public QWidget
 {
     Q_OBJECT
@@ -19,6 +21,7 @@ public:
 
     void setOrbita(orbita::Orbita* orbita); // не обязательно, можно передавать данные через методы
     void setMetadataService(MetadataService* db);
+    void setToleranceResolver(ToleranceResolver* r);
     void setChannels(const std::vector<orbita::ChannelSpec>& specs);
     void updateData(const orbita::Snapshot& snap);
     void setSelectedChannel(int index);
@@ -55,6 +58,7 @@ private:
     CategoryGridWidget* m_categoryGrid;
 
     MetadataService* m_db = nullptr;
+    ToleranceResolver* m_resolver = nullptr;
     std::vector<orbita::ChannelSpec> m_specs;
     int m_selectedIndex = -1;
 

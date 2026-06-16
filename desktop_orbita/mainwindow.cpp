@@ -4,6 +4,7 @@
 #include <QHBoxLayout>
 #include <QFileDialog>
 #include <QMessageBox>
+#include <QApplication>
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
@@ -248,6 +249,12 @@ void MainWindow::setupDockWidgets()
     // Передаём БД в MainPage и DetailView
     mainPage_->setMetadataService(dbProvider_.get());
     detailView_->setMetadataService(dbProvider_.get());
+
+    // Инициализируем ToleranceResolver и передаём в MainPage и DetailView
+    toleranceResolver_.setDb(dbProvider_.get());
+    toleranceResolver_.loadConfigFile(QApplication::applicationDirPath() + "/address/tolerances.tol");
+    mainPage_->setToleranceResolver(&toleranceResolver_);
+    detailView_->setToleranceResolver(&toleranceResolver_);
 
     // Доки скрыты по умолчанию — экран Сбор чистый. Вызвать можно через меню «Вид».
     configDock_->hide();

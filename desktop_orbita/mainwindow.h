@@ -16,6 +16,7 @@
 
 #include "orbita.h"
 #include "metadata_service.h"
+#include "tolerance_resolver.h"
 #include "scenario_wizard.h"
 #include "main_page.h"
 #include "detail_view.h"
@@ -70,6 +71,7 @@ private:
     // Ядро и БД
     std::unique_ptr<orbita::Orbita> orbita_;
     std::unique_ptr<MetadataService> dbProvider_;
+    ToleranceResolver toleranceResolver_;
 
     // Таймер
     QTimer* updateTimer_;

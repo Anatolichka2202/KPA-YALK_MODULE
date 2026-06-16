@@ -11,6 +11,8 @@
 #include "metadata_service.h"
 #include "channel_status.h"
 
+class ToleranceResolver;
+
 class DetailView : public QWidget
 {
     Q_OBJECT
@@ -19,6 +21,7 @@ public:
     ~DetailView();
 
     void setMetadataService(MetadataService* db);
+    void setToleranceResolver(ToleranceResolver* r);
     void setChannel(const orbita::ChannelSpec& spec);
     void updateValue(double value);
     void setHistorySize(int size = 60);
@@ -42,6 +45,7 @@ private:
 
     orbita::ChannelSpec m_spec;
     MetadataService* m_db = nullptr;
+    ToleranceResolver* m_resolver = nullptr;
     std::deque<double> m_history;
     int m_historySize = 60;
     double m_currentValue = 0.0;

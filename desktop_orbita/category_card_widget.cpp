@@ -1,4 +1,5 @@
 #include "category_card_widget.h"
+#include "tolerance_resolver.h"
 #include "channel_status.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -58,6 +59,12 @@ void CategoryCardWidget::setMetadataService(MetadataService* db)
     m_barChart->setMetadataService(db);
 }
 
+void CategoryCardWidget::setToleranceResolver(ToleranceResolver* r)
+{
+    m_resolver = r;
+    m_barChart->setToleranceResolver(r);
+}
+
 void CategoryCardWidget::updateValues(const QMap<QString, double>& values)
 {
     m_values = values;
@@ -79,7 +86,7 @@ void CategoryCardWidget::updateValues(const QMap<QString, double>& values)
     for (int idx : m_indices) {
         const auto& spec = m_specs[idx];
         double v = values.value(QString::fromStdString(spec.address), 0.0);
-        chstatus::Tolerance tol = chstatus::forAddress(m_db, spec.address);
+        chstatus::Tolerance tol = (m_resolver ? m_resolver->resolve(QString::fromStdString(spec.address)) : chstatus::forAddress(m_db, spec.address));
         if (chstatus::isAnomaly(chstatus::evaluate(v, tol))) anom++;
     }
     m_anomalyLabel->setText(anom ? QString("%1 вне нормы").arg(anom) : "все в норме");

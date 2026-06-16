@@ -1,4 +1,5 @@
 #include "detail_view.h"
+#include "tolerance_resolver.h"
 #include "plot_theme.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -151,6 +152,11 @@ void DetailView::setMetadataService(MetadataService* db)
     m_db = db;
 }
 
+void DetailView::setToleranceResolver(ToleranceResolver* r)
+{
+    m_resolver = r;
+}
+
 void DetailView::setChannel(const orbita::ChannelSpec& spec)
 {
     m_spec = spec;
@@ -161,7 +167,7 @@ void DetailView::setChannel(const orbita::ChannelSpec& spec)
         ));
     m_nameLabel->setText(QString::fromStdString(spec.name.empty() ? spec.address : spec.name));
 
-    m_tol = chstatus::forAddress(m_db, spec.address);
+    m_tol = (m_resolver ? m_resolver->resolve(QString::fromStdString(spec.address)) : chstatus::forAddress(m_db, spec.address));
     if (m_db) {
         auto info = m_db->lookup(QString::fromStdString(spec.address));
         m_catLabel->setText(info ? info->category : QString());

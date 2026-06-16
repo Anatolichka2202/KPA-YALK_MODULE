@@ -1,4 +1,5 @@
 #include "bar_chart_widget.h"
+#include "tolerance_resolver.h"
 #include "plot_theme.h"
 #include <QVBoxLayout>
 #include <QMouseEvent>
@@ -40,6 +41,11 @@ void BarChartWidget::setupPlot()
 void BarChartWidget::setMetadataService(MetadataService* db)
 {
     m_db = db;
+}
+
+void BarChartWidget::setToleranceResolver(ToleranceResolver* r)
+{
+    m_resolver = r;
 }
 
 void BarChartWidget::setChannels(const std::vector<orbita::ChannelSpec>& specs)
