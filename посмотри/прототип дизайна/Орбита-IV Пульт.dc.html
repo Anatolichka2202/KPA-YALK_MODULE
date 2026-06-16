@@ -1,0 +1,918 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:#101317;}
+  body{font-family:'IBM Plex Sans',sans-serif;-webkit-font-smoothing:antialiased;}
+  @keyframes orbPulse{0%,100%{opacity:1;}50%{opacity:.3;}}
+  @keyframes orbRec{0%,100%{opacity:1;}50%{opacity:.25;}}
+  ::-webkit-scrollbar{width:10px;height:10px;}
+  ::-webkit-scrollbar-thumb{background:#2c333d;border-radius:6px;border:2px solid #14171c;}
+  ::-webkit-scrollbar-track{background:transparent;}
+</style>
+</helmet>
+
+<div style="display:flex; flex-direction:column; height:100vh; min-height:0; background:#14171c; color:#e6eaf0; font-family:'IBM Plex Sans',sans-serif; overflow:hidden;">
+
+  <!-- ===== HEADER ===== -->
+  <header style="display:flex; align-items:center; gap:16px; padding:0 16px; height:52px; background:#0e1115; border-bottom:1px solid #2a313b; flex:0 0 auto;">
+    <div style="display:flex; align-items:center; gap:9px;">
+      <div style="width:22px; height:22px; border:1.5px solid #5e93b8; border-radius:5px; display:flex; align-items:center; justify-content:center; color:#6fa6cc; font-size:12px;">◳</div>
+      <span style="font-weight:600; font-size:15px; letter-spacing:.3px;">Орбита-IV</span>
+      <span style="font-size:11px; color:#5b6573; font-family:'IBM Plex Mono',monospace; padding-top:1px;">ЯТП · 48 кан</span>
+    </div>
+
+    <div style="display:flex; align-items:center; gap:7px; padding:4px 10px; background:{{ statusBg }}; border:1px solid {{ statusBorder }}; border-radius:6px;">
+      <span style="width:8px; height:8px; border-radius:50%; background:{{ statusDot }}; animation:{{ statusAnim }}; display:inline-block;"></span>
+      <span style="font-size:12.5px; color:{{ statusFg }}; font-weight:500;">{{ statusText }}</span>
+    </div>
+
+    <div style="flex:1;"></div>
+
+    <div style="display:flex; align-items:baseline; gap:9px;">
+      <span style="font-size:11px; letter-spacing:1.5px; color:#66707c; text-transform:uppercase;">МТВ</span>
+      <span style="font-family:'IBM Plex Mono',monospace; font-size:22px; font-weight:600; letter-spacing:1px; color:#dfe6ee;">{{ mtv }}</span>
+    </div>
+
+    <div style="flex:1;"></div>
+
+    <div style="display:flex; align-items:center; gap:13px; font-size:12px; color:#8b95a3; font-family:'IBM Plex Mono',monospace;">
+      <span>ошибки фраз <span style="color:#c9d2dd;">{{ errPhr }}</span></span>
+      <span style="color:#3a424d;">·</span>
+      <span>групп <span style="color:#c9d2dd;">{{ errGrp }}</span></span>
+    </div>
+  </header>
+
+  <!-- ===== TOOLBAR ===== -->
+  <div style="display:flex; align-items:center; gap:14px; padding:0 14px; height:46px; background:#171b21; border-bottom:1px solid #232a33; flex:0 0 auto;">
+    <div style="display:flex; background:#0d1014; border:1px solid #262d37; border-radius:7px; padding:3px; gap:2px;">
+      <sc-for list="{{ nav }}" as="tab" hint-placeholder-count="4">
+        <button onClick="{{ tab.onClick }}" style="display:flex; align-items:center; gap:7px; border:none; cursor:pointer; padding:6px 13px; border-radius:5px; font-family:'IBM Plex Sans',sans-serif; font-size:13px; font-weight:500; background:{{ tab.bg }}; color:{{ tab.fg }};">
+          <span style="font-size:13px; opacity:.85;">{{ tab.icon }}</span>{{ tab.label }}
+        </button>
+      </sc-for>
+    </div>
+
+    <div style="flex:1;"></div>
+
+    <div style="display:flex; align-items:center; gap:8px;">
+      <button onClick="{{ toggleRun }}" style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:7px 14px; border-radius:6px; font-size:13px; font-weight:500; font-family:'IBM Plex Sans',sans-serif; background:{{ runBg }}; border:1px solid {{ runBorder }}; color:{{ runFg }};">{{ runIcon }} {{ runLabel }}</button>
+      <button onClick="{{ toggleRecord }}" style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:7px 14px; border-radius:6px; font-size:13px; font-weight:500; font-family:'IBM Plex Sans',sans-serif; background:{{ recBg }}; border:1px solid {{ recBorder }}; color:{{ recFg }};"><span style="width:8px; height:8px; border-radius:50%; background:{{ recDot }}; animation:{{ recAnim }}; display:inline-block;"></span>{{ recLabel }}</button>
+      <button style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:7px 14px; border-radius:6px; font-size:13px; font-weight:500; font-family:'IBM Plex Sans',sans-serif; background:#1f242c; border:1px solid #2c333d; color:#c2ccd8;">▤ Открыть .bin</button>
+
+      <sc-if value="{{ onMain }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <span style="width:1px; height:22px; background:#2a313b; margin:0 4px;"></span>
+          <span style="font-size:11.5px; color:#66707c; text-transform:uppercase; letter-spacing:.5px;">компоновка</span>
+          <div style="display:flex; background:#0d1014; border:1px solid #262d37; border-radius:6px; padding:2px; gap:2px;">
+            <sc-for list="{{ layouts }}" as="lo" hint-placeholder-count="3">
+              <button onClick="{{ lo.onClick }}" style="cursor:pointer; border:none; width:30px; height:24px; border-radius:4px; font-size:12px; font-weight:600; font-family:'IBM Plex Mono',monospace; background:{{ lo.bg }}; color:{{ lo.fg }};">{{ lo.label }}</button>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+    </div>
+  </div>
+
+  <!-- ===== SCREEN AREA ===== -->
+  <div style="flex:1 1 auto; min-height:0; position:relative;">
+    <!-- ============ MAIN ============ -->
+    <sc-if value="{{ isMain }}" hint-placeholder-val="{{ true }}">
+      <div style="position:absolute; inset:0; display:flex; flex-direction:column;">
+
+        <!-- LAYOUT A: список · диаграмма · допуски -->
+        <sc-if value="{{ isA }}" hint-placeholder-val="{{ true }}">
+          <div style="position:absolute; inset:0; display:flex; min-height:0;">
+
+            <!-- LEFT DOCK: список каналов -->
+            <aside style="width:236px; flex:0 0 auto; background:#12151a; border-right:1px solid #232a33; display:flex; flex-direction:column; min-height:0;">
+              <div style="padding:11px 14px 9px; border-bottom:1px solid #232a33; flex:0 0 auto;">
+                <div style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:#66707c;">Каналы ЯТП</div>
+              </div>
+              <div style="flex:1 1 auto; overflow-y:auto; min-height:0; padding:6px 0;">
+                <sc-for list="{{ groups }}" as="g" hint-placeholder-count="4">
+                  <div style="padding:9px 14px 4px; display:flex; align-items:baseline; gap:7px;">
+                    <span style="font-size:11px; font-weight:600; letter-spacing:.6px; text-transform:uppercase; color:#7e8a98;">{{ g.name }}</span>
+                    <span style="font-size:10.5px; font-family:'IBM Plex Mono',monospace; color:#4e5763;">{{ g.unit }}</span>
+                  </div>
+                  <sc-for list="{{ g.bars }}" as="b" hint-placeholder-count="6">
+                    <div onClick="{{ b.onClick }}" onDoubleClick="{{ b.onDbl }}" onMouseEnter="{{ b.onEnter }}" style="display:flex; align-items:center; gap:9px; padding:5px 14px; cursor:pointer; border-left:2px solid {{ b.border }};">
+                      <span style="width:24px; font-family:'IBM Plex Mono',monospace; font-size:11px; color:#5b6573; text-align:right;">{{ b.num }}</span>
+                      <span style="flex:1; font-size:12.5px; color:#c2ccd8; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ b.name }}</span>
+                      <span style="font-family:'IBM Plex Mono',monospace; font-size:12px; font-weight:500; color:{{ b.color }};">{{ b.code }}</span>
+                    </div>
+                  </sc-for>
+                </sc-for>
+              </div>
+            </aside>
+
+            <!-- CENTER: readout + chart -->
+            <section style="flex:1 1 auto; min-width:0; display:flex; flex-direction:column; min-height:0;">
+
+              <!-- READOUT STRIP -->
+              <div style="flex:0 0 auto; display:flex; align-items:stretch; gap:14px; padding:14px 16px; background:#12161b; border-bottom:1px solid #232a33;">
+                <div style="display:flex; flex-direction:column; justify-content:center; min-width:0;">
+                  <div style="display:flex; align-items:baseline; gap:9px;">
+                    <span style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#5b6573;">КАН {{ selNum }}</span>
+                    <span style="font-size:15px; font-weight:600; color:#e6eaf0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ selName }}</span>
+                  </div>
+                  <div style="font-size:12px; color:#7e8a98; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ selCat }} · код АЦП · ед. {{ selUnit }}</div>
+                </div>
+
+                <div style="flex:1;"></div>
+
+                <div style="display:flex; flex-direction:column; align-items:flex-end; justify-content:center;">
+                  <div style="font-size:10.5px; letter-spacing:1.5px; text-transform:uppercase; color:#5b6573;">текущий отсчёт</div>
+                  <div style="font-family:'IBM Plex Mono',monospace; font-size:40px; font-weight:600; line-height:1; letter-spacing:1px; color:{{ selBarColor }};">{{ selCode }}</div>
+                </div>
+
+                <div style="width:1px; background:#262d37;"></div>
+
+                <div style="display:flex; flex-direction:column; justify-content:center; gap:7px; min-width:148px;">
+                  <div style="display:inline-flex; align-self:flex-start; align-items:center; gap:7px; padding:4px 10px; border-radius:6px; background:{{ selStBg }}; border:1px solid {{ selStBorder }};">
+                    <span style="width:8px; height:8px; border-radius:50%; background:{{ selStDot }};"></span>
+                    <span style="font-size:12.5px; font-weight:500; color:{{ selStColor }};">{{ selStText }}</span>
+                  </div>
+                  <div style="font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:#7e8a98;">допуск {{ selLo }} – {{ selNominal }} – {{ selHi }}</div>
+                  <div style="position:relative; height:6px; border-radius:3px; background:#1c222a; overflow:hidden;">
+                    <div style="position:absolute; top:0; bottom:0; left:0; width:{{ selBandPct }}; background:{{ selBarColor }}; opacity:.85;"></div>
+                  </div>
+                </div>
+
+                <button onClick="{{ openSelDetail }}" style="flex:0 0 auto; align-self:center; cursor:pointer; padding:8px 13px; border-radius:6px; font-size:12.5px; font-weight:500; white-space:nowrap; font-family:'IBM Plex Sans',sans-serif; background:#1f2630; border:1px solid #2f3a47; color:#cfe0ee;">◉ Детально</button>
+              </div>
+
+              <!-- CHART -->
+              <div onMouseLeave="{{ clearHover }}" style="flex:1 1 auto; min-height:0; display:flex; padding:16px 20px 12px; gap:10px; background:#14181d;">
+                <!-- ось Y -->
+                <div style="flex:0 0 auto; display:flex; flex-direction:column; justify-content:space-between; align-items:flex-end; padding-bottom:26px; font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:#4e5763;">
+                  <span>1023</span><span>768</span><span>512</span><span>256</span><span>0</span>
+                </div>
+                <!-- поле диаграммы -->
+                <div style="flex:1 1 auto; min-width:0; display:flex; align-items:stretch; gap:14px;">
+                  <sc-for list="{{ groups }}" as="g" hint-placeholder-count="6">
+                    <div style="flex:{{ g.count }} {{ g.count }} 0; display:flex; flex-direction:column; min-width:0;">
+                      <div style="flex:1 1 auto; min-height:0; display:flex; align-items:flex-end; gap:3px; padding-bottom:6px; background-image:repeating-linear-gradient(to top,transparent,transparent 24.9%,#1e242c 25%,#1e242c calc(25% + 1px)); border-bottom:1px solid #2a313b;">
+                        <sc-for list="{{ g.bars }}" as="b" hint-placeholder-count="8">
+                          <div onMouseEnter="{{ b.onEnter }}" onClick="{{ b.onClick }}" onDoubleClick="{{ b.onDbl }}" title="кан {{ b.num }} · {{ b.name }}" style="flex:1 1 0; min-width:0; height:{{ b.h }}; background:{{ b.color }}; opacity:{{ b.dimOpacity }}; border:{{ b.border }}; border-bottom:none; border-radius:2px 2px 0 0; cursor:pointer;"></div>
+                        </sc-for>
+                      </div>
+                      <div style="flex:0 0 auto; text-align:center; font-size:10.5px; font-weight:500; letter-spacing:.3px; color:#6c7682; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; padding-top:5px;">{{ g.name }}</div>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </section>
+
+            <!-- RIGHT DOCK: контроль допусков -->
+            <aside style="width:230px; flex:0 0 auto; background:#12151a; border-left:1px solid #232a33; display:flex; flex-direction:column; min-height:0;">
+              <div style="padding:11px 14px 9px; border-bottom:1px solid #232a33; flex:0 0 auto; display:flex; align-items:center; justify-content:space-between;">
+                <span style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:#66707c;">Контроль допусков</span>
+                <span style="font-family:'IBM Plex Mono',monospace; font-size:12px; font-weight:600; color:{{ anomColorHdr }};">{{ anomCount }}</span>
+              </div>
+              <div style="display:flex; gap:8px; padding:11px 14px; border-bottom:1px solid #232a33; flex:0 0 auto;">
+                <div style="flex:1; background:#13251a; border:1px solid #244a33; border-radius:7px; padding:8px 10px;">
+                  <div style="font-family:'IBM Plex Mono',monospace; font-size:20px; font-weight:600; color:#7fc79a;">{{ normCount }}</div>
+                  <div style="font-size:10.5px; color:#5e7e6a; margin-top:1px;">в норме</div>
+                </div>
+                <div style="flex:1; background:#2a1f17; border:1px solid #4a3a24; border-radius:7px; padding:8px 10px;">
+                  <div style="font-family:'IBM Plex Mono',monospace; font-size:20px; font-weight:600; color:#e6b878;">{{ anomCount }}</div>
+                  <div style="font-size:10.5px; color:#8a755a; margin-top:1px;">вне нормы</div>
+                </div>
+              </div>
+              <div style="flex:1 1 auto; overflow-y:auto; min-height:0; padding:8px 12px; display:flex; flex-direction:column; gap:7px;">
+                <sc-for list="{{ anomalies }}" as="a" hint-placeholder-count="3">
+                  <div onClick="{{ a.onClick }}" style="cursor:pointer; padding:9px 11px; border-radius:7px; background:{{ a.bg }}; border:1px solid {{ a.border }};">
+                    <div style="display:flex; align-items:center; gap:7px;">
+                      <span style="width:7px; height:7px; border-radius:50%; background:{{ a.dot }};"></span>
+                      <span style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#7e8a98;">КАН {{ a.num }}</span>
+                      <span style="flex:1;"></span>
+                      <span style="font-family:'IBM Plex Mono',monospace; font-size:13px; font-weight:600; color:{{ a.color }};">{{ a.code }}</span>
+                    </div>
+                    <div style="font-size:12px; color:#c2ccd8; margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ a.name }}</div>
+                    <div style="font-size:11px; color:{{ a.color }}; margin-top:1px;">{{ a.stText }}</div>
+                  </div>
+                </sc-for>
+                <sc-if value="{{ allNorm }}" hint-placeholder-val="{{ false }}">
+                  <div style="padding:16px 12px; text-align:center; color:#5e7e6a; font-size:12px;">{{ allNormText }}</div>
+                </sc-if>
+              </div>
+            </aside>
+          </div>
+        </sc-if>
+
+        <!-- LAYOUT B: диаграмма во всю ширину + таблица -->
+        <sc-if value="{{ isB }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute; inset:0; display:flex; flex-direction:column; min-height:0;">
+            <!-- широкая диаграмма -->
+            <div onMouseLeave="{{ clearHover }}" style="flex:0 0 46%; min-height:0; display:flex; padding:14px 20px 8px; gap:10px; background:#14181d; border-bottom:1px solid #232a33;">
+              <div style="flex:0 0 auto; display:flex; flex-direction:column; justify-content:space-between; align-items:flex-end; padding-bottom:24px; font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:#4e5763;">
+                <span>1023</span><span>768</span><span>512</span><span>256</span><span>0</span>
+              </div>
+              <div style="flex:1 1 auto; min-width:0; display:flex; align-items:stretch; gap:14px;">
+                <sc-for list="{{ groups }}" as="g" hint-placeholder-count="6">
+                  <div style="flex:{{ g.count }} {{ g.count }} 0; display:flex; flex-direction:column; min-width:0;">
+                    <div style="flex:1 1 auto; min-height:0; display:flex; align-items:flex-end; gap:3px; padding-bottom:6px; background-image:repeating-linear-gradient(to top,transparent,transparent 24.9%,#1e242c 25%,#1e242c calc(25% + 1px)); border-bottom:1px solid #2a313b;">
+                      <sc-for list="{{ g.bars }}" as="b" hint-placeholder-count="8">
+                        <div onMouseEnter="{{ b.onEnter }}" onClick="{{ b.onClick }}" onDoubleClick="{{ b.onDbl }}" title="кан {{ b.num }} · {{ b.name }}" style="flex:1 1 0; min-width:0; height:{{ b.h }}; background:{{ b.color }}; opacity:{{ b.dimOpacity }}; border:{{ b.border }}; border-bottom:none; border-radius:2px 2px 0 0; cursor:pointer;"></div>
+                      </sc-for>
+                    </div>
+                    <div style="flex:0 0 auto; text-align:center; font-size:10.5px; font-weight:500; color:#6c7682; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; padding-top:5px;">{{ g.name }}</div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+            <!-- таблица точных значений -->
+            <div style="flex:1 1 auto; min-height:0; overflow-y:auto; background:#12151a;">
+              <div style="display:grid; grid-template-columns:48px 1fr 130px 92px 168px 120px 120px; align-items:center; gap:0; padding:8px 18px; position:sticky; top:0; background:#0f1216; border-bottom:1px solid #2a313b; font-size:10.5px; letter-spacing:.6px; text-transform:uppercase; color:#66707c; z-index:1;">
+                <span>№</span><span>Канал</span><span>Категория</span><span style="text-align:right;">Код</span><span style="padding-left:14px;">Допуск</span><span>Уровень</span><span style="text-align:right;">Статус</span>
+              </div>
+              <sc-for list="{{ rows }}" as="r" hint-placeholder-count="14">
+                <div onClick="{{ r.onClick }}" onDoubleClick="{{ r.onDbl }}" style="display:grid; grid-template-columns:48px 1fr 130px 92px 168px 120px 120px; align-items:center; gap:0; padding:7px 18px; cursor:pointer; border-bottom:1px solid #1a1f26; background:{{ r.rowBg }};">
+                  <span style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#5b6573;">{{ r.num }}</span>
+                  <span style="font-size:13px; color:#d4dae2; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; padding-right:10px;">{{ r.name }}</span>
+                  <span style="font-size:12px; color:#7e8a98;">{{ r.cat }}</span>
+                  <span style="font-family:'IBM Plex Mono',monospace; font-size:14px; font-weight:600; text-align:right; color:{{ r.bar }};">{{ r.code }}</span>
+                  <span style="font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:#7e8a98; padding-left:14px;">{{ r.lo }} · {{ r.nominal }} · {{ r.hi }}</span>
+                  <span style="padding-right:14px;"><span style="display:block; height:6px; border-radius:3px; background:#1c222a; overflow:hidden;"><span style="display:block; height:100%; width:{{ r.h }}; background:{{ r.bar }};"></span></span></span>
+                  <span style="display:flex; align-items:center; gap:6px; justify-content:flex-end;"><span style="width:7px; height:7px; border-radius:50%; background:{{ r.stDot }};"></span><span style="font-size:12px; color:{{ r.stColor }};">{{ r.stText }}</span></span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+
+        <!-- LAYOUT C: карточки по категориям -->
+        <sc-if value="{{ isC }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute; inset:0; overflow-y:auto; background:#14181d; padding:18px;">
+            <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(360px,1fr)); gap:16px;">
+              <sc-for list="{{ cards }}" as="c" hint-placeholder-count="6">
+                <div style="background:#12151a; border:1px solid #232a33; border-top:2px solid {{ c.accent }}; border-radius:9px; padding:15px 16px; display:flex; flex-direction:column; gap:12px;">
+                  <div style="display:flex; align-items:baseline; justify-content:space-between;">
+                    <div style="display:flex; align-items:baseline; gap:9px;">
+                      <span style="font-size:14.5px; font-weight:600; color:#e6eaf0;">{{ c.name }}</span>
+                      <span style="font-size:11px; font-family:'IBM Plex Mono',monospace; color:#5b6573;">{{ c.count }} кан · {{ c.unit }}</span>
+                    </div>
+                    <span style="font-size:11.5px; color:{{ c.alarmColor }};">{{ c.alarmText }}</span>
+                  </div>
+                  <div onMouseLeave="{{ clearHover }}" style="height:120px; display:flex; align-items:flex-end; gap:4px; padding-bottom:0; background-image:repeating-linear-gradient(to top,transparent,transparent 24.9%,#1e242c 25%,#1e242c calc(25% + 1px)); border-bottom:1px solid #2a313b;">
+                    <sc-for list="{{ c.bars }}" as="b" hint-placeholder-count="8">
+                      <div onMouseEnter="{{ b.onEnter }}" onClick="{{ b.onClick }}" onDoubleClick="{{ b.onDbl }}" title="кан {{ b.num }} · {{ b.name }}" style="flex:1 1 0; min-width:0; height:{{ b.h }}; background:{{ b.color }}; opacity:{{ b.dimOpacity }}; border:{{ b.border }}; border-bottom:none; border-radius:2px 2px 0 0; cursor:pointer;"></div>
+                    </sc-for>
+                  </div>
+                  <div style="display:flex; align-items:baseline; gap:6px;">
+                    <span style="font-size:11px; color:#66707c;">средний код</span>
+                    <span style="font-family:'IBM Plex Mono',monospace; font-size:18px; font-weight:600; color:#cfe0ee;">{{ c.avg }}</span>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+    </sc-if>
+
+    <!-- ============ DETAIL / CONFIG / DB placeholders ============ -->
+    <sc-if value="{{ isDetail }}" hint-placeholder-val="{{ false }}">
+      <div style="position:absolute; inset:0; display:flex; flex-direction:column; min-height:0; background:#14181d;">
+
+        <!-- верхняя строка детального окна -->
+        <div style="flex:0 0 auto; display:flex; align-items:center; gap:14px; padding:13px 22px; border-bottom:1px solid #232a33; background:#12161b;">
+          <button onClick="{{ dBackMain }}" style="cursor:pointer; padding:6px 12px; border-radius:6px; font-size:12.5px; font-weight:500; font-family:'IBM Plex Sans',sans-serif; background:#1b2129; border:1px solid #2c333d; color:#aab4c0;">← К сбору</button>
+          <span style="width:1px; height:22px; background:#262d37;"></span>
+          <div style="display:flex; flex-direction:column;">
+            <div style="display:flex; align-items:baseline; gap:9px;">
+              <span style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#5b6573;">КАН {{ dNum }}</span>
+              <span style="font-size:16px; font-weight:600; color:#e6eaf0;">{{ dName }}</span>
+            </div>
+            <span style="font-size:12px; color:#7e8a98; margin-top:1px;">{{ dCat }} · история кода АЦП · ед. {{ dUnit }}</span>
+          </div>
+          <div style="flex:1;"></div>
+          <div style="display:flex; gap:5px;">
+            <sc-for list="{{ dChips }}" as="c" hint-placeholder-count="5">
+              <button onClick="{{ c.onClick }}" title="{{ c.name }}" style="cursor:pointer; width:34px; height:30px; border-radius:6px; border:none; font-family:'IBM Plex Mono',monospace; font-size:12px; font-weight:600; background:{{ c.bg }}; color:{{ c.fg }};">{{ c.num }}</button>
+            </sc-for>
+          </div>
+        </div>
+
+        <!-- крупный отсчёт + статус + статистика -->
+        <div style="flex:0 0 auto; display:flex; align-items:stretch; gap:22px; padding:18px 24px; background:#12161b; border-bottom:1px solid #232a33;">
+          <div style="display:flex; flex-direction:column; justify-content:center;">
+            <div style="font-size:11px; letter-spacing:1.5px; text-transform:uppercase; color:#5b6573;">текущий отсчёт</div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:64px; font-weight:600; line-height:.95; letter-spacing:3px; color:{{ dColor }};">{{ dCode }}</div>
+          </div>
+          <div style="display:flex; flex-direction:column; justify-content:center; gap:8px;">
+            <div style="display:inline-flex; align-self:flex-start; align-items:center; gap:7px; padding:5px 11px; border-radius:6px; background:{{ dStBg }}; border:1px solid {{ dStBorder }};">
+              <span style="width:8px; height:8px; border-radius:50%; background:{{ dStDot }};"></span>
+              <span style="font-size:13px; font-weight:500; color:{{ dStColor }};">{{ dStText }}</span>
+            </div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:12.5px; color:#8b95a3;">допуск {{ dLo }} – {{ dNom }} – {{ dHi }}</div>
+          </div>
+          <div style="flex:1;"></div>
+          <div style="display:flex; gap:24px; align-items:center; padding-right:6px;">
+            <div style="text-align:right;">
+              <div style="font-size:11px; text-transform:uppercase; letter-spacing:.6px; color:#5b6573;">мин</div>
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:22px; font-weight:600; color:#aeb8c4;">{{ dMin }}</div>
+            </div>
+            <div style="text-align:right;">
+              <div style="font-size:11px; text-transform:uppercase; letter-spacing:.6px; color:#5b6573;">сред</div>
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:22px; font-weight:600; color:#aeb8c4;">{{ dAvg }}</div>
+            </div>
+            <div style="text-align:right;">
+              <div style="font-size:11px; text-transform:uppercase; letter-spacing:.6px; color:#5b6573;">макс</div>
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:22px; font-weight:600; color:#aeb8c4;">{{ dMax }}</div>
+            </div>
+            <div style="text-align:right;">
+              <div style="font-size:11px; text-transform:uppercase; letter-spacing:.6px; color:#5b6573;">размах</div>
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:22px; font-weight:600; color:#cfe0ee;">{{ dSpan }}</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- история столбцами -->
+        <div style="flex:1 1 auto; min-height:0; display:flex; padding:18px 24px 10px; gap:12px;">
+          <div style="flex:0 0 auto; display:flex; flex-direction:column; justify-content:space-between; align-items:flex-end; padding-bottom:22px; font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:#4e5763;">
+            <span>1023</span><span>768</span><span>512</span><span>256</span><span>0</span>
+          </div>
+          <div style="flex:1 1 auto; min-width:0; position:relative; display:flex; flex-direction:column;">
+            <div style="flex:1 1 auto; min-height:0; position:relative;">
+              <!-- линии допуска -->
+              <div style="position:absolute; left:0; right:0; bottom:{{ dHiY }}; height:1px; background:#cf5b52; opacity:.55;"></div>
+              <div style="position:absolute; left:0; right:0; bottom:{{ dNomY }}; height:1px; background:#5e93b8; opacity:.4; border-top:1px dashed #5e93b8;"></div>
+              <div style="position:absolute; left:0; right:0; bottom:{{ dLoY }}; height:1px; background:#cf5b52; opacity:.55;"></div>
+              <span style="position:absolute; right:2px; bottom:{{ dHiY }}; transform:translateY(-50%); font-family:'IBM Plex Mono',monospace; font-size:10px; color:#cf5b52; background:#14181d; padding:0 4px;">ВП {{ dHi }}</span>
+              <span style="position:absolute; right:2px; bottom:{{ dLoY }}; transform:translateY(-50%); font-family:'IBM Plex Mono',monospace; font-size:10px; color:#cf5b52; background:#14181d; padding:0 4px;">НП {{ dLo }}</span>
+              <!-- столбцы -->
+              <div style="position:absolute; inset:0; display:flex; align-items:flex-end; gap:3px; background-image:repeating-linear-gradient(to top,transparent,transparent 24.9%,#1e242c 25%,#1e242c calc(25% + 1px)); border-bottom:1px solid #2a313b;">
+                <sc-for list="{{ dBars }}" as="b" hint-placeholder-count="40">
+                  <div style="flex:1 1 0; min-width:0; position:relative; height:{{ b.h }}; background:{{ b.color }}; opacity:{{ b.op }}; border-radius:2px 2px 0 0;">
+                    <sc-if value="{{ b.showLabel }}" hint-placeholder-val="{{ false }}">
+                      <span style="position:absolute; bottom:100%; left:50%; transform:translateX(-50%); margin-bottom:3px; font-family:'IBM Plex Mono',monospace; font-size:10.5px; font-weight:500; color:#aeb8c4; white-space:nowrap;">{{ b.code }}</span>
+                    </sc-if>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+            <div style="flex:0 0 auto; display:flex; justify-content:space-between; padding-top:6px; font-family:'IBM Plex Mono',monospace; font-size:10px; color:#4e5763;">
+              <span>−40 с</span><span>−30 с</span><span>−20 с</span><span>−10 с</span><span>сейчас</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- имя параметра внизу -->
+        <div style="flex:0 0 auto; text-align:center; padding:10px 0 16px; border-top:1px solid #232a33; background:#12161b;">
+          <span style="font-size:15px; font-weight:600; letter-spacing:.4px; color:#cfe0ee;">{{ dName }}</span>
+          <span style="font-size:13px; color:#7e8a98; margin-left:8px;">· {{ dCat }} · ед. {{ dUnit }}</span>
+        </div>
+      </div>
+    </sc-if>
+    <sc-if value="{{ isConfig }}" hint-placeholder-val="{{ false }}">
+      <div style="position:absolute; inset:0; display:flex; min-height:0; background:#14181d;">
+        <!-- список .txt -->
+        <aside style="width:300px; flex:0 0 auto; background:#12151a; border-right:1px solid #232a33; display:flex; flex-direction:column; min-height:0;">
+          <div style="padding:13px 16px; border-bottom:1px solid #232a33; display:flex; align-items:center; justify-content:space-between;">
+            <span style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:#66707c;">Файлы конфигурации</span>
+            <button style="cursor:pointer; padding:3px 9px; border-radius:5px; font-size:12px; background:#1f2630; border:1px solid #2f3a47; color:#cfe0ee; font-family:'IBM Plex Sans',sans-serif;">+ .txt</button>
+          </div>
+          <div style="flex:1 1 auto; overflow-y:auto; min-height:0; padding:8px;">
+            <sc-for list="{{ cfgFiles }}" as="f" hint-placeholder-count="4">
+              <div onClick="{{ f.onClick }}" style="cursor:pointer; padding:11px 12px; border-radius:8px; margin-bottom:6px; background:{{ f.bg }}; border-left:2px solid {{ f.bar }};">
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <span style="color:#5e93b8; font-size:13px;">▤</span>
+                  <span style="font-family:'IBM Plex Mono',monospace; font-size:13px; font-weight:500; color:#d4dae2;">{{ f.name }}</span>
+                </div>
+                <div style="font-size:11.5px; color:#7e8a98; margin-top:5px; padding-left:21px;">{{ f.note }}</div>
+                <div style="display:flex; gap:12px; margin-top:6px; padding-left:21px; font-family:'IBM Plex Mono',monospace; font-size:11px; color:#5b6573;">
+                  <span>{{ f.chans }} кан</span><span>{{ f.enc }}</span><span>{{ f.date }}</span>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </aside>
+
+        <!-- предпросмотр каналов -->
+        <section style="flex:1 1 auto; min-width:0; display:flex; flex-direction:column; min-height:0;">
+          <div style="flex:0 0 auto; display:flex; align-items:center; gap:16px; padding:14px 22px; border-bottom:1px solid #232a33; background:#12161b;">
+            <div>
+              <div style="display:flex; align-items:baseline; gap:10px;">
+                <span style="font-family:'IBM Plex Mono',monospace; font-size:16px; font-weight:600; color:#e6eaf0;">{{ cfgName }}</span>
+                <span style="display:inline-flex; align-items:center; gap:6px; padding:2px 9px; border-radius:5px; background:#1b2129; border:1px solid #2c333d; font-size:11.5px; color:#aab4c0;">кодировка <span style="font-family:'IBM Plex Mono',monospace; color:#cfe0ee;">{{ cfgEnc }}</span></span>
+              </div>
+              <div style="font-size:12px; color:#7e8a98; margin-top:3px;">{{ cfgNote }} · {{ cfgChans }} каналов · обновлён {{ cfgDate }}</div>
+            </div>
+            <div style="flex:1;"></div>
+            <button style="cursor:pointer; padding:8px 14px; border-radius:6px; font-size:13px; font-weight:500; font-family:'IBM Plex Sans',sans-serif; background:#1b2129; border:1px solid #2c333d; color:#aab4c0;">Проверить</button>
+            <button style="cursor:pointer; padding:8px 16px; border-radius:6px; font-size:13px; font-weight:600; font-family:'IBM Plex Sans',sans-serif; background:#5e93b8; border:1px solid #5e93b8; color:#0c1116;">Применить конфигурацию</button>
+          </div>
+          <div style="flex:1 1 auto; min-height:0; overflow-y:auto; overflow-x:hidden; background:#12151a;">
+            <div style="display:grid; grid-template-columns:48px 72px minmax(0,1fr) 124px 64px 166px; align-items:center; padding:8px 22px; position:sticky; top:0; background:#0f1216; border-bottom:1px solid #2a313b; font-size:10.5px; letter-spacing:.6px; text-transform:uppercase; color:#66707c; z-index:1;">
+              <span>Кан</span><span>Адрес</span><span>Параметр</span><span>Категория</span><span style="text-align:right;">Ед.</span><span style="text-align:right;">Допуск</span>
+            </div>
+            <sc-for list="{{ cfgPreview }}" as="p" hint-placeholder-count="16">
+              <div style="display:grid; grid-template-columns:48px 72px minmax(0,1fr) 124px 64px 166px; align-items:center; padding:7px 22px; border-bottom:1px solid #1a1f26;">
+                <span style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#5b6573;">{{ p.num }}</span>
+                <span style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#7e8a98;">{{ p.addr }}</span>
+                <span style="font-size:13px; color:#d4dae2; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; padding-right:10px;">{{ p.name }}</span>
+                <span style="font-size:12px; color:#7e8a98; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; padding-right:10px;">{{ p.cat }}</span>
+                <span style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#aab4c0; text-align:right;">{{ p.unit }}</span>
+                <span style="font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:#8b95a3; text-align:right;">{{ p.lo }}·{{ p.nominal }}·{{ p.hi }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </section>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isDb }}" hint-placeholder-val="{{ false }}">
+      <div style="position:absolute; inset:0; display:flex; min-height:0; background:#14181d;">
+        <!-- дерево категорий -->
+        <aside style="width:300px; flex:0 0 auto; background:#12151a; border-right:1px solid #232a33; display:flex; flex-direction:column; min-height:0;">
+          <div style="padding:13px 16px; border-bottom:1px solid #232a33; display:flex; align-items:center; justify-content:space-between;">
+            <span style="font-size:11px; letter-spacing:1px; text-transform:uppercase; color:#66707c;">Библиотека параметров</span>
+            <span style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#5b6573;">48</span>
+          </div>
+          <div style="flex:1 1 auto; overflow-y:auto; min-height:0; padding:6px 0;">
+            <sc-for list="{{ dbTree }}" as="g" hint-placeholder-count="6">
+              <div onClick="{{ g.onClick }}" style="cursor:pointer; display:flex; align-items:center; gap:8px; padding:9px 14px;">
+                <span style="color:#5b6573; font-size:11px; width:10px;">{{ g.caret }}</span>
+                <span style="font-size:13px; font-weight:600; color:#c2ccd8;">{{ g.name }}</span>
+                <span style="flex:1;"></span>
+                <span style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#5b6573;">{{ g.count }}</span>
+              </div>
+              <sc-if value="{{ g.open }}" hint-placeholder-val="{{ true }}">
+                <div>
+                  <sc-for list="{{ g.items }}" as="it" hint-placeholder-count="6">
+                    <div onClick="{{ it.onClick }}" style="cursor:pointer; display:flex; align-items:center; gap:9px; padding:5px 14px 5px 30px; background:{{ it.bg }}; border-left:2px solid {{ it.bar }};">
+                      <span style="width:22px; font-family:'IBM Plex Mono',monospace; font-size:11px; color:#5b6573; text-align:right;">{{ it.num }}</span>
+                      <span style="font-size:12.5px; color:{{ it.fg }}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ it.name }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+            </sc-for>
+          </div>
+        </aside>
+
+        <!-- редактор метаданных -->
+        <section style="flex:1 1 auto; min-width:0; display:flex; flex-direction:column; min-height:0;">
+          <div style="flex:0 0 auto; display:flex; align-items:center; gap:14px; padding:16px 24px; border-bottom:1px solid #232a33; background:#12161b;">
+            <div style="width:42px; height:42px; border-radius:9px; background:#1b2530; border:1px solid #2a3744; display:flex; align-items:center; justify-content:center; color:#5e93b8; font-size:18px;">⛁</div>
+            <div>
+              <div style="display:flex; align-items:baseline; gap:10px;">
+                <span style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#5b6573;">КАН {{ dbNum }}</span>
+                <span style="font-size:17px; font-weight:600; color:#e6eaf0;">{{ dbName }}</span>
+              </div>
+              <div style="font-size:12px; color:#7e8a98; margin-top:2px;">{{ dbCatName }} · текущий код <span style="font-family:'IBM Plex Mono',monospace; color:#cfe0ee;">{{ dbCode }}</span></div>
+            </div>
+            <div style="flex:1;"></div>
+            <button style="cursor:pointer; padding:8px 14px; border-radius:6px; font-size:13px; font-weight:500; font-family:'IBM Plex Sans',sans-serif; background:#1b2129; border:1px solid #2c333d; color:#aab4c0;">Отменить</button>
+            <button style="cursor:pointer; padding:8px 16px; border-radius:6px; font-size:13px; font-weight:600; font-family:'IBM Plex Sans',sans-serif; background:#5e93b8; border:1px solid #5e93b8; color:#0c1116;">Сохранить</button>
+          </div>
+          <div style="flex:1 1 auto; min-height:0; overflow-y:auto; padding:22px 24px;">
+            <div style="max-width:680px; display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+              <sc-for list="{{ dbFields }}" as="f" hint-placeholder-count="8">
+                <div style="display:flex; flex-direction:column; gap:6px;">
+                  <label style="font-size:11.5px; letter-spacing:.4px; color:#7e8a98;">{{ f.label }}</label>
+                  <div style="padding:9px 12px; border-radius:7px; background:#0f1216; border:1px solid #2a313b; font-size:13.5px; color:#dfe6ee; font-family:{{ f.font }};">{{ f.value }}</div>
+                </div>
+              </sc-for>
+            </div>
+            <div style="max-width:680px; margin-top:22px; padding:14px 16px; border-radius:9px; background:#12151a; border:1px solid #232a33;">
+              <div style="font-size:11px; letter-spacing:.6px; text-transform:uppercase; color:#66707c; margin-bottom:10px;">Диапазон допуска (код АЦП)</div>
+              <div style="position:relative; height:10px; border-radius:5px; background:#1c222a; overflow:hidden;">
+                <div style="position:absolute; top:0; bottom:0; left:{{ dbLoPct }}; right:{{ dbHiPctR }}; background:#244a33; border-left:1px solid #4cc97f; border-right:1px solid #4cc97f;"></div>
+                <div style="position:absolute; top:-3px; bottom:-3px; left:{{ dbCodePct }}; width:2px; background:#cfe0ee;"></div>
+              </div>
+              <div style="display:flex; justify-content:space-between; margin-top:8px; font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:#8b95a3;">
+                <span>0</span><span style="color:#7fc79a;">НП {{ dbLo }}</span><span style="color:#5e93b8;">ном {{ dbNom }}</span><span style="color:#7fc79a;">ВП {{ dbHi }}</span><span>1023</span>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </sc-if>
+  </div>
+
+  <!-- ===== BOTTOM LOG ===== -->
+  <footer style="display:flex; align-items:center; gap:14px; padding:0 16px; height:30px; background:#0e1115; border-top:1px solid #2a313b; flex:0 0 auto; font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:#7c8693;">
+    <span style="color:#5e93b8;">●</span>
+    <span style="color:#aab4c0;">{{ mtv }}</span>
+    <span style="color:#3a424d;">|</span>
+    <span>{{ logText }}</span>
+    <div style="flex:1;"></div>
+    <span>запись: <span style="color:#aab4c0;">{{ recPath }}</span></span>
+    <span style="color:#3a424d;">|</span>
+    <span>{{ rateText }}</span>
+  </footer>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1280,&quot;height&quot;:800}}">
+class Component extends DCLogic {
+  state = {
+    screen: 'main',
+    layout: 'A',
+    running: true,
+    recording: false,
+    selected: 6,
+    hover: -1,
+    detailChan: 6,
+    configSel: 0,
+    dbSel: 6,
+    dbCat: 'P',
+    mtvSec: 7 * 3600 + 42 * 60 + 11,
+    tick: 0,
+    channels: Component.build(),
+    history: Component.buildHistory(6),
+  };
+
+  // Реальные категории из parameters.db (поток/тип/информативность)
+  static CATS = [
+    { key: 'TMP', name: 'БСИ температурные ЯТП-1', short: 'Темп. ЯТП-1', stream: 'fast', type: 'быстрый', n: 16, abbr: 'B' },
+    { key: 'ANA', name: 'БСИ МКА-1 аналоговые', short: 'МКА-1 аналог.', stream: 'analog', type: 'медленный', n: 14, abbr: 'A' },
+    { key: 'CON', name: 'БСИ МКС-1 контактные', short: 'МКС-1 контакт.', stream: 'contact', type: 'медленный', n: 10, abbr: 'K' },
+    { key: 'HF', name: 'Высокочастотные и быстроменяющиеся', short: 'ВЧ / быстромен.', stream: 'fast', type: 'быстрый', n: 10, abbr: 'V' },
+    { key: 'SVC', name: 'Служебные', short: 'Служебные', stream: 'unknown', type: 'служебный', n: 4, abbr: 'F' },
+  ];
+
+  static addr(i) {
+    const c = 10 + (i % 2) * 10;
+    const d = 10 + (i % 8) * 10;
+    const e = 11 + ((i >> 3) % 4) * 10;
+    return 'M16П2A40B40C' + c + 'D' + d + 'E' + e + 'T21';
+  }
+
+  static build() {
+    const out = [];
+    let id = 0;
+    for (const c of Component.CATS) {
+      for (let i = 0; i < c.n; i++) {
+        let param, bits, human = '';
+        if (c.key === 'TMP') { param = (i % 2 === 0) ? '(ст. разр. 4 бита)' : '(мл. разр. 8 бит)'; bits = (i % 2 === 0) ? '4 бита' : '8 бит'; }
+        else if (c.key === 'ANA') { param = 'Параметр А' + (i + 1); bits = '10 бит'; }
+        else if (c.key === 'CON') { param = 'Параметр К' + (i + 1); bits = '1 бит'; }
+        else if (c.key === 'HF') { param = 'Параметр В' + (i + 1); bits = '10 бит'; }
+        else { param = 'free'; bits = '—'; }
+        const nominal = 420 + Math.round(Math.random() * 360);
+        const tol = 90 + Math.round(Math.random() * 70);
+        out.push({
+          id, idx: id + 1, cat: c.key, catName: c.name, catShort: c.short,
+          unit: 'код', addr: Component.addr(id), name: param, param, human,
+          type: c.type, stream: c.stream, bits,
+          code: nominal, nominal, lo: nominal - tol, hi: nominal + tol,
+        });
+        id++;
+      }
+    }
+    // нарочно вывести каналы за допуск для демонстрации контроля
+    out[20].code = out[20].hi + 64;   // перегруз
+    out[2].code = out[2].hi - 6;      // у предела
+    out[44].code = out[44].lo - 42;   // ниже допуска
+    return out;
+  }
+
+  static buildHistory(id) {
+    const a = [];
+    let v = 560;
+    for (let i = 0; i < 40; i++) {
+      v += (Math.random() - 0.48) * 70;
+      v = Math.max(120, Math.min(960, v));
+      a.push(Math.round(v));
+    }
+    return a;
+  }
+
+  componentDidMount() {
+    this._t = setInterval(() => {
+      if (!this.state.running) { this.setState(s => ({ mtvSec: s.mtvSec })); return; }
+      this.setState(s => {
+        const channels = s.channels.map(ch => {
+          let code = ch.code + (Math.random() - 0.5) * 26;
+          // лёгкое притяжение к номиналу + удержание аномальных каналов
+          const target = (ch.id === 20 || ch.id === 44) ? ch.code : ch.nominal;
+          code += (target - code) * 0.04;
+          code = Math.max(0, Math.min(1023, code));
+          return { ...ch, code };
+        });
+        const hist = s.history.slice(1);
+        hist.push(Math.round(channels[s.detailChan].code));
+        return { channels, mtvSec: s.mtvSec + 1, tick: s.tick + 1, history: hist };
+      });
+    }, 1000);
+  }
+  componentWillUnmount() { clearInterval(this._t); }
+
+  status(ch) {
+    const c = ch.code;
+    if (c > ch.hi || c < ch.lo) return 'over';
+    if (c > ch.hi - 22 || c < ch.lo + 22) return 'limit';
+    return 'norm';
+  }
+  barColor(st, sel) {
+    if (st === 'over') return sel ? '#e0756c' : '#cf5b52';
+    if (st === 'limit') return sel ? '#e8b366' : '#d99a4a';
+    return sel ? '#8fc1e6' : '#5e93b8';
+  }
+  fmtTime(s) {
+    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+    const p = n => String(n).padStart(2, '0');
+    return p(h) + ':' + p(m) + ':' + p(sec);
+  }
+
+  renderVals() {
+    const s = this.state;
+    const setScreen = sc => () => this.setState({ screen: sc });
+
+    const navDefs = [
+      { k: 'main', label: 'Сбор', icon: '▮' },
+      { k: 'detail', label: 'Детальный просмотр', icon: '◉' },
+      { k: 'config', label: 'Конфигуратор', icon: '⚙' },
+      { k: 'db', label: 'База параметров', icon: '⛁' },
+    ];
+    const nav = navDefs.map(n => ({
+      label: n.label, icon: n.icon, onClick: setScreen(n.k),
+      bg: s.screen === n.k ? '#5e93b8' : 'transparent',
+      fg: s.screen === n.k ? '#0c1116' : '#9aa4b1',
+    }));
+
+    const layouts = ['A', 'B', 'C'].map(L => ({
+      label: L, onClick: () => this.setState({ layout: L }),
+      bg: s.layout === L ? '#2f3a47' : 'transparent',
+      fg: s.layout === L ? '#dfe6ee' : '#7a8492',
+    }));
+
+    const running = s.running;
+    const anomalies = s.channels.filter(ch => this.status(ch) !== 'norm');
+
+    return {
+      mtv: this.fmtTime(s.mtvSec),
+      errPhr: '0.2%', errGrp: '0.0%',
+      rateText: '10 Гц · кадр 1024 Б',
+      statusText: running ? 'Сбор идёт' : 'Сбор остановлен',
+      statusBg: running ? '#13251a' : '#2a1c17',
+      statusBorder: running ? '#244a33' : '#4a2f24',
+      statusFg: running ? '#7fc79a' : '#d99a4a',
+      statusDot: running ? '#4cc97f' : '#d99a4a',
+      statusAnim: running ? 'orbPulse 1.6s ease-in-out infinite' : 'none',
+
+      nav, layouts,
+
+      toggleRun: () => this.setState(p => ({ running: !p.running })),
+      runLabel: running ? 'Стоп' : 'Старт',
+      runIcon: running ? '◼' : '▶',
+      runBg: running ? '#2a1c17' : '#13251a',
+      runBorder: running ? '#4a2f24' : '#244a33',
+      runFg: running ? '#e0a878' : '#7fc79a',
+
+      toggleRecord: () => this.setState(p => ({ recording: !p.recording })),
+      recLabel: s.recording ? 'Идёт запись' : 'Запись',
+      recDot: s.recording ? '#cf5b52' : '#5b6573',
+      recAnim: s.recording ? 'orbRec 1s steps(1) infinite' : 'none',
+      recBg: s.recording ? '#2a1718' : '#1f242c',
+      recBorder: s.recording ? '#4a2426' : '#2c333d',
+      recFg: s.recording ? '#e89089' : '#c2ccd8',
+      recPath: s.recording ? 'ЯТП_20260616_0742.tlm' : '—',
+
+      logText: anomalies.length
+        ? ('контроль допусков: ' + anomalies.length + ' канал(ов) вне нормы — кан.' + (anomalies[0].id + 1) + ' ' + anomalies[0].name)
+        : 'все каналы в пределах допуска',
+
+      ...this.screenVM(),
+    };
+  }
+
+  statusMeta(st) {
+    if (st === 'over') return { text: 'Вне допуска', color: '#e89089', bg: '#2a1718', border: '#4a2426', dot: '#cf5b52' };
+    if (st === 'limit') return { text: 'У предела', color: '#e6b878', bg: '#2a2117', border: '#4a3a24', dot: '#d99a4a' };
+    return { text: 'Норма', color: '#7fc79a', bg: '#13251a', border: '#244a33', dot: '#4cc97f' };
+  }
+
+  buildGroups() {
+    const s = this.state;
+    const groups = [];
+    for (const c of Component.CATS) {
+      const bars = [];
+      for (const ch of s.channels.filter(x => x.cat === c.key)) {
+        const st = this.status(ch);
+        const sel = ch.id === s.selected;
+        const hov = ch.id === s.hover;
+        const h = Math.max(1.5, (ch.code / 1023) * 100);
+        bars.push({
+          id: ch.id, num: ch.id + 1, name: ch.name, code: Math.round(ch.code),
+          h: h.toFixed(1) + '%',
+          color: this.barColor(st, sel || hov),
+          border: sel ? '1px solid #cfe6fb' : (hov ? '1px solid rgba(255,255,255,.28)' : '1px solid transparent'),
+          dimOpacity: (s.hover >= 0 && !hov && !sel) ? '0.78' : '1',
+          onEnter: () => this.setState({ hover: ch.id }),
+          onClick: () => this.setState({ selected: ch.id }),
+          onDbl: () => this.setState({ screen: 'detail', detailChan: ch.id, selected: ch.id }),
+        });
+      }
+      groups.push({ key: c.key, name: c.name, unit: c.unit, count: c.n, bars });
+    }
+    return groups;
+  }
+
+  screenVM() {
+    const s = this.state;
+    const groups = this.buildGroups();
+
+    // выбранный канал — крупный отсчёт
+    const ch = s.channels[s.selected];
+    const st = this.status(ch);
+    const m = this.statusMeta(st);
+    const bandPct = Math.max(0, Math.min(100, ((ch.code - ch.lo) / (ch.hi - ch.lo)) * 100));
+
+    // строки таблицы (компоновка B)
+    const rows = s.channels.map(c => {
+      const cst = this.status(c);
+      const cm = this.statusMeta(cst);
+      return {
+        id: c.id, num: c.id + 1, name: c.name, cat: c.catName, unit: c.unit,
+        code: Math.round(c.code), nominal: c.nominal, lo: c.lo, hi: c.hi,
+        h: Math.max(2, (c.code / 1023) * 100).toFixed(0) + '%',
+        bar: this.barColor(cst, c.id === s.selected),
+        stText: cm.text, stColor: cm.color, stDot: cm.dot,
+        rowBg: c.id === s.selected ? '#1c2530' : 'transparent',
+        onClick: () => this.setState({ selected: c.id }),
+        onDbl: () => this.setState({ screen: 'detail', detailChan: c.id, selected: c.id }),
+      };
+    });
+
+    // карточки категорий (компоновка C)
+    const cards = groups.map(g => {
+      const chans = s.channels.filter(x => x.cat === g.key);
+      const alarms = chans.filter(x => this.status(x) !== 'norm').length;
+      const avg = Math.round(chans.reduce((a, x) => a + x.code, 0) / chans.length);
+      return {
+        key: g.key, name: g.name, unit: g.unit, count: g.count,
+        avg, bars: g.bars,
+        alarms, alarmText: alarms ? (alarms + ' вне нормы') : 'все в норме',
+        alarmColor: alarms ? '#e6b878' : '#7fc79a',
+        accent: alarms ? '#d99a4a' : '#39414c',
+      };
+    });
+
+    // контроль допусков
+    const anomalies = s.channels.filter(c => this.status(c) !== 'norm').map(c => {
+      const cm = this.statusMeta(this.status(c));
+      return {
+        id: c.id, num: c.id + 1, name: c.name, code: Math.round(c.code),
+        unit: c.unit, stText: cm.text, color: cm.color, bg: cm.bg, border: cm.border, dot: cm.dot,
+        onClick: () => this.setState({ selected: c.id }),
+      };
+    });
+
+    const normCount = s.channels.length - anomalies.length;
+
+    return {
+      onMain: s.screen === 'main',
+      isMain: s.screen === 'main', isDetail: s.screen === 'detail',
+      isConfig: s.screen === 'config', isDb: s.screen === 'db',
+      isA: s.layout === 'A', isB: s.layout === 'B', isC: s.layout === 'C',
+      groups, rows, cards, anomalies,
+      clearHover: () => this.setState({ hover: -1 }),
+
+      selNum: ch.id + 1, selName: ch.name, selCat: ch.catName, selUnit: ch.unit,
+      selCode: String(Math.round(ch.code)).padStart(4, '0'),
+      selNominal: ch.nominal, selLo: ch.lo, selHi: ch.hi,
+      selBandPct: bandPct.toFixed(0) + '%',
+      selStText: m.text, selStColor: m.color, selStBg: m.bg, selStBorder: m.border, selStDot: m.dot,
+      selBarColor: this.barColor(st, true),
+      openSelDetail: () => this.setState({ screen: 'detail', detailChan: s.selected }),
+
+      normCount, anomCount: anomalies.length,
+      anomColorHdr: anomalies.length ? '#e6b878' : '#7fc79a',
+      allNorm: anomalies.length === 0,
+      hasAnom: anomalies.length > 0,
+      allNormText: 'Все 48 каналов в пределах допуска',
+      ...this.detailVM(),
+      ...this.configVM(),
+      ...this.dbVM(),
+    };
+  }
+
+  detailVM() {
+    const s = this.state;
+    const ch = s.channels[s.detailChan];
+    const st = this.status(ch);
+    const m = this.statusMeta(st);
+    const hist = s.history;
+    const maxV = Math.max(1023, ...hist);
+    const loY = (ch.lo / 1023) * 100, hiY = (ch.hi / 1023) * 100, nomY = (ch.nominal / 1023) * 100;
+    const bars = hist.map((v, i) => {
+      let cst = 'norm';
+      if (v > ch.hi || v < ch.lo) cst = 'over'; else if (v > ch.hi - 22 || v < ch.lo + 22) cst = 'limit';
+      const last = i === hist.length - 1;
+      return {
+        h: Math.max(1.5, (v / 1023) * 100).toFixed(1) + '%',
+        color: this.barColor(cst, last),
+        op: last ? '1' : '0.92',
+        code: v, last,
+        showLabel: last || i % 8 === 0,
+      };
+    });
+    const mn = Math.min(...hist), mx = Math.max(...hist);
+    const avg = Math.round(hist.reduce((a, b) => a + b, 0) / hist.length);
+    // соседние каналы для быстрого перехода
+    const chips = s.channels.slice(Math.max(0, s.detailChan - 2), s.detailChan + 3).map(c => ({
+      num: c.id + 1, name: c.name,
+      bg: c.id === s.detailChan ? '#5e93b8' : '#1b2129',
+      fg: c.id === s.detailChan ? '#0c1116' : '#aab4c0',
+      onClick: () => this.setState({ detailChan: c.id, selected: c.id, history: Component.buildHistory(c.id) }),
+    }));
+    return {
+      dName: ch.name, dCat: ch.catName, dUnit: ch.unit, dNum: ch.id + 1,
+      dCode: String(Math.round(ch.code)).padStart(4, '0'),
+      dColor: this.barColor(st, true),
+      dLo: ch.lo, dHi: ch.hi, dNom: ch.nominal,
+      dStText: m.text, dStColor: m.color, dStBg: m.bg, dStBorder: m.border, dStDot: m.dot,
+      dBars: bars,
+      dLoY: loY.toFixed(1) + '%', dHiY: hiY.toFixed(1) + '%', dNomY: nomY.toFixed(1) + '%',
+      dMin: mn, dMax: mx, dAvg: avg, dSpan: mx - mn,
+      dChips: chips,
+      dBackMain: () => this.setState({ screen: 'main' }),
+    };
+  }
+
+  configVM() {
+    const s = this.state;
+    const files = [
+      { name: 'ЯТП_осн.txt', date: '14.06.2026', chans: 48, enc: 'CP1251', note: 'Основная конфигурация ДУ' },
+      { name: 'ЯТП_стенд_4.txt', date: '09.06.2026', chans: 48, enc: 'UTF-8', note: 'Огневой стенд, площадка 4' },
+      { name: 'ЯТП_резерв.txt', date: '01.06.2026', chans: 32, enc: 'CP1251', note: 'Сокращённый, без вибрации' },
+      { name: 'ЯТП_калибр.txt', date: '28.05.2026', chans: 48, enc: 'UTF-8', note: 'Калибровочный прогон' },
+    ];
+    const fileVM = files.map((f, i) => ({
+      ...f, active: i === s.configSel,
+      bg: i === s.configSel ? '#1c2530' : 'transparent',
+      bar: i === s.configSel ? '#5e93b8' : 'transparent',
+      onClick: () => this.setState({ configSel: i }),
+    }));
+    const sel = files[s.configSel];
+    const preview = s.channels.slice(0, sel.chans).map(c => ({
+      num: c.id + 1, name: c.name, cat: c.catName, unit: c.unit,
+      lo: c.lo, hi: c.hi, nominal: c.nominal,
+      addr: '0x' + (0x40 + c.id).toString(16).toUpperCase().padStart(2, '0'),
+    }));
+    return {
+      cfgFiles: fileVM, cfgName: sel.name, cfgEnc: sel.enc, cfgChans: sel.chans,
+      cfgDate: sel.date, cfgNote: sel.note, cfgPreview: preview,
+    };
+  }
+
+  dbVM() {
+    const s = this.state;
+    const tree = Component.CATS.map(c => {
+      const chans = s.channels.filter(x => x.cat === c.key);
+      return {
+        key: c.key, name: c.name, unit: c.unit, count: chans.length,
+        open: c.key === s.dbCat,
+        caret: c.key === s.dbCat ? '▾' : '▸',
+        onClick: () => this.setState({ dbCat: c.key }),
+        items: chans.map(ch => ({
+          id: ch.id, num: ch.id + 1, name: ch.name,
+          active: ch.id === s.dbSel,
+          bg: ch.id === s.dbSel ? '#1c2530' : 'transparent',
+          bar: ch.id === s.dbSel ? '#5e93b8' : 'transparent',
+          fg: ch.id === s.dbSel ? '#e6eaf0' : '#aeb8c4',
+          onClick: () => this.setState({ dbSel: ch.id }),
+        })),
+      };
+    });
+    const ch = s.channels[s.dbSel];
+    const F = (label, value, mono) => ({ label, value, font: mono ? "'IBM Plex Mono',monospace" : "'IBM Plex Sans',sans-serif" });
+    const fields = [
+      F('Имя параметра', ch.name, false),
+      F('Категория', ch.catName, false),
+      F('Единица измерения', ch.unit, false),
+      F('Код мин. (НП допуска)', String(ch.lo), true),
+      F('Номинал', String(ch.nominal), true),
+      F('Код макс. (ВП допуска)', String(ch.hi), true),
+      F('Разрядность АЦП', '10 бит · 0–1023', true),
+      F('Калибровка', 'k=' + (ch.cat === 'T' ? '0.146' : '0.0978') + '·код' + (ch.cat === 'T' ? '−40.0' : '+0.0'), true),
+    ];
+    return {
+      dbTree: tree, dbName: ch.name, dbNum: ch.id + 1, dbCatName: ch.catName,
+      dbUnit: ch.unit, dbFields: fields,
+      dbCode: Math.round(ch.code), dbLo: ch.lo, dbHi: ch.hi, dbNom: ch.nominal,
+      dbLoPct: (ch.lo / 1023 * 100).toFixed(1) + '%',
+      dbHiPctR: (100 - ch.hi / 1023 * 100).toFixed(1) + '%',
+      dbCodePct: (Math.round(ch.code) / 1023 * 100).toFixed(1) + '%',
+    };
+  }
+}
+</script>
+</body>
+</html>
