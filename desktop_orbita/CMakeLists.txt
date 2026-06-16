@@ -4,6 +4,7 @@ project(OrbitaDesktop)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTORCC ON)   # без этого resources.qrc (styles.qss) не попадает в бинарник → тема не грузится
 
 find_package(Qt6 REQUIRED COMPONENTS Core Widgets PrintSupport Sql)
 
