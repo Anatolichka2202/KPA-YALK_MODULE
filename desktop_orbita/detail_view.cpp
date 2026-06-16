@@ -1,4 +1,5 @@
 #include "detail_view.h"
+#include "plot_theme.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGridLayout>
@@ -122,6 +123,7 @@ void DetailView::setupPlot()
 {
     if (!m_plot) return;
 
+    plottheme::apply(m_plot);
     m_plot->setInteractions(QCP::iRangeDrag | QCP::iRangeZoom);
     m_plot->yAxis->setRange(0, 1023);
     m_plot->xAxis->setLabel("Такты (отсчёты)");

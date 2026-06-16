@@ -36,6 +36,7 @@ add_executable(OrbitaDesktop
     channel_list_widget.h channel_list_widget.cpp
     readout_widget.h readout_widget.cpp
     channel_status.h
+    plot_theme.h
 )
 
 target_include_directories(OrbitaDesktop PRIVATE

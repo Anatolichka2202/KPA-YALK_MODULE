@@ -1,4 +1,5 @@
 #include "bar_chart_widget.h"
+#include "plot_theme.h"
 #include <QVBoxLayout>
 #include <QMouseEvent>
 
@@ -14,6 +15,7 @@ BarChartWidget::BarChartWidget(QWidget *parent) : QWidget(parent)
 
 void BarChartWidget::setupPlot()
 {
+    plottheme::apply(m_plot);
     m_plot->setInteractions(QCP::iRangeDrag | QCP::iRangeZoom);
     m_plot->xAxis->setLabel("Каналы");
     m_plot->yAxis->setLabel("Код");
@@ -23,8 +25,8 @@ void BarChartWidget::setupPlot()
     m_plot->xAxis->setTicks(false);
 
     m_bars = new QCPBars(m_plot->xAxis, m_plot->yAxis);
-    m_bars->setPen(QPen(QColor(0x1f, 0x77, 0xb4)));
-    m_bars->setBrush(QBrush(QColor(0x1f, 0x77, 0xb4)));
+    m_bars->setPen(QPen(QColor(0x5e, 0x93, 0xb8)));
+    m_bars->setBrush(QBrush(QColor(0x5e, 0x93, 0xb8)));
     m_bars->setWidthType(QCPBars::wtPlotCoords);
     m_bars->setWidth(0.7);
 
