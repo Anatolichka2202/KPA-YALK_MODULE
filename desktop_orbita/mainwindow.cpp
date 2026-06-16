@@ -123,7 +123,35 @@ void MainWindow::setupDockWidgets()
         watchSetDock_->setWidget(new QWidget);
         addDockWidget(Qt::RightDockWidgetArea, watchSetDock_);
 
-        // Страницы Конфиг и БД оставляем с заглушками
+        // Заменяем плейсхолдеры Конфиг и БД в центральном стеке на страницы с ошибкой
+        QWidget* oldConfig = centralStack_->widget(ModeConfig);
+        QWidget* oldDb = centralStack_->widget(ModeDb);
+        centralStack_->removeWidget(oldConfig);
+        centralStack_->removeWidget(oldDb);
+        delete oldConfig;
+        delete oldDb;
+
+        // Страница "Конфиг" с сообщением об ошибке
+        QWidget* configError = new QWidget;
+        configError->setStyleSheet("background: #14171c;");
+        QVBoxLayout* cfgErrLayout = new QVBoxLayout(configError);
+        QLabel* cfgErrLabel = new QLabel("База параметров недоступна\n(parameters.db не найдена)");
+        cfgErrLabel->setStyleSheet("color: #cf5b52; font-size: 13px;");
+        cfgErrLayout->addWidget(cfgErrLabel);
+        cfgErrLayout->setAlignment(Qt::AlignCenter);
+        centralStack_->insertWidget(ModeConfig, configError);
+
+        // Страница "БД" с сообщением об ошибке
+        QWidget* dbError = new QWidget;
+        dbError->setStyleSheet("background: #14171c;");
+        QVBoxLayout* dbErrLayout = new QVBoxLayout(dbError);
+        QLabel* dbErrLabel = new QLabel("База параметров недоступна\n(parameters.db не найдена)");
+        dbErrLabel->setStyleSheet("color: #cf5b52; font-size: 13px;");
+        dbErrLayout->addWidget(dbErrLabel);
+        dbErrLayout->setAlignment(Qt::AlignCenter);
+        centralStack_->insertWidget(ModeDb, dbError);
+
+        // Продолжаем работу — приложение остаётся рабочим в части Сбор/Детально
         return;
     }
 
@@ -345,13 +373,21 @@ void MainWindow::setupToolBar()
 // ----------------------------------------------------------------------------
 void MainWindow::setMode(int mode)
 {
+    // Ранний выход если стек не инициализирован
+    if (!centralStack_)
+        return;
+
     centralStack_->setCurrentIndex(mode);
 
-    // Обновляем состояние кнопок на панели
-    actMain_->setChecked(mode == ModeMain);
-    actDetail_->setChecked(mode == ModeDetail);
-    actConfig_->setChecked(mode == ModeConfig);
-    actDb_->setChecked(mode == ModeDb);
+    // Обновляем состояние кнопок на панели (с проверками на nullptr)
+    if (actMain_)
+        actMain_->setChecked(mode == ModeMain);
+    if (actDetail_)
+        actDetail_->setChecked(mode == ModeDetail);
+    if (actConfig_)
+        actConfig_->setChecked(mode == ModeConfig);
+    if (actDb_)
+        actDb_->setChecked(mode == ModeDb);
 
     // Доки пользователь сам показывает/прячет через меню «Вид» — не навязываем по режиму.
 
@@ -359,7 +395,8 @@ void MainWindow::setMode(int mode)
     if (mode == ModeDetail && selectedChannelIndex_ >= 0) {
         const auto& specs = orbita_->getChannels();
         if (selectedChannelIndex_ < (int)specs.size()) {
-            detailView_->setChannel(specs[selectedChannelIndex_]);
+            if (detailView_)
+                detailView_->setChannel(specs[selectedChannelIndex_]);
             // Значение обновится в updateData
         }
     }

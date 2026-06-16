@@ -60,7 +60,6 @@ private:
     void setupUi();
     void setupToolBar();
     void setupDockWidgets();
-    void updateStatusBar(const orbita::Snapshot& snap);
     QString nextRecordingPath() const;
     void log(const QString& msg);
 
@@ -85,7 +84,6 @@ private:
     DetailView* detailView_ = nullptr;
     ConfigManagerWidget* configPage_ = nullptr;
     ParameterBrowser* dbPage_ = nullptr;
-    WatchSetWidget* watchSetPage_ = nullptr; // для полноэкранного режима (опционально)
 
     // Док-виджеты (используются в режиме Сбор)
     QDockWidget* configDock_ = nullptr;
