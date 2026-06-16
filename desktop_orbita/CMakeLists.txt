@@ -18,6 +18,8 @@ add_executable(OrbitaDesktop
     config_manager_widget.h
     metadata_service.cpp
     metadata_service.h
+    watch_set_widget.cpp
+    watch_set_widget.h
     parameter_browser.cpp
     parameter_browser.h
     encoding_utils.cpp

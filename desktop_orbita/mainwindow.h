@@ -16,6 +16,7 @@
 #include "metadata_service.h"
 #include "parameter_browser.h"
 #include "config_manager_widget.h"
+#include "watch_set_widget.h"
 
 class PlotWidget;
 
@@ -38,6 +39,7 @@ private slots:
 private:
     void setupUi();
     void updatePlotLabels();
+    void onWatchSetChanged(const std::vector<orbita::ChannelSpec>& specs);
     void log(const QString& msg);
     QString nextRecordingPath() const;
 
@@ -60,6 +62,7 @@ private:
 
     ConfigManagerWidget* configWidget_;
     ParameterBrowser*    paramBrowser;
+    WatchSetWidget*      watchSetWidget_ = nullptr;
 
     std::vector<std::string> currentChannelNames_;
 };

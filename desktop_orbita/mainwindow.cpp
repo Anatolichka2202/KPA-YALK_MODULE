@@ -46,15 +46,36 @@ MainWindow::MainWindow(QWidget* parent)
         dbDock->setWidget(paramBrowser);
         addDockWidget(Qt::RightDockWidgetArea, dbDock);
 
+        // Активный набор — единый источник истины
+        watchSetWidget_ = new WatchSetWidget(dbProvider_.get(), this);
+        QDockWidget* wsDock = new QDockWidget("Активный набор", this);
+        wsDock->setWidget(watchSetWidget_);
+        addDockWidget(Qt::RightDockWidgetArea, wsDock);
+
         connect(configWidget_, &ConfigManagerWidget::applyConfigRequested,
                 this, &MainWindow::applyConfiguration);
         connect(configWidget_, &ConfigManagerWidget::refreshMetadataRequested,
                 this, &MainWindow::onRefreshMetadata);
+
+        // Библиотека -> активный набор (добавление на лету)
         connect(paramBrowser, &ParameterBrowser::parametersSelected,
                 [this](const QList<QString>& addresses, const QList<QString>& names) {
-                    Q_UNUSED(addresses); Q_UNUSED(names);
-                    // TODO: добавление каналов из браузера параметров
+                    std::vector<orbita::ChannelSpec> specs;
+                    for (int i = 0; i < addresses.size(); ++i) {
+                        std::string norm = encoding::normalizeAddress(addresses[i].toStdString());
+                        if (norm.empty()) continue;
+                        QString cat = dbProvider_ ? dbProvider_->getCategory(addresses[i]) : QString();
+                        specs.push_back(orbita::ChannelSpec{
+                            norm, names[i].toStdString(), cat.toStdString()});
+                    }
+                    if (watchSetWidget_) watchSetWidget_->addParams(specs);
                 });
+
+        // Активный набор -> ядро (горячая замена)
+        connect(watchSetWidget_, &WatchSetWidget::watchSetChanged,
+                this, &MainWindow::onWatchSetChanged);
+        connect(watchSetWidget_, &WatchSetWidget::configSaved,
+                [this]() { if (configWidget_) configWidget_->refreshFileList(); });
     }
 
     connect(updateTimer_, &QTimer::timeout, this, &MainWindow::updateData);
@@ -283,20 +304,29 @@ void MainWindow::applyConfiguration(const QString& fileName)
 
     if (specs.empty()) { log("Конфигурация пуста"); return; }
 
+    // Конфиг заменяет активный набор; WatchSet эмитит изменение -> onWatchSetChanged.
+    if (watchSetWidget_) watchSetWidget_->setFromSpecs(specs);
+    log(QString("Конфигурация загружена: %1 (%2 каналов)")
+            .arg(fileName).arg(specs.size()));
+}
+
+// ============================================================
+//  Активный набор изменился -> горячая замена в ядре
+// ============================================================
+void MainWindow::onWatchSetChanged(const std::vector<orbita::ChannelSpec>& specs)
+{
     try {
         orbita_->setChannels(specs);
-        log(QString("Конфигурация применена: %1 (%2 каналов)")
-                .arg(fileName).arg(specs.size()));
-        updatePlotLabels();
-        plotWidget_->clearAll();
-        // Горячая замена: если сбор уже идёт — кнопки не трогаем (сбор продолжается).
-        // Иначе разрешаем старт.
-        if (!isRunning_) {
-            startBtn_->setEnabled(true);
-            stopBtn_->setEnabled(false);
-        }
     } catch (const std::exception& e) {
-        log("Ошибка: " + QString::fromLocal8Bit(e.what()));
+        log("Ошибка набора: " + QString::fromLocal8Bit(e.what()));
+        return;
+    }
+    updatePlotLabels();
+    plotWidget_->clearAll();
+    // Горячая замена: если сбор идёт — кнопки не трогаем. Иначе старт по наличию каналов.
+    if (!isRunning_) {
+        startBtn_->setEnabled(!specs.empty());
+        stopBtn_->setEnabled(false);
     }
 }
 
