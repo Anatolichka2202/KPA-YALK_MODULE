@@ -243,14 +243,13 @@ void MainWindow::updateData()
             .arg((sec % 3600)/60, 2, 10, QChar('0'))
             .arg(sec % 60,        2, 10, QChar('0')));
 
-        // Данные на графике (сырые коды каналов в порядке конфигурации)
+        // Данные на столбчатой диаграмме (сырые коды в порядке конфигурации)
         if (!snap.values.empty()) {
-            double t = elapsedTimer_.elapsed() / 1000.0;
             std::vector<double> values;
             values.reserve(snap.values.size());
             for (const auto& v : snap.values)
                 values.push_back(v.value);
-            plotWidget_->addSamples(t, values, currentChannelNames_);
+            plotWidget_->setValues(values, currentChannelNames_);
         }
     }
 }
@@ -290,8 +289,12 @@ void MainWindow::applyConfiguration(const QString& fileName)
                 .arg(fileName).arg(specs.size()));
         updatePlotLabels();
         plotWidget_->clearAll();
-        startBtn_->setEnabled(true);
-        stopBtn_->setEnabled(false);
+        // Горячая замена: если сбор уже идёт — кнопки не трогаем (сбор продолжается).
+        // Иначе разрешаем старт.
+        if (!isRunning_) {
+            startBtn_->setEnabled(true);
+            stopBtn_->setEnabled(false);
+        }
     } catch (const std::exception& e) {
         log("Ошибка: " + QString::fromLocal8Bit(e.what()));
     }

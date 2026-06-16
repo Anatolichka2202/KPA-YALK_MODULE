@@ -6,32 +6,28 @@
 #include <string>
 #include <vector>
 
+// Столбчатая диаграмма текущих значений каналов.
+// Высота столбца = текущий код канала; столбцы «колеблются» по мере поступления данных.
+// (Графики «значение от времени» добавим позже отдельной вкладкой.)
 class PlotWidget : public QWidget
 {
     Q_OBJECT
 public:
     explicit PlotWidget(QWidget* parent = nullptr);
 
-    // Добавить одну точку времени для всех каналов (time-series режим)
-    void addSamples(double timeSeconds,
-                    const std::vector<double>& values,
-                    const std::vector<std::string>& names);
-
-    // Установить ширину скользящего окна (по умолчанию 30 с)
-    void setWindowSeconds(double seconds);
-
-    // Очистить все графики и сбросить состояние
+    void setValues(const std::vector<double>& values,
+                   const std::vector<std::string>& names);
+    void setChannelNames(const std::vector<std::string>& names);
     void clearAll();
 
+    // Совместимость с панелью настроек (актуально для будущего time-series графика).
+    void setWindowSeconds(double) {}
+
 private:
-    void ensureGraphs(int count, const std::vector<std::string>& names);
-
-    QCustomPlot* plot_;
-    double windowSeconds_ = 30.0;
+    QCustomPlot*       plot_;
+    QCPBars*           bars_;
+    QCPAxisTickerText* ticker_;
     std::vector<std::string> lastNames_;
-
-    static constexpr int MAX_GRAPHS = 32;
-    static const QColor COLORS[16];
 };
 
 #endif // PLOT_WIDGET_H

@@ -10,6 +10,41 @@
 namespace orbita {
 
 // ------------------------------------------------------------------
+//  Извлечение бортового времени (МТВ) из группы.
+//  МТВ лежит в маркере кадра (16-я фраза) в формате BCD по 4 декады.
+//  Возвращает 0xFFFFFFFF, если группа не содержит маркер кадра.
+// ------------------------------------------------------------------
+static uint32_t extractSecondsFromGroup(const std::vector<uint16_t>& g) {
+    constexpr int WORDS_PER_PHRASE = 16;
+
+    // Первое слово 16-й фразы (индекс 15) — маркер кадра (бит 0x800)
+    const size_t frameStart = 15 * WORDS_PER_PHRASE;
+    if (frameStart >= g.size())          return 0xFFFFFFFF;
+    if ((g[frameStart] & 0x800) == 0)    return 0xFFFFFFFF;
+
+    auto extractDigit = [&](int phraseOffset) -> uint16_t {
+        uint16_t val = 0;
+        for (int i = 0; i < 4; ++i) {
+            size_t idx = static_cast<size_t>(phraseOffset + i * 2) * WORDS_PER_PHRASE;
+            if (idx >= g.size()) return 0;
+            val = static_cast<uint16_t>((val << 1) | ((g[idx] >> 11) & 1));
+        }
+        return val;
+    };
+
+    auto bcd2int = [](uint16_t bcd) -> int {
+        int v = 0;
+        for (int i = 0; i < 4; ++i) v = (v << 1) | ((bcd >> (3 - i)) & 1);
+        return (v > 9) ? 0 : v;
+    };
+
+    return bcd2int(extractDigit(17)) * 1000
+         + bcd2int(extractDigit(25)) * 100
+         + bcd2int(extractDigit(33)) * 10
+         + bcd2int(extractDigit(41));
+}
+
+// ------------------------------------------------------------------
 //  Конструктор / деструктор
 // ------------------------------------------------------------------
 Context::Context()
@@ -232,69 +267,72 @@ void Context::onDecoderGroup(const std::vector<uint16_t>& group12,
 {
     if (paused_.load()) return;
 
-    auto cfg = registry_.get();
-    if (!cfg) return;
+    // 1) Бортовое время — независимо от наличия каналов
+    const uint32_t sec = extractSecondsFromGroup(group12);
+    if (sec != 0xFFFFFFFF) current_mtv_.store(sec);
 
+    // 2) Каналы (если заданы)
+    auto cfg = registry_.get();
     Snapshot pushSnap;
-    bool anyUpdated = false;
+    bool haveValues = false;
 
     {
         std::lock_guard<std::mutex> lock(values_mutex_);
-        // Конфиг мог смениться между get() и блокировкой — пропускаем группу
-        if (values_.size() != cfg->entries.size())
-            return;
+        // Конфиг мог смениться между get() и блокировкой — пропускаем каналы,
+        // но МТВ всё равно обновится (см. ниже)
+        if (cfg && values_.size() == cfg->entries.size() && !cfg->entries.empty()) {
+            for (size_t e = 0; e < cfg->entries.size(); ++e) {
+                const ChannelDesc& ch = cfg->entries[e].desc;
 
-        for (size_t e = 0; e < cfg->entries.size(); ++e) {
-            const ChannelDesc& ch = cfg->entries[e].desc;
+                if (!ch.groups.empty() &&
+                    std::find(ch.groups.begin(), ch.groups.end(), groupNum) == ch.groups.end())
+                    continue;
+                if (!ch.cycles.empty() &&
+                    std::find(ch.cycles.begin(), ch.cycles.end(), ciklNum) == ch.cycles.end())
+                    continue;
 
-            if (!ch.groups.empty() &&
-                std::find(ch.groups.begin(), ch.groups.end(), groupNum) == ch.groups.end())
-                continue;
-            if (!ch.cycles.empty() &&
-                std::find(ch.cycles.begin(), ch.cycles.end(), ciklNum) == ch.cycles.end())
-                continue;
+                int idx = ch.wordIndex;
+                if (idx < 0 || idx >= static_cast<int>(group12.size())) continue;
 
-            int idx = ch.wordIndex;
-            if (idx < 0 || idx >= static_cast<int>(group12.size())) continue;
+                uint16_t w  = group12[idx];
+                uint16_t w2 = (idx + 1 < static_cast<int>(group12.size()))
+                                  ? group12[idx + 1] : 0;
+                double v;
 
-            uint16_t w  = group12[idx];
-            uint16_t w2 = (idx + 1 < static_cast<int>(group12.size()))
-                              ? group12[idx + 1] : 0;
-            double v;
+                switch (ch.adressType) {
+                case ORBITA_ADDR_TYPE_ANALOG_10BIT: v = analog10bitCode(w);              break;
+                case ORBITA_ADDR_TYPE_ANALOG_9BIT:  v = analog9bitCode(w);               break;
+                case ORBITA_ADDR_TYPE_CONTACT:      v = contactExtractBit(w, ch.bitNumber); break;
+                case ORBITA_ADDR_TYPE_FAST_1:       v = fastT21Value(w);                 break;
+                case ORBITA_ADDR_TYPE_FAST_2:       v = fastT22Value(w, w2);             break;
+                case ORBITA_ADDR_TYPE_FAST_4:       v = fastT24Value(w, w2);             break;
+                case ORBITA_ADDR_TYPE_TEMPERATURE:  v = temperatureCode(w);              break;
+                case ORBITA_ADDR_TYPE_BUS:          v = busValue(w, w2);                 break;
+                case ORBITA_ADDR_TYPE_FAST_3:       v = (w & 0x0FFF);                    break; // T23: сырое слово
+                default: continue;
+                }
 
-            switch (ch.adressType) {
-            case ORBITA_ADDR_TYPE_ANALOG_10BIT: v = analog10bitCode(w);              break;
-            case ORBITA_ADDR_TYPE_ANALOG_9BIT:  v = analog9bitCode(w);               break;
-            case ORBITA_ADDR_TYPE_CONTACT:      v = contactExtractBit(w, ch.bitNumber); break;
-            case ORBITA_ADDR_TYPE_FAST_1:       v = fastT21Value(w);                 break;
-            case ORBITA_ADDR_TYPE_FAST_2:       v = fastT22Value(w, w2);             break;
-            case ORBITA_ADDR_TYPE_FAST_4:       v = fastT24Value(w, w2);             break;
-            case ORBITA_ADDR_TYPE_TEMPERATURE:  v = temperatureCode(w);              break;
-            case ORBITA_ADDR_TYPE_BUS:          v = busValue(w, w2);                 break;
-            case ORBITA_ADDR_TYPE_FAST_3:       v = (w & 0x0FFF);                    break; // T23: сырое слово
-            default: continue;
+                values_[e] = v;
+                valid_[e]  = 1;
             }
-
-            values_[e] = v;
-            valid_[e]  = 1;
-            anyUpdated = true;
+            fillValuesLocked(*cfg, pushSnap);
+            haveValues = true;
         }
-
-        if (anyUpdated) fillValuesLocked(*cfg, pushSnap);
     }
 
-    if (!anyUpdated) return;
-
+    // 3) Сигнализируем UI на каждой группе — чтобы МТВ тикал даже без каналов
     {
         std::lock_guard<std::mutex> lk(data_mutex_);
         data_updated_ = true;
     }
     data_cv_.notify_one();
 
+    // 4) Push-колбэк
     DataCallback cb;
     { std::lock_guard<std::mutex> lk(callback_mutex_); cb = data_callback_; }
     if (cb) {
-        pushSnap.mtv_seconds = getCurrentTimeSeconds();
+        if (!haveValues) { /* МТВ-only снапшот */ }
+        pushSnap.mtv_seconds = current_mtv_.load();
         pushSnap.stats       = getStats();
         cb(pushSnap);
     }
@@ -363,8 +401,7 @@ Stats Context::getStats() const {
 }
 
 uint32_t Context::getCurrentTimeSeconds() const {
-    if (decoder_) return decoder_->getCurrentTimeSeconds();
-    return 0;
+    return current_mtv_.load();
 }
 
 void Context::setDataCallback(DataCallback cb) {

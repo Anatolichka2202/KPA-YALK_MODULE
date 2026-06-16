@@ -96,6 +96,9 @@ private:
     std::condition_variable  data_cv_;
     std::atomic<bool>        data_updated_{false};
 
+    // Бортовое время (МТВ), извлекается из маркера кадра независимо от каналов
+    std::atomic<uint32_t>    current_mtv_{0};
+
     // Статистика
     std::atomic<uint64_t> samples_processed_{0};
     std::chrono::steady_clock::time_point start_time_;

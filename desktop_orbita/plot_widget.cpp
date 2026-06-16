@@ -2,13 +2,6 @@
 #include <QVBoxLayout>
 #include <algorithm>
 
-const QColor PlotWidget::COLORS[16] = {
-    {0x1f, 0x77, 0xb4}, {0xff, 0x7f, 0x0e}, {0x2c, 0xa0, 0x2c}, {0xd6, 0x27, 0x28},
-    {0x94, 0x67, 0xbd}, {0x8c, 0x56, 0x4b}, {0xe3, 0x77, 0xc2}, {0x7f, 0x7f, 0x7f},
-    {0xbc, 0xbd, 0x22}, {0x17, 0xbe, 0xcf}, {0xae, 0xc7, 0xe8}, {0xff, 0xbb, 0x78},
-    {0x98, 0xdf, 0x8a}, {0xff, 0x98, 0x96}, {0xc5, 0xb0, 0xd5}, {0xc4, 0x9c, 0x94}
-};
-
 PlotWidget::PlotWidget(QWidget* parent)
     : QWidget(parent)
 {
@@ -18,86 +11,67 @@ PlotWidget::PlotWidget(QWidget* parent)
     plot_ = new QCustomPlot(this);
     layout->addWidget(plot_);
 
-    plot_->xAxis->setLabel("Время, с");
-    plot_->yAxis->setLabel("Код АЦП");
-    plot_->legend->setVisible(true);
-    plot_->legend->setFont(QFont("Segoe UI", 8));
-    plot_->legend->setBrush(QBrush(QColor(255, 255, 255, 180)));
-    plot_->axisRect()->insetLayout()->setInsetAlignment(0, Qt::AlignTop | Qt::AlignRight);
-    plot_->setInteractions(QCP::iRangeDrag | QCP::iRangeZoom | QCP::iSelectLegend);
+    plot_->xAxis->setLabel("Канал");
+    plot_->yAxis->setLabel("Код");
+    plot_->yAxis->setRange(0, 1023);
+    plot_->xAxis->setTickLabelRotation(60);
+    plot_->setInteractions(QCP::iRangeDrag | QCP::iRangeZoom);
 
-    plot_->xAxis->grid()->setSubGridVisible(true);
-    plot_->yAxis->grid()->setSubGridVisible(true);
+    bars_ = new QCPBars(plot_->xAxis, plot_->yAxis);
+    bars_->setPen(QPen(QColor(0x1f, 0x77, 0xb4)));
+    bars_->setBrush(QBrush(QColor(0x1f, 0x77, 0xb4)));
+    bars_->setWidthType(QCPBars::wtPlotCoords);
+    bars_->setWidth(0.7);
+
+    ticker_ = new QCPAxisTickerText;
+    plot_->xAxis->setTicker(QSharedPointer<QCPAxisTickerText>(ticker_));
 }
 
-void PlotWidget::ensureGraphs(int count, const std::vector<std::string>& names)
+void PlotWidget::setChannelNames(const std::vector<std::string>& names)
 {
-    while (plot_->graphCount() < count && plot_->graphCount() < MAX_GRAPHS) {
-        int idx = plot_->graphCount();
-        QCPGraph* g = plot_->addGraph();
-        QPen pen(COLORS[idx % 16]);
-        pen.setWidthF(1.5);
-        g->setPen(pen);
-        g->setLineStyle(QCPGraph::lsLine);
-        if (idx < (int)names.size())
-            g->setName(QString::fromStdString(names[idx]));
-    }
+    QMap<double, QString> tickLabels;
+    for (size_t i = 0; i < names.size(); ++i)
+        tickLabels[static_cast<double>(i)] = QString::fromStdString(names[i]);
+    ticker_->setTicks(tickLabels);
 
-    if (names != lastNames_) {
-        for (int i = 0; i < plot_->graphCount() && i < (int)names.size(); ++i)
-            plot_->graph(i)->setName(QString::fromStdString(names[i]));
-        lastNames_ = names;
-    }
+    if (!names.empty())
+        plot_->xAxis->setRange(-0.5, names.size() - 0.5);
+    plot_->replot();
 }
 
-void PlotWidget::addSamples(double timeSeconds,
-                             const std::vector<double>& values,
-                             const std::vector<std::string>& names)
+void PlotWidget::setValues(const std::vector<double>& values,
+                           const std::vector<std::string>& names)
 {
     if (values.empty()) return;
 
-    int count = std::min((int)values.size(), MAX_GRAPHS);
-    ensureGraphs(count, names);
-
-    double tMin = timeSeconds - windowSeconds_;
-
-    for (int i = 0; i < count; ++i) {
-        auto* g = plot_->graph(i);
-        g->addData(timeSeconds, values[i]);
-        g->data()->removeBefore(tMin);
+    if (lastNames_ != names) {
+        setChannelNames(names);
+        lastNames_ = names;
     }
 
-    plot_->xAxis->setRange(tMin, timeSeconds);
+    QVector<double> keys(values.size()), data(values.size());
+    for (size_t i = 0; i < values.size(); ++i) {
+        keys[i] = static_cast<double>(i);
+        data[i] = values[i];
+    }
+    bars_->setData(keys, data);
 
-    // Авто-масштаб Y по видимым данным
-    bool found = false;
-    double yMin = 0, yMax = 1;
-    for (int i = 0; i < count; ++i) {
-        bool f = false;
-        QCPRange r = plot_->graph(i)->getValueRange(f, QCP::sdBoth,
-                                                     QCPRange(tMin, timeSeconds));
-        if (f) {
-            if (!found) { yMin = r.lower; yMax = r.upper; found = true; }
-            else { yMin = std::min(yMin, r.lower); yMax = std::max(yMax, r.upper); }
-        }
-    }
-    if (found) {
-        double margin = (yMax - yMin) * 0.05;
-        if (margin < 1.0) margin = 1.0;
-        plot_->yAxis->setRange(yMin - margin, yMax + margin);
-    }
+    // Авто-масштаб Y: не опускаем потолок ниже 1023 (типовой диапазон 10-битного кода)
+    double maxVal = *std::max_element(values.begin(), values.end());
+    double curMax = plot_->yAxis->range().upper;
+    if (maxVal > curMax)
+        plot_->yAxis->setRange(0, maxVal * 1.05);
+    else if (maxVal < curMax * 0.5 && curMax > 1023.0)
+        plot_->yAxis->setRange(0, std::max(1023.0, maxVal * 1.2));
 
     plot_->replot(QCustomPlot::rpQueuedReplot);
 }
 
-void PlotWidget::setWindowSeconds(double seconds)
-{
-    windowSeconds_ = seconds;
-}
-
 void PlotWidget::clearAll()
 {
-    plot_->clearGraphs();
+    bars_->data()->clear();
+    ticker_->clear();
     lastNames_.clear();
+    plot_->yAxis->setRange(0, 1023);
     plot_->replot();
 }
