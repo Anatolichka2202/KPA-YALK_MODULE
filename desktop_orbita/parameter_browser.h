@@ -2,12 +2,12 @@
 #include <QWidget>
 #include <QTreeWidget>
 #include <QPushButton>
-#include "parameter_database.h"
+#include "metadata_service.h"
 
 class ParameterBrowser : public QWidget {
     Q_OBJECT
 public:
-    explicit ParameterBrowser(ParameterDatabase* db, QWidget *parent = nullptr);
+    explicit ParameterBrowser(MetadataService* db, QWidget *parent = nullptr);
     void rebuildTree();
 signals:
     void parametersSelected(const QList<QString>& normalizedAddresses, const QList<QString>& names);
@@ -18,7 +18,7 @@ private slots:
 
 private:
 
-    ParameterDatabase* db_;
+    MetadataService* db_;
     QTreeWidget* tree_;
     QPushButton* addButton_;
 };

@@ -31,7 +31,7 @@ MainWindow::MainWindow(QWidget* parent)
 {
     setupUi();
 
-    dbProvider_ = std::make_unique<ParameterDatabase>(this);
+    dbProvider_ = std::make_unique<MetadataService>(this);
     if (!dbProvider_->open()) {
         log("Ошибка открытия БД parameters.db");
     } else {

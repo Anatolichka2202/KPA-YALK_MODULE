@@ -3,7 +3,7 @@
 #include <QHeaderView>
 #include <QDebug>
 
-ParameterBrowser::ParameterBrowser(ParameterDatabase* db, QWidget *parent)
+ParameterBrowser::ParameterBrowser(MetadataService* db, QWidget *parent)
     : QWidget(parent), db_(db)
 {
     QVBoxLayout* layout = new QVBoxLayout(this);

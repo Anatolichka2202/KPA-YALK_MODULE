@@ -16,8 +16,8 @@ add_executable(OrbitaDesktop
     qcustomplot.h
     config_manager_widget.cpp
     config_manager_widget.h
-    parameter_database.cpp
-    parameter_database.h
+    metadata_service.cpp
+    metadata_service.h
     parameter_browser.cpp
     parameter_browser.h
     encoding_utils.cpp

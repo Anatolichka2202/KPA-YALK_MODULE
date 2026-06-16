@@ -1,5 +1,5 @@
 #include "config_manager_widget.h"
-#include "parameter_database.h"
+#include "metadata_service.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QSplitter>
@@ -14,7 +14,7 @@
 #include <QColor>
 #include "encoding_utils.h"
 
-ConfigManagerWidget::ConfigManagerWidget(ParameterDatabase* db, QWidget* parent)
+ConfigManagerWidget::ConfigManagerWidget(MetadataService* db, QWidget* parent)
     : QWidget(parent), db_(db)
 {
     auto* mainLayout = new QVBoxLayout(this);

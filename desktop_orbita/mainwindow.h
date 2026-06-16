@@ -13,7 +13,7 @@
 #include <QSpinBox>
 
 #include "orbita.h"
-#include "parameter_database.h"
+#include "metadata_service.h"
 #include "parameter_browser.h"
 #include "config_manager_widget.h"
 
@@ -42,7 +42,7 @@ private:
     QString nextRecordingPath() const;
 
     std::unique_ptr<orbita::Orbita> orbita_;
-    std::unique_ptr<ParameterDatabase> dbProvider_;
+    std::unique_ptr<MetadataService> dbProvider_;
     QTimer*        updateTimer_;
     QElapsedTimer  elapsedTimer_;
     bool           isRunning_   = false;
