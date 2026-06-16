@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+  body{ background:#ECEAE1; font-family:'IBM Plex Sans',system-ui,sans-serif; -webkit-font-smoothing:antialiased; }
+  @page{ margin:0.7in; }
+  @media print{
+    body{ background:#fff; }
+    .sheet{ box-shadow:none !important; border-radius:0 !important; margin:0 !important; width:auto !important; padding:0 !important; }
+    .sheet + .sheet{ break-before:page; }
+    .avoid{ break-inside:avoid; }
+  }
+</style>
+</helmet>
+
+<div style="padding:34px 16px 60px;">
+
+  <!-- ============ PAGE 1 — TITLE + PRINCIPLES ============ -->
+  <div class="sheet" style="max-width:816px; margin:0 auto 26px; background:#fff; padding:66px 74px; box-shadow:0 2px 14px rgba(0,0,0,.09); border-radius:3px;">
+
+    <div style="display:flex; align-items:flex-start; gap:14px; padding-bottom:22px; border-bottom:2px solid #20242b;">
+      <div style="width:34px; height:34px; border:2px solid #2f6396; border-radius:7px; display:flex; align-items:center; justify-content:center; color:#2f6396; font-size:18px; flex:0 0 auto; margin-top:2px;">◳</div>
+      <div style="flex:1;">
+        <div style="font-size:12px; letter-spacing:2px; text-transform:uppercase; color:#2f6396; font-weight:600;">Дизайн-контракт · платформо-независимый</div>
+        <h1 style="margin:5px 0 0; font-size:30px; font-weight:700; letter-spacing:-.3px; color:#181b21;">Орбита-IV — пульт телеметрии</h1>
+        <div style="margin-top:8px; font-size:14.5px; color:#5b636e; line-height:1.5; max-width:560px;">Опорная спецификация интерфейса для нативного Qt-пульта и будущих веб / мобайл / браузер-клиентов. Описывает намерения, поведение и данные — не пиксели.</div>
+      </div>
+    </div>
+
+    <div style="display:flex; gap:0; margin-top:18px; font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:#5b636e;">
+      <div style="flex:1; padding-right:14px;"><div style="color:#9aa1ab; text-transform:uppercase; letter-spacing:.5px; font-size:10px;">Версия</div><div style="margin-top:3px; color:#20242b;">v1.0 · черновик</div></div>
+      <div style="flex:1; padding:0 14px; border-left:1px solid #e5e2d8;"><div style="color:#9aa1ab; text-transform:uppercase; letter-spacing:.5px; font-size:10px;">Статус</div><div style="margin-top:3px; color:#20242b;">на согласование</div></div>
+      <div style="flex:1; padding:0 14px; border-left:1px solid #e5e2d8;"><div style="color:#9aa1ab; text-transform:uppercase; letter-spacing:.5px; font-size:10px;">Источник истины</div><div style="margin-top:3px; color:#20242b;">контракт данных</div></div>
+      <div style="flex:1; padding-left:14px; border-left:1px solid #e5e2d8;"><div style="color:#9aa1ab; text-transform:uppercase; letter-spacing:.5px; font-size:10px;">Прообраз</div><div style="margin-top:3px; color:#20242b;">HTML-прототип</div></div>
+    </div>
+
+    <!-- 0. О документе -->
+    <div class="avoid" style="margin-top:34px;">
+      <div style="font-size:12px; letter-spacing:1.5px; text-transform:uppercase; color:#2f6396; font-weight:600; padding-bottom:7px; border-bottom:1px solid #e5e2d8;">0 · Назначение и границы</div>
+      <p style="margin:13px 0 0; font-size:14.5px; line-height:1.62; color:#2b2f37;">Документ фиксирует то, что должно быть <strong>одинаковым на всех платформах</strong>: доменную модель данных, состояния системы, состав и назначение экранов, поведение диаграммы, правила контроля допусков, логику сценария проверки и визуальный язык. Реализация (Qt-виджеты, веб, мобайл) остаётся за командами платформ.</p>
+      <div style="margin-top:14px; display:flex; gap:14px;">
+        <div style="flex:1; background:#f1f5f8; border:1px solid #d3e0ea; border-radius:8px; padding:13px 15px;">
+          <div style="font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:#2f6396; font-weight:600;">Контракт задаёт</div>
+          <div style="margin-top:6px; font-size:13.5px; line-height:1.55; color:#2b2f37;">модель данных · состояния · экраны · поведение · правила допусков · сценарии · токены стиля</div>
+        </div>
+        <div style="flex:1; background:#f6f4ec; border:1px solid #e2ddcd; border-radius:8px; padding:13px 15px;">
+          <div style="font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:#9a7b3f; font-weight:600;">Контракт НЕ задаёт</div>
+          <div style="margin-top:6px; font-size:13.5px; line-height:1.55; color:#2b2f37;">точные отступы · технологию рендера графика · транспорт данных · структуру кода · окна ОС</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 1. Принципы -->
+    <div class="avoid" style="margin-top:30px;">
+      <div style="font-size:12px; letter-spacing:1.5px; text-transform:uppercase; color:#2f6396; font-weight:600; padding-bottom:7px; border-bottom:1px solid #e5e2d8;">1 · Принципы</div>
+      <div style="margin-top:13px; display:flex; flex-direction:column; gap:12px;">
+        <div style="display:flex; gap:13px;"><div style="flex:0 0 26px; height:26px; border-radius:6px; background:#20242b; color:#fff; display:flex; align-items:center; justify-content:center; font-family:'IBM Plex Mono',monospace; font-size:13px; font-weight:600;">1</div><div style="flex:1;"><div style="font-size:14.5px; font-weight:600; color:#181b21;">Источник истины — контракт данных, не код платформы</div><div style="font-size:13.5px; line-height:1.55; color:#5b636e; margin-top:2px;">Формат канала, кадра и сценария — платформо-независимы. Qt-ядро и веб-клиент — это разные «головы» к одному телу данных.</div></div></div>
+        <div style="display:flex; gap:13px;"><div style="flex:0 0 26px; height:26px; border-radius:6px; background:#20242b; color:#fff; display:flex; align-items:center; justify-content:center; font-family:'IBM Plex Mono',monospace; font-size:13px; font-weight:600;">2</div><div style="flex:1;"><div style="font-size:14.5px; font-weight:600; color:#181b21;">Сырые отсчёты АЦП — первичны</div><div style="font-size:13.5px; line-height:1.55; color:#5b636e; margin-top:2px;">График всегда отображает сырой код (0–1023) столбцами. Перевод в физ. величину — необязательный слой поверх, появится позже.</div></div></div>
+        <div style="display:flex; gap:13px;"><div style="flex:0 0 26px; height:26px; border-radius:6px; background:#20242b; color:#fff; display:flex; align-items:center; justify-content:center; font-family:'IBM Plex Mono',monospace; font-size:13px; font-weight:600;">3</div><div style="flex:1;"><div style="font-size:14.5px; font-weight:600; color:#181b21;">Цвет несёт смысл, а не украшает</div><div style="font-size:13.5px; line-height:1.55; color:#5b636e; margin-top:2px;">Столбцы одного нейтрального цвета; акцент (жёлтый/красный) появляется только при выходе кода за допуск.</div></div></div>
+        <div style="display:flex; gap:13px;"><div style="flex:0 0 26px; height:26px; border-radius:6px; background:#20242b; color:#fff; display:flex; align-items:center; justify-content:center; font-family:'IBM Plex Mono',monospace; font-size:13px; font-weight:600;">4</div><div style="flex:1;"><div style="font-size:14.5px; font-weight:600; color:#181b21;">Переносим намерения, а не пиксели</div><div style="font-size:13.5px; line-height:1.55; color:#5b636e; margin-top:2px;">Для Qt важна иерархия, поведение и ритм обновления. Для веб/мобайл прототип переносится буквальнее.</div></div></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ============ PAGE 2 — DATA MODEL ============ -->
+  <div class="sheet" style="max-width:816px; margin:0 auto 26px; background:#fff; padding:60px 74px; box-shadow:0 2px 14px rgba(0,0,0,.09); border-radius:3px;">
+
+    <div style="font-size:12px; letter-spacing:1.5px; text-transform:uppercase; color:#2f6396; font-weight:600; padding-bottom:7px; border-bottom:1px solid #e5e2d8;">2 · Доменная модель данных</div>
+    <p style="margin:13px 0 18px; font-size:14.5px; line-height:1.6; color:#2b2f37;">Извлечена из реальной БД параметров. Имена и единицы пока технические (адрес + дескриптор), с заделом под человекочитаемые имена и физ. величины.</p>
+
+    <!-- Канал -->
+    <div class="avoid" style="margin-bottom:20px;">
+      <div style="font-size:14.5px; font-weight:600; color:#181b21; margin-bottom:8px;">Канал <span style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#8a929c; font-weight:400;">Channel</span></div>
+      <table style="width:100%; border-collapse:collapse; font-size:13px;">
+        <thead><tr style="background:#f3f1ea;">
+          <th style="text-align:left; padding:7px 10px; border:1px solid #e5e2d8; font-weight:600; color:#3a3f47; width:150px;">Поле</th>
+          <th style="text-align:left; padding:7px 10px; border:1px solid #e5e2d8; font-weight:600; color:#3a3f47;">Описание</th>
+          <th style="text-align:left; padding:7px 10px; border:1px solid #e5e2d8; font-weight:600; color:#3a3f47; width:172px;">Пример</th>
+        </tr></thead>
+        <tbody>
+          <tr><td style="padding:6px 10px; border:1px solid #e5e2d8; font-family:'IBM Plex Mono',monospace; color:#2f6396;">addr</td><td style="padding:6px 10px; border:1px solid #e5e2d8; color:#2b2f37;">Полный адрес канала (битовый дескриптор)</td><td style="padding:6px 10px; border:1px solid #e5e2d8; font-family:'IBM Plex Mono',monospace; font-size:11px; color:#5b636e;">M16П2A40B40C10D10E11T21</td></tr>
+          <tr><td style="padding:6px 10px; border:1px solid #e5e2d8; font-family:'IBM Plex Mono',monospace; color:#2f6396;">param</td><td style="padding:6px 10px; border:1px solid #e5e2d8; color:#2b2f37;">Идентификатор параметра / дескриптор разряда</td><td style="padding:6px 10px; border:1px solid #e5e2d8; font-family:'IBM Plex Mono',monospace; font-size:11px; color:#5b636e;">(ст. разр. 4 бита)</td></tr>
+          <tr><td style="padding:6px 10px; border:1px solid #e5e2d8; font-family:'IBM Plex Mono',monospace; color:#2f6396;">category</td><td style="padding:6px 10px; border:1px solid #e5e2d8; color:#2b2f37;">Категория (группа в дереве и на диаграмме)</td><td style="padding:6px 10px; border:1px solid #e5e2d8; font-size:12px; color:#5b636e;">БСИ температурные ЯТП-1</td></tr>
+          <tr><td style="padding:6px 10px; border:1px solid #e5e2d8; font-family:'IBM Plex Mono',monospace; color:#2f6396;">type / stream</td><td style="padding:6px 10px; border:1px solid #e5e2d8; color:#2b2f37;">Тип и поток: быстрый / медленный · analog / contact / fast</td><td style="padding:6px 10px; border:1px solid #e5e2d8; font-size:12px; color:#5b636e;">быстрый · fast</td></tr>
+          <tr><td style="padding:6px 10px; border:1px solid #e5e2d8; font-family:'IBM Plex Mono',monospace; color:#2f6396;">bits</td><td style="padding:6px 10px; border:1px solid #e5e2d8; color:#2b2f37;">Информативность (разрядность)</td><td style="padding:6px 10px; border:1px solid #e5e2d8; font-family:'IBM Plex Mono',monospace; font-size:12px; color:#5b636e;">10 бит · 0–1023</td></tr>
+          <tr><td style="padding:6px 10px; border:1px solid #e5e2d8; font-family:'IBM Plex Mono',monospace; color:#2f6396;">code</td><td style="padding:6px 10px; border:1px solid #e5e2d8; color:#2b2f37;">Текущий сырой отсчёт АЦП</td><td style="padding:6px 10px; border:1px solid #e5e2d8; font-family:'IBM Plex Mono',monospace; font-size:12px; color:#5b636e;">0…1023</td></tr>
+          <tr><td style="padding:6px 10px; border:1px solid #e5e2d8; font-family:'IBM Plex Mono',monospace; color:#2f6396;">lo / nominal / hi</td><td style="padding:6px 10px; border:1px solid #e5e2d8; color:#2b2f37;">Допуск: нижний предел · номинал · верхний предел</td><td style="padding:6px 10px; border:1px solid #e5e2d8; font-family:'IBM Plex Mono',monospace; font-size:12px; color:#5b636e;">510 · 626 · 742</td></tr>
+          <tr><td style="padding:6px 10px; border:1px solid #e5e2d8; font-family:'IBM Plex Mono',monospace; color:#9a7b3f;">humanName ⟂</td><td style="padding:6px 10px; border:1px solid #e5e2d8; color:#2b2f37;">Человекочитаемое имя <span style="color:#9a7b3f;">(задел, пока пусто)</span></td><td style="padding:6px 10px; border:1px solid #e5e2d8; font-size:12px; color:#9aa1ab;">— не задано —</td></tr>
+          <tr><td style="padding:6px 10px; border:1px solid #e5e2d8; font-family:'IBM Plex Mono',monospace; color:#9a7b3f;">physUnit ⟂</td><td style="padding:6px 10px; border:1px solid #e5e2d8; color:#2b2f37;">Физ. величина и калибровка <span style="color:#9a7b3f;">(задел)</span></td><td style="padding:6px 10px; border:1px solid #e5e2d8; font-size:12px; color:#9aa1ab;">— перевод не задан —</td></tr>
+        </tbody>
+      </table>
+      <div style="font-size:11.5px; color:#8a929c; margin-top:6px;">⟂ — поля-заделы под будущие версии; интерфейс резервирует под них место уже сейчас.</div>
+    </div>
+
+    <!-- Категории + сущности -->
+    <div class="avoid" style="display:flex; gap:18px; margin-top:6px;">
+      <div style="flex:1;">
+        <div style="font-size:14.5px; font-weight:600; color:#181b21; margin-bottom:8px;">Категории <span style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#8a929c; font-weight:400;">из БД</span></div>
+        <div style="display:flex; flex-direction:column; gap:6px; font-size:13px; color:#2b2f37;">
+          <div style="padding:7px 11px; background:#f7f6f0; border:1px solid #e5e2d8; border-radius:6px;">БСИ температурные ЯТП-1</div>
+          <div style="padding:7px 11px; background:#f7f6f0; border:1px solid #e5e2d8; border-radius:6px;">БСИ МКА-1 аналоговые</div>
+          <div style="padding:7px 11px; background:#f7f6f0; border:1px solid #e5e2d8; border-radius:6px;">БСИ МКС-1 контактные</div>
+          <div style="padding:7px 11px; background:#f7f6f0; border:1px solid #e5e2d8; border-radius:6px;">Высокочастотные и быстроменяющиеся</div>
+          <div style="padding:7px 11px; background:#f7f6f0; border:1px solid #e5e2d8; border-radius:6px;">Служебные</div>
+        </div>
+      </div>
+      <div style="flex:1;">
+        <div style="font-size:14.5px; font-weight:600; color:#181b21; margin-bottom:8px;">Кадр <span style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#8a929c; font-weight:400;">Frame</span></div>
+        <div style="font-size:13.5px; line-height:1.55; color:#5b636e; background:#f7f6f0; border:1px solid #e5e2d8; border-radius:8px; padding:12px 14px;">Срез отсчётов по всем каналам на момент МТВ. Несёт: бортовое время (МТВ), массив кодов, признаки ошибок фраз/групп. Темп ≈ 10 Гц.</div>
+        <div style="font-size:14.5px; font-weight:600; color:#181b21; margin:14px 0 8px;">Запись <span style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#8a929c; font-weight:400;">.tlm</span></div>
+        <div style="font-size:13.5px; line-height:1.55; color:#5b636e; background:#f7f6f0; border:1px solid #e5e2d8; border-radius:8px; padding:12px 14px;">Поток кадров на диск. Состояния: не пишется / идёт запись (путь + имя файла в логе).</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ============ PAGE 3 — STATES + SCREENS ============ -->
+  <div class="sheet" style="max-width:816px; margin:0 auto 26px; background:#fff; padding:60px 74px; box-shadow:0 2px 14px rgba(0,0,0,.09); border-radius:3px;">
+
+    <!-- 3. States -->
+    <div style="font-size:12px; letter-spacing:1.5px; text-transform:uppercase; color:#2f6396; font-weight:600; padding-bottom:7px; border-bottom:1px solid #e5e2d8;">3 · Состояния системы</div>
+    <p style="margin:13px 0 16px; font-size:14.5px; line-height:1.6; color:#2b2f37;">Три независимые оси состояния. Веб/мобайл-клиент добавляет ось связи, которой нет у локального спайк-пульта — её нужно проектировать заранее.</p>
+
+    <div class="avoid" style="display:flex; flex-direction:column; gap:11px;">
+      <div style="display:flex; gap:13px; align-items:flex-start;">
+        <div style="flex:0 0 116px; font-size:12px; text-transform:uppercase; letter-spacing:.5px; color:#2f6396; font-weight:600; padding-top:2px;">Сбор</div>
+        <div style="flex:1; display:flex; gap:8px; flex-wrap:wrap;">
+          <span style="font-size:12.5px; padding:4px 11px; border-radius:20px; background:#eaf3ec; border:1px solid #bcdcc6; color:#2f7344;">● идёт</span>
+          <span style="font-size:12.5px; padding:4px 11px; border-radius:20px; background:#f5efe4; border:1px solid #e0d2b4; color:#8a6a2f;">⏸ остановлен</span>
+        </div>
+      </div>
+      <div style="display:flex; gap:13px; align-items:flex-start;">
+        <div style="flex:0 0 116px; font-size:12px; text-transform:uppercase; letter-spacing:.5px; color:#2f6396; font-weight:600; padding-top:2px;">Запись</div>
+        <div style="flex:1; display:flex; gap:8px; flex-wrap:wrap;">
+          <span style="font-size:12.5px; padding:4px 11px; border-radius:20px; background:#f4f2ec; border:1px solid #e0ddd2; color:#5b636e;">не пишется</span>
+          <span style="font-size:12.5px; padding:4px 11px; border-radius:20px; background:#f7e9e7; border:1px solid #e3bcb6; color:#a8443a;">⏺ идёт запись</span>
+        </div>
+      </div>
+      <div style="display:flex; gap:13px; align-items:flex-start;">
+        <div style="flex:0 0 116px; font-size:12px; text-transform:uppercase; letter-spacing:.5px; color:#9a7b3f; font-weight:600; padding-top:2px;">Связь ⟂</div>
+        <div style="flex:1;">
+          <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
+            <span style="font-size:12.5px; padding:4px 11px; border-radius:20px; background:#eaf3ec; border:1px solid #bcdcc6; color:#2f7344;">приём</span>
+            <span style="font-size:12.5px; padding:4px 11px; border-radius:20px; background:#f5efe4; border:1px solid #e0d2b4; color:#8a6a2f;">отставание / потери кадров</span>
+            <span style="font-size:12.5px; padding:4px 11px; border-radius:20px; background:#f7e9e7; border:1px solid #e3bcb6; color:#a8443a;">нет связи / реконнект</span>
+          </div>
+          <div style="font-size:12.5px; color:#9a7b3f; line-height:1.5;">Только для сетевых клиентов (веб/мобайл). У локального Qt-пульта в спайке этой оси нет — но дизайн обязан её предусмотреть.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4. Screens -->
+    <div style="font-size:12px; letter-spacing:1.5px; text-transform:uppercase; color:#2f6396; font-weight:600; padding-bottom:7px; border-bottom:1px solid #e5e2d8; margin-top:30px;">4 · Экраны</div>
+    <p style="margin:13px 0 16px; font-size:14.5px; line-height:1.6; color:#2b2f37;">Многооконность как переключение основной области. На десктопе допустимы отдельные окна ОС; в браузере — экраны/роуты в одной вкладке.</p>
+
+    <div class="avoid" style="display:flex; flex-direction:column; gap:11px;">
+      <div style="display:flex; gap:14px; padding:13px 15px; background:#f7f6f0; border:1px solid #e5e2d8; border-radius:9px;"><div style="flex:0 0 96px; font-size:14px; font-weight:600; color:#181b21;">Сбор</div><div style="flex:1; font-size:13.5px; line-height:1.5; color:#5b636e;">Живая столбчатая диаграмма всех каналов + крупный отсчёт выбранного. Компоновки <strong>A</strong> (списки + диаграмма + контроль допусков), <strong>B</strong> (диаграмма + таблица точных значений), <strong>C</strong> (карточки по категориям).</div></div>
+      <div style="display:flex; gap:14px; padding:13px 15px; background:#f7f6f0; border:1px solid #e5e2d8; border-radius:9px;"><div style="flex:0 0 96px; font-size:14px; font-weight:600; color:#181b21;">Детально</div><div style="flex:1; font-size:13.5px; line-height:1.5; color:#5b636e;">Один канал: крупный код над диаграммой, история во времени столбцами с линиями допуска, имя/адрес внизу, статистика мин/сред/макс/размах.</div></div>
+      <div style="display:flex; gap:14px; padding:13px 15px; background:#f7f6f0; border:1px solid #e5e2d8; border-radius:9px;"><div style="flex:0 0 96px; font-size:14px; font-weight:600; color:#181b21;">Конфигуратор</div><div style="flex:1; font-size:13.5px; line-height:1.5; color:#5b636e;">Список файлов конфигурации (.txt), кодировка, предпросмотр каналов, применение.</div></div>
+      <div style="display:flex; gap:14px; padding:13px 15px; background:#f7f6f0; border:1px solid #e5e2d8; border-radius:9px;"><div style="flex:0 0 96px; font-size:14px; font-weight:600; color:#181b21;">База</div><div style="flex:1; font-size:13.5px; line-height:1.5; color:#5b636e;">Библиотека параметров: дерево категорий + редактор метаданных и шкала допуска.</div></div>
+      <div style="display:flex; gap:14px; padding:13px 15px; background:#f1f5f8; border:1px solid #d3e0ea; border-radius:9px;"><div style="flex:0 0 96px; font-size:14px; font-weight:600; color:#2f6396;">Сценарий ◇</div><div style="flex:1; font-size:13.5px; line-height:1.5; color:#5b636e;">Модальный мастер поверх любого экрана. Развилка файл / вручную, шаги команд и проверок, автопрогон с вердиктом.</div></div>
+    </div>
+
+  </div>
+
+  <!-- ============ PAGE 4 — DIAGRAM + TOLERANCE + SCENARIO ============ -->
+  <div class="sheet" style="max-width:816px; margin:0 auto 26px; background:#fff; padding:60px 74px; box-shadow:0 2px 14px rgba(0,0,0,.09); border-radius:3px;">
+
+    <!-- 5. Diagram -->
+    <div class="avoid">
+      <div style="font-size:12px; letter-spacing:1.5px; text-transform:uppercase; color:#2f6396; font-weight:600; padding-bottom:7px; border-bottom:1px solid #e5e2d8;">5 · Поведение диаграммы</div>
+      <ul style="margin:13px 0 0; padding-left:20px; font-size:14px; line-height:1.7; color:#2b2f37;">
+        <li>Высота столбца = текущий сырой код АЦП (шкала 0–1023). Только столбцы — не линии.</li>
+        <li>Каналы сгруппированы по категориям; подпись категории — под группой столбцов.</li>
+        <li>Наведение — подсветка столбца; одиночный выбор — синхронно в списке, диаграмме и панели контроля; двойной клик / «Детально» — открытие детального экрана.</li>
+        <li>Над диаграммой — точное значение выбранного канала крупным моноширинным; имя/адрес — снизу.</li>
+      </ul>
+    </div>
+
+    <!-- 6. Tolerance -->
+    <div class="avoid" style="margin-top:28px;">
+      <div style="font-size:12px; letter-spacing:1.5px; text-transform:uppercase; color:#2f6396; font-weight:600; padding-bottom:7px; border-bottom:1px solid #e5e2d8;">6 · Контроль допусков</div>
+      <p style="margin:13px 0 14px; font-size:14.5px; line-height:1.6; color:#2b2f37;">Единые правила статуса канала по сырому коду. Цвет применяется к столбцу, значению и индикатору.</p>
+      <table style="width:100%; border-collapse:collapse; font-size:13.5px;">
+        <thead><tr style="background:#f3f1ea;">
+          <th style="text-align:left; padding:8px 11px; border:1px solid #e5e2d8; font-weight:600; color:#3a3f47; width:130px;">Статус</th>
+          <th style="text-align:left; padding:8px 11px; border:1px solid #e5e2d8; font-weight:600; color:#3a3f47;">Условие</th>
+          <th style="text-align:left; padding:8px 11px; border:1px solid #e5e2d8; font-weight:600; color:#3a3f47; width:150px;">Цвет</th>
+        </tr></thead>
+        <tbody>
+          <tr><td style="padding:9px 11px; border:1px solid #e5e2d8;"><span style="display:inline-flex; align-items:center; gap:7px;"><span style="width:9px; height:9px; border-radius:50%; background:#3f9e63; print-color-adjust:exact;"></span>Норма</span></td><td style="padding:9px 11px; border:1px solid #e5e2d8; font-family:'IBM Plex Mono',monospace; font-size:12.5px; color:#2b2f37;">lo &lt; code &lt; hi (с запасом)</td><td style="padding:9px 11px; border:1px solid #e5e2d8; font-family:'IBM Plex Mono',monospace; font-size:12px; color:#5b636e;">сталь-синий</td></tr>
+          <tr><td style="padding:9px 11px; border:1px solid #e5e2d8;"><span style="display:inline-flex; align-items:center; gap:7px;"><span style="width:9px; height:9px; border-radius:50%; background:#d99a4a; print-color-adjust:exact;"></span>У предела</span></td><td style="padding:9px 11px; border:1px solid #e5e2d8; font-family:'IBM Plex Mono',monospace; font-size:12.5px; color:#2b2f37;">в пределах, но у границы</td><td style="padding:9px 11px; border:1px solid #e5e2d8; font-family:'IBM Plex Mono',monospace; font-size:12px; color:#5b636e;">#D99A4A</td></tr>
+          <tr><td style="padding:9px 11px; border:1px solid #e5e2d8;"><span style="display:inline-flex; align-items:center; gap:7px;"><span style="width:9px; height:9px; border-radius:50%; background:#cf5b52; print-color-adjust:exact;"></span>Вне допуска</span></td><td style="padding:9px 11px; border:1px solid #e5e2d8; font-family:'IBM Plex Mono',monospace; font-size:12.5px; color:#2b2f37;">code &lt; lo  или  code &gt; hi</td><td style="padding:9px 11px; border:1px solid #e5e2d8; font-family:'IBM Plex Mono',monospace; font-size:12px; color:#5b636e;">#CF5B52</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- 7. Scenario -->
+    <div class="avoid" style="margin-top:28px;">
+      <div style="font-size:12px; letter-spacing:1.5px; text-transform:uppercase; color:#2f6396; font-weight:600; padding-bottom:7px; border-bottom:1px solid #e5e2d8;">7 · Сценарий проверки</div>
+      <p style="margin:13px 0 14px; font-size:14.5px; line-height:1.6; color:#2b2f37;">Последовательность шагов двух видов, выполняемая автопрогоном. Развилка на входе: загрузить файл (.scn) либо собрать вручную.</p>
+      <div style="display:flex; gap:14px;">
+        <div style="flex:1; background:#f1f5f8; border:1px solid #d3e0ea; border-radius:8px; padding:13px 15px;">
+          <div style="font-size:12px; text-transform:uppercase; letter-spacing:.5px; color:#2f6396; font-weight:600;">Шаг · Команда</div>
+          <div style="margin-top:6px; font-size:13.5px; line-height:1.55; color:#2b2f37;">Воздействие оператора/КПА: «Подать питание 27 В», «Включить наддув». Помечается выполненным.</div>
+        </div>
+        <div style="flex:1; background:#f7f6f0; border:1px solid #e5e2d8; border-radius:8px; padding:13px 15px;">
+          <div style="font-size:12px; text-transform:uppercase; letter-spacing:.5px; color:#5b636e; font-weight:600;">Шаг · Проверка</div>
+          <div style="margin-top:6px; font-size:13.5px; line-height:1.55; color:#2b2f37;">Канал + ожидаемый допуск. Результат ОК, если code ∈ [lo, hi], иначе НЕ ОК.</div>
+        </div>
+      </div>
+      <div style="margin-top:12px; display:flex; align-items:center; gap:10px; font-size:13.5px; color:#2b2f37; background:#fbfaf6; border:1px solid #e5e2d8; border-radius:8px; padding:11px 15px;">
+        <span style="font-weight:600; color:#181b21;">Автопрогон:</span>
+        <span style="color:#5b636e;">идёт по шагам → отметка ОК/НЕ ОК → счётчики и прогресс → итоговый вердикт</span>
+        <span style="margin-left:auto; display:inline-flex; gap:8px;"><span style="font-family:'IBM Plex Mono',monospace; color:#2f7344;">ОК</span><span style="font-family:'IBM Plex Mono',monospace; color:#a8443a;">НЕ ОК</span></span>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ============ PAGE 5 — VISUAL LANGUAGE + ADAPTIVITY + GLOSSARY ============ -->
+  <div class="sheet" style="max-width:816px; margin:0 auto 0; background:#fff; padding:60px 74px; box-shadow:0 2px 14px rgba(0,0,0,.09); border-radius:3px;">
+
+    <!-- 8. Visual language -->
+    <div class="avoid">
+      <div style="font-size:12px; letter-spacing:1.5px; text-transform:uppercase; color:#2f6396; font-weight:600; padding-bottom:7px; border-bottom:1px solid #e5e2d8;">8 · Визуальный язык</div>
+      <div style="display:flex; gap:18px; margin-top:14px;">
+        <div style="flex:1;">
+          <div style="font-size:13px; font-weight:600; color:#181b21; margin-bottom:8px;">Типографика</div>
+          <div style="font-size:13.5px; line-height:1.6; color:#2b2f37;">UI — <strong>IBM Plex Sans</strong>.<br>Все числа, коды, адреса, МТВ — <strong style="font-family:'IBM Plex Mono',monospace;">IBM Plex Mono</strong> (tabular).</div>
+        </div>
+        <div style="flex:1;">
+          <div style="font-size:13px; font-weight:600; color:#181b21; margin-bottom:8px;">Тема</div>
+          <div style="font-size:13.5px; line-height:1.6; color:#2b2f37;">Тёмная техническая, спокойная. Минимум ярких заливок; акцент только на статусах.</div>
+        </div>
+      </div>
+      <div style="font-size:13px; font-weight:600; color:#181b21; margin:18px 0 9px;">Токены цвета (продуктовая тёмная тема)</div>
+      <div style="display:flex; gap:9px; flex-wrap:wrap;">
+        <div style="flex:1 1 96px;"><div style="height:40px; border-radius:7px; background:#14171c; border:1px solid #d9d5c8; print-color-adjust:exact;"></div><div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:#5b636e; margin-top:4px;">#14171C фон</div></div>
+        <div style="flex:1 1 96px;"><div style="height:40px; border-radius:7px; background:#1b1f26; border:1px solid #d9d5c8; print-color-adjust:exact;"></div><div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:#5b636e; margin-top:4px;">#1B1F26 панель</div></div>
+        <div style="flex:1 1 96px;"><div style="height:40px; border-radius:7px; background:#5e93b8; print-color-adjust:exact;"></div><div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:#5b636e; margin-top:4px;">#5E93B8 столбцы</div></div>
+        <div style="flex:1 1 96px;"><div style="height:40px; border-radius:7px; background:#d99a4a; print-color-adjust:exact;"></div><div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:#5b636e; margin-top:4px;">#D99A4A предел</div></div>
+        <div style="flex:1 1 96px;"><div style="height:40px; border-radius:7px; background:#cf5b52; print-color-adjust:exact;"></div><div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:#5b636e; margin-top:4px;">#CF5B52 перегруз</div></div>
+      </div>
+    </div>
+
+    <!-- 9. Adaptivity -->
+    <div class="avoid" style="margin-top:28px;">
+      <div style="font-size:12px; letter-spacing:1.5px; text-transform:uppercase; color:#2f6396; font-weight:600; padding-bottom:7px; border-bottom:1px solid #e5e2d8;">9 · Адаптация по платформам</div>
+      <table style="width:100%; border-collapse:collapse; font-size:13px; margin-top:13px;">
+        <thead><tr style="background:#f3f1ea;">
+          <th style="text-align:left; padding:8px 10px; border:1px solid #e5e2d8; font-weight:600; color:#3a3f47; width:150px;">Платформа</th>
+          <th style="text-align:left; padding:8px 10px; border:1px solid #e5e2d8; font-weight:600; color:#3a3f47;">Особенности</th>
+        </tr></thead>
+        <tbody>
+          <tr><td style="padding:8px 10px; border:1px solid #e5e2d8; font-weight:600; color:#181b21;">Десктоп (Qt)</td><td style="padding:8px 10px; border:1px solid #e5e2d8; color:#2b2f37; line-height:1.5;">Плотная сетка, наведение мышью, узкие хит-зоны допустимы. Отдельные окна ОС. Спайк — без оси связи.</td></tr>
+          <tr><td style="padding:8px 10px; border:1px solid #e5e2d8; font-weight:600; color:#181b21;">Браузер</td><td style="padding:8px 10px; border:1px solid #e5e2d8; color:#2b2f37; line-height:1.5;">Экраны = роуты в одной вкладке. Прототип переносится почти буквально. Появляется ось связи.</td></tr>
+          <tr><td style="padding:8px 10px; border:1px solid #e5e2d8; font-weight:600; color:#181b21;">Мобайл</td><td style="padding:8px 10px; border:1px solid #e5e2d8; color:#2b2f37; line-height:1.5;">Нет наведения. Хит-зоны ≥ 44px. Вероятна 4-я, вертикальная компоновка. Диаграмма — свайп/зум.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- 10. Glossary -->
+    <div class="avoid" style="margin-top:28px;">
+      <div style="font-size:12px; letter-spacing:1.5px; text-transform:uppercase; color:#2f6396; font-weight:600; padding-bottom:7px; border-bottom:1px solid #e5e2d8;">10 · Глоссарий</div>
+      <div style="display:flex; gap:26px; margin-top:13px;">
+        <div style="flex:1; display:flex; flex-direction:column; gap:9px;">
+          <div style="font-size:13px; line-height:1.4;"><span style="font-family:'IBM Plex Mono',monospace; color:#2f6396; font-weight:600;">МТВ</span> <span style="color:#5b636e;">— бортовое время (метка времени кадра)</span></div>
+          <div style="font-size:13px; line-height:1.4;"><span style="font-family:'IBM Plex Mono',monospace; color:#2f6396; font-weight:600;">АЦП</span> <span style="color:#5b636e;">— код 0–1023, первичная величина графика</span></div>
+          <div style="font-size:13px; line-height:1.4;"><span style="font-family:'IBM Plex Mono',monospace; color:#2f6396; font-weight:600;">ЯТП</span> <span style="color:#5b636e;">— набор каналов телеметрии</span></div>
+        </div>
+        <div style="flex:1; display:flex; flex-direction:column; gap:9px;">
+          <div style="font-size:13px; line-height:1.4;"><span style="font-family:'IBM Plex Mono',monospace; color:#2f6396; font-weight:600;">БСИ</span> <span style="color:#5b636e;">— блок сбора информации (категории)</span></div>
+          <div style="font-size:13px; line-height:1.4;"><span style="font-family:'IBM Plex Mono',monospace; color:#2f6396; font-weight:600;">спайк</span> <span style="color:#5b636e;">— прямая связь с логикой, не по сети</span></div>
+          <div style="font-size:13px; line-height:1.4;"><span style="font-family:'IBM Plex Mono',monospace; color:#2f6396; font-weight:600;">допуск</span> <span style="color:#5b636e;">— [lo, hi] вокруг номинала</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:34px; padding-top:14px; border-top:1px solid #e5e2d8; display:flex; justify-content:space-between; font-size:11px; color:#9aa1ab; font-family:'IBM Plex Mono',monospace;">
+      <span>Орбита-IV · дизайн-контракт v1.0</span>
+      <span>опорный документ для Qt / веб / мобайл</span>
+    </div>
+
+  </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:880,&quot;height&quot;:1180}}"></script>
+</body>
+</html>

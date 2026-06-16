@@ -69,12 +69,12 @@
     <div style="display:flex; align-items:center; gap:8px;">
       <button onClick="{{ toggleRun }}" style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:7px 14px; border-radius:6px; font-size:13px; font-weight:500; font-family:'IBM Plex Sans',sans-serif; background:{{ runBg }}; border:1px solid {{ runBorder }}; color:{{ runFg }};">{{ runIcon }} {{ runLabel }}</button>
       <button onClick="{{ toggleRecord }}" style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:7px 14px; border-radius:6px; font-size:13px; font-weight:500; font-family:'IBM Plex Sans',sans-serif; background:{{ recBg }}; border:1px solid {{ recBorder }}; color:{{ recFg }};"><span style="width:8px; height:8px; border-radius:50%; background:{{ recDot }}; animation:{{ recAnim }}; display:inline-block;"></span>{{ recLabel }}</button>
-      <button style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:7px 14px; border-radius:6px; font-size:13px; font-weight:500; font-family:'IBM Plex Sans',sans-serif; background:#1f242c; border:1px solid #2c333d; color:#c2ccd8;">▤ Открыть .bin</button>
+      <button onClick="{{ openScenario }}" style="display:flex; align-items:center; gap:7px; cursor:pointer; padding:7px 14px; border-radius:6px; font-size:13px; font-weight:600; font-family:'IBM Plex Sans',sans-serif; background:#1c3550; border:1px solid #2f6396; color:#9cc8ec;">◇ Сценарий</button>
 
       <sc-if value="{{ onMain }}" hint-placeholder-val="{{ true }}">
         <div style="display:flex; align-items:center; gap:10px;">
           <span style="width:1px; height:22px; background:#2a313b; margin:0 4px;"></span>
-          <span style="font-size:11.5px; color:#66707c; text-transform:uppercase; letter-spacing:.5px;">компоновка</span>
+          <span style="font-size:11.5px; color:#66707c; text-transform:uppercase; letter-spacing:.5px;">вид</span>
           <div style="display:flex; background:#0d1014; border:1px solid #262d37; border-radius:6px; padding:2px; gap:2px;">
             <sc-for list="{{ layouts }}" as="lo" hint-placeholder-count="3">
               <button onClick="{{ lo.onClick }}" style="cursor:pointer; border:none; width:30px; height:24px; border-radius:4px; font-size:12px; font-weight:600; font-family:'IBM Plex Mono',monospace; background:{{ lo.bg }}; color:{{ lo.fg }};">{{ lo.label }}</button>
@@ -102,15 +102,19 @@
               </div>
               <div style="flex:1 1 auto; overflow-y:auto; min-height:0; padding:6px 0;">
                 <sc-for list="{{ groups }}" as="g" hint-placeholder-count="4">
-                  <div style="padding:9px 14px 4px; display:flex; align-items:baseline; gap:7px;">
-                    <span style="font-size:11px; font-weight:600; letter-spacing:.6px; text-transform:uppercase; color:#7e8a98;">{{ g.name }}</span>
-                    <span style="font-size:10.5px; font-family:'IBM Plex Mono',monospace; color:#4e5763;">{{ g.unit }}</span>
+                  <div style="padding:10px 14px 5px; display:flex; align-items:baseline; gap:7px;">
+                    <span style="font-size:11px; font-weight:600; letter-spacing:.5px; text-transform:uppercase; color:#7e8a98; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ g.name }}</span>
+                    <span style="flex:1;"></span>
+                    <span style="font-size:10px; font-family:'IBM Plex Mono',monospace; color:#4e5763;">{{ g.type }}</span>
                   </div>
                   <sc-for list="{{ g.bars }}" as="b" hint-placeholder-count="6">
                     <div onClick="{{ b.onClick }}" onDoubleClick="{{ b.onDbl }}" onMouseEnter="{{ b.onEnter }}" style="display:flex; align-items:center; gap:9px; padding:5px 14px; cursor:pointer; border-left:2px solid {{ b.border }};">
-                      <span style="width:24px; font-family:'IBM Plex Mono',monospace; font-size:11px; color:#5b6573; text-align:right;">{{ b.num }}</span>
-                      <span style="flex:1; font-size:12.5px; color:#c2ccd8; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ b.name }}</span>
-                      <span style="font-family:'IBM Plex Mono',monospace; font-size:12px; font-weight:500; color:{{ b.color }};">{{ b.code }}</span>
+                      <span style="width:22px; font-family:'IBM Plex Mono',monospace; font-size:11px; color:#5b6573; text-align:right;">{{ b.num }}</span>
+                      <span style="flex:1; min-width:0;">
+                        <span style="display:block; font-size:12.5px; color:#c2ccd8; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ b.param }}</span>
+                        <span style="display:block; font-family:'IBM Plex Mono',monospace; font-size:9.5px; color:#5b6573; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ b.addr }}</span>
+                      </span>
+                      <span style="font-family:'IBM Plex Mono',monospace; font-size:13px; font-weight:600; color:{{ b.color }};">{{ b.code }}</span>
                     </div>
                   </sc-for>
                 </sc-for>
@@ -127,7 +131,8 @@
                     <span style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#5b6573;">КАН {{ selNum }}</span>
                     <span style="font-size:15px; font-weight:600; color:#e6eaf0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ selName }}</span>
                   </div>
-                  <div style="font-size:12px; color:#7e8a98; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ selCat }} · код АЦП · ед. {{ selUnit }}</div>
+                  <div style="font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:#5e93b8; margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ selAddr }}</div>
+                  <div style="font-size:11.5px; color:#7e8a98; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ selCat }} · {{ selType }} · {{ selBits }}</div>
                 </div>
 
                 <div style="flex:1;"></div>
@@ -234,15 +239,16 @@
               </div>
             </div>
             <!-- таблица точных значений -->
-            <div style="flex:1 1 auto; min-height:0; overflow-y:auto; background:#12151a;">
-              <div style="display:grid; grid-template-columns:48px 1fr 130px 92px 168px 120px 120px; align-items:center; gap:0; padding:8px 18px; position:sticky; top:0; background:#0f1216; border-bottom:1px solid #2a313b; font-size:10.5px; letter-spacing:.6px; text-transform:uppercase; color:#66707c; z-index:1;">
-                <span>№</span><span>Канал</span><span>Категория</span><span style="text-align:right;">Код</span><span style="padding-left:14px;">Допуск</span><span>Уровень</span><span style="text-align:right;">Статус</span>
+            <div style="flex:1 1 auto; min-height:0; overflow-y:auto; overflow-x:hidden; background:#12151a;">
+              <div style="display:grid; grid-template-columns:34px 124px minmax(120px,1.2fr) 104px 76px 124px 64px 96px; align-items:center; gap:0; padding:8px 16px; position:sticky; top:0; background:#0f1216; border-bottom:1px solid #2a313b; font-size:10.5px; letter-spacing:.6px; text-transform:uppercase; color:#66707c; z-index:1;">
+                <span>№</span><span>Адрес</span><span>Параметр</span><span>Категория</span><span style="text-align:right;">Код</span><span style="padding-left:14px;">Допуск</span><span>Уровень</span><span style="text-align:right;">Статус</span>
               </div>
               <sc-for list="{{ rows }}" as="r" hint-placeholder-count="14">
-                <div onClick="{{ r.onClick }}" onDoubleClick="{{ r.onDbl }}" style="display:grid; grid-template-columns:48px 1fr 130px 92px 168px 120px 120px; align-items:center; gap:0; padding:7px 18px; cursor:pointer; border-bottom:1px solid #1a1f26; background:{{ r.rowBg }};">
+                <div onClick="{{ r.onClick }}" onDoubleClick="{{ r.onDbl }}" style="display:grid; grid-template-columns:34px 124px minmax(120px,1.2fr) 104px 76px 124px 64px 96px; align-items:center; gap:0; padding:7px 16px; cursor:pointer; border-bottom:1px solid #1a1f26; background:{{ r.rowBg }};">
                   <span style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#5b6573;">{{ r.num }}</span>
+                  <span style="font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:#7e8a98; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; padding-right:10px;">{{ r.addr }}</span>
                   <span style="font-size:13px; color:#d4dae2; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; padding-right:10px;">{{ r.name }}</span>
-                  <span style="font-size:12px; color:#7e8a98;">{{ r.cat }}</span>
+                  <span style="font-size:12px; color:#7e8a98; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; padding-right:10px;">{{ r.cat }}</span>
                   <span style="font-family:'IBM Plex Mono',monospace; font-size:14px; font-weight:600; text-align:right; color:{{ r.bar }};">{{ r.code }}</span>
                   <span style="font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:#7e8a98; padding-left:14px;">{{ r.lo }} · {{ r.nominal }} · {{ r.hi }}</span>
                   <span style="padding-right:14px;"><span style="display:block; height:6px; border-radius:3px; background:#1c222a; overflow:hidden;"><span style="display:block; height:100%; width:{{ r.h }}; background:{{ r.bar }};"></span></span></span>
@@ -296,7 +302,8 @@
               <span style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#5b6573;">КАН {{ dNum }}</span>
               <span style="font-size:16px; font-weight:600; color:#e6eaf0;">{{ dName }}</span>
             </div>
-            <span style="font-size:12px; color:#7e8a98; margin-top:1px;">{{ dCat }} · история кода АЦП · ед. {{ dUnit }}</span>
+            <span style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#5e93b8; margin-top:2px;">{{ dAddr }}</span>
+            <span style="font-size:12px; color:#7e8a98; margin-top:1px;">{{ dFull }} · {{ dType }} · {{ dBits }} · история кода</span>
           </div>
           <div style="flex:1;"></div>
           <div style="display:flex; gap:5px;">
@@ -373,7 +380,8 @@
         <!-- имя параметра внизу -->
         <div style="flex:0 0 auto; text-align:center; padding:10px 0 16px; border-top:1px solid #232a33; background:#12161b;">
           <span style="font-size:15px; font-weight:600; letter-spacing:.4px; color:#cfe0ee;">{{ dName }}</span>
-          <span style="font-size:13px; color:#7e8a98; margin-left:8px;">· {{ dCat }} · ед. {{ dUnit }}</span>
+          <span style="font-family:'IBM Plex Mono',monospace; font-size:13px; color:#5e93b8; margin-left:8px;">{{ dAddr }}</span>
+          <span style="font-size:13px; color:#7e8a98; margin-left:8px;">· {{ dFull }}</span>
         </div>
       </div>
     </sc-if>
@@ -485,6 +493,7 @@
                 <div style="display:flex; flex-direction:column; gap:6px;">
                   <label style="font-size:11.5px; letter-spacing:.4px; color:#7e8a98;">{{ f.label }}</label>
                   <div style="padding:9px 12px; border-radius:7px; background:#0f1216; border:1px solid #2a313b; font-size:13.5px; color:#dfe6ee; font-family:{{ f.font }};">{{ f.value }}</div>
+                  <sc-if value="{{ f.hint }}" hint-placeholder-val="{{ false }}"><span style="font-size:10.5px; color:#5b6573; font-style:italic;">{{ f.hint }}</span></sc-if>
                 </div>
               </sc-for>
             </div>
@@ -516,6 +525,99 @@
     <span>{{ rateText }}</span>
   </footer>
 
+  <!-- ===== SCENARIO WIZARD MODAL ===== -->
+  <sc-if value="{{ scOpen }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed; inset:0; z-index:50; background:rgba(8,10,13,.66); display:flex; align-items:center; justify-content:center; padding:36px;">
+      <div style="width:880px; max-width:100%; max-height:100%; display:flex; flex-direction:column; background:#161a20; border:1px solid #2c333d; border-radius:12px; box-shadow:0 24px 70px rgba(0,0,0,.5); overflow:hidden;">
+
+        <!-- заголовок мастера -->
+        <div style="flex:0 0 auto; display:flex; align-items:center; gap:12px; padding:16px 20px; border-bottom:1px solid #232a33; background:#12161b;">
+          <div style="width:30px; height:30px; border-radius:7px; background:#1c3550; border:1px solid #2f6396; display:flex; align-items:center; justify-content:center; color:#9cc8ec; font-size:15px;">◇</div>
+          <div>
+            <div style="font-size:15.5px; font-weight:600; color:#e6eaf0;">Сценарий проверки</div>
+            <div style="font-size:11.5px; color:#7e8a98; margin-top:1px;">последовательность команд и проверок каналов с автопрогоном</div>
+          </div>
+          <div style="flex:1;"></div>
+          <button onClick="{{ scClose }}" style="cursor:pointer; width:30px; height:30px; border-radius:7px; border:1px solid #2c333d; background:#1b2129; color:#aab4c0; font-size:15px;">✕</button>
+        </div>
+
+        <!-- РАЗВИЛКА: файл / вручную -->
+        <sc-if value="{{ scIsFork }}" hint-placeholder-val="{{ true }}">
+          <div style="flex:1 1 auto; min-height:0; display:flex; gap:16px; padding:28px;">
+            <button onClick="{{ scPickFile }}" style="flex:1; cursor:pointer; text-align:left; display:flex; flex-direction:column; gap:12px; padding:24px; border-radius:11px; background:#12161b; border:1px solid #2c333d; color:inherit; font-family:'IBM Plex Sans',sans-serif;">
+              <div style="width:46px; height:46px; border-radius:10px; background:#13202e; border:1px solid #2f6396; display:flex; align-items:center; justify-content:center; color:#6fa6cc; font-size:22px;">▤</div>
+              <div style="font-size:16px; font-weight:600; color:#e6eaf0;">Загрузить файл сценария</div>
+              <div style="font-size:12.5px; color:#8b95a3; line-height:1.5;">Открыть готовый <span style="font-family:'IBM Plex Mono',monospace; color:#aab4c0;">.scn</span> с описанием шагов, команд и ожидаемых допусков.</div>
+              <div style="flex:1;"></div>
+              <div style="font-size:12px; color:#5e93b8;">Выбрать файл →</div>
+            </button>
+            <button onClick="{{ scPickManual }}" style="flex:1; cursor:pointer; text-align:left; display:flex; flex-direction:column; gap:12px; padding:24px; border-radius:11px; background:#12161b; border:1px solid #2c333d; color:inherit; font-family:'IBM Plex Sans',sans-serif;">
+              <div style="width:46px; height:46px; border-radius:10px; background:#241d13; border:1px solid #5a4424; display:flex; align-items:center; justify-content:center; color:#c89b6a; font-size:22px;">✎</div>
+              <div style="font-size:16px; font-weight:600; color:#e6eaf0;">Создать вручную</div>
+              <div style="font-size:12.5px; color:#8b95a3; line-height:1.5;">Накликать шаги: добавить команды-воздействия и выбрать каналы для контроля с допуском.</div>
+              <div style="flex:1;"></div>
+              <div style="font-size:12px; color:#5e93b8;">Начать сборку →</div>
+            </button>
+          </div>
+        </sc-if>
+
+        <!-- СОБРАННЫЙ СЦЕНАРИЙ + автопрогон -->
+        <sc-if value="{{ scIsBuilt }}" hint-placeholder-val="{{ false }}">
+          <div style="flex:1 1 auto; min-height:0; display:flex; flex-direction:column;">
+
+            <!-- подшапка: режим + прогресс -->
+            <div style="flex:0 0 auto; display:flex; align-items:center; gap:14px; padding:13px 20px; border-bottom:1px solid #232a33; background:#12161b;">
+              <button onClick="{{ scBackFork }}" style="cursor:pointer; padding:5px 11px; border-radius:6px; font-size:12px; font-family:'IBM Plex Sans',sans-serif; background:#1b2129; border:1px solid #2c333d; color:#aab4c0;">←</button>
+              <span style="font-size:13px; color:#cfe0ee; font-weight:500;">{{ scModeLabel }}</span>
+              <span style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#7e8a98;">{{ scTotal }} шаг · {{ scChecks }} проверок</span>
+              <div style="flex:1;"></div>
+              <sc-if value="{{ scIsManual }}" hint-placeholder-val="{{ false }}">
+                <button style="cursor:pointer; padding:6px 12px; border-radius:6px; font-size:12.5px; font-family:'IBM Plex Sans',sans-serif; background:#1f242c; border:1px solid #2c333d; color:#c2ccd8;">+ Добавить шаг</button>
+              </sc-if>
+            </div>
+
+            <!-- список шагов -->
+            <div style="flex:1 1 auto; min-height:0; overflow-y:auto; padding:14px 20px; display:flex; flex-direction:column; gap:8px;">
+              <sc-for list="{{ scSteps }}" as="st" hint-placeholder-count="9">
+                <div style="display:flex; align-items:center; gap:13px; padding:11px 14px; border-radius:9px; background:{{ st.stBg }}; border:1px solid {{ st.stBorder }};">
+                  <span style="width:22px; font-family:'IBM Plex Mono',monospace; font-size:13px; color:#5b6573; text-align:right;">{{ st.n }}</span>
+                  <span style="flex:0 0 78px; text-align:center; font-size:10px; font-weight:600; letter-spacing:.5px; padding:3px 0; border-radius:5px; color:{{ st.tagColor }}; background:{{ st.tagBg }};">{{ st.tag }}</span>
+                  <div style="flex:1; min-width:0;">
+                    <div style="font-size:13.5px; color:#e6eaf0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ st.text }}</div>
+                    <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#7e8a98; margin-top:2px;">{{ st.detail }} <sc-if value="{{ st.isCheck }}" hint-placeholder-val="{{ false }}"><span style="color:#5b6573;">· {{ st.expect }}</span></sc-if></div>
+                  </div>
+                  <sc-if value="{{ st.isCheck }}" hint-placeholder-val="{{ false }}">
+                    <span style="font-family:'IBM Plex Mono',monospace; font-size:16px; font-weight:600; color:{{ st.codeColor }}; min-width:48px; text-align:right;">{{ st.chCode }}</span>
+                  </sc-if>
+                  <span style="flex:0 0 96px; text-align:right; font-size:12.5px; font-weight:500; color:{{ st.stColor }};">{{ st.stText }}</span>
+                </div>
+              </sc-for>
+            </div>
+
+            <!-- футер: вердикт + управление -->
+            <div style="flex:0 0 auto; padding:14px 20px; border-top:1px solid #232a33; background:#12161b; display:flex; align-items:center; gap:14px;">
+              <sc-if value="{{ scFinished }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex; align-items:center; gap:9px; padding:7px 13px; border-radius:7px; background:{{ scVerdictBg }}; border:1px solid {{ scVerdictBorder }};">
+                  <span style="font-size:13px; font-weight:600; color:{{ scVerdictColor }};">{{ scVerdict }}</span>
+                </div>
+              </sc-if>
+              <div style="display:flex; align-items:center; gap:16px; font-family:'IBM Plex Mono',monospace; font-size:13px;">
+                <span style="color:#7fc79a;">ОК {{ scOkN }}</span>
+                <span style="color:#e07a72;">НЕ ОК {{ scFailN }}</span>
+                <span style="color:#7e8a98;">{{ scDoneN }} / {{ scTotal }}</span>
+              </div>
+              <div style="flex:1; height:6px; border-radius:3px; background:#1c222a; overflow:hidden;">
+                <div style="height:100%; width:{{ scProgPct }}; background:#5e93b8;"></div>
+              </div>
+              <button onClick="{{ scReset }}" style="cursor:pointer; padding:8px 14px; border-radius:6px; font-size:13px; font-family:'IBM Plex Sans',sans-serif; background:#1b2129; border:1px solid #2c333d; color:#aab4c0;">Сброс</button>
+              <button onClick="{{ scStart }}" style="cursor:pointer; padding:8px 18px; border-radius:6px; font-size:13px; font-weight:600; font-family:'IBM Plex Sans',sans-serif; background:#5e93b8; border:1px solid #5e93b8; color:#0c1116;">▶ {{ scStartLabel }}</button>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+  </sc-if>
+
 </div>
 </x-dc>
 <script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1280,&quot;height&quot;:800}}">
@@ -530,12 +632,55 @@ class Component extends DCLogic {
     detailChan: 6,
     configSel: 0,
     dbSel: 6,
-    dbCat: 'P',
+    dbCat: 'TMP',
+    scOpen: false,
+    scMode: null,        // null(fork) | 'file' | 'manual'
+    scFile: 'Сценарий_ЯТП_приёмка.scn',
+    scRunning: false,
+    scStep: -1,
+    scResults: {},
     mtvSec: 7 * 3600 + 42 * 60 + 11,
     tick: 0,
     channels: Component.build(),
     history: Component.buildHistory(6),
   };
+
+  buildScenario() {
+    return [
+      { kind: 'cmd', text: 'Подать бортовое питание 27 В', detail: 'Команда МКО · шина питания' },
+      { kind: 'check', id: 16, text: 'Контроль аналогового канала А1' },
+      { kind: 'cmd', text: 'Перевести БСИ в режим ТМ-контроля', detail: 'Команда МКО · режим' },
+      { kind: 'check', id: 0, text: 'Температурный канал (ст. разр. 4 бита)' },
+      { kind: 'cmd', text: 'Включить наддув баков', detail: 'Воздействие · пневмощит' },
+      { kind: 'check', id: 20, text: 'Контроль аналогового канала А5' },
+      { kind: 'check', id: 40, text: 'ВЧ / быстроменяющийся канал В1' },
+      { kind: 'check', id: 30, text: 'Контактный датчик К1 (МКС-1)' },
+      { kind: 'cmd', text: 'Снять бортовое питание', detail: 'Команда МКО · завершение' },
+    ];
+  }
+  evalStep(step) {
+    if (step.kind === 'cmd') return 'ok';
+    const c = this.state.channels[step.id];
+    return (c.code >= c.lo && c.code <= c.hi) ? 'ok' : 'fail';
+  }
+  startScenario() {
+    if (!this._scenario) this._scenario = this.buildScenario();
+    clearInterval(this._scT);
+    this.setState({ scRunning: true, scStep: -1, scResults: {} });
+    this._scT = setInterval(() => {
+      this.setState(st => {
+        const steps = this._scenario;
+        const next = st.scStep + 1;
+        if (next >= steps.length) { clearInterval(this._scT); return { scRunning: false }; }
+        const res = { ...st.scResults, [next]: this.evalStep(steps[next]) };
+        return { scStep: next, scResults: res };
+      });
+    }, 850);
+  }
+  resetScenario() {
+    clearInterval(this._scT);
+    this.setState({ scRunning: false, scStep: -1, scResults: {} });
+  }
 
   // Реальные категории из parameters.db (поток/тип/информативность)
   static CATS = [
@@ -636,9 +781,9 @@ class Component extends DCLogic {
 
     const navDefs = [
       { k: 'main', label: 'Сбор', icon: '▮' },
-      { k: 'detail', label: 'Детальный просмотр', icon: '◉' },
+      { k: 'detail', label: 'Детально', icon: '◉' },
       { k: 'config', label: 'Конфигуратор', icon: '⚙' },
-      { k: 'db', label: 'База параметров', icon: '⛁' },
+      { k: 'db', label: 'База', icon: '⛁' },
     ];
     const nav = navDefs.map(n => ({
       label: n.label, icon: n.icon, onClick: setScreen(n.k),
@@ -685,7 +830,7 @@ class Component extends DCLogic {
       recPath: s.recording ? 'ЯТП_20260616_0742.tlm' : '—',
 
       logText: anomalies.length
-        ? ('контроль допусков: ' + anomalies.length + ' канал(ов) вне нормы — кан.' + (anomalies[0].id + 1) + ' ' + anomalies[0].name)
+        ? ('контроль допусков: ' + anomalies.length + ' канал(ов) вне нормы — кан.' + (anomalies[0].id + 1) + ' ' + anomalies[0].param)
         : 'все каналы в пределах допуска',
 
       ...this.screenVM(),
@@ -709,7 +854,7 @@ class Component extends DCLogic {
         const hov = ch.id === s.hover;
         const h = Math.max(1.5, (ch.code / 1023) * 100);
         bars.push({
-          id: ch.id, num: ch.id + 1, name: ch.name, code: Math.round(ch.code),
+          id: ch.id, num: ch.id + 1, name: ch.name, addr: ch.addr, param: ch.param, code: Math.round(ch.code),
           h: h.toFixed(1) + '%',
           color: this.barColor(st, sel || hov),
           border: sel ? '1px solid #cfe6fb' : (hov ? '1px solid rgba(255,255,255,.28)' : '1px solid transparent'),
@@ -719,7 +864,8 @@ class Component extends DCLogic {
           onDbl: () => this.setState({ screen: 'detail', detailChan: ch.id, selected: ch.id }),
         });
       }
-      groups.push({ key: c.key, name: c.name, unit: c.unit, count: c.n, bars });
+      const cdef = Component.CATS.find(x => x.key === c.key);
+      groups.push({ key: c.key, name: cdef.short, full: cdef.name, type: cdef.type, unit: 'код', count: c.n, bars });
     }
     return groups;
   }
@@ -739,7 +885,7 @@ class Component extends DCLogic {
       const cst = this.status(c);
       const cm = this.statusMeta(cst);
       return {
-        id: c.id, num: c.id + 1, name: c.name, cat: c.catName, unit: c.unit,
+        id: c.id, num: c.id + 1, name: c.name, addr: c.addr, param: c.param, cat: c.catShort, unit: c.unit,
         code: Math.round(c.code), nominal: c.nominal, lo: c.lo, hi: c.hi,
         h: Math.max(2, (c.code / 1023) * 100).toFixed(0) + '%',
         bar: this.barColor(cst, c.id === s.selected),
@@ -768,7 +914,7 @@ class Component extends DCLogic {
     const anomalies = s.channels.filter(c => this.status(c) !== 'norm').map(c => {
       const cm = this.statusMeta(this.status(c));
       return {
-        id: c.id, num: c.id + 1, name: c.name, code: Math.round(c.code),
+        id: c.id, num: c.id + 1, name: c.param, addr: c.addr, code: Math.round(c.code),
         unit: c.unit, stText: cm.text, color: cm.color, bg: cm.bg, border: cm.border, dot: cm.dot,
         onClick: () => this.setState({ selected: c.id }),
       };
@@ -784,7 +930,7 @@ class Component extends DCLogic {
       groups, rows, cards, anomalies,
       clearHover: () => this.setState({ hover: -1 }),
 
-      selNum: ch.id + 1, selName: ch.name, selCat: ch.catName, selUnit: ch.unit,
+      selNum: ch.id + 1, selName: ch.param, selAddr: ch.addr, selCat: ch.catShort, selType: ch.type, selBits: ch.bits, selUnit: ch.unit,
       selCode: String(Math.round(ch.code)).padStart(4, '0'),
       selNominal: ch.nominal, selLo: ch.lo, selHi: ch.hi,
       selBandPct: bandPct.toFixed(0) + '%',
@@ -797,9 +943,74 @@ class Component extends DCLogic {
       allNorm: anomalies.length === 0,
       hasAnom: anomalies.length > 0,
       allNormText: 'Все 48 каналов в пределах допуска',
+      openScenario: () => this.setState({ scOpen: true }),
       ...this.detailVM(),
       ...this.configVM(),
       ...this.dbVM(),
+      ...this.scenarioVM(),
+    };
+  }
+
+  scenarioVM() {
+    const s = this.state;
+    if (!this._scenario) this._scenario = this.buildScenario();
+    const steps = this._scenario;
+    const total = steps.length;
+    const checks = steps.filter(x => x.kind === 'check').length;
+
+    const list = steps.map((st, i) => {
+      const res = s.scResults[i];
+      const active = s.scRunning && i === s.scStep;
+      const done = res != null;
+      let stColor = '#5b6573', stText = 'ожидание', stBg = 'transparent', stBorder = '#232a33';
+      if (active) { stText = 'выполняется…'; stColor = '#9cc8ec'; stBorder = '#2f6396'; stBg = '#13202e'; }
+      else if (res === 'ok') { stText = 'ОК'; stColor = '#7fc79a'; stBorder = '#244a33'; stBg = '#10211a'; }
+      else if (res === 'fail') { stText = 'НЕ ОК'; stColor = '#e07a72'; stBorder = '#4a2426'; stBg = '#221416'; }
+      const ch = st.kind === 'check' ? s.channels[st.id] : null;
+      return {
+        n: i + 1, kind: st.kind,
+        isCmd: st.kind === 'cmd', isCheck: st.kind === 'check',
+        tag: st.kind === 'cmd' ? 'КОМАНДА' : 'ПРОВЕРКА',
+        tagColor: st.kind === 'cmd' ? '#c89b6a' : '#6fa6cc',
+        tagBg: st.kind === 'cmd' ? '#241d13' : '#13202e',
+        text: st.text, detail: st.kind === 'cmd' ? st.detail : (ch.addr),
+        chParam: ch ? ch.param : '', chCode: ch ? Math.round(ch.code) : '',
+        expect: ch ? ('ожид. ' + ch.lo + '–' + ch.hi) : '',
+        codeColor: res === 'fail' ? '#e07a72' : (res === 'ok' ? '#7fc79a' : '#aab4c0'),
+        stText, stColor, stBg, stBorder,
+        rowBg: active ? '#121a22' : 'transparent',
+      };
+    });
+
+    const okN = Object.values(s.scResults).filter(r => r === 'ok').length;
+    const failN = Object.values(s.scResults).filter(r => r === 'fail').length;
+    const doneN = okN + failN;
+    const finished = !s.scRunning && doneN === total && total > 0;
+
+    return {
+      scOpen: s.scOpen,
+      scClose: () => { clearInterval(this._scT); this.setState({ scOpen: false, scRunning: false, scStep: -1, scResults: {}, scMode: null }); },
+      scIsFork: s.scMode === null,
+      scIsBuilt: s.scMode !== null,
+      scIsManual: s.scMode === 'manual',
+      scMode: s.scMode,
+      scPickFile: () => this.setState({ scMode: 'file' }),
+      scPickManual: () => this.setState({ scMode: 'manual' }),
+      scBackFork: () => { clearInterval(this._scT); this.setState({ scMode: null, scRunning: false, scStep: -1, scResults: {} }); },
+      scModeLabel: s.scMode === 'file' ? ('Файл: ' + s.scFile) : 'Создание вручную',
+      scFile: s.scFile,
+      scSteps: list, scTotal: total, scChecks: checks,
+      scRunning: s.scRunning,
+      scStart: () => this.startScenario(),
+      scReset: () => this.resetScenario(),
+      scOkN: okN, scFailN: failN, scDoneN: doneN,
+      scProgPct: total ? (doneN / total * 100).toFixed(0) + '%' : '0%',
+      scFinished: finished,
+      scVerdict: failN === 0 ? 'СЦЕНАРИЙ ПРОЙДЕН' : 'ОБНАРУЖЕНЫ ОТКЛОНЕНИЯ',
+      scVerdictColor: failN === 0 ? '#7fc79a' : '#e07a72',
+      scVerdictBg: failN === 0 ? '#10211a' : '#221416',
+      scVerdictBorder: failN === 0 ? '#244a33' : '#4a2426',
+      scStartLabel: s.scRunning ? 'Идёт автопрогон…' : (doneN > 0 ? 'Повторить автопрогон' : 'Запустить автопрогон'),
     };
   }
 
@@ -827,13 +1038,13 @@ class Component extends DCLogic {
     const avg = Math.round(hist.reduce((a, b) => a + b, 0) / hist.length);
     // соседние каналы для быстрого перехода
     const chips = s.channels.slice(Math.max(0, s.detailChan - 2), s.detailChan + 3).map(c => ({
-      num: c.id + 1, name: c.name,
+      num: c.id + 1, name: c.param,
       bg: c.id === s.detailChan ? '#5e93b8' : '#1b2129',
       fg: c.id === s.detailChan ? '#0c1116' : '#aab4c0',
       onClick: () => this.setState({ detailChan: c.id, selected: c.id, history: Component.buildHistory(c.id) }),
     }));
     return {
-      dName: ch.name, dCat: ch.catName, dUnit: ch.unit, dNum: ch.id + 1,
+      dName: ch.param, dCat: ch.catShort, dFull: ch.catName, dAddr: ch.addr, dType: ch.type, dBits: ch.bits, dUnit: ch.unit, dNum: ch.id + 1,
       dCode: String(Math.round(ch.code)).padStart(4, '0'),
       dColor: this.barColor(st, true),
       dLo: ch.lo, dHi: ch.hi, dNom: ch.nominal,
@@ -849,10 +1060,12 @@ class Component extends DCLogic {
   configVM() {
     const s = this.state;
     const files = [
-      { name: 'ЯТП_осн.txt', date: '14.06.2026', chans: 48, enc: 'CP1251', note: 'Основная конфигурация ДУ' },
-      { name: 'ЯТП_стенд_4.txt', date: '09.06.2026', chans: 48, enc: 'UTF-8', note: 'Огневой стенд, площадка 4' },
-      { name: 'ЯТП_резерв.txt', date: '01.06.2026', chans: 32, enc: 'CP1251', note: 'Сокращённый, без вибрации' },
-      { name: 'ЯТП_калибр.txt', date: '28.05.2026', chans: 48, enc: 'UTF-8', note: 'Калибровочный прогон' },
+      { name: 'ЯТП.txt', date: '14.06.2026', chans: 54, enc: 'CP1251', note: 'Основной набор ЯТП' },
+      { name: 'AddressYATPBSU.txt', date: '09.06.2026', chans: 54, enc: 'CP1251', note: 'Адреса БСИ/БСУ ЯТП' },
+      { name: 'Быстрые.txt', date: '06.06.2026', chans: 20, enc: 'CP1251', note: 'Быстроменяющиеся каналы' },
+      { name: 'Виброиспытания.txt', date: '01.06.2026', chans: 56, enc: 'CP1251', note: 'Программа виброиспытаний' },
+      { name: 'Контактные БСУФТК.txt', date: '28.05.2026', chans: 10, enc: 'CP1251', note: 'Контактные датчики БСУФТК' },
+      { name: 'Аксел_гироскоп.txt', date: '24.05.2026', chans: 12, enc: 'CP1251', note: 'Акселерометры и гироскопы' },
     ];
     const fileVM = files.map((f, i) => ({
       ...f, active: i === s.configSel,
@@ -862,9 +1075,9 @@ class Component extends DCLogic {
     }));
     const sel = files[s.configSel];
     const preview = s.channels.slice(0, sel.chans).map(c => ({
-      num: c.id + 1, name: c.name, cat: c.catName, unit: c.unit,
-      lo: c.lo, hi: c.hi, nominal: c.nominal,
-      addr: '0x' + (0x40 + c.id).toString(16).toUpperCase().padStart(2, '0'),
+      num: c.id + 1, name: c.param, cat: c.catShort, unit: c.unit,
+      lo: c.lo, hi: c.hi, nominal: c.nominal, type: c.type,
+      addr: c.addr,
     }));
     return {
       cfgFiles: fileVM, cfgName: sel.name, cfgEnc: sel.enc, cfgChans: sel.chans,
@@ -877,12 +1090,12 @@ class Component extends DCLogic {
     const tree = Component.CATS.map(c => {
       const chans = s.channels.filter(x => x.cat === c.key);
       return {
-        key: c.key, name: c.name, unit: c.unit, count: chans.length,
+        key: c.key, name: c.name, unit: 'код', count: chans.length,
         open: c.key === s.dbCat,
         caret: c.key === s.dbCat ? '▾' : '▸',
         onClick: () => this.setState({ dbCat: c.key }),
         items: chans.map(ch => ({
-          id: ch.id, num: ch.id + 1, name: ch.name,
+          id: ch.id, num: ch.id + 1, name: ch.param,
           active: ch.id === s.dbSel,
           bg: ch.id === s.dbSel ? '#1c2530' : 'transparent',
           bar: ch.id === s.dbSel ? '#5e93b8' : 'transparent',
@@ -892,19 +1105,21 @@ class Component extends DCLogic {
       };
     });
     const ch = s.channels[s.dbSel];
-    const F = (label, value, mono) => ({ label, value, font: mono ? "'IBM Plex Mono',monospace" : "'IBM Plex Sans',sans-serif" });
+    const F = (label, value, mono, hint) => ({ label, value, hint: hint || '', font: mono ? "'IBM Plex Mono',monospace" : "'IBM Plex Sans',sans-serif" });
     const fields = [
-      F('Имя параметра', ch.name, false),
+      F('Параметр', ch.param, false),
+      F('Полный адрес', ch.addr, true),
       F('Категория', ch.catName, false),
-      F('Единица измерения', ch.unit, false),
+      F('Тип / поток', ch.type + ' · ' + ch.stream, false),
+      F('Информативность', ch.bits, true),
       F('Код мин. (НП допуска)', String(ch.lo), true),
       F('Номинал', String(ch.nominal), true),
       F('Код макс. (ВП допуска)', String(ch.hi), true),
-      F('Разрядность АЦП', '10 бит · 0–1023', true),
-      F('Калибровка', 'k=' + (ch.cat === 'T' ? '0.146' : '0.0978') + '·код' + (ch.cat === 'T' ? '−40.0' : '+0.0'), true),
+      F('Человекочитаемое имя', '— не задано —', false, 'появится в будущей версии'),
+      F('Физ. величина / ед.', '— перевод не задан —', false, 'калибровка кода в физ. величину'),
     ];
     return {
-      dbTree: tree, dbName: ch.name, dbNum: ch.id + 1, dbCatName: ch.catName,
+      dbTree: tree, dbName: ch.param, dbAddr: ch.addr, dbNum: ch.id + 1, dbCatName: ch.catName,
       dbUnit: ch.unit, dbFields: fields,
       dbCode: Math.round(ch.code), dbLo: ch.lo, dbHi: ch.hi, dbNom: ch.nominal,
       dbLoPct: (ch.lo / 1023 * 100).toFixed(1) + '%',
