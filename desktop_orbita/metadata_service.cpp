@@ -54,6 +54,10 @@ bool MetadataService::open(const QString& dbPath) {
         qWarning() << "MetadataService: cannot open" << path << db_->lastError().text();
         return false;
     }
+    // Idempotent migration: add columns if they don't exist yet
+    QSqlQuery mig(*db_);
+    mig.exec("ALTER TABLE parameters ADD COLUMN min_nominal REAL");
+    mig.exec("ALTER TABLE parameters ADD COLUMN max_nominal REAL");
     loadMetadata();
     return true;
 }
@@ -70,8 +74,8 @@ void MetadataService::loadMetadata() {
     QSqlQuery q(*db_);
     // Сначала live (is_zu=0), потом ЗУ — чтобы при совпадении ключа выигрывал live.
     q.prepare(
-        "SELECT p.name, p.category, p.signal_type, "
-        "       a.stream, a.a, a.b, a.c, a.d, a.e, a.x, a.t, a.p, a.informativnost, a.is_zu "
+        "SELECT p.id, p.name, p.category, p.signal_type, "
+        "       a.stream, a.a, a.b, a.c, a.d, a.e, a.x, a.t, a.p, a.informativnost, a.is_zu, p.min_nominal, p.max_nominal "
         "FROM parameters p JOIN addresses a ON a.param_id = p.id "
         "ORDER BY a.is_zu ASC");
     if (!q.exec()) {
@@ -83,15 +87,23 @@ void MetadataService::loadMetadata() {
     int liveCount = 0, zuCount = 0;
     while (q.next()) {
         ParamInfo info;
-        info.name       = q.value(0).toString();
-        info.category   = q.value(1).toString();
-        info.signalType = q.value(2).toString();
+        info.id         = q.value(0).toInt();
+        info.name       = q.value(1).toString();
+        info.category   = q.value(2).toString();
+        info.signalType = q.value(3).toString();
         info.componentKey = buildComponentKey(
-            q.value(3).toString(), q.value(4).toString(), q.value(5).toString(),
-            q.value(6).toString(), q.value(7).toString(), q.value(8).toString(),
-            q.value(9).toString(), q.value(10).toString(), q.value(11).toString());
-        info.informativnost = q.value(12).isNull() ? -1 : q.value(12).toInt();
-        info.isZu = q.value(13).toInt() != 0;
+            q.value(4).toString(), q.value(5).toString(), q.value(6).toString(),
+            q.value(7).toString(), q.value(8).toString(), q.value(9).toString(),
+            q.value(10).toString(), q.value(11).toString(), q.value(12).toString());
+        info.informativnost = q.value(13).isNull() ? -1 : q.value(13).toInt();
+        info.isZu = q.value(14).toInt() != 0;
+        QVariant vlo = q.value(15), vhi = q.value(16);
+        if (!vlo.isNull() && !vhi.isNull()) {
+            info.lo = vlo.toDouble();
+            info.hi = vhi.toDouble();
+            info.nominal = (info.lo + info.hi) / 2.0;
+            info.hasTolerance = true;
+        }
 
         if (info.componentKey.isEmpty()) continue;
         if (byKey_.contains(info.componentKey)) continue; // первый (live) выигрывает
@@ -171,4 +183,25 @@ QString MetadataService::stripInformativnost(const QString& norm) {
         return norm.mid(i);
     }
     return norm;
+}
+
+bool MetadataService::setTolerance(const QString& address, double lo, double hi) {
+    auto info = lookup(address);
+    if (!info || info->id < 0) return false;
+
+    if (!db_ || !db_->isOpen()) return false;
+
+    QSqlQuery q(*db_);
+    q.prepare("UPDATE parameters SET min_nominal = ?, max_nominal = ? WHERE id = ?");
+    q.addBindValue(lo);
+    q.addBindValue(hi);
+    q.addBindValue(info->id);
+
+    if (!q.exec()) {
+        qWarning() << "MetadataService::setTolerance: UPDATE failed" << q.lastError().text();
+        return false;
+    }
+
+    refresh();
+    return true;
 }

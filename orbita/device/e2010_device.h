@@ -5,8 +5,22 @@
 #include <cstdint>
 #include <atomic>
 #include <functional>
+#include <string>
+
+#ifdef _WIN32
 #include <windows.h>
 #include "Lusbapi.h"
+#else
+// Linux stub definitions for Windows types
+typedef void* HANDLE;
+typedef unsigned long DWORD;
+typedef unsigned short WORD;
+struct OVERLAPPED { char dummy[64]; };
+struct IO_REQUEST_LUSBAPI { char dummy[256]; };
+struct ADC_PARS_E2010 { char dummy[512]; };
+struct MODULE_DESCRIPTION_E2010 { char dummy[256]; };
+typedef void* ILE2010;
+#endif
 
 namespace orbita {
 

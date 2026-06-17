@@ -1,4 +1,5 @@
 #include "category_grid_widget.h"
+#include "tolerance_resolver.h"
 #include <QVBoxLayout>
 #include <QDebug>
 
@@ -34,6 +35,13 @@ void CategoryGridWidget::setMetadataService(MetadataService* db)
         rebuildGrid();
 }
 
+void CategoryGridWidget::setToleranceResolver(ToleranceResolver* r)
+{
+    m_resolver = r;
+    for (auto card : m_cards)
+        card->setToleranceResolver(r);
+}
+
 void CategoryGridWidget::setChannels(const std::vector<orbita::ChannelSpec>& specs)
 {
     m_specs = specs;
@@ -65,6 +73,7 @@ void CategoryGridWidget::rebuildGrid()
     for (auto it = catMap.begin(); it != catMap.end(); ++it) {
         CategoryCardWidget* card = new CategoryCardWidget;
         card->setMetadataService(m_db);
+        card->setToleranceResolver(m_resolver);
         QList<int> qlist = it.value();
         std::vector<int> indices(qlist.begin(), qlist.end());
         card->setCategory(it.key(), indices, m_specs);

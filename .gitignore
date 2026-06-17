@@ -1,3 +1,6 @@
+# Claude Code worktrees / local agent artifacts
+.claude/
+
 # Build output
 /build/
 /build_new/

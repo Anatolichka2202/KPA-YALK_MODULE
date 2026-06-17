@@ -1,5 +1,7 @@
 #include "e2010_device.h"
 #include "../orbita_core/logger.h"
+
+#ifdef _WIN32
 #include <windows.h>
 
 typedef DWORD (WINAPI *GetDllVersion_t)(void);
@@ -238,4 +240,45 @@ void E2010Device::readerLoop() {
     LOG_INFO("E2010: reader loop finished");
 }
 
+#else // Linux stub implementation
+
+namespace orbita {
+
+E2010Device::~E2010Device() {
+    stop();
+    if (readerThread_.joinable()) readerThread_.join();
+}
+
+void E2010Device::setSamplesCallback(std::function<void(const std::vector<int16_t>&)> cb) {
+    onSamples_ = std::move(cb);
+}
+
+void E2010Device::setErrorCallback(std::function<void(const std::string&)> cb) {
+    onError_ = std::move(cb);
+}
+
+void E2010Device::notifyError(const std::string& msg) {
+    LOG_ERROR("%s", msg.c_str());
+    if (onError_) onError_(msg);
+}
+
+bool E2010Device::init(int slot, int channel, double sampleRateKHz) {
+    LOG_INFO("E2010: Linux stub - init ignored");
+    return false;
+}
+
+bool E2010Device::start() {
+    LOG_INFO("E2010: Linux stub - start ignored");
+    return false;
+}
+
+void E2010Device::stop() {
+    LOG_INFO("E2010: Linux stub - stop ignored");
+}
+
+void E2010Device::readerLoop() {
+    // stub
+}
+
+#endif
 } // namespace orbita

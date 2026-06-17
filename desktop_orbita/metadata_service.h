@@ -21,6 +21,7 @@
 class QSqlDatabase;
 
 struct ParamInfo {
+    int     id = -1;        // id строки таблицы parameters (для UPDATE)
     QString name;
     QString category;
     QString signalType;     // analog10/contact/fast1.../bus/unknown
@@ -52,6 +53,9 @@ public:
     std::optional<ParamInfo> lookup(const QString& address) const;  // live + ЗУ
     QList<ParamInfo> allParams() const;            // только live (каталог)
     QList<ParamInfo> paramsInCategory(const QString& category) const;  // только live
+
+    // ── Редактирование допусков ──
+    bool setTolerance(const QString& address, double lo, double hi);
 
     // ── Утилиты ──
     static QString buildFullAddress(const ParamInfo& p, int informativnost = 16);

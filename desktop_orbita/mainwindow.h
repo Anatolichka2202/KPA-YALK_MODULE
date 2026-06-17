@@ -17,6 +17,8 @@
 
 #include "orbita.h"
 #include "metadata_service.h"
+#include "tolerance_resolver.h"
+#include "scenario_wizard.h"
 #include "main_page.h"
 #include "detail_view.h"
 #include "parameter_browser.h"
@@ -61,7 +63,6 @@ private:
     void setupUi();
     void setupToolBar();
     void setupDockWidgets();
-    void updateStatusBar(const orbita::Snapshot& snap);
     QString nextRecordingPath() const;
     void log(const QString& msg);
 
@@ -71,6 +72,7 @@ private:
     // Ядро и БД
     std::unique_ptr<orbita::Orbita> orbita_;
     std::unique_ptr<MetadataService> dbProvider_;
+    ToleranceResolver toleranceResolver_;
 
     // Таймер
     QTimer* updateTimer_;
@@ -86,7 +88,6 @@ private:
     DetailView* detailView_ = nullptr;
     ConfigManagerWidget* configPage_ = nullptr;
     ParameterBrowser* dbPage_ = nullptr;
-    WatchSetWidget* watchSetPage_ = nullptr; // для полноэкранного режима (опционально)
 
     // Док-виджеты (используются в режиме Сбор)
     QDockWidget* configDock_ = nullptr;
@@ -127,6 +128,12 @@ private:
 
     // Нижняя строка статуса
     QLabel* m_statusBarLabel = nullptr;
+
+    // Сценарий проверки
+    QAction* actScenario_ = nullptr;
+
+private slots:
+    void onOpenScenario();
 };
 
 #endif // MAINWINDOW_H

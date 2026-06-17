@@ -19,6 +19,8 @@ add_executable(OrbitaDesktop
     config_manager_widget.h
     metadata_service.cpp
     metadata_service.h
+    tolerance_resolver.h
+    tolerance_resolver.cpp
     watch_set_widget.cpp
     watch_set_widget.h
     parameter_browser.cpp
@@ -37,6 +39,9 @@ add_executable(OrbitaDesktop
     readout_widget.h readout_widget.cpp
     channel_status.h
     plot_theme.h
+    scenario_model.h
+    scenario_io.h scenario_io.cpp
+    scenario_wizard.h scenario_wizard.cpp
 )
 
 target_include_directories(OrbitaDesktop PRIVATE

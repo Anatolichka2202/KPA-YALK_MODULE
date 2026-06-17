@@ -1,4 +1,5 @@
 #include "table_widget.h"
+#include "tolerance_resolver.h"
 #include "channel_status.h"
 #include <QVBoxLayout>
 #include <QHeaderView>
@@ -35,6 +36,11 @@ TableWidget::TableWidget(QWidget *parent) : QWidget(parent)
 void TableWidget::setMetadataService(MetadataService* db)
 {
     m_db = db;
+}
+
+void TableWidget::setToleranceResolver(ToleranceResolver* r)
+{
+    m_resolver = r;
 }
 
 void TableWidget::setChannels(const std::vector<orbita::ChannelSpec>& specs)
@@ -95,7 +101,7 @@ void TableWidget::updateTable()
         // Код
         m_table->setItem(i, 3, new QTableWidgetItem(QString::number(val, 'f', 0)));
 
-        chstatus::Tolerance tol = chstatus::forAddress(m_db, spec.address);
+        chstatus::Tolerance tol = (m_resolver ? m_resolver->resolve(QString::fromStdString(spec.address)) : chstatus::forAddress(m_db, spec.address));
         chstatus::Level lvl = chstatus::evaluate(val, tol);
 
         // Допуск

@@ -1,5 +1,7 @@
 #include "frame_decoder_m16.h"
 #include "../orbita_core/logger.h"
+#include <cstring>
+#include <chrono>
 
 namespace orbita {
 
