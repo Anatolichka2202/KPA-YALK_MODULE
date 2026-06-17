@@ -52,23 +52,53 @@ void TableWidget::setChannels(const std::vector<orbita::ChannelSpec>& specs)
 void TableWidget::updateValues(const QMap<QString, double>& values)
 {
     m_values = values;
-    updateTable();
+    updateValueCells();
 }
 
 void TableWidget::setSelectedChannel(int index)
 {
     m_selectedIndex = index;
-    // Выделяем строку
     for (int r = 0; r < m_table->rowCount(); ++r) {
         QTableWidgetItem* item = m_table->item(r, 0);
-        if (item) {
-            int idx = item->data(Qt::UserRole).toInt();
-            m_table->setCurrentCell(r, 0);
-            if (idx == index) {
-                m_table->selectRow(r);
-                m_table->scrollToItem(item);
-                break;
-            }
+        if (item && item->data(Qt::UserRole).toInt() == index) {
+            m_table->selectRow(r);
+            m_table->scrollToItem(item, QAbstractItemView::EnsureVisible);
+            break;
+        }
+    }
+}
+
+void TableWidget::updateValueCells()
+{
+    int n = m_specs.size();
+    if (m_table->rowCount() != n) {
+        updateTable();
+        return;
+    }
+    for (int i = 0; i < n; ++i) {
+        const auto& spec = m_specs[i];
+        double val = m_values.value(QString::fromStdString(spec.address), 0.0);
+
+        if (auto* it = m_table->item(i, 3))
+            it->setText(QString::number(val, 'f', 0));
+
+        chstatus::Tolerance tol = (m_resolver ? m_resolver->resolve(QString::fromStdString(spec.address))
+                                              : chstatus::forAddress(m_db, spec.address));
+        chstatus::Level lvl = chstatus::evaluate(val, tol);
+
+        if (auto* it = m_table->item(i, 4))
+            it->setText(tol.set ? QString("%1–%2–%3").arg(tol.lo).arg(tol.nominal).arg(tol.hi) : QStringLiteral("—"));
+
+        if (auto* bar = qobject_cast<QProgressBar*>(m_table->cellWidget(i, 5))) {
+            bar->setValue((int)val);
+            bar->setStyleSheet(QString("QProgressBar { background-color: #1c222a; border-radius: 3px; height: 6px; } "
+                                       "QProgressBar::chunk { background-color: %1; border-radius: 3px; }")
+                                   .arg(chstatus::barColor(lvl).name()));
+        }
+
+        if (auto* lbl = qobject_cast<QLabel*>(m_table->cellWidget(i, 6))) {
+            lbl->setText(chstatus::text(lvl));
+            lbl->setStyleSheet(QString("color: %1;").arg(chstatus::textColor(lvl).name()));
         }
     }
 }

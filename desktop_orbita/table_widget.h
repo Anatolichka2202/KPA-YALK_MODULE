@@ -26,6 +26,7 @@ signals:
 
 private:
     void updateTable();
+    void updateValueCells();
 
     QTableWidget* m_table;
     MetadataService* m_db = nullptr;
