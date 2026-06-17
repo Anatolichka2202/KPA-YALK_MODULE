@@ -1,8 +1,10 @@
 #include "bar_chart_widget.h"
 #include "tolerance_resolver.h"
+#include "channel_status.h"
 #include "plot_theme.h"
 #include <QVBoxLayout>
 #include <QMouseEvent>
+#include <QToolTip>
 
 BarChartWidget::BarChartWidget(QWidget *parent) : QWidget(parent)
 {
@@ -27,18 +29,21 @@ void BarChartWidget::setupPlot()
     m_plot->xAxis->setSubTicks(false);
     m_plot->xAxis->setTicks(true);   // подписи категорий под группами столбцов
 
-    m_bars = new QCPBars(m_plot->xAxis, m_plot->yAxis);
-    m_bars->setPen(QPen(QColor(0x5e, 0x93, 0xb8)));
-    m_bars->setBrush(QBrush(QColor(0x5e, 0x93, 0xb8)));
-    m_bars->setWidthType(QCPBars::wtPlotCoords);
-    m_bars->setWidth(0.7);
+    auto makeBars = [&](QColor color) {
+        auto* b = new QCPBars(m_plot->xAxis, m_plot->yAxis);
+        b->setPen(QPen(color));
+        b->setBrush(QBrush(color));
+        b->setWidthType(QCPBars::wtPlotCoords);
+        b->setWidth(0.7);
+        return b;
+    };
+    m_barsNormal  = makeBars(QColor(0x5e, 0x93, 0xb8)); // синий
+    m_barsWarning = makeBars(QColor(0xd9, 0x9a, 0x4a)); // янтарный
+    m_barsError   = makeBars(QColor(0xcf, 0x5b, 0x52)); // красный
 
-    // Выделенный столбец (амбер)
-    m_selBars = new QCPBars(m_plot->xAxis, m_plot->yAxis);
-    m_selBars->setPen(QPen(QColor(0xd9, 0x9a, 0x4a)));
-    m_selBars->setBrush(QBrush(QColor(0xd9, 0x9a, 0x4a)));
-    m_selBars->setWidthType(QCPBars::wtPlotCoords);
-    m_selBars->setWidth(0.7);
+    // Выделенный столбец — белая рамка поверх
+    m_selBars = makeBars(QColor(0, 0, 0, 0)); // прозрачная заливка
+    m_selBars->setPen(QPen(QColor(0xff, 0xff, 0xff, 180), 1.5));
 
     // Метка значения над выделенным столбцом
     m_valueText = new QCPItemText(m_plot);
@@ -79,7 +84,9 @@ void BarChartWidget::updatePlot()
 {
     int n = m_specs.size();
     if (n == 0) {
-        m_bars->data()->clear();
+        m_barsNormal->data()->clear();
+        m_barsWarning->data()->clear();
+        m_barsError->data()->clear();
         m_plot->replot();
         return;
     }
@@ -141,7 +148,28 @@ void BarChartWidget::updatePlot()
         }
     }
 
-    m_bars->setData(m_keys, m_valuesPlot);
+    // Распределяем бары по цветовым сериям в зависимости от допуска
+    QVector<double> kNorm, vNorm, kWarn, vWarn, kErr, vErr;
+    for (int i = 0; i < n; ++i) {
+        double val = m_valuesPlot[i];
+        chstatus::Tolerance tol = (m_resolver
+            ? m_resolver->resolve(QString::fromStdString(m_specs[i].address))
+            : chstatus::forAddress(m_db, m_specs[i].address));
+        chstatus::Level lvl = chstatus::evaluate(val, tol);
+
+        switch (lvl) {
+        case chstatus::Level::Out:
+            kErr << i; vErr << val; break;
+        case chstatus::Level::Near:
+            kWarn << i; vWarn << val; break;
+        default:
+            kNorm << i; vNorm << val; break;
+        }
+    }
+    m_barsNormal->setData(kNorm, vNorm);
+    m_barsWarning->setData(kWarn, vWarn);
+    m_barsError->setData(kErr, vErr);
+
     QCPAxisTickerText* ticker = dynamic_cast<QCPAxisTickerText*>(m_plot->xAxis->ticker().data());
     if (ticker) {
         ticker->clear();
@@ -149,18 +177,16 @@ void BarChartWidget::updatePlot()
     }
     m_plot->xAxis->setRange(-0.5, n - 0.5);
 
-    // Y: всегда от 0, потолок по данным (но не ниже 1023) — без отрицательных
     double maxVal = 0.0;
     for (double v : m_valuesPlot) maxVal = qMax(maxVal, v);
     m_plot->yAxis->setRange(0, qMax(1023.0, maxVal * 1.05));
 
-    // Выделенный столбец + подпись значения
+    // Выделенный столбец — белая рамка, значение сверху
     if (m_selBars && m_valueText) {
         if (m_selectedIndex >= 0 && m_selectedIndex < m_valuesPlot.size()) {
             double selKey = static_cast<double>(m_selectedIndex);
             double selVal = m_valuesPlot[m_selectedIndex];
-            QVector<double> sk{selKey}, sv{selVal};
-            m_selBars->setData(sk, sv);
+            m_selBars->setData(QVector<double>{selKey}, QVector<double>{selVal});
             m_valueText->setVisible(true);
             m_valueText->position->setCoords(selKey, selVal);
             m_valueText->setText(QString::number(selVal, 'f', 0));
@@ -190,14 +216,22 @@ void BarChartWidget::setHoveredBar(int index)
 
 void BarChartWidget::mouseMoveEvent(QMouseEvent* event)
 {
-    // Определяем, над каким столбцом курсор
     double key = m_plot->xAxis->pixelToCoord(event->pos().x());
     int index = qRound(key);
-    if (index >= 0 && index < m_specs.size() && index != m_hoveredIndex) {
-        setHoveredBar(index);
-        emit barHovered(index); // если нужен сигнал
-    } else if (index < 0 || index >= m_specs.size()) {
-        setHoveredBar(-1);
+    if (index >= 0 && index < (int)m_specs.size()) {
+        if (index != m_hoveredIndex) {
+            setHoveredBar(index);
+            emit barHovered(index);
+        }
+        const auto& spec = m_specs[index];
+        QString name = QString::fromStdString(spec.name.empty() ? spec.address : spec.name);
+        double val = m_values.value(QString::fromStdString(spec.address), 0.0);
+        QToolTip::showText(event->globalPos(),
+            QString("КАН %1\n%2\nЗначение: %3").arg(index + 1).arg(name).arg(val, 0, 'f', 0),
+            this);
+    } else {
+        if (m_hoveredIndex != -1) setHoveredBar(-1);
+        QToolTip::hideText();
     }
     QWidget::mouseMoveEvent(event);
 }

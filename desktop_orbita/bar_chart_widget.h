@@ -36,8 +36,10 @@ private:
     void updatePlot();
 
     QCustomPlot* m_plot;
-    QCPBars* m_bars;
-    QCPBars* m_selBars = nullptr;
+    QCPBars* m_barsNormal  = nullptr;  // синий — норма
+    QCPBars* m_barsWarning = nullptr;  // янтарный — у предела
+    QCPBars* m_barsError   = nullptr;  // красный — вне допуска
+    QCPBars* m_selBars     = nullptr;  // выделенный (белая рамка)
     QCPItemText* m_valueText = nullptr;
     QVector<double> m_keys;
     QVector<double> m_valuesPlot;
