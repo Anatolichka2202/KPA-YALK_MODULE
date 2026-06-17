@@ -1,0 +1,201 @@
+================================================================================
+TOLERANCE DATA IMPORT TOOLKIT - QUICK START
+================================================================================
+
+GOAL: Fill min_nominal/max_nominal fields in parameters.db (currently all NULL)
+
+DATABASE STATUS:
+- Location: orbita/config/address/parameters.db
+- Parameters: 383 rows (min_nominal/max_nominal = NULL)
+- Addresses: 723 rows with full_address for matching
+
+================================================================================
+STEP 1: EXAMINE SOURCE DATA
+================================================================================
+
+Command:
+  python3 tools/extract_xlsx.py
+
+This will:
+  - Read "посмотри/о БД/База_данных_финальная.xlsx"
+  - Generate tools/xlsx_dump.csv (full address reference)
+  - Display column analysis in console
+
+FINDING: The xlsx contains parameter addresses but NO min/max values.
+The tolerance values must come from "Приложение 2 (цифра).docx"
+
+================================================================================
+STEP 2: PREPARE TOLERANCE CSV
+================================================================================
+
+Create a CSV file (e.g., tools/my_tolerances.csv) with these columns:
+
+  full_address,min_nominal,max_nominal[,units]
+
+Where:
+  - full_address: Parameter address (e.g., M16P1A11B21T21)
+                  Can be in Cyrillic (П,М,В,А,С) - will be normalized
+  - min_nominal:  Minimum tolerance value (number)
+  - max_nominal:  Maximum tolerance value (number)
+  - units:        Optional unit label (В, А, °С, etc.)
+
+Example:
+  full_address,min_nominal,max_nominal,units
+  M16P2A40B40C10D10E11T21,0,100,
+  M16P1A11B21T21,-5,5,V
+  M16P2A80B80C11D42E12,-10,10,
+
+Alternative format (using address components):
+  stream,a,b,c,d,e,x,t,p,min_nominal,max_nominal,units
+  П1,11,21,,,,,21,1,-5,5,V
+
+Templates provided:
+  - tools/tolerances_template.csv - Simple 3-row example
+  - tools/tolerances_example.csv - Real address example (100% match rate)
+
+================================================================================
+STEP 3: DRY-RUN TEST (RECOMMENDED)
+================================================================================
+
+Command:
+  python3 tools/import_tolerances.py tools/my_tolerances.csv --dry-run
+
+This will:
+  - Load addresses from database
+  - Match CSV rows to parameters
+  - Show match statistics (% matched, unmatched addresses)
+  - Display preview of updates (param_id, min, max)
+  - NO changes to database
+
+Check the output:
+  - Match rate should be high (>90%)
+  - Review any "not found" addresses
+  - Verify the updates look correct
+
+================================================================================
+STEP 4: APPLY TO DATABASE
+================================================================================
+
+Once satisfied with dry-run results:
+
+Command:
+  python3 tools/import_tolerances.py tools/my_tolerances.csv --apply
+
+This will:
+  - UPDATE parameters table with min_nominal, max_nominal, units values
+  - Idempotent: safe to run multiple times with same CSV
+
+Verify:
+  python3 -c "
+import sqlite3
+conn = sqlite3.connect('orbita/config/address/parameters.db')
+cursor = conn.cursor()
+cursor.execute('SELECT COUNT(*) FROM parameters WHERE min_nominal IS NOT NULL')
+print('Parameters with values:', cursor.fetchone()[0])
+conn.close()
+  "
+
+================================================================================
+MATCHING LOGIC
+================================================================================
+
+For each CSV row, import_tolerances tries:
+  1. Match by full_address (case/whitespace insensitive)
+  2. If not found, match by component key (stream,a,b,c,d,e,x,t,p)
+
+Cyrillic (П,М,В,А,С) is automatically normalized to Latin (P,M,B,A,C)
+
+If a CSV row doesn't match any database address, it's reported in the
+"not found" list but doesn't cause failure - safe to process.
+
+================================================================================
+DATABASE SCHEMA REFERENCE
+================================================================================
+
+  parameters table:
+    id             INTEGER PRIMARY KEY
+    name           TEXT
+    category       TEXT
+    signal_type    TEXT
+    units          TEXT           <- Updated by import (optional)
+    min_nominal    REAL           <- Updated by import
+    max_nominal    REAL           <- Updated by import
+
+  addresses table:
+    id             INTEGER PRIMARY KEY
+    param_id       INTEGER        <- Foreign key to parameters.id
+    is_zu          INTEGER
+    stream         TEXT           <- Used for matching
+    a, b, c, d, e, x, t, p TEXT  <- Used for matching
+    informativnost INTEGER
+    full_address   TEXT           <- Primary matching field
+
+================================================================================
+DATA SOURCE REFERENCE
+================================================================================
+
+Tolerance values should come from:
+  - Primary: "посмотри/о телеметрии орбита/Приложение 2 (цифра).docx"
+    (18 tables with parameter specifications, period/frequency info)
+  - Fallback: "посмотри/о БД/Приложение 1 (аналог).docx"
+    (analogous parameters)
+
+Address components available in:
+  - "посмотри/о БД/База_данных_финальная.xlsx"
+  - "посмотри/о телеметрии орбита/" docx files
+
+================================================================================
+EXAMPLES
+================================================================================
+
+# Show help
+python3 tools/import_tolerances.py --help
+
+# Dry-run with default database path
+python3 tools/import_tolerances.py my_data.csv
+
+# Dry-run with custom DB
+python3 tools/import_tolerances.py my_data.csv --db /path/to/parameters.db
+
+# Apply to database
+python3 tools/import_tolerances.py my_data.csv --apply
+
+# Apply with custom DB
+python3 tools/import_tolerances.py my_data.csv --db /path/to/parameters.db --apply
+
+================================================================================
+FILES IN tools/ DIRECTORY
+================================================================================
+
+extract_xlsx.py
+  - Reads xlsx and dumps to CSV
+  - No dependencies beyond stdlib
+  - Usage: python3 tools/extract_xlsx.py
+
+import_tolerances.py
+  - CSV to database importer
+  - Argument-based: accepts CSV path, DB path, --dry-run/--apply flags
+  - Usage: python3 tools/import_tolerances.py CSV_FILE [options]
+
+README.md
+  - Detailed documentation
+  - Database schema reference
+  - Workflow instructions
+
+USAGE_GUIDE.txt
+  - This file - quick reference guide
+
+xlsx_dump.csv
+  - Auto-generated by extract_xlsx.py
+  - Contains all 384 rows from Base_данных_финальная.xlsx
+  - Reference for address data
+
+tolerances_template.csv
+  - Simple 3-row example
+  - Shows expected CSV format
+
+tolerances_example.csv
+  - Real address example from database
+  - All 5 rows match (100%)
+
+================================================================================
