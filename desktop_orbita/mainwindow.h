@@ -65,6 +65,7 @@ private:
     void setupDockWidgets();
     QString nextRecordingPath() const;
     void log(const QString& msg);
+    void updateStatusBar(const orbita::Snapshot& snap);
 
     // Вспомогательные методы
     static int extractChannelNumber(const std::string& address);
