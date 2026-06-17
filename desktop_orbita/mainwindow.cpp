@@ -442,6 +442,7 @@ void MainWindow::onOpenScenario()
     };
 
     ScenarioWizard wizard(provider, this);
+    wizard.setChannelContext(orbita_->getChannels(), dbProvider_.get());
     wizard.exec();
 }
 

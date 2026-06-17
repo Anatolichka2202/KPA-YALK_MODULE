@@ -1,6 +1,8 @@
 #pragma once
 
 #include "scenario_model.h"
+#include "orbita.h"
+#include "metadata_service.h"
 
 #include <QDialog>
 #include <QTableWidget>
@@ -11,6 +13,7 @@
 #include <QTimer>
 #include <functional>
 #include <optional>
+#include <vector>
 
 /// Провайдер значений: принимает адрес канала, возвращает сырой код или nullopt.
 /// Такой интерфейс позволяет тестировать диалог без реального ядра.
@@ -26,6 +29,10 @@ public:
 
     /// Загрузить сценарий (сбрасывает текущее состояние).
     void setScenario(const Scenario& scenario);
+
+    /// Передать список каналов и сервис метаданных для диалога выбора канала.
+    void setChannelContext(const std::vector<orbita::ChannelSpec>& specs,
+                           MetadataService* db);
 
 private slots:
     void onLoadScn();
@@ -50,6 +57,10 @@ private:
 
     ValueProvider    provider_;
     Scenario         scenario_;
+
+    // Канальный контекст для ChannelPickerDialog
+    std::vector<orbita::ChannelSpec> channelSpecs_;
+    MetadataService*                 metaDb_ = nullptr;
 
     // Состояние автопрогона
     bool             running_     = false;

@@ -42,7 +42,9 @@ add_executable(OrbitaDesktop
     scenario_model.h
     scenario_io.h scenario_io.cpp
     scenario_wizard.h scenario_wizard.cpp
+    channel_picker_dialog.h channel_picker_dialog.cpp
 )
+
 
 target_include_directories(OrbitaDesktop PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}          # encoding_utils.h, plot_widget.h и т.д.

@@ -1,5 +1,6 @@
 #include "scenario_wizard.h"
 #include "scenario_io.h"
+#include "channel_picker_dialog.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -619,16 +620,33 @@ void ScenarioWizard::onAddCommand()
     btnRun_->setEnabled(true);
 }
 
+void ScenarioWizard::setChannelContext(const std::vector<orbita::ChannelSpec>& specs,
+                                        MetadataService* db)
+{
+    channelSpecs_ = specs;
+    metaDb_       = db;
+}
+
 void ScenarioWizard::onAddCheck()
 {
-    // Запрашиваем адрес канала
-    bool ok = false;
-    QString addr = QInputDialog::getText(
-        this, "Добавить проверку", "Адрес канала (напр. M16P1A70B12C10D10T01):",
-        QLineEdit::Normal, "", &ok);
-    if (!ok || addr.trimmed().isEmpty()) return;
+    QString addr;
+
+    if (!channelSpecs_.empty()) {
+        ChannelPickerDialog dlg(channelSpecs_, metaDb_, this);
+        if (dlg.exec() != QDialog::Accepted) return;
+        addr = dlg.selectedAddress();
+        if (addr.isEmpty()) return;
+    } else {
+        bool ok = false;
+        addr = QInputDialog::getText(
+            this, "Добавить проверку", "Адрес канала (напр. M16P1A70B12C10D10T01):",
+            QLineEdit::Normal, "", &ok);
+        if (!ok || addr.trimmed().isEmpty()) return;
+        addr = addr.trimmed();
+    }
 
     // Нижняя граница
+    bool ok = false;
     double lo = QInputDialog::getDouble(
         this, "Добавить проверку", "Нижняя граница допуска (lo):", 0, -1e9, 1e9, 2, &ok);
     if (!ok) return;
@@ -640,8 +658,8 @@ void ScenarioWizard::onAddCheck()
 
     ScenarioStep step;
     step.kind    = StepKind::Check;
-    step.address = addr.trimmed();
-    step.text    = addr.trimmed();
+    step.address = addr;
+    step.text    = addr;
     step.lo      = lo;
     step.hi      = hi;
     scenario_.steps.append(step);
