@@ -12,8 +12,11 @@
 #include <QActionGroup>
 #include <QMenu>
 #include <QMenuBar>
+#include <QIcon>
 #include <sstream>
 #include <regex>
+
+#define ORBITA_VERSION "0.1.0-alpha"
 
 // ----------------------------------------------------------------------------
 //  Конструктор / Деструктор
@@ -63,7 +66,7 @@ MainWindow::~MainWindow() = default;
 // ----------------------------------------------------------------------------
 void MainWindow::setupUi()
 {
-    setWindowTitle("Орбита-IV — Телеметрия");
+    setWindowTitle(QString("Орбита-IV — Телеметрия · %1").arg(ORBITA_VERSION));
     resize(1280, 800);
 
     // Центральный стек
@@ -215,6 +218,8 @@ void MainWindow::setupDockWidgets()
             [this](QString address, double lo, double nominal, double hi) {
                 toleranceResolver_.setOverride(address, chstatus::Tolerance{lo, nominal, hi, true});
             });
+    connect(paramDockWidget_, &ParameterBrowser::toleranceSavedToDb,
+            [this](QString address) { toleranceResolver_.clearOverride(address); });
 
     connect(watchSetDockWidget_, &WatchSetWidget::watchSetChanged,
             this, &MainWindow::onWatchSetChanged);
@@ -263,6 +268,8 @@ void MainWindow::setupDockWidgets()
             [this](QString address, double lo, double nominal, double hi) {
                 toleranceResolver_.setOverride(address, chstatus::Tolerance{lo, nominal, hi, true});
             });
+    connect(dbPage_, &ParameterBrowser::toleranceSavedToDb,
+            [this](QString address) { toleranceResolver_.clearOverride(address); });
 
     // Передаём БД в MainPage и DetailView
     mainPage_->setMetadataService(dbProvider_.get());
@@ -270,7 +277,14 @@ void MainWindow::setupDockWidgets()
 
     // Инициализируем ToleranceResolver и передаём в MainPage и DetailView
     toleranceResolver_.setDb(dbProvider_.get());
-    toleranceResolver_.loadConfigFile(QApplication::applicationDirPath() + "/address/tolerances.tol");
+    {
+        int tolN = toleranceResolver_.loadConfigFile(
+            QApplication::applicationDirPath() + "/address/tolerances.tol");
+        if (tolN < 0)
+            log("tolerances.tol не найден — допуски только из БД");
+        else
+            log(QString("Загружено %1 допусков из tolerances.tol").arg(tolN));
+    }
     mainPage_->setToleranceResolver(&toleranceResolver_);
     detailView_->setToleranceResolver(&toleranceResolver_);
 
@@ -299,10 +313,10 @@ void MainWindow::setupToolBar()
     QActionGroup* modeGroup = new QActionGroup(this);
     modeGroup->setExclusive(true);
 
-    actMain_ = toolbar->addAction("Сбор");
-    actDetail_ = toolbar->addAction("Детально");
-    actConfig_ = toolbar->addAction("Конфиг");
-    actDb_ = toolbar->addAction("БД");
+    actMain_   = toolbar->addAction(QIcon(":/icons/collect.svg"),  "Сбор");
+    actDetail_ = toolbar->addAction(QIcon(":/icons/detail.svg"),   "Детально");
+    actConfig_ = toolbar->addAction(QIcon(":/icons/config.svg"),   "Конфиг");
+    actDb_     = toolbar->addAction(QIcon(":/icons/database.svg"), "БД");
 
     actMain_->setCheckable(true);
     actDetail_->setCheckable(true);
@@ -322,22 +336,36 @@ void MainWindow::setupToolBar()
 
     toolbar->addSeparator();
 
+    // --- Быстрый выбор конфига ---
+    configCombo_ = new QComboBox;
+    configCombo_->setFixedWidth(190);
+    configCombo_->setStyleSheet(
+        "QComboBox { background:#1B1F26; color:#aab4c0; border:1px solid #2a313b;"
+        "            border-radius:3px; padding:2px 6px; }"
+        "QComboBox::drop-down { border:none; width:18px; }"
+        "QComboBox QAbstractItemView { background:#1B1F26; color:#dfe6ee; selection-background-color:#2a3345; }");
+    configCombo_->setToolTip("Быстрый выбор конфигурации (применяется сразу)");
+    refreshConfigCombo();
+    toolbar->addWidget(configCombo_);
+
+    toolbar->addSeparator();
+
     // --- Кнопки Старт/Стоп ---
-    startBtn_ = new QPushButton("▶ Старт");
-    stopBtn_ = new QPushButton("■ Стоп");
+    startBtn_ = new QPushButton(QIcon(":/icons/play.svg"), " Старт");
+    stopBtn_  = new QPushButton(QIcon(":/icons/stop.svg"),  " Стоп");
     startBtn_->setEnabled(false);
     stopBtn_->setEnabled(false);
-    startBtn_->setFixedWidth(70);
-    stopBtn_->setFixedWidth(70);
+    startBtn_->setFixedWidth(80);
+    stopBtn_->setFixedWidth(80);
     toolbar->addWidget(startBtn_);
     toolbar->addWidget(stopBtn_);
 
     toolbar->addSeparator();
 
     // --- Запись ---
-    recordBtn_ = new QPushButton("⏺ Запись");
+    recordBtn_ = new QPushButton(QIcon(":/icons/record.svg"), " Запись");
     recordBtn_->setEnabled(false);
-    recordBtn_->setFixedWidth(80);
+    recordBtn_->setFixedWidth(90);
     toolbar->addWidget(recordBtn_);
 
     recordingLabel_ = new QLabel("—");
@@ -394,8 +422,13 @@ void MainWindow::setupToolBar()
 
     // --- Кнопка «Сценарий проверки» ---
     toolbar->addSeparator();
-    actScenario_ = toolbar->addAction("◇ Сценарий");
+    actScenario_ = toolbar->addAction(QIcon(":/icons/scenario.svg"), "Сценарий");
     connect(actScenario_, &QAction::triggered, this, &MainWindow::onOpenScenario);
+
+    // --- Подключаем config combo ---
+    connect(configCombo_, QOverload<int>::of(&QComboBox::activated), this, [this](int i) {
+        if (i > 0) applyConfiguration(configCombo_->itemText(i));
+    });
 }
 
 // ----------------------------------------------------------------------------
@@ -645,6 +678,22 @@ void MainWindow::applyConfiguration(const QString& fileName)
             .arg(fileName).arg(specs.size()));
 }
 
+void MainWindow::refreshConfigCombo()
+{
+    if (!configCombo_) return;
+    QString curText = configCombo_->currentIndex() > 0 ? configCombo_->currentText() : QString();
+    configCombo_->blockSignals(true);
+    configCombo_->clear();
+    configCombo_->addItem("— конфиг —");
+    QString addrDir = QCoreApplication::applicationDirPath() + "/address/";
+    QDir dir(addrDir);
+    for (const QString& f : dir.entryList({"*.txt"}, QDir::Files, QDir::Name))
+        configCombo_->addItem(f);
+    int idx = curText.isEmpty() ? -1 : configCombo_->findText(curText);
+    configCombo_->setCurrentIndex(idx >= 0 ? idx : 0);
+    configCombo_->blockSignals(false);
+}
+
 void MainWindow::onRefreshMetadata()
 {
     if (dbProvider_) dbProvider_->refresh();
@@ -652,6 +701,7 @@ void MainWindow::onRefreshMetadata()
     if (configPage_) configPage_->updateMetadata();
     if (paramDockWidget_) paramDockWidget_->rebuildTree();
     if (dbPage_) dbPage_->rebuildTree();
+    refreshConfigCombo();
     log("Метаданные обновлены");
 }
 

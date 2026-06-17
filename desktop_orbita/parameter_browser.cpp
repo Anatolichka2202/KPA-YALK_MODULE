@@ -35,19 +35,19 @@ ParameterBrowser::ParameterBrowser(MetadataService* db, QWidget *parent)
 
     spinLayout->addWidget(new QLabel("Нижний (lo):"));
     loSpinBox_ = new QDoubleSpinBox;
-    loSpinBox_->setRange(0, 65535);
+    loSpinBox_->setRange(-65535, 65535);
     loSpinBox_->setDecimals(2);
     spinLayout->addWidget(loSpinBox_);
 
     spinLayout->addWidget(new QLabel("Номинал:"));
     nominalSpinBox_ = new QDoubleSpinBox;
-    nominalSpinBox_->setRange(0, 65535);
+    nominalSpinBox_->setRange(-65535, 65535);
     nominalSpinBox_->setDecimals(2);
     spinLayout->addWidget(nominalSpinBox_);
 
     spinLayout->addWidget(new QLabel("Верхний (hi):"));
     hiSpinBox_ = new QDoubleSpinBox;
-    hiSpinBox_->setRange(0, 65535);
+    hiSpinBox_->setRange(-65535, 65535);
     hiSpinBox_->setDecimals(2);
     spinLayout->addWidget(hiSpinBox_);
 
@@ -212,8 +212,9 @@ void ParameterBrowser::onSaveToDb() {
 
     bool success = db_->setTolerance(currentAddress_, lo, hi);
     if (success) {
+        emit toleranceSavedToDb(currentAddress_); // сбросить session-override в MainWindow
         QMessageBox::information(this, "Успех", "Допуск сохранён в базу данных");
-        updateEditorPanel(); // обновляем панель после сохранения
+        updateEditorPanel();
     } else {
         QMessageBox::critical(this, "Ошибка", "Не удалось сохранить допуск в БД");
     }

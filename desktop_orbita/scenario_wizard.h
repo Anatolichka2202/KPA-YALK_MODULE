@@ -57,6 +57,9 @@ private:
     bool             waitingCmd_  = false; ///< ждём нажатия «Выполнено» от оператора
 
     // UI-элементы
+    QLabel*        lblScenarioHeader_ = nullptr; ///< заголовок с именем сценария
+    QFrame*        cmdPanel_          = nullptr; ///< панель текущей команды оператору
+    QLabel*        lblCmdText_        = nullptr; ///< крупный текст команды
     QTableWidget*  table_        = nullptr;
     QPushButton*   btnLoad_      = nullptr;
     QPushButton*   btnSave_      = nullptr;

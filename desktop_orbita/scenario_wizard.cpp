@@ -12,6 +12,7 @@
 #include <QBrush>
 #include <QDialog>
 #include <QPlainTextEdit>
+#include <QFrame>
 #include <QFile>
 #include <QTextStream>
 
@@ -70,6 +71,14 @@ void ScenarioWizard::setupUi()
     mainLayout->setSpacing(8);
     mainLayout->setContentsMargins(10, 10, 10, 10);
 
+    // --- Заголовок с именем сценария ---
+    lblScenarioHeader_ = new QLabel("Сценарий не загружен");
+    lblScenarioHeader_->setStyleSheet(
+        "QLabel { font-family:'IBM Plex Sans',sans-serif; font-size:15px; font-weight:600;"
+        "         color:#dfe6ee; padding:7px 12px; background:#1B1F26;"
+        "         border:1px solid #2a313b; border-radius:4px; }");
+    mainLayout->addWidget(lblScenarioHeader_);
+
     // --- Панель кнопок управления ---
     auto* btnBar = new QHBoxLayout;
     btnLoad_     = new QPushButton("Загрузить .scn…");
@@ -100,6 +109,27 @@ void ScenarioWizard::setupUi()
     table_->setSelectionBehavior(QAbstractItemView::SelectRows);
     table_->setAlternatingRowColors(false);
     mainLayout->addWidget(table_, 1);
+
+    // --- Панель текущей команды оператора ---
+    cmdPanel_ = new QFrame;
+    cmdPanel_->setStyleSheet(
+        "QFrame { background:#1a2535; border:1px solid #3a5072; border-radius:6px; }");
+    {
+        auto* pl = new QVBoxLayout(cmdPanel_);
+        pl->setContentsMargins(14, 10, 14, 10);
+        pl->setSpacing(4);
+        auto* lbl = new QLabel("▶ Выполните команду:");
+        lbl->setStyleSheet("color:#5E93B8; font-size:10px; font-weight:600;"
+                           " text-transform:uppercase; letter-spacing:1px;");
+        lblCmdText_ = new QLabel;
+        lblCmdText_->setStyleSheet(
+            "color:#dfe6ee; font-size:14px; font-weight:600; margin-top:2px;");
+        lblCmdText_->setWordWrap(true);
+        pl->addWidget(lbl);
+        pl->addWidget(lblCmdText_);
+    }
+    cmdPanel_->setVisible(false);
+    mainLayout->addWidget(cmdPanel_);
 
     // --- Кнопка «Выполнено» для CMD-шагов (скрыта пока не идёт прогон) ---
     btnDone_ = new QPushButton("✓ Выполнено");
@@ -182,8 +212,10 @@ void ScenarioWizard::setScenario(const Scenario& scenario)
     currentStep_ = -1;
     waitingCmd_  = false;
 
+    lblScenarioHeader_->setText(scenario_.name.isEmpty() ? "Сценарий (без имени)" : scenario_.name);
     logEdit_->setPlainText("");
     btnSaveLog_->setVisible(false);
+    cmdPanel_->setVisible(false);
     refreshTable();
     updateCounters();
     lblVerdict_->setVisible(false);
@@ -255,10 +287,16 @@ void ScenarioWizard::setRowResult(int row, StepResult result)
         bg = QColor("#2e1a1a");
         fg = TEXT_FAIL;
         break;
-    default: // Pending
+    default: // Pending — CMD отличается от CHECK цветом
         resultText = "—";
-        bg = QColor("#0e1115");
-        fg = QColor("#aab4c0");
+        if (row < (int)scenario_.steps.size()
+                && scenario_.steps[row].kind == StepKind::Command) {
+            bg = QColor("#1a1810"); // amber-tint
+            fg = QColor("#c8b87a");
+        } else {
+            bg = QColor("#0e1115");
+            fg = QColor("#aab4c0");
+        }
         break;
     }
 
@@ -378,10 +416,11 @@ void ScenarioWizard::processNextStep()
     highlightRow(currentStep_);
 
     if (step.kind == StepKind::Command) {
-        // Логируем выполнение команды
-        appendLog(QString("[ВЫПОЛНЕНО] %1").arg(step.text));
+        appendLog(QString("[КОМАНДА] %1").arg(step.text));
 
-        // Показываем кнопку «Выполнено» и ждём оператора
+        // Показываем крупную панель инструкции и кнопку «Выполнено»
+        lblCmdText_->setText(step.text);
+        cmdPanel_->setVisible(true);
         btnDone_->setVisible(true);
         btnDone_->setFocus();
         waitingCmd_ = true;
@@ -441,6 +480,7 @@ void ScenarioWizard::onDoneStep()
 
     waitingCmd_ = false;
     btnDone_->setVisible(false);
+    cmdPanel_->setVisible(false);
 
     ++currentStep_;
     stepTimer_->start(50);
@@ -454,6 +494,7 @@ void ScenarioWizard::finishRun()
 
     stepTimer_->stop();
     btnDone_->setVisible(false);
+    cmdPanel_->setVisible(false);
 
     btnRun_->setEnabled(true);
     btnAddCmd_->setEnabled(true);
@@ -513,6 +554,7 @@ void ScenarioWizard::onReset()
     for (auto& step : scenario_.steps)
         step.result = StepResult::Pending;
 
+    cmdPanel_->setVisible(false);
     refreshTable();
     updateCounters();
     lblVerdict_->setVisible(false);

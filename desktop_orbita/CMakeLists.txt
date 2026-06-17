@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)   # без этого resources.qrc (styles.qss) не попадает в бинарник → тема не грузится
 
-find_package(Qt6 REQUIRED COMPONENTS Core Widgets PrintSupport Sql)
+find_package(Qt6 REQUIRED COMPONENTS Core Widgets PrintSupport Sql Svg)
 
 add_executable(OrbitaDesktop
     main.cpp
@@ -55,6 +55,7 @@ target_link_libraries(OrbitaDesktop PRIVATE
     Qt6::Widgets
     Qt6::PrintSupport
     Qt6::Sql
+    Qt6::Svg
 )
 
 if(WIN32)

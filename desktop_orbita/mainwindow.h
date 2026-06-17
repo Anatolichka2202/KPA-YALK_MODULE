@@ -14,6 +14,8 @@
 #include <QToolBar>
 #include <QDockWidget>
 #include <QStatusBar>
+#include <QComboBox>
+#include <QDir>
 
 #include "orbita.h"
 #include "metadata_service.h"
@@ -63,6 +65,7 @@ private:
     void setupUi();
     void setupToolBar();
     void setupDockWidgets();
+    void refreshConfigCombo();
     QString nextRecordingPath() const;
     void log(const QString& msg);
     void updateStatusBar(const orbita::Snapshot& snap);
@@ -129,6 +132,9 @@ private:
 
     // Нижняя строка статуса
     QLabel* m_statusBarLabel = nullptr;
+
+    // Быстрый выбор конфига в тулбаре
+    QComboBox* configCombo_ = nullptr;
 
     // Сценарий проверки
     QAction* actScenario_ = nullptr;

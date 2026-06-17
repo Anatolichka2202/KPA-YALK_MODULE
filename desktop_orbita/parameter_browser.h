@@ -14,6 +14,7 @@ public:
 signals:
     void parametersSelected(const QList<QString>& normalizedAddresses, const QList<QString>& names);
     void overrideTolerance(QString address, double lo, double nominal, double hi);
+    void toleranceSavedToDb(QString address);
 
 private slots:
     void onItemDoubleClicked(QTreeWidgetItem* item, int column);

@@ -156,6 +156,19 @@ CREATE TABLE addresses (
 );
 ```
 
+### 3. `build_clean_db.py` - Перестроить нормализованную БД из parameters.db
+
+Мигрирует «коленочную» `parameters.db` (широкая плоская таблица) в нормализованную `parameters_v2.db`
+со схемой `parameters` + `addresses`. Запускать при изменении исходника `parameters.db`.
+
+```bash
+# Запускать из посмотри/о БД/ или с указанием путей
+cd посмотри/о\ БД/
+python3 ../../tools/build_clean_db.py
+# Результат: parameters_v2.db
+# Затем скопировать как orbita/config/address/parameters.db
+```
+
 ## Notes
 
 - **No dependencies:** Uses only Python standard library (zipfile, xml.etree, sqlite3, csv, argparse)
