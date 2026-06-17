@@ -1,4 +1,5 @@
 #include "mainwindow.h"
+#include "channel_status.h"
 #include "encoding_utils.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -26,6 +27,13 @@ MainWindow::MainWindow(QWidget* parent)
     setupUi();
     setupToolBar();
     setupDockWidgets();
+
+    // Нижняя строка статуса
+    m_statusBarLabel = new QLabel(this);
+    m_statusBarLabel->setStyleSheet("color:#7e8a98; font-family:'IBM Plex Mono'; font-size:11px;");
+    statusBar()->addPermanentWidget(m_statusBarLabel, 1);
+    statusBar()->setStyleSheet("QStatusBar{background:#0e1115; border-top:1px solid #232a33;}");
+    m_statusBarLabel->setText("● сбор остановлен");
 
     // Теперь все элементы созданы — можно выставить начальный режим
     setMode(ModeMain);
@@ -431,11 +439,63 @@ void MainWindow::onToggleRecording()
 }
 
 // ----------------------------------------------------------------------------
+//  Строка статуса
+// ----------------------------------------------------------------------------
+void MainWindow::updateStatusBar(const orbita::Snapshot& snap)
+{
+    if (!m_statusBarLabel) return;
+
+    // Время МТВ
+    uint32_t sec = snap.mtv_seconds;
+    QString timeStr = QString("%1:%2:%3")
+        .arg(sec / 3600,       2, 10, QChar('0'))
+        .arg((sec % 3600) / 60, 2, 10, QChar('0'))
+        .arg(sec % 60,          2, 10, QChar('0'));
+
+    // Подсчёт аномалий
+    int anomalyCount = 0;
+    int firstAnomalyIdx = -1;
+    for (int i = 0; i < (int)snap.values.size(); ++i) {
+        const auto& v = snap.values[i];
+        auto tol = chstatus::forAddress(dbProvider_.get(), v.address);
+        auto lvl = chstatus::evaluate(v.value, tol);
+        if (chstatus::isAnomaly(lvl)) {
+            if (firstAnomalyIdx < 0) firstAnomalyIdx = i;
+            ++anomalyCount;
+        }
+    }
+
+    QString toleranceStr = QString("контроль допусков: %1 вне нормы").arg(anomalyCount);
+    if (anomalyCount > 0 && firstAnomalyIdx >= 0) {
+        QString name;
+        if (firstAnomalyIdx < (int)currentSpecs_.size()) {
+            const auto& sp = currentSpecs_[firstAnomalyIdx];
+            name = QString::fromStdString(sp.name.empty() ? sp.address : sp.name);
+        } else {
+            name = QString::fromStdString(snap.values[firstAnomalyIdx].address);
+        }
+        toleranceStr += QString(" — КАН %1 %2").arg(firstAnomalyIdx + 1).arg(name);
+    }
+
+    // Запись
+    QString recStr = isRecording_ ? recordingLabel_->text() : "—";
+
+    QString line = QString("● %1  |  %2  |  запись: %3  |  10 Гц · кадр 1024 Б")
+        .arg(timeStr, toleranceStr, recStr);
+
+    m_statusBarLabel->setText(line);
+}
+
+// ----------------------------------------------------------------------------
 //  Обновление данных
 // ----------------------------------------------------------------------------
 void MainWindow::updateData()
 {
-    if (!isRunning_) return;
+    if (!isRunning_) {
+        if (m_statusBarLabel)
+            m_statusBarLabel->setText("● сбор остановлен");
+        return;
+    }
 
     if (orbita_->waitForData(std::chrono::milliseconds(50))) {
         orbita::Snapshot snap = orbita_->getSnapshot();
@@ -450,6 +510,9 @@ void MainWindow::updateData()
         // Ошибки
         errPhraseLabel_->setText(QString("ошибки фраз: %1%").arg(snap.stats.phrase_error_percent));
         errGroupLabel_->setText(QString("групп: %1%").arg(snap.stats.group_error_percent));
+
+        // Нижняя строка статуса
+        updateStatusBar(snap);
 
         // Обновляем MainPage
         if (mainPage_)

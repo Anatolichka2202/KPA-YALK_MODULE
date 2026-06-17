@@ -13,6 +13,7 @@
 #include <QStackedWidget>
 #include <QToolBar>
 #include <QDockWidget>
+#include <QStatusBar>
 
 #include "orbita.h"
 #include "metadata_service.h"
@@ -123,6 +124,9 @@ private:
     QAction* actDetail_ = nullptr;
     QAction* actConfig_ = nullptr;
     QAction* actDb_ = nullptr;
+
+    // Нижняя строка статуса
+    QLabel* m_statusBarLabel = nullptr;
 };
 
 #endif // MAINWINDOW_H

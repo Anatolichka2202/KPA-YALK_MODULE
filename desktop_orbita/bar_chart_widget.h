@@ -34,6 +34,8 @@ private:
 
     QCustomPlot* m_plot;
     QCPBars* m_bars;
+    QCPBars* m_selBars = nullptr;
+    QCPItemText* m_valueText = nullptr;
     QVector<double> m_keys;
     QVector<double> m_valuesPlot;
     std::vector<orbita::ChannelSpec> m_specs;

@@ -32,6 +32,21 @@ void BarChartWidget::setupPlot()
     m_bars->setWidthType(QCPBars::wtPlotCoords);
     m_bars->setWidth(0.7);
 
+    // Выделенный столбец (амбер)
+    m_selBars = new QCPBars(m_plot->xAxis, m_plot->yAxis);
+    m_selBars->setPen(QPen(QColor(0xd9, 0x9a, 0x4a)));
+    m_selBars->setBrush(QBrush(QColor(0xd9, 0x9a, 0x4a)));
+    m_selBars->setWidthType(QCPBars::wtPlotCoords);
+    m_selBars->setWidth(0.7);
+
+    // Метка значения над выделенным столбцом
+    m_valueText = new QCPItemText(m_plot);
+    m_valueText->setColor(QColor(0xe6, 0xea, 0xf0));
+    m_valueText->setFont(QFont("IBM Plex Mono", 11, QFont::Bold));
+    m_valueText->setPositionAlignment(Qt::AlignBottom | Qt::AlignHCenter);
+    m_valueText->setLayer("overlay");
+    m_valueText->setVisible(false);
+
     // Текстовый тикер для меток
     QSharedPointer<QCPAxisTickerText> textTicker(new QCPAxisTickerText);
     m_plot->xAxis->setTicker(textTicker);
@@ -88,6 +103,22 @@ void BarChartWidget::updatePlot()
     double maxVal = 0.0;
     for (double v : m_valuesPlot) maxVal = qMax(maxVal, v);
     m_plot->yAxis->setRange(0, qMax(1023.0, maxVal * 1.05));
+
+    // Выделенный столбец + подпись значения
+    if (m_selBars && m_valueText) {
+        if (m_selectedIndex >= 0 && m_selectedIndex < m_valuesPlot.size()) {
+            double selKey = static_cast<double>(m_selectedIndex);
+            double selVal = m_valuesPlot[m_selectedIndex];
+            QVector<double> sk{selKey}, sv{selVal};
+            m_selBars->setData(sk, sv);
+            m_valueText->setVisible(true);
+            m_valueText->position->setCoords(selKey, selVal);
+            m_valueText->setText(QString::number(selVal, 'f', 0));
+        } else {
+            m_selBars->data()->clear();
+            m_valueText->setVisible(false);
+        }
+    }
 
     m_plot->replot();
 }
