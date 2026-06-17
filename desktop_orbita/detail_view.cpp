@@ -157,14 +157,10 @@ void DetailView::setToleranceResolver(ToleranceResolver* r)
     m_resolver = r;
 }
 
-void DetailView::setChannel(const orbita::ChannelSpec& spec)
+void DetailView::setChannel(const orbita::ChannelSpec& spec, int index)
 {
     m_spec = spec;
-    m_numLabel->setText(QString("КАН %1").arg(
-        // Номер канала из адреса можно извлечь, но пока просто индекс
-        // В реальности нужно передавать индекс отдельно
-        "?"
-        ));
+    m_numLabel->setText(index >= 0 ? QString("КАН %1").arg(index + 1) : QString("КАН --"));
     m_nameLabel->setText(QString::fromStdString(spec.name.empty() ? spec.address : spec.name));
 
     m_tol = (m_resolver ? m_resolver->resolve(QString::fromStdString(spec.address)) : chstatus::forAddress(m_db, spec.address));

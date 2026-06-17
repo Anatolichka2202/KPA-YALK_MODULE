@@ -473,7 +473,7 @@ void MainWindow::setMode(int mode)
         const auto& specs = orbita_->getChannels();
         if (selectedChannelIndex_ < (int)specs.size()) {
             if (detailView_)
-                detailView_->setChannel(specs[selectedChannelIndex_]);
+                detailView_->setChannel(specs[selectedChannelIndex_], selectedChannelIndex_);
             // Значение обновится в updateData
         }
     }
@@ -747,7 +747,7 @@ void MainWindow::onChannelSelected(int index)
     if (centralStack_->currentIndex() == ModeDetail) {
         const auto& specs = orbita_->getChannels();
         if (index >= 0 && index < (int)specs.size()) {
-            detailView_->setChannel(specs[index]);
+            detailView_->setChannel(specs[index], index);
             // Значение будет обновлено в updateData
         }
     }

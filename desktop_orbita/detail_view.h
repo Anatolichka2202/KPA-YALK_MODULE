@@ -22,7 +22,7 @@ public:
 
     void setMetadataService(MetadataService* db);
     void setToleranceResolver(ToleranceResolver* r);
-    void setChannel(const orbita::ChannelSpec& spec);
+    void setChannel(const orbita::ChannelSpec& spec, int index = -1);
     void updateValue(double value);
     void setHistorySize(int size = 60);
     void setSelected(bool selected = true); // для выделения
