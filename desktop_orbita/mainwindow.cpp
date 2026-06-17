@@ -603,7 +603,7 @@ void MainWindow::updateData()
         return;
     }
 
-    if (orbita_->waitForData(std::chrono::milliseconds(50))) {
+    if (orbita_->waitForData(std::chrono::milliseconds(0))) {
         orbita::Snapshot snap = orbita_->getSnapshot();
 
         // МТВ
