@@ -203,6 +203,11 @@ void MainWindow::setupDockWidgets()
                     watchSetDockWidget_->addParams(specs);
             });
 
+    connect(paramDockWidget_, &ParameterBrowser::overrideTolerance,
+            [this](QString address, double lo, double nominal, double hi) {
+                toleranceResolver_.setOverride(address, chstatus::Tolerance{lo, nominal, hi, true});
+            });
+
     connect(watchSetDockWidget_, &WatchSetWidget::watchSetChanged,
             this, &MainWindow::onWatchSetChanged);
     connect(watchSetDockWidget_, &WatchSetWidget::configSaved,
@@ -244,6 +249,11 @@ void MainWindow::setupDockWidgets()
                 }
                 if (watchSetDockWidget_)
                     watchSetDockWidget_->addParams(specs);
+            });
+
+    connect(dbPage_, &ParameterBrowser::overrideTolerance,
+            [this](QString address, double lo, double nominal, double hi) {
+                toleranceResolver_.setOverride(address, chstatus::Tolerance{lo, nominal, hi, true});
             });
 
     // Передаём БД в MainPage и DetailView

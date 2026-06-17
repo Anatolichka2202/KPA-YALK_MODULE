@@ -11,6 +11,9 @@
 #include <QColor>
 #include <QBrush>
 #include <QDialog>
+#include <QPlainTextEdit>
+#include <QFile>
+#include <QTextStream>
 
 // Цвета в стиле тёмной темы приложения
 static const QColor COLOR_OK   = QColor("#5E93B8");
@@ -108,6 +111,23 @@ void ScenarioWizard::setupUi()
     btnDone_->setVisible(false);
     mainLayout->addWidget(btnDone_);
 
+    // --- Область лога автопрогона ---
+    logEdit_ = new QPlainTextEdit;
+    logEdit_->setReadOnly(true);
+    logEdit_->setPlainText("");
+    logEdit_->setStyleSheet(
+        "QPlainTextEdit { background: #0a0d10; color: #90ee90; border: 1px solid #2a313b;"
+        "                 font-family: 'Courier New'; font-size: 10px; margin-top: 8px; }"
+    );
+    logEdit_->setFixedHeight(120);
+    mainLayout->addWidget(logEdit_);
+
+    // --- Кнопка сохранения лога ---
+    btnSaveLog_ = new QPushButton("Сохранить лог…");
+    btnSaveLog_->setVisible(false);
+    mainLayout->addWidget(btnSaveLog_);
+    connect(btnSaveLog_, &QPushButton::clicked, this, &ScenarioWizard::onSaveLog);
+
     // --- Строка статуса ---
     auto* statusBar = new QHBoxLayout;
     lblPassed_    = new QLabel("Пройдено: 0");
@@ -162,6 +182,8 @@ void ScenarioWizard::setScenario(const Scenario& scenario)
     currentStep_ = -1;
     waitingCmd_  = false;
 
+    logEdit_->setPlainText("");
+    btnSaveLog_->setVisible(false);
     refreshTable();
     updateCounters();
     lblVerdict_->setVisible(false);
@@ -289,6 +311,20 @@ void ScenarioWizard::updateCounters()
 }
 
 // ---------------------------------------------------------------------------
+//  Логирование
+// ---------------------------------------------------------------------------
+
+void ScenarioWizard::appendLog(const QString& text)
+{
+    if (logEdit_) {
+        auto cursor = logEdit_->textCursor();
+        cursor.movePosition(QTextCursor::End);
+        logEdit_->setTextCursor(cursor);
+        logEdit_->insertPlainText(text + "\n");
+    }
+}
+
+// ---------------------------------------------------------------------------
 //  Автопрогон
 // ---------------------------------------------------------------------------
 
@@ -316,6 +352,9 @@ void ScenarioWizard::startAutoRun()
     currentStep_ = 0;
     waitingCmd_  = false;
 
+    logEdit_->setPlainText("");
+    btnSaveLog_->setVisible(false);
+
     btnRun_->setEnabled(false);
     btnAddCmd_->setEnabled(false);
     btnAddCheck_->setEnabled(false);
@@ -339,6 +378,9 @@ void ScenarioWizard::processNextStep()
     highlightRow(currentStep_);
 
     if (step.kind == StepKind::Command) {
+        // Логируем выполнение команды
+        appendLog(QString("[ВЫПОЛНЕНО] %1").arg(step.text));
+
         // Показываем кнопку «Выполнено» и ждём оператора
         btnDone_->setVisible(true);
         btnDone_->setFocus();
@@ -349,11 +391,33 @@ void ScenarioWizard::processNextStep()
         auto val = provider_(step.address);
         if (!val.has_value()) {
             step.result = StepResult::Fail;
+            appendLog(QString("[НЕ ОК] %1: НЕТ ДАННЫХ, допуск=[%2..%3]")
+                .arg(step.address)
+                .arg(QString::number(step.lo, 'g', 2))
+                .arg(QString::number(step.hi, 'g', 2)));
         } else {
             double code = *val;
             step.result = (code >= step.lo && code <= step.hi)
                 ? StepResult::Ok
                 : StepResult::Fail;
+
+            if (step.result == StepResult::Ok) {
+                double margin = qMin(code - step.lo, step.hi - code);
+                appendLog(QString("[ОК]    %1: код=%2, допуск=[%3..%4], запас=%5")
+                    .arg(step.address)
+                    .arg(QString::number(code, 'g', 2))
+                    .arg(QString::number(step.lo, 'g', 2))
+                    .arg(QString::number(step.hi, 'g', 2))
+                    .arg(QString::number(margin, 'g', 2)));
+            } else {
+                double excess = (code > step.hi) ? (code - step.hi) : (step.lo - code);
+                appendLog(QString("[НЕ ОК] %1: код=%2, допуск=[%3..%4], превышение=%5")
+                    .arg(step.address)
+                    .arg(QString::number(code, 'g', 2))
+                    .arg(QString::number(step.lo, 'g', 2))
+                    .arg(QString::number(step.hi, 'g', 2))
+                    .arg(QString::number(excess, 'g', 2)));
+            }
         }
 
         setRowResult(currentStep_, step.result);
@@ -399,6 +463,29 @@ void ScenarioWizard::finishRun()
     // Вердикт: ОК если все шаги Ok, иначе НЕ ОК
     bool allOk = std::all_of(scenario_.steps.begin(), scenario_.steps.end(),
         [](const ScenarioStep& s) { return s.result == StepResult::Ok; });
+
+    // Подсчитаем статистику для лога
+    int totalChecks = 0, passedChecks = 0, failedChecks = 0, cmdCount = 0;
+    for (const auto& step : scenario_.steps) {
+        if (step.kind == StepKind::Check) {
+            ++totalChecks;
+            if (step.result == StepResult::Ok) ++passedChecks;
+            if (step.result == StepResult::Fail) ++failedChecks;
+        } else {
+            ++cmdCount;
+        }
+    }
+
+    // Добавляем итоговую строку в лог
+    QString verdict = allOk ? "ОК" : "НЕ ОК";
+    appendLog(QString("=== ВЕРДИКТ: %1 | проверок: %2, ок: %3, не ок: %4, команд: %5 ===")
+        .arg(verdict)
+        .arg(totalChecks)
+        .arg(passedChecks)
+        .arg(failedChecks)
+        .arg(cmdCount));
+
+    btnSaveLog_->setVisible(true);
 
     lblVerdict_->setVisible(true);
     if (allOk) {
@@ -520,4 +607,29 @@ void ScenarioWizard::onAddCheck()
     refreshTable();
     updateCounters();
     btnRun_->setEnabled(true);
+}
+
+// ---------------------------------------------------------------------------
+//  Сохранение лога
+// ---------------------------------------------------------------------------
+
+void ScenarioWizard::onSaveLog()
+{
+    QString path = QFileDialog::getSaveFileName(
+        this, "Сохранить лог", "scenario_log.txt",
+        "Текстовые файлы (*.txt);;Все файлы (*)");
+    if (path.isEmpty()) return;
+
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        QMessageBox::critical(this, "Ошибка", "Не удалось открыть файл для записи:\n" + path);
+        return;
+    }
+
+    QTextStream out(&file);
+    out.setEncoding(QStringConverter::Utf8);
+    out << logEdit_->toPlainText();
+    file.close();
+
+    QMessageBox::information(this, "Успех", "Лог успешно сохранён в:\n" + path);
 }

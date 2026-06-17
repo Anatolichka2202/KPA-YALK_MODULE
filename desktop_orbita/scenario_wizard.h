@@ -7,6 +7,7 @@
 #include <QLabel>
 #include <QProgressBar>
 #include <QPushButton>
+#include <QPlainTextEdit>
 #include <QTimer>
 #include <functional>
 #include <optional>
@@ -35,6 +36,7 @@ private slots:
     void onReset();
     void onDoneStep();        ///< оператор нажал «Выполнено» для текущей команды
     void processNextStep();   ///< продвинуть автопрогон на один шаг
+    void onSaveLog();         ///< сохранить лог в файл
 
 private:
     void setupUi();
@@ -44,6 +46,7 @@ private:
     void highlightRow(int row);
     void finishRun();
     void startAutoRun();
+    void appendLog(const QString& text);  ///< добавить строку в лог
 
     ValueProvider    provider_;
     Scenario         scenario_;
@@ -62,6 +65,8 @@ private:
     QPushButton*   btnRun_       = nullptr;
     QPushButton*   btnReset_     = nullptr;
     QPushButton*   btnDone_      = nullptr;  ///< кнопка «Выполнено» для CMD-шагов
+    QPushButton*   btnSaveLog_   = nullptr;  ///< кнопка «Сохранить лог…»
+    QPlainTextEdit* logEdit_     = nullptr;  ///< лог автопрогона
     QLabel*        lblPassed_    = nullptr;
     QLabel*        lblFailed_    = nullptr;
     QLabel*        lblRemaining_ = nullptr;
