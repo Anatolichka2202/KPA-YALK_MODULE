@@ -22,9 +22,9 @@ void BarChartWidget::setupPlot()
     m_plot->axisRect()->setRangeZoom(Qt::Horizontal);
     m_plot->yAxis->setLabel("Код");
     m_plot->yAxis->setRange(0, 1023);
-    m_plot->xAxis->setTickLabelRotation(60);
+    m_plot->xAxis->setTickLabelRotation(0);
     m_plot->xAxis->setSubTicks(false);
-    m_plot->xAxis->setTicks(true);   // подписи имён каналов под столбцами
+    m_plot->xAxis->setTicks(true);   // подписи категорий под группами столбцов
 
     m_bars = new QCPBars(m_plot->xAxis, m_plot->yAxis);
     m_bars->setPen(QPen(QColor(0x5e, 0x93, 0xb8)));
@@ -78,17 +78,61 @@ void BarChartWidget::updatePlot()
         return;
     }
 
+    // Удалить старые разделители перед перестройкой
+    for (auto* s : m_separators) m_plot->removeItem(s);
+    m_separators.clear();
+
     m_keys.resize(n);
     m_valuesPlot.resize(n);
-    QMap<double, QString> tickLabels;
     for (int i = 0; i < n; ++i) {
         m_keys[i] = i;
         double val = m_values.value(QString::fromStdString(m_specs[i].address), 0.0);
         m_valuesPlot[i] = val;
-        QString name = QString::fromStdString(m_specs[i].name.empty() ? m_specs[i].address : m_specs[i].name);
-        // Сокращаем имена до 3 символов для читаемости
-        if (name.length() > 8) name = name.left(6) + "…";
-        tickLabels[i] = name;
+    }
+
+    // Строим непрерывные серии каналов с одинаковой категорией
+    // и добавляем один тик в центре каждой серии
+    QMap<double, QString> tickLabels;
+    {
+        int i = 0;
+        while (i < n) {
+            // Получаем категорию текущего канала
+            QString cat;
+            if (m_db) {
+                auto info = m_db->lookup(QString::fromStdString(m_specs[i].address));
+                if (info) cat = info->category;
+            }
+            if (cat.isEmpty()) cat = QStringLiteral("—");
+
+            // Расширяем серию пока категория совпадает
+            int start = i;
+            while (i < n) {
+                QString nextCat;
+                if (m_db) {
+                    auto info = m_db->lookup(QString::fromStdString(m_specs[i].address));
+                    if (info) nextCat = info->category;
+                }
+                if (nextCat.isEmpty()) nextCat = QStringLiteral("—");
+                if (nextCat != cat) break;
+                ++i;
+            }
+            int end = i - 1; // включительно
+
+            // Тик в центре серии
+            double centerKey = (start + end) / 2.0;
+            tickLabels[centerKey] = cat;
+
+            // Разделитель перед следующей серией (между end и i)
+            if (i < n) {
+                double boundaryX = end + 0.5;
+                auto* sep = new QCPItemStraightLine(m_plot);
+                sep->setPen(QPen(QColor(0x23, 0x2a, 0x33), 0, Qt::DotLine));
+                sep->setSelectable(false);
+                sep->point1->setCoords(boundaryX, 0);
+                sep->point2->setCoords(boundaryX, 1023);
+                m_separators.append(sep);
+            }
+        }
     }
 
     m_bars->setData(m_keys, m_valuesPlot);

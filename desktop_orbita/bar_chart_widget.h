@@ -44,4 +44,5 @@ private:
     int m_selectedIndex = -1;
     int m_hoveredIndex = -1;
     bool m_mouseTracking = false;
+    QVector<QCPItemStraightLine*> m_separators;
 };
