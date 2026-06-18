@@ -1,0 +1,64 @@
+liborbita/
+ORBITA
+├── CMakeLists.txt                  # корневой CMake (статическая библиотека + опции)
+├── include/                        # публичные заголовки
+│   ├── orbita.h                    # главный API ядра
+│   ├── orbita_types.h		    # типы 
+
+├── ORBITA/                            
+|   ├── CMakeLists.txt                  # корневой CMake (статическая библиотека + опции)
+|   ├── include/                        # публичные заголовки
+│   | 	├── orbita.h                    # главный API ядра
+│   |	├── orbita_types.h		    # типы 
+│   ├── device/                     # драйверы
+│   │   ├── device_interface.h
+│   │   ├── e2010_device.cpp/h      # работа с lusbapi
+│   │   ├── limesdr_device.cpp/h    # LimeSuite, для работы с другим АЦП
+│   │   └── visa_device.cpp/h       # VISA для вольтметра/генератора
+│   ├── decoder/                    # декодирование кадра
+│   │   ├── fifo_buffer.cpp/h       # кольцевой буфер
+│   │   ├── frame_decoder_m16.cpp/h
+│   │   ├── frame_decoder_m8.cpp/h  # и остальные M04,M02,M01. Пока не реализован
+│   │   └── decoder_factory.cpp/h
+│   │   └── frame_decoder.h 		# общий класс декодеров
+│   │   └── bitstream_recover.h/cpp # восстановление битового потока
+│   │   └── 
+│   ├── address/                    # парсинг адресов
+│   │   ├── address_parser.cpp/h
+│   │   ├── address_manager.cpp/h
+│   ├── value/                      # преобразование значений
+│   │   ├── value_converter.cpp/h
+│   │   ├── 
+│   ├── tlm/                        # TLM-файлы, пока не реализован
+│   │   ├── tlm_writer.cpp/h
+│   │   ├── tlm_reader.cpp/h
+│   │   └── tlm_block.h
+│   ├── script/                     # Lua-движок - пока нету
+│   │   ├── lua_bridge.cpp/h        # регистрация функций
+│   │   ├── lua_api.cpp/h           # API для скриптов
+│   │   └── script_engine.cpp/h
+│   ├── config/                     # чтение конфигураций, не реализовано, вопрос нужно ли. 
+│   │   └── config_manager.cpp/h    # валидация? 
+│   ├── server/                     # внутренний сервер (опционально), не реализован
+│   │   ├── http_server.cpp/h       # простой REST API
+│   │   ├── websocket_server.cpp/h  # стриминг данных
+│   │   └── api_handlers.cpp/h
+│   └── core/                       # ядро библиотеки
+│       ├── orbita_core.cpp/h       # главный фасад
+│       ├── data_pool.cpp/h         # хранение текущих значений
+│       ├
+│       └── logger.cpp/h            # внутреннее логирование
+├── tests/                          # модульные тесты (QtTest)
+│   ├── test_address_parser.cpp
+│   ├── test_decoder_m16.cpp
+│   ├── test_tlm.cpp
+│   └── test_lua_script.cpp
+├── desktop/                        # Qt-приложение (клиент, спаенный (линковка с библиотекой)
+│   ├── CMakeLists.txt
+│   ├── main.cpp
+│   ├── mainwindow.cpp/h
+│   ├── plot_widget.cpp/h           # графики (QCustomPlot)
+│   └── resources/
+├── client			    # независимый клиент, по сети. На будущее, не реалищовано
+├── docs/                           # документация
+└── third_party/                    # внешние зависимости (git submodules)
