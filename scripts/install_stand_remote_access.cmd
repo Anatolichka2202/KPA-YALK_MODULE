@@ -10,7 +10,11 @@ if errorlevel 1 (
   exit /b 1
 )
 
-powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0enable_stand_remote_access_win11.ps1" %*
+if "%~1"=="" (
+  powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0enable_stand_remote_access_win11.ps1" -UserName Azerty -AllowedClientAddress 192.168.0.171
+) else (
+  powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0enable_stand_remote_access_win11.ps1" %*
+)
 set "ORBITA_INSTALL_EXIT=%ERRORLEVEL%"
 echo.
 if not "%ORBITA_INSTALL_EXIT%"=="0" (
