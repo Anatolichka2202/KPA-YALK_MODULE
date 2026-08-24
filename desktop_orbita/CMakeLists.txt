@@ -73,27 +73,19 @@ endif()
 # --- Копируем ресурсы рядом с exe ---
 set(ADDR_SRC ${CMAKE_SOURCE_DIR}/orbita/config/address)
 
-# parameters.db
-add_custom_command(TARGET OrbitaDesktop POST_BUILD
+# Ресурсы рабочего каталога обновляются при каждом запуске сборки. Это важно:
+# изменение БД или адресных списков не обязано приводить к перелинковке exe.
+add_custom_target(OrbitaRuntimeResources ALL
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         ${ADDR_SRC}/parameters.db
         $<TARGET_FILE_DIR:OrbitaDesktop>/parameters.db
-    COMMENT "Copying parameters.db"
-)
-
-# Все .txt-конфиги в подпапку address/
-add_custom_command(TARGET OrbitaDesktop POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory
         $<TARGET_FILE_DIR:OrbitaDesktop>/address
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${ADDR_SRC}
         $<TARGET_FILE_DIR:OrbitaDesktop>/address
-    COMMENT "Copying address config files"
-)
-
-# Создаём папку для записей TLM
-add_custom_command(TARGET OrbitaDesktop POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory
         $<TARGET_FILE_DIR:OrbitaDesktop>/records
-    COMMENT "Creating records directory"
+    COMMENT "Updating OrbitaDesktop runtime database and address files"
 )
+add_dependencies(OrbitaRuntimeResources OrbitaDesktop)

@@ -12,6 +12,7 @@ cmake-build-*/
 *.user
 *.user.*
 CMakeLists.txt.user*
+*.autosave
 CMakeCache.txt
 CMakeFiles/
 

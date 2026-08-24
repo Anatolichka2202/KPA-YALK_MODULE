@@ -96,7 +96,7 @@ def extract_xlsx(xlsx_path, csv_output_path):
                 writer = csv.writer(f)
                 writer.writerows(all_data)
 
-            print(f"  Written {len(all_data)} rows × {max_cols} columns")
+            print(f"  Written {len(all_data)} rows x {max_cols} columns")
 
             # Analyze: find non-empty columns
             print("\n" + "="*60)
@@ -148,8 +148,12 @@ def extract_xlsx(xlsx_path, csv_output_path):
 
 
 if __name__ == '__main__':
-    xlsx_path = Path("посмотри/о БД/База_данных_финальная.xlsx")
-    csv_path = Path("tools/xlsx_dump.csv")
+    xlsx_path = Path(
+        "docs/по ктма/02_Данные_и_конфигурации/"
+        "02_Исходные_таблицы_и_БД/База_данных_финальная.xlsx"
+    )
+    csv_path = Path("build/xlsx_dump.csv")
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
 
     if not xlsx_path.exists():
         print(f"Error: {xlsx_path} not found")

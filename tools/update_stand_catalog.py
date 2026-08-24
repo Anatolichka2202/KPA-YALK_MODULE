@@ -61,6 +61,13 @@ def main() -> None:
             name TEXT NOT NULL,
             status TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS catalog_sources (
+            code TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            scope TEXT NOT NULL,
+            table_count INTEGER NOT NULL,
+            import_status TEXT NOT NULL
+        );
         """
     )
 
@@ -68,6 +75,7 @@ def main() -> None:
     cells = rows("block_cells.csv")
     equipment = rows("equipment.csv")
     test_types = rows("test_types.csv")
+    sources = rows("sources.csv")
 
     with connection:
         connection.execute("DELETE FROM block_cells")
@@ -75,6 +83,7 @@ def main() -> None:
         connection.execute("DELETE FROM stand_blocks")
         connection.execute("DELETE FROM equipment_catalog")
         connection.execute("DELETE FROM test_types")
+        connection.execute("DELETE FROM catalog_sources")
 
         connection.executemany(
             "INSERT INTO stand_blocks VALUES (:code, :name, :designation, :number, :transport, :status)",
@@ -96,10 +105,15 @@ def main() -> None:
             "INSERT INTO test_types VALUES (:code, :name, :status)",
             test_types,
         )
+        connection.executemany(
+            "INSERT INTO catalog_sources VALUES (:code, :name, :scope, :table_count, :import_status)",
+            sources,
+        )
 
     print(
         f"Обновлено: {len(blocks)} блока, {len(cells)} позиций состава, "
-        f"{len(equipment)} единиц оборудования, {len(test_types)} вида испытаний."
+        f"{len(equipment)} единиц оборудования, {len(test_types)} вида испытаний, "
+        f"{len(sources)} источника каталога."
     )
 
 
