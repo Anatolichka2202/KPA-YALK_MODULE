@@ -26,6 +26,9 @@ signals:
 
 private slots:
     void updateStartAvailability();
+    void rebuildScopes();
+    void rebuildTests();
+    void updateSelectionSummary();
     void startSelectedTest();
     void advanceDemo();
 
@@ -37,10 +40,15 @@ private:
 
     void addEquipment(const QString& code, const QString& name,
                       const QString& connection, const QString& initialDetail);
+    QStringList requiredEquipment() const;
+    QString selectedObjectCode() const;
+    QString selectedScopeCode() const;
+    QString selectedTestCode() const;
     void resetResults();
     void finishDemo();
 
     QComboBox* objectCombo_ = nullptr;
+    QComboBox* scopeCombo_ = nullptr;
     QComboBox* testCombo_ = nullptr;
     QComboBox* modeCombo_ = nullptr;
     QTableWidget* equipmentTable_ = nullptr;

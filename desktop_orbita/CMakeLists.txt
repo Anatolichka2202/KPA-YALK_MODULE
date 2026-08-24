@@ -96,3 +96,17 @@ if(WIN32)
     set_target_properties(OrbitaDesktop PROPERTIES WIN32_EXECUTABLE TRUE)
 endif()
 add_dependencies(OrbitaRuntimeResources OrbitaDesktop)
+
+if(BUILD_TESTING)
+    add_executable(test_page_smoke_test
+        tests/test_page_smoke_test.cpp
+        test_page.cpp
+        test_page.h
+    )
+    target_include_directories(test_page_smoke_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(test_page_smoke_test PRIVATE Qt6::Core Qt6::Widgets)
+    add_test(NAME desktop.test_page_smoke COMMAND test_page_smoke_test -platform offscreen)
+    get_filename_component(QT_TEST_PLUGIN_DIR "${Qt6_DIR}/../../../plugins" ABSOLUTE)
+    set_tests_properties(desktop.test_page_smoke PROPERTIES
+        ENVIRONMENT "QT_PLUGIN_PATH=${QT_TEST_PLUGIN_DIR}")
+endif()

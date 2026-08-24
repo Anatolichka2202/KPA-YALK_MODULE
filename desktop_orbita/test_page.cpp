@@ -15,10 +15,34 @@
 #include <QVBoxLayout>
 #include <QVector>
 
+#include <iterator>
+
 namespace {
 
 constexpr int kStandMode = 0;
 constexpr int kDemoMode = 1;
+
+struct CellInfo {
+    const char* code;
+    const char* purpose;
+};
+
+const CellInfo kUbsiCells[] = {
+    {"ЯП-П", "ячейка питания"},
+    {"ЯТП", "температурные каналы"},
+    {"ЯВП-8", "потенциометрические каналы"},
+    {"ЯЛК-96", "аналоговые и контактные каналы"}
+};
+
+const CellInfo kBsiCells[] = {
+    {"ЯП-А", "ячейка питания"},
+    {"ЯГР", "состав параметров уточняется по картам"},
+    {"ЯСМ", "цифровые параметры из приложения 2"},
+    {"ЯТП", "температурные каналы"},
+    {"ЯВП-8", "потенциометрические каналы"},
+    {"ЯЛК-96", "аналоговые и контактные каналы"},
+    {"ЯФК", "быстроменяющиеся параметры"}
+};
 
 class Plot : public QWidget
 {
@@ -157,18 +181,20 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
     };
 
     addSelector(QStringLiteral("Объект испытания"), objectCombo_, 2);
+    addSelector(QStringLiteral("Состав проверки"), scopeCombo_, 2);
     addSelector(QStringLiteral("Вид испытания"), testCombo_, 4);
     addSelector(QStringLiteral("Режим запуска"), modeCombo_, 2);
-    objectCombo_->addItem(QStringLiteral("УБСИ ЛВРМ.468157.002"));
-    testCombo_->addItem(QStringLiteral("Функционирование в нормальных условиях — ТУ 5.6"));
-    testCombo_->addItem(QStringLiteral("ЯЛК: аналоговые каналы 0 / 3,1 / 6,2 В"));
+    objectCombo_->setObjectName(QStringLiteral("testObject"));
+    scopeCombo_->setObjectName(QStringLiteral("testScope"));
+    testCombo_->setObjectName(QStringLiteral("testType"));
+    modeCombo_->setObjectName(QStringLiteral("testMode"));
+    objectCombo_->addItem(QStringLiteral("УБСИ № 7 · ЛВРМ.468157.002"), QStringLiteral("UBSI-7"));
+    objectCombo_->addItem(QStringLiteral("БСИ · ЛВРМ.468157.001"), QStringLiteral("BSI"));
     modeCombo_->addItem(QStringLiteral("Стенд — реальное оборудование"));
     modeCombo_->addItem(QStringLiteral("Демонстрация интерфейса — имитация"));
     root->addLayout(selectors);
 
-    scopeLabel_ = new QLabel(QStringLiteral(
-        "ТУ 5.6: потенциометрические, контактные, температурные и пьезоэлектрические "
-        "каналы; питание, эталон 6,2 В, готовность и защиты."));
+    scopeLabel_ = new QLabel;
     scopeLabel_->setWordWrap(true);
     scopeLabel_->setStyleSheet(
         "background:#172333; color:#b9d7f5; border:1px solid #284765; "
@@ -181,6 +207,7 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
     auto* left = new QVBoxLayout;
     left->addWidget(makeSectionTitle(QStringLiteral("Готовность оборудования")));
     equipmentTable_ = new QTableWidget(0, 4);
+    equipmentTable_->setObjectName(QStringLiteral("equipmentTable"));
     equipmentTable_->setHorizontalHeaderLabels(
         {QStringLiteral("Устройство"), QStringLiteral("Подключение"),
          QStringLiteral("Состояние"), QStringLiteral("Диагностика")});
@@ -197,7 +224,7 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
                  QStringLiteral("драйвер обмена не подключён"));
     addEquipment("ISD", QStringLiteral("ИСД ЛВРМ.468173.001"), QStringLiteral("Ethernet / HTTP"),
                  QStringLiteral("рабочий IP и команды не перенесены"));
-    addEquipment("V7", QStringLiteral("В7-78/1"), QStringLiteral("USB / NI-VISA"),
+    addEquipment("V7", QStringLiteral("В7-78/1 (PV1 / PV2)"), QStringLiteral("USB / NI-VISA"),
                  QStringLiteral("нажмите «Проверить оборудование»"));
     addEquipment("AKIP", QStringLiteral("АКИП-1160/6, G1/G4"), QStringLiteral("USB"),
                  QStringLiteral("драйвер управления не подключён"));
@@ -265,14 +292,108 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
     connect(demoTimer_, &QTimer::timeout, this, &TestPage::advanceDemo);
     connect(checkButton_, &QPushButton::clicked, this, &TestPage::equipmentCheckRequested);
     connect(startButton_, &QPushButton::clicked, this, &TestPage::startSelectedTest);
+    connect(objectCombo_, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &TestPage::rebuildScopes);
+    connect(scopeCombo_, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &TestPage::rebuildTests);
     connect(modeCombo_, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &TestPage::updateStartAvailability);
-    connect(testCombo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
-        scopeLabel_->setText(index == 0
-            ? QStringLiteral("ТУ 5.6: потенциометрические, контактные, температурные и пьезоэлектрические каналы; питание, эталон 6,2 В, готовность и защиты.")
-            : QStringLiteral("Первый реализуемый тракт: ИСД → В7-78/1 → коды ЯЛК через Ethernet-адаптер → ±0,5 % шкалы 6,2 В."));
-        updateStartAvailability();
-    });
+    connect(testCombo_, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &TestPage::updateSelectionSummary);
+    rebuildScopes();
+}
+
+QString TestPage::selectedObjectCode() const
+{
+    return objectCombo_->currentData().toString();
+}
+
+QString TestPage::selectedScopeCode() const
+{
+    return scopeCombo_->currentData().toString();
+}
+
+QString TestPage::selectedTestCode() const
+{
+    return testCombo_->currentData().toString();
+}
+
+void TestPage::rebuildScopes()
+{
+    const QString previous = selectedScopeCode();
+    scopeCombo_->blockSignals(true);
+    scopeCombo_->clear();
+    scopeCombo_->addItem(QStringLiteral("Весь блок"), QStringLiteral("BLOCK"));
+    const bool bsi = selectedObjectCode() == QStringLiteral("BSI");
+    const CellInfo* cells = bsi ? kBsiCells : kUbsiCells;
+    const int count = bsi ? int(std::size(kBsiCells)) : int(std::size(kUbsiCells));
+    for (int i = 0; i < count; ++i) {
+        scopeCombo_->addItem(QString::fromUtf8(cells[i].code), QString::fromUtf8(cells[i].code));
+        scopeCombo_->setItemData(scopeCombo_->count() - 1, QString::fromUtf8(cells[i].purpose), Qt::ToolTipRole);
+    }
+    const int oldIndex = scopeCombo_->findData(previous);
+    scopeCombo_->setCurrentIndex(oldIndex >= 0 ? oldIndex : 0);
+    scopeCombo_->blockSignals(false);
+    rebuildTests();
+}
+
+void TestPage::rebuildTests()
+{
+    const QString previous = selectedTestCode();
+    testCombo_->blockSignals(true);
+    testCombo_->clear();
+    if (selectedScopeCode() == QStringLiteral("BLOCK")) {
+        if (selectedObjectCode() == QStringLiteral("BSI")) {
+            testCombo_->addItem(QStringLiteral("Функционирование в нормальных условиях · ТУ 5.6"),
+                                QStringLiteral("BSI_NORMAL_5_6"));
+        } else {
+            testCombo_->addItem(QStringLiteral("Функционирование в нормальных условиях · ТУ 5.6"),
+                                QStringLiteral("UBSI_NORMAL_5_6"));
+        }
+    } else {
+        testCombo_->addItem(QStringLiteral("Связь и чтение параметров · диагностика"),
+                            QStringLiteral("CELL_DIAGNOSTIC"));
+        if (selectedScopeCode() == QStringLiteral("ЯЛК-96")) {
+            testCombo_->addItem(QStringLiteral("Аналоговые каналы · 0 / 3,1 / 6,2 В"),
+                                QStringLiteral("YALK_ANALOG"));
+        }
+    }
+    const int oldIndex = testCombo_->findData(previous);
+    testCombo_->setCurrentIndex(oldIndex >= 0 ? oldIndex : 0);
+    testCombo_->blockSignals(false);
+    updateSelectionSummary();
+}
+
+void TestPage::updateSelectionSummary()
+{
+    const QString object = selectedObjectCode();
+    const QString scope = selectedScopeCode();
+    const QString test = selectedTestCode();
+    if (test.endsWith(QStringLiteral("NORMAL_5_6"))) {
+        scopeLabel_->setText(object == QStringLiteral("BSI")
+            ? QStringLiteral("БСИ · ТУ 5.6: проверка блока по штатной схеме В.1. Источники результата выбираются по тракту: Орбита, В7-78/1 и прямой RS-485. Это нормативный объём, аппаратная процедура ещё переносится.")
+            : QStringLiteral("УБСИ · ТУ 5.6: потенциометрические, контактные, температурные и пьезоэлектрические каналы; питание, эталон 6,2 В, готовность и защиты. Аппаратная процедура ещё переносится."));
+    } else if (test == QStringLiteral("YALK_ANALOG")) {
+        scopeLabel_->setText(object == QStringLiteral("BSI")
+            ? QStringLiteral("ЯЛК-96 БСИ: ИСД задаёт воздействие → В7-78/1 измеряет эталон → значение читается из телеметрии Орбита → допуск ±0,5 % шкалы 6,2 В.")
+            : QStringLiteral("ЯЛК-96 УБСИ: ИСД задаёт воздействие → В7-78/1 измеряет эталон → Ethernet-адаптер читает 16 кодов → допуск ±0,5 % шкалы 6,2 В."));
+    } else {
+        scopeLabel_->setText(QStringLiteral("%1 · %2: диагностический прогон проверяет наличие источника данных, адресной привязки и стабильной выборки. Он не выдаётся за приёмочное испытание по ТУ.")
+            .arg(object == QStringLiteral("BSI") ? QStringLiteral("БСИ") : QStringLiteral("УБСИ № 7"), scope));
+    }
+    plot_->setVisible(test == QStringLiteral("YALK_ANALOG") || test.endsWith(QStringLiteral("NORMAL_5_6")));
+    const QStringList required = requiredEquipment();
+    for (auto it = equipmentRows_.cbegin(); it != equipmentRows_.cend(); ++it) {
+        equipmentTable_->setRowHidden(it->row, !required.contains(it.key()));
+    }
+    resultTable_->setRowCount(0);
+    plot_->clear();
+    progress_->setValue(0);
+    progress_->setFormat(QStringLiteral("Проверка не запущена"));
+    verdictLabel_->setText(QStringLiteral("ИТОГ НЕ СФОРМИРОВАН"));
+    verdictLabel_->setStyleSheet(
+        "font-size:16px; font-weight:700; color:#8e9aa8; padding:8px 12px;"
+        "border:1px solid #35404d; border-radius:4px;");
     updateStartAvailability();
 }
 
@@ -310,6 +431,24 @@ void TestPage::setEquipmentChecking(const QString& code, const QString& detail)
     equipmentTable_->item(it->row, 3)->setText(detail);
 }
 
+QStringList TestPage::requiredEquipment() const
+{
+    const QString object = selectedObjectCode();
+    const QString test = selectedTestCode();
+    if (test == QStringLiteral("CELL_DIAGNOSTIC")) {
+        return object == QStringLiteral("BSI") ? QStringList{"E20"} : QStringList{"RS485"};
+    }
+    if (test == QStringLiteral("YALK_ANALOG")) {
+        return object == QStringLiteral("BSI")
+            ? QStringList{"E20", "ISD", "V7"}
+            : QStringList{"RS485", "ISD", "V7"};
+    }
+    if (test == QStringLiteral("BSI_NORMAL_5_6")) {
+        return {"E20", "RS485", "ISD", "V7", "AKIP", "RIGOL", "R4831", "THERMO_SIM"};
+    }
+    return {"E20", "RS485", "ISD", "V7", "AKIP", "RIGOL", "G3", "R4831", "THERMO_SIM"};
+}
+
 void TestPage::updateStartAvailability()
 {
     const bool demo = modeCombo_->currentIndex() == kDemoMode;
@@ -317,16 +456,14 @@ void TestPage::updateStartAvailability()
         startButton_->setText(QStringLiteral("Запустить демонстрацию"));
         startButton_->setEnabled(!demoTimer_->isActive());
         readinessLabel_->setText(QStringLiteral(
-            "Демонстрация не обращается к оборудованию и не является испытанием УБСИ."));
+            "Демонстрация не обращается к оборудованию и не является результатом испытания."));
         readinessLabel_->setStyleSheet("color:#69aee6;");
         return;
     }
 
     startButton_->setText(QStringLiteral("Запустить проверку"));
 
-    const QStringList required = testCombo_->currentIndex() == 1
-        ? QStringList{"RS485", "ISD", "V7"}
-        : QStringList{"E20", "RS485", "ISD", "V7", "AKIP", "RIGOL", "G3", "R4831", "THERMO_SIM"};
+    const QStringList required = requiredEquipment();
     QStringList missing;
     for (const auto& code : required) {
         const auto it = equipmentRows_.constFind(code);
@@ -334,8 +471,10 @@ void TestPage::updateStartAvailability()
     }
     startButton_->setEnabled(missing.isEmpty() && !demoTimer_->isActive());
     if (missing.isEmpty()) {
-        readinessLabel_->setText(QStringLiteral("Все обязательные устройства готовы"));
-        readinessLabel_->setStyleSheet("color:#70d79b;");
+        startButton_->setEnabled(false);
+        readinessLabel_->setText(QStringLiteral(
+            "Обязательные устройства готовы, но аппаратный исполнитель этой процедуры ещё не подключён"));
+        readinessLabel_->setStyleSheet("color:#d7a95b;");
     } else {
         readinessLabel_->setText(QStringLiteral("Запуск заблокирован. Не готовы: %1").arg(missing.join(", ")));
         readinessLabel_->setStyleSheet("color:#d7a95b;");
@@ -359,12 +498,40 @@ void TestPage::startSelectedTest()
     resetResults();
     demoStep_ = 0;
     startButton_->setEnabled(false);
-    progress_->setFormat(QStringLiteral("ДЕМО: подготовка аналогового тракта ЯЛК"));
+    progress_->setFormat(QStringLiteral("ДЕМО: подготовка %1").arg(selectedScopeCode()));
     demoTimer_->start();
 }
 
 void TestPage::advanceDemo()
 {
+    if (selectedTestCode() != QStringLiteral("YALK_ANALOG")) {
+        static const QString stages[] = {
+            QStringLiteral("Источник данных"),
+            QStringLiteral("Адресная привязка"),
+            QStringLiteral("Стабильная выборка")
+        };
+        if (demoStep_ >= 3) {
+            finishDemo();
+            return;
+        }
+        const int row = resultTable_->rowCount();
+        resultTable_->insertRow(row);
+        const QString values[] = {
+            selectedScopeCode() == QStringLiteral("BLOCK") ? QStringLiteral("Весь блок") : selectedScopeCode(),
+            stages[demoStep_], QStringLiteral("—"), QStringLiteral("имитация"),
+            QStringLiteral("не нормативный"), QStringLiteral("ГОТОВО")
+        };
+        for (int column = 0; column < 6; ++column) {
+            auto* item = new QTableWidgetItem(values[column]);
+            if (column == 5) item->setForeground(QColor("#70d79b"));
+            resultTable_->setItem(row, column, item);
+        }
+        ++demoStep_;
+        progress_->setValue(demoStep_);
+        progress_->setFormat(QStringLiteral("ДЕМО: выполнено %1 из 3 этапов").arg(demoStep_));
+        return;
+    }
+
     static const double references[] = {0.0021, 3.107138, 6.1984};
     static const double measured[] = {0.0030, 3.1060, 6.1970};
     static const QString points[] = {
@@ -378,7 +545,9 @@ void TestPage::advanceDemo()
     resultTable_->insertRow(row);
     const double error = qAbs(measured[demoStep_] - references[demoStep_]);
     const QString values[] = {
-        QStringLiteral("ЯЛК, аналоговый канал (демо)"),
+        selectedObjectCode() == QStringLiteral("BSI")
+            ? QStringLiteral("БСИ · ЯЛК-96 (демо)")
+            : QStringLiteral("УБСИ · ЯЛК-96 (демо)"),
         points[demoStep_],
         QString::number(references[demoStep_], 'f', 6) + QStringLiteral(" В"),
         QString::number(measured[demoStep_], 'f', 6) + QStringLiteral(" В"),
@@ -399,7 +568,12 @@ void TestPage::advanceDemo()
 void TestPage::finishDemo()
 {
     demoTimer_->stop();
-    verdictLabel_->setText(QStringLiteral("ДЕМО: ЯЛК — ОК · УБСИ ЦЕЛИКОМ НЕ ОЦЕНИВАЛСЯ"));
+    const QString target = selectedScopeCode() == QStringLiteral("BLOCK")
+        ? (selectedObjectCode() == QStringLiteral("BSI") ? QStringLiteral("БСИ") : QStringLiteral("УБСИ № 7"))
+        : selectedScopeCode();
+    verdictLabel_->setText(selectedTestCode() == QStringLiteral("YALK_ANALOG")
+        ? QStringLiteral("ДЕМО: %1 — ОК · БЛОК ЦЕЛИКОМ НЕ ОЦЕНИВАЛСЯ").arg(target)
+        : QStringLiteral("ДЕМО: %1 · ДИАГНОСТИКА ГОТОВА · НЕ РЕЗУЛЬТАТ ТУ").arg(target));
     verdictLabel_->setStyleSheet(
         "font-size:16px; font-weight:700; color:#70d79b; padding:8px 12px;"
         "border:1px solid #3d8f65; border-radius:4px;");
