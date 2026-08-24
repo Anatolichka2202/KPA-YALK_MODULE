@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet('Status', 'Shell', 'Upload', 'Download', 'Run', 'V7Probe')]
+    [ValidateSet('Status', 'Shell', 'Upload', 'Download', 'Run', 'V7Probe', 'DeployOrbita')]
     [string]$Action = 'Status',
     [string]$UserName = 'Azerty',
     [string]$StandAddress = '192.168.0.50',
@@ -71,6 +71,17 @@ switch ($Action) {
             $sshCommon + @($resolvedArchive, "${target}:C:/Orbita/incoming/v7_probe.zip")
         )
         $remoteCommand = "Expand-Archive -LiteralPath 'C:\Orbita\incoming\v7_probe.zip' -DestinationPath 'C:\Orbita\releases\v7_probe' -Force; & 'C:\Orbita\releases\v7_probe\v7_probe.exe'"
+        Invoke-Checked -Program 'ssh.exe' -Arguments (
+            $sshCommon + @($target, "powershell.exe -NoProfile -Command `"$remoteCommand`"")
+        )
+    }
+    'DeployOrbita' {
+        $archive = Join-Path $PSScriptRoot '..\build\deploy\orbita_desktop_ubsi_20260824_v2.zip'
+        $resolvedArchive = (Resolve-Path -LiteralPath $archive).Path
+        Invoke-Checked -Program 'scp.exe' -Arguments (
+            $sshCommon + @($resolvedArchive, "${target}:C:/Orbita/incoming/orbita_desktop_ubsi_v2.zip")
+        )
+        $remoteCommand = "`$destination = 'C:\Orbita\releases\ubsi-ui-20260824-v2'; New-Item -ItemType Directory -Force -Path `$destination | Out-Null; Expand-Archive -LiteralPath 'C:\Orbita\incoming\orbita_desktop_ubsi_v2.zip' -DestinationPath `$destination -Force; Get-Item -LiteralPath (`$destination + '\OrbitaDesktop.exe') | Select-Object FullName,Length,LastWriteTime"
         Invoke-Checked -Program 'ssh.exe' -Arguments (
             $sshCommon + @($target, "powershell.exe -NoProfile -Command `"$remoteCommand`"")
         )

@@ -15,6 +15,9 @@
 #include <QIcon>
 #include <sstream>
 #include <regex>
+#include <iomanip>
+
+#include "orbita_stand/v7_visa_voltmeter.h"
 
 #define ORBITA_VERSION "0.1.0-alpha"
 
@@ -40,13 +43,15 @@ MainWindow::MainWindow(QWidget* parent)
     m_statusBarLabel->setText("● сбор остановлен");
 
     // Теперь все элементы созданы — можно выставить начальный режим
-    setMode(ModeMain);
+    setMode(ModeTests);
 
     // Инициализация устройства
     try {
         orbita_->setDeviceE2010(0, 10000.0);
+        e20Available_ = true;
         log("Устройство E20-10 найдено");
     } catch (const std::exception& e) {
+        e20Available_ = false;
         orbita_->setDeviceNone();
         log(QString("E20-10 недоступно (%1). Режим без устройства.")
                 .arg(QString::fromLocal8Bit(e.what())));
@@ -56,7 +61,7 @@ MainWindow::MainWindow(QWidget* parent)
     connect(updateTimer_, &QTimer::timeout, this, &MainWindow::updateData);
     updateTimer_->start(100);
 
-    log("Система инициализирована. Выберите конфигурацию.");
+    log("Система инициализирована. Выберите объект и вид испытания.");
 }
 
 MainWindow::~MainWindow() = default;
@@ -66,7 +71,7 @@ MainWindow::~MainWindow() = default;
 // ----------------------------------------------------------------------------
 void MainWindow::setupUi()
 {
-    setWindowTitle(QString("Орбита-IV — Телеметрия · %1").arg(ORBITA_VERSION));
+    setWindowTitle(QString("Орбита — стендовый комплекс КТМА · %1").arg(ORBITA_VERSION));
     resize(1280, 800);
 
     // Центральный стек
@@ -74,6 +79,9 @@ void MainWindow::setupUi()
     setCentralWidget(centralStack_);
 
     // --- Создаём страницы ---
+    testPage_ = new TestPage;
+    centralStack_->addWidget(testPage_);
+
     // Страница "Сбор"
     mainPage_ = new MainPage;
     centralStack_->addWidget(mainPage_);
@@ -292,6 +300,7 @@ void MainWindow::setupDockWidgets()
     configDock_->hide();
     paramDock_->hide();
     watchSetDock_->hide();
+    logDock_->hide();
 
     QMenu* viewMenu = menuBar()->addMenu("Вид");
     viewMenu->addAction(watchSetDock_->toggleViewAction());
@@ -313,22 +322,26 @@ void MainWindow::setupToolBar()
     QActionGroup* modeGroup = new QActionGroup(this);
     modeGroup->setExclusive(true);
 
-    actMain_   = toolbar->addAction(QIcon(":/icons/collect.svg"),  "Сбор");
-    actDetail_ = toolbar->addAction(QIcon(":/icons/detail.svg"),   "Детально");
-    actConfig_ = toolbar->addAction(QIcon(":/icons/config.svg"),   "Конфиг");
-    actDb_     = toolbar->addAction(QIcon(":/icons/database.svg"), "БД");
+    actTests_  = toolbar->addAction(QIcon(":/icons/scenario.svg"), "Испытания");
+    actMain_   = toolbar->addAction(QIcon(":/icons/collect.svg"),  "Мониторинг");
+    actDetail_ = toolbar->addAction(QIcon(":/icons/detail.svg"),   "Канал");
+    actConfig_ = toolbar->addAction(QIcon(":/icons/config.svg"),   "Конфигурация");
+    actDb_     = toolbar->addAction(QIcon(":/icons/database.svg"), "Параметры");
 
+    actTests_->setCheckable(true);
     actMain_->setCheckable(true);
     actDetail_->setCheckable(true);
     actConfig_->setCheckable(true);
     actDb_->setCheckable(true);
-    actMain_->setChecked(true);
+    actTests_->setChecked(true);
 
+    modeGroup->addAction(actTests_);
     modeGroup->addAction(actMain_);
     modeGroup->addAction(actDetail_);
     modeGroup->addAction(actConfig_);
     modeGroup->addAction(actDb_);
 
+    connect(actTests_, &QAction::triggered, [this]() { setMode(ModeTests); });
     connect(actMain_, &QAction::triggered, [this]() { setMode(ModeMain); });
     connect(actDetail_, &QAction::triggered, [this]() { setMode(ModeDetail); });
     connect(actConfig_, &QAction::triggered, [this]() { setMode(ModeConfig); });
@@ -420,10 +433,14 @@ void MainWindow::setupToolBar()
     // --- Действия для док-виджетов (показывать/скрывать) ---
     // Добавим переключатели видимости доков в меню View (можно позже)
 
-    // --- Кнопка «Сценарий проверки» ---
-    toolbar->addSeparator();
-    actScenario_ = toolbar->addAction(QIcon(":/icons/scenario.svg"), "Сценарий");
+    // Ранний редактор оставлен как диагностический инструмент, но убран из
+    // основного операторского потока.
+    QMenu* toolsMenu = menuBar()->addMenu("Инструменты");
+    actScenario_ = toolsMenu->addAction("Редактор сценариев (экспериментальный)");
     connect(actScenario_, &QAction::triggered, this, &MainWindow::onOpenScenario);
+
+    connect(testPage_, &TestPage::equipmentCheckRequested,
+            this, &MainWindow::onCheckTestEquipment);
 
     // --- Подключаем config combo ---
     connect(configCombo_, QOverload<int>::of(&QComboBox::activated), this, [this](int i) {
@@ -446,6 +463,45 @@ void MainWindow::onOpenScenario()
     wizard.exec();
 }
 
+void MainWindow::onCheckTestEquipment()
+{
+    testPage_->setEquipmentStatus(
+        "E20", e20Available_,
+        e20Available_ ? "устройство открыто библиотекой liborbita"
+                      : "E20-10 не открыт; см. журнал мониторинга");
+    testPage_->setEquipmentStatus("RS485", false,
+        "Ethernet-адаптер доступен в сети, но драйвер обмена ещё не подключён");
+    testPage_->setEquipmentStatus("ISD", false,
+        "не подтверждены рабочий IP, аналоговые команды и безопасный сброс");
+    testPage_->setEquipmentStatus("AKIP", false,
+        "драйвер управления АКИП-1160/6 ещё не подключён");
+    testPage_->setEquipmentStatus("RIGOL", false,
+        "драйвер управления Rigol DG-1022Z ещё не подключён");
+    testPage_->setEquipmentStatus("G3", false,
+        "драйвер осциллографа АКИП-4113/2 ещё не подключён");
+    testPage_->setEquipmentStatus("R4831", false,
+        "драйвер магазина сопротивлений Р4831 ещё не подключён");
+    testPage_->setEquipmentStatus("THERMO_SIM", false,
+        "интерфейс имитатора термопары ещё не подтверждён");
+
+    testPage_->setEquipmentChecking("V7", "поиск NI-VISA и безопасный запрос READ?");
+    QApplication::setOverrideCursor(Qt::WaitCursor);
+    try {
+        orbita::stand::V7VisaVoltmeter meter;
+        const double value = meter.readVoltage();
+        std::ostringstream detail;
+        detail << meter.resourceName() << "; READ? = "
+               << std::fixed << std::setprecision(6) << value << " V";
+        testPage_->setEquipmentStatus("V7", true, QString::fromStdString(detail.str()));
+        log("В7-78/1 готов: " + QString::fromStdString(detail.str()));
+    } catch (const std::exception& error) {
+        testPage_->setEquipmentStatus(
+            "V7", false, QString::fromLocal8Bit(error.what()));
+        log("В7-78/1 не готов: " + QString::fromLocal8Bit(error.what()));
+    }
+    QApplication::restoreOverrideCursor();
+}
+
 // ----------------------------------------------------------------------------
 //  Управление режимами
 // ----------------------------------------------------------------------------
@@ -466,6 +522,21 @@ void MainWindow::setMode(int mode)
         actConfig_->setChecked(mode == ModeConfig);
     if (actDb_)
         actDb_->setChecked(mode == ModeDb);
+    if (actTests_)
+        actTests_->setChecked(mode == ModeTests);
+
+    const bool telemetryControlsVisible = mode != ModeTests;
+    statusBar()->setVisible(telemetryControlsVisible);
+    configCombo_->setVisible(telemetryControlsVisible);
+    startBtn_->setVisible(telemetryControlsVisible);
+    stopBtn_->setVisible(telemetryControlsVisible);
+    recordBtn_->setVisible(telemetryControlsVisible);
+    recordingLabel_->setVisible(telemetryControlsVisible);
+    invertCheck_->setVisible(telemetryControlsVisible);
+    mtvLabel_->setVisible(telemetryControlsVisible);
+    statusLabel_->setVisible(telemetryControlsVisible);
+    errPhraseLabel_->setVisible(telemetryControlsVisible);
+    errGroupLabel_->setVisible(telemetryControlsVisible);
 
     // Доки пользователь сам показывает/прячет через меню «Вид» — не навязываем по режиму.
 

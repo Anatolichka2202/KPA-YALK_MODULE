@@ -11,6 +11,8 @@ find_package(Qt6 REQUIRED COMPONENTS Core Widgets PrintSupport Sql Svg)
 add_executable(OrbitaDesktop
     main.cpp
     mainwindow.cpp
+    test_page.cpp
+    test_page.h
     plot_widget.cpp
     plot_widget.h
     qcustomplot.cpp
@@ -53,6 +55,7 @@ target_include_directories(OrbitaDesktop PRIVATE
 
 target_link_libraries(OrbitaDesktop PRIVATE
     orbita
+    orbita_stand_domain
     Qt6::Core
     Qt6::Widgets
     Qt6::PrintSupport
@@ -88,4 +91,8 @@ add_custom_target(OrbitaRuntimeResources ALL
         $<TARGET_FILE_DIR:OrbitaDesktop>/records
     COMMENT "Updating OrbitaDesktop runtime database and address files"
 )
+
+if(WIN32)
+    set_target_properties(OrbitaDesktop PROPERTIES WIN32_EXECUTABLE TRUE)
+endif()
 add_dependencies(OrbitaRuntimeResources OrbitaDesktop)

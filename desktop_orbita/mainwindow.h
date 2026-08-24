@@ -26,6 +26,7 @@
 #include "parameter_browser.h"
 #include "config_manager_widget.h"
 #include "watch_set_widget.h"
+#include "test_page.h"
 
 class MainWindow : public QMainWindow
 {
@@ -89,6 +90,7 @@ private:
 
     // Страницы
     MainPage* mainPage_ = nullptr;
+    TestPage* testPage_ = nullptr;
     DetailView* detailView_ = nullptr;
     ConfigManagerWidget* configPage_ = nullptr;
     ParameterBrowser* dbPage_ = nullptr;
@@ -122,9 +124,10 @@ private:
     std::vector<orbita::ChannelSpec> currentSpecs_;
 
     // Режимы
-    enum Mode { ModeMain = 0, ModeDetail = 1, ModeConfig = 2, ModeDb = 3 };
+    enum Mode { ModeTests = 0, ModeMain = 1, ModeDetail = 2, ModeConfig = 3, ModeDb = 4 };
 
     // Для запоминания активного действия на панели
+    QAction* actTests_ = nullptr;
     QAction* actMain_ = nullptr;
     QAction* actDetail_ = nullptr;
     QAction* actConfig_ = nullptr;
@@ -139,8 +142,11 @@ private:
     // Сценарий проверки
     QAction* actScenario_ = nullptr;
 
+    bool e20Available_ = false;
+
 private slots:
     void onOpenScenario();
+    void onCheckTestEquipment();
 };
 
 #endif // MAINWINDOW_H

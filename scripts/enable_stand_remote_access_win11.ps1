@@ -9,6 +9,8 @@ param(
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
+# Keep this bootstrap file ASCII-only. Windows PowerShell 5.1 treats UTF-8
+# files without a BOM as the current ANSI code page.
 $publicKey = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEOwOVo6KbdNKKGgbEW9f/RkqYLxF2CB23TghKnGQRKD orbita-dev-to-stand-20260824'
 $localUserName = ($UserName -split '\\')[-1]
 $localUser = Get-LocalUser -Name $localUserName -ErrorAction Stop
@@ -24,7 +26,7 @@ function Invoke-Icacls {
 
     & "$env:SystemRoot\System32\icacls.exe" @Arguments | Out-Host
     if ($LASTEXITCODE -ne 0) {
-        throw "icacls завершился с кодом $LASTEXITCODE"
+        throw "icacls failed with exit code $LASTEXITCODE"
     }
 }
 
@@ -46,23 +48,32 @@ function Add-AuthorizedKey {
     }
 }
 
-Write-Host 'Установка OpenSSH Server...'
-$capability = Get-WindowsCapability -Online -Name 'OpenSSH.Server~~~~0.0.1.0'
+Write-Host 'Installing Windows OpenSSH Server...'
+$capabilityName = 'OpenSSH.Server~~~~0.0.1.0'
+$capability = Get-WindowsCapability -Online -Name $capabilityName
 if ($capability.State -ne 'Installed') {
-    Add-WindowsCapability -Online -Name 'OpenSSH.Server~~~~0.0.1.0' | Out-Host
+    Add-WindowsCapability -Online -Name $capabilityName | Out-Host
 }
 
-$sshdService = Get-Service -Name sshd -ErrorAction Stop
+$capability = Get-WindowsCapability -Online -Name $capabilityName
+if ($capability.State -ne 'Installed') {
+    throw "OpenSSH Server installation did not complete. State: $($capability.State)"
+}
+
+$sshdService = Get-Service -Name sshd -ErrorAction SilentlyContinue
+if (-not $sshdService) {
+    throw 'OpenSSH Server capability is installed, but the sshd service is missing. Reboot Windows and run this script again.'
+}
 Set-Service -Name sshd -StartupType Automatic
 
 $profile = Get-CimInstance Win32_UserProfile |
     Where-Object { $_.SID -eq $userSid } |
     Select-Object -First 1
 if (-not $profile -or -not $profile.LocalPath) {
-    throw "Не найден профиль пользователя $localUserName"
+    throw "Windows profile was not found for user $localUserName"
 }
 
-Write-Host "Установка ключа для $localUserName..."
+Write-Host "Installing the SSH public key for $localUserName..."
 $userSshDirectory = Join-Path $profile.LocalPath '.ssh'
 $userAuthorizedKeys = Join-Path $userSshDirectory 'authorized_keys'
 Add-AuthorizedKey -Path $userAuthorizedKeys
@@ -81,9 +92,7 @@ Invoke-Icacls -Arguments @(
     "*$userSid`:F"
 )
 
-# Стандартная конфигурация Windows OpenSSH направляет администраторов в этот
-# общий файл. Тот же ключ кладётся сюда, чтобы вход работал независимо от того,
-# входит ли оператор стенда в локальную группу администраторов.
+# The default Windows sshd_config uses this file for administrator accounts.
 $adminAuthorizedKeys = Join-Path $env:ProgramData 'ssh\administrators_authorized_keys'
 Add-AuthorizedKey -Path $adminAuthorizedKeys
 Invoke-Icacls -Arguments @(
@@ -94,7 +103,7 @@ Invoke-Icacls -Arguments @(
     "*$administratorsSid`:F"
 )
 
-Write-Host "Ограничение TCP/22 адресом $AllowedClientAddress..."
+Write-Host "Restricting TCP/22 to client $AllowedClientAddress..."
 $defaultRule = Get-NetFirewallRule -Name 'OpenSSH-Server-In-TCP' -ErrorAction SilentlyContinue
 if ($defaultRule) {
     $defaultRule | Disable-NetFirewallRule | Out-Null
@@ -118,7 +127,7 @@ if (-not $rule) {
         Set-NetFirewallAddressFilter -RemoteAddress $AllowedClientAddress | Out-Null
 }
 
-Write-Host 'Подготовка рабочего каталога C:\Orbita...'
+Write-Host 'Preparing C:\Orbita...'
 $orbitaDirectories = @(
     'C:\Orbita',
     'C:\Orbita\incoming',
@@ -140,7 +149,7 @@ $sshdPath = Join-Path $env:SystemRoot 'System32\OpenSSH\sshd.exe'
 if (Test-Path -LiteralPath $sshdPath) {
     & $sshdPath -t
     if ($LASTEXITCODE -ne 0) {
-        throw 'Проверка конфигурации sshd завершилась ошибкой'
+        throw 'sshd configuration validation failed'
     }
 }
 
@@ -149,9 +158,8 @@ Restart-Service -Name sshd
 
 $listener = Get-NetTCPConnection -State Listen -LocalPort 22 -ErrorAction Stop
 Write-Host ''
-Write-Host 'Готово.' -ForegroundColor Green
-Write-Host "Пользователь: $localUserName"
-Write-Host "Разрешённый клиент: $AllowedClientAddress"
-Write-Host "Слушатель: $($listener.LocalAddress):22"
-Write-Host 'Рабочий каталог: C:\Orbita'
-
+Write-Host 'READY' -ForegroundColor Green
+Write-Host "User: $localUserName"
+Write-Host "Allowed client: $AllowedClientAddress"
+Write-Host "Listener: $($listener.LocalAddress):22"
+Write-Host 'Workspace: C:\Orbita'
