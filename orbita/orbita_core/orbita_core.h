@@ -13,6 +13,7 @@
 
 #include "../include/orbita.h"           // ChannelSpec, Snapshot, Stats, DataCallback
 #include "../device/e2010_device.h"
+#include "../device/sample_source.h"
 #include "../decoder/frame_decoder_m16.h"
 #include "../decoder/bitstream_recover.h"
 #include "../decoder/fifo_buffer.h"
@@ -61,7 +62,7 @@ public:
 
 private:
     // Компоненты
-    std::unique_ptr<E2010Device>      device_;
+    std::unique_ptr<ISampleSource>    device_;
     std::unique_ptr<FrameDecoderM16>  decoder_;
 
     // Битовый конвейер

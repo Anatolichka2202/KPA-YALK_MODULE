@@ -1,5 +1,7 @@
 #pragma once
 
+#include "sample_source.h"
+
 #include <thread>
 #include <vector>
 #include <cstdint>
@@ -24,25 +26,25 @@ typedef void* ILE2010;
 
 namespace orbita {
 
-class E2010Device {
+class E2010Device final : public ISampleSource {
 public:
     E2010Device() = default;
-    ~E2010Device();
+    ~E2010Device() override;
 
     E2010Device(const E2010Device&) = delete;
     E2010Device& operator=(const E2010Device&) = delete;
 
-    bool init(int slot = 0, int channel = 0, double sampleRateKHz = 10000.0);
-    bool start();
-    void stop();
+    bool init(int slot = 0, int channel = 0, double sampleRateKHz = 10000.0) override;
+    bool start() override;
+    void stop() override;
 
-    bool isRunning() const { return isRunning_.load(); }
+    bool isRunning() const override { return isRunning_.load(); }
 
     // Колбэк вызывается из внутреннего потока чтения при поступлении новой порции отсчётов
-    void setSamplesCallback(std::function<void(const std::vector<int16_t>&)> cb);
+    void setSamplesCallback(SamplesCallback cb) override;
 
     // Колбэк ошибок (опционально)
-    void setErrorCallback(std::function<void(const std::string&)> cb);
+    void setErrorCallback(ErrorCallback cb) override;
 
 private:
     void readerLoop();
@@ -54,8 +56,8 @@ private:
     std::atomic<bool> isRunning_{false};
     std::atomic<bool> stopRequested_{false};
 
-    std::function<void(const std::vector<int16_t>&)> onSamples_;
-    std::function<void(const std::string&)> onError_;
+    SamplesCallback onSamples_;
+    ErrorCallback onError_;
 
     ILE2010* pModule_ = nullptr;
     HANDLE hStopEvent_ = nullptr;
