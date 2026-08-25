@@ -39,6 +39,15 @@ int main(int argc, char** argv)
     auto* equipment = page.findChild<QTableWidget*>(QStringLiteral("equipmentTable"));
     require(object && scope && test && mode && equipment, "test page controls not found");
     require(object->count() == 2, "BSI and UBSI must both be selectable");
+    require(object->currentData() == QStringLiteral("UBSI-7"), "UBSI must be the initial object");
+    require(scope->currentData() == QStringLiteral("ЯЛК-96"),
+            "the confirmed YALK tract must be the initial scope");
+    require(test->currentData() == QStringLiteral("YALK_ANALOG"),
+            "the confirmed YALK analog procedure must be initially selected");
+    require(!equipment->isRowHidden(rowByName(equipment, QStringLiteral("Адаптер RS-485"))),
+            "initial UBSI YALK view must show the direct adapter");
+    require(equipment->isRowHidden(rowByName(equipment, QStringLiteral("АКИП-1160/6"))),
+            "initial UBSI YALK view must hide full-block-only equipment");
 
     object->setCurrentIndex(object->findData(QStringLiteral("BSI")));
     require(scope->count() == 8, "BSI must contain whole block plus seven cell types");

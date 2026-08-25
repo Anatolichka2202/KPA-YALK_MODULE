@@ -7,6 +7,7 @@
 #include <string>
 #include <thread>
 #include <utility>
+#include <vector>
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -118,21 +119,40 @@ struct V7VisaVoltmeter::Impl {
 
             requireSuccess(viOpenDefaultRM(&resourceManager), "viOpenDefaultRM");
 
+            std::vector<std::string> expressions{config.resourceExpression};
+            if (!config.fallbackResourceExpression.empty()
+                && config.fallbackResourceExpression != config.resourceExpression) {
+                expressions.push_back(config.fallbackResourceExpression);
+            }
+
             char descriptor[256]{};
             ViUInt32 foundCount = 0;
-            const auto findStatus = viFindRsrc(
-                resourceManager,
-                config.resourceExpression.c_str(),
-                &findList,
-                &foundCount,
-                descriptor);
-            if (findStatus == resourceNotFound) {
-                throw std::runtime_error(
-                    "V7-78/1 was not found by NI-VISA (VID 164E, PID 0DAD)");
+            bool found = false;
+            for (const auto& expression : expressions) {
+                descriptor[0] = '\0';
+                foundCount = 0;
+                findList = 0;
+                const auto findStatus = viFindRsrc(
+                    resourceManager,
+                    expression.c_str(),
+                    &findList,
+                    &foundCount,
+                    descriptor);
+                if (findStatus == resourceNotFound) continue;
+                requireSuccess(findStatus, "viFindRsrc(V7-78/1)");
+                if (foundCount > 0 && descriptor[0] != '\0') {
+                    found = true;
+                    break;
+                }
+                if (findList != 0) {
+                    viClose(findList);
+                    findList = 0;
+                }
             }
-            requireSuccess(findStatus, "viFindRsrc(V7-78/1)");
-            if (foundCount == 0 || descriptor[0] == '\0') {
-                throw std::runtime_error("V7-78/1 was not found by NI-VISA");
+            if (!found) {
+                throw std::runtime_error(
+                    "V7-78/1 was not found by NI-VISA; tried VID/PID "
+                    "0x164E/0x0DAD and 5710/3501");
             }
             resource = descriptor;
 

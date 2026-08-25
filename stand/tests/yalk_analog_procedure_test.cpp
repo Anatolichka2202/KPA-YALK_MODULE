@@ -1,4 +1,5 @@
 #include "orbita_stand/yalk_analog_procedure.h"
+#include "orbita_stand/v7_visa_voltmeter.h"
 
 #include <cmath>
 #include <cstdlib>
@@ -161,6 +162,15 @@ void equipmentErrorStillDisablesIsd()
     require(isd.disableCalled, "ISD must be disabled after an equipment error");
 }
 
+void legacyVisaFallbackIsPreserved()
+{
+    const V7VisaConfig config;
+    require(config.resourceExpression == "USB[0-9]*::0x164E::0x0DAD::?*INSTR",
+            "V7 hexadecimal VISA expression changed unexpectedly");
+    require(config.fallbackResourceExpression == "USB[0-9]*::5710::3501::?*INSTR",
+            "V7 decimal VISA fallback from the Delphi program is required");
+}
+
 } // namespace
 
 int main()
@@ -169,6 +179,7 @@ int main()
         referenceLikeRunPasses();
         excessiveFullScaleErrorFails();
         equipmentErrorStillDisablesIsd();
+        legacyVisaFallbackIsPreserved();
         std::cout << "YALK analog procedure tests passed\n";
         return EXIT_SUCCESS;
     } catch (const std::exception& error) {

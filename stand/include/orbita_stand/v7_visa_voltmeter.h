@@ -9,6 +9,9 @@ namespace orbita::stand {
 
 struct V7VisaConfig {
     std::string resourceExpression = "USB[0-9]*::0x164E::0x0DAD::?*INSTR";
+    // Старый NI-VISA и референсная Delphi-программа используют десятичную
+    // запись VID/PID как запасной вариант для того же прибора.
+    std::string fallbackResourceExpression = "USB[0-9]*::5710::3501::?*INSTR";
     unsigned timeoutMilliseconds = 2000;
     unsigned readDelayMilliseconds = 45;
 };

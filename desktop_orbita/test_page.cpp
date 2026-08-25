@@ -205,7 +205,7 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
     body->setSpacing(12);
 
     auto* left = new QVBoxLayout;
-    left->addWidget(makeSectionTitle(QStringLiteral("Готовность оборудования")));
+    left->addWidget(makeSectionTitle(QStringLiteral("Оборудование выбранной процедуры")));
     equipmentTable_ = new QTableWidget(0, 4);
     equipmentTable_->setObjectName(QStringLiteral("equipmentTable"));
     equipmentTable_->setHorizontalHeaderLabels(
@@ -247,6 +247,15 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
     readinessBar->addWidget(checkButton_);
     readinessBar->addWidget(readinessLabel_, 1);
     left->addLayout(readinessBar);
+
+    diagnosticLabel_ = new QLabel(QStringLiteral(
+        "Нажмите «Проверить оборудование» — здесь появится полный текст ошибки."));
+    diagnosticLabel_->setWordWrap(true);
+    diagnosticLabel_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    diagnosticLabel_->setStyleSheet(
+        "background:#1d2026; color:#9eabb8; border:1px solid #303844; "
+        "padding:7px 9px; border-radius:4px;");
+    left->addWidget(diagnosticLabel_);
 
     auto* right = new QVBoxLayout;
     right->addWidget(makeSectionTitle(QStringLiteral("Ход и результат")));
@@ -301,6 +310,8 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
     connect(testCombo_, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &TestPage::updateSelectionSummary);
     rebuildScopes();
+    scopeCombo_->setCurrentIndex(scopeCombo_->findData(QStringLiteral("ЯЛК-96")));
+    testCombo_->setCurrentIndex(testCombo_->findData(QStringLiteral("YALK_ANALOG")));
 }
 
 QString TestPage::selectedObjectCode() const
@@ -371,8 +382,8 @@ void TestPage::updateSelectionSummary()
     const QString test = selectedTestCode();
     if (test.endsWith(QStringLiteral("NORMAL_5_6"))) {
         scopeLabel_->setText(object == QStringLiteral("BSI")
-            ? QStringLiteral("БСИ · ТУ 5.6: проверка блока по штатной схеме В.1. Источники результата выбираются по тракту: Орбита, В7-78/1 и прямой RS-485. Это нормативный объём, аппаратная процедура ещё переносится.")
-            : QStringLiteral("УБСИ · ТУ 5.6: потенциометрические, контактные, температурные и пьезоэлектрические каналы; питание, эталон 6,2 В, готовность и защиты. Аппаратная процедура ещё переносится."));
+            ? QStringLiteral("Полная схема В.1 из ТУ БСИ 5.6. Это состав стенда для проверки всего блока, а не требование к каждой ячейке. Источники результата выбираются по тракту; аппаратная процедура ещё переносится.")
+            : QStringLiteral("Полная схема А.1 из ТУ УБСИ 5.6. Это состав стенда для проверки всего блока, а не требование к каждой ячейке. Аппаратная процедура ещё переносится."));
     } else if (test == QStringLiteral("YALK_ANALOG")) {
         scopeLabel_->setText(object == QStringLiteral("BSI")
             ? QStringLiteral("ЯЛК-96 БСИ: ИСД задаёт воздействие → В7-78/1 измеряет эталон → значение читается из телеметрии Орбита → допуск ±0,5 % шкалы 6,2 В.")
@@ -406,6 +417,7 @@ void TestPage::addEquipment(const QString& code, const QString& name,
     equipmentTable_->setItem(row, 1, new QTableWidgetItem(connection));
     equipmentTable_->setItem(row, 2, new QTableWidgetItem(QStringLiteral("НЕ ПРОВЕРЕНО")));
     equipmentTable_->setItem(row, 3, new QTableWidgetItem(initialDetail));
+    equipmentTable_->item(row, 3)->setToolTip(initialDetail);
     equipmentRows_.insert(code, EquipmentRow{row, false});
 }
 
@@ -418,6 +430,18 @@ void TestPage::setEquipmentStatus(const QString& code, bool ready, const QString
     state->setText(ready ? QStringLiteral("ГОТОВО") : QStringLiteral("НЕ ГОТОВО"));
     state->setForeground(ready ? QColor("#70d79b") : QColor("#e1766d"));
     equipmentTable_->item(it->row, 3)->setText(detail);
+    equipmentTable_->item(it->row, 3)->setToolTip(detail);
+    if (!ready) {
+        diagnosticLabel_->setText(QStringLiteral("%1: %2").arg(code, detail));
+        diagnosticLabel_->setStyleSheet(
+            "background:#291b1d; color:#f0b0aa; border:1px solid #713b40; "
+            "padding:7px 9px; border-radius:4px;");
+    } else if (code == QStringLiteral("V7")) {
+        diagnosticLabel_->setText(QStringLiteral("В7-78/1: %1").arg(detail));
+        diagnosticLabel_->setStyleSheet(
+            "background:#17251e; color:#9de0b8; border:1px solid #356b4b; "
+            "padding:7px 9px; border-radius:4px;");
+    }
     updateStartAvailability();
 }
 
@@ -429,6 +453,8 @@ void TestPage::setEquipmentChecking(const QString& code, const QString& detail)
     equipmentTable_->item(it->row, 2)->setText(QStringLiteral("ПРОВЕРКА…"));
     equipmentTable_->item(it->row, 2)->setForeground(QColor("#d7a95b"));
     equipmentTable_->item(it->row, 3)->setText(detail);
+    equipmentTable_->item(it->row, 3)->setToolTip(detail);
+    diagnosticLabel_->setText(QStringLiteral("%1: %2").arg(code, detail));
 }
 
 QStringList TestPage::requiredEquipment() const

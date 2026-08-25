@@ -54,6 +54,7 @@ private:
     QTableWidget* equipmentTable_ = nullptr;
     QTableWidget* resultTable_ = nullptr;
     QLabel* readinessLabel_ = nullptr;
+    QLabel* diagnosticLabel_ = nullptr;
     QLabel* verdictLabel_ = nullptr;
     QLabel* scopeLabel_ = nullptr;
     QProgressBar* progress_ = nullptr;
