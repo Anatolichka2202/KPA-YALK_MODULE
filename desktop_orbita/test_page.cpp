@@ -224,13 +224,13 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
                  QStringLiteral("драйвер обмена не подключён"));
     addEquipment("ISD", QStringLiteral("ИСД ЛВРМ.468173.001"), QStringLiteral("Ethernet / HTTP"),
                  QStringLiteral("рабочий IP и команды не перенесены"));
-    addEquipment("V7", QStringLiteral("В7-78/1 (PV1 / PV2)"), QStringLiteral("USB / NI-VISA"),
+    addEquipment("V7", QStringLiteral("В7-78/1"), QStringLiteral("USB / NI-VISA"),
                  QStringLiteral("нажмите «Проверить оборудование»"));
-    addEquipment("AKIP", QStringLiteral("АКИП-1160/6, G1/G4"), QStringLiteral("USB"),
+    addEquipment("AKIP", QStringLiteral("Источник питания АКИП-1160/6"), QStringLiteral("USB"),
                  QStringLiteral("драйвер управления не подключён"));
     addEquipment("RIGOL", QStringLiteral("Rigol DG-1022Z"), QStringLiteral("USB"),
                  QStringLiteral("драйвер управления не подключён"));
-    addEquipment("G3", QStringLiteral("Осциллограф АКИП-4113/2, G3"), QStringLiteral("USB"),
+    addEquipment("G3", QStringLiteral("Осциллограф АКИП-4113/2"), QStringLiteral("USB"),
                  QStringLiteral("драйвер управления не подключён"));
     addEquipment("R4831", QStringLiteral("Магазин сопротивлений Р4831"), QStringLiteral("USB"),
                  QStringLiteral("драйвер управления не подключён"));
