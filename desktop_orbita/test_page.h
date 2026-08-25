@@ -36,10 +36,12 @@ private:
     struct EquipmentRow {
         int row = -1;
         bool ready = false;
+        bool operatorConfirmation = false;
     };
 
     void addEquipment(const QString& code, const QString& name,
-                      const QString& connection, const QString& initialDetail);
+                      const QString& connection, const QString& initialDetail,
+                      bool operatorConfirmation = false);
     QStringList requiredEquipment() const;
     QString selectedObjectCode() const;
     QString selectedScopeCode() const;

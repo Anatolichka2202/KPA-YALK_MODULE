@@ -9,6 +9,7 @@
 #include <QPainterPath>
 #include <QProgressBar>
 #include <QPushButton>
+#include <QSignalBlocker>
 #include <QTableWidget>
 #include <QTableWidgetItem>
 #include <QTimer>
@@ -206,36 +207,43 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
 
     auto* left = new QVBoxLayout;
     left->addWidget(makeSectionTitle(QStringLiteral("Оборудование выбранной процедуры")));
-    equipmentTable_ = new QTableWidget(0, 4);
+    equipmentTable_ = new QTableWidget(0, 5);
     equipmentTable_->setObjectName(QStringLiteral("equipmentTable"));
     equipmentTable_->setHorizontalHeaderLabels(
-        {QStringLiteral("Устройство"), QStringLiteral("Подключение"),
-         QStringLiteral("Состояние"), QStringLiteral("Диагностика")});
+        {QStringLiteral("Устройство"), QStringLiteral("Связь с ПЭВМ"),
+         QStringLiteral("Контроль"), QStringLiteral("Состояние"),
+         QStringLiteral("Диагностика")});
     equipmentTable_->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
     equipmentTable_->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
     equipmentTable_->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
-    equipmentTable_->horizontalHeader()->setSectionResizeMode(3, QHeaderView::Stretch);
+    equipmentTable_->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
+    equipmentTable_->horizontalHeader()->setSectionResizeMode(4, QHeaderView::Stretch);
     equipmentTable_->verticalHeader()->hide();
     equipmentTable_->setEditTriggers(QAbstractItemView::NoEditTriggers);
     equipmentTable_->setSelectionMode(QAbstractItemView::NoSelection);
     addEquipment("E20", QStringLiteral("E20-10 + Орбита"), QStringLiteral("USB / Lusbapi"),
                  QStringLiteral("ещё не проверено"));
     addEquipment("RS485", QStringLiteral("Адаптер RS-485 ЛВРМ.424349.001"), QStringLiteral("Ethernet"),
-                 QStringLiteral("драйвер обмена не подключён"));
+                 QStringLiteral("плагин UDP-обмена не реализован"));
     addEquipment("ISD", QStringLiteral("ИСД ЛВРМ.468173.001"), QStringLiteral("Ethernet / HTTP"),
-                 QStringLiteral("рабочий IP и команды не перенесены"));
+                 QStringLiteral("плагин HTTP-команд не реализован; ИСД только переключает цепи"));
     addEquipment("V7", QStringLiteral("В7-78/1"), QStringLiteral("USB / NI-VISA"),
                  QStringLiteral("нажмите «Проверить оборудование»"));
-    addEquipment("AKIP", QStringLiteral("Источник питания АКИП-1160/6"), QStringLiteral("USB"),
-                 QStringLiteral("драйвер управления не подключён"));
-    addEquipment("RIGOL", QStringLiteral("Rigol DG-1022Z"), QStringLiteral("USB"),
-                 QStringLiteral("драйвер управления не подключён"));
-    addEquipment("G3", QStringLiteral("Осциллограф АКИП-4113/2"), QStringLiteral("USB"),
-                 QStringLiteral("драйвер управления не подключён"));
-    addEquipment("R4831", QStringLiteral("Магазин сопротивлений Р4831"), QStringLiteral("USB"),
-                 QStringLiteral("драйвер управления не подключён"));
-    addEquipment("THERMO_SIM", QStringLiteral("Имитатор датчика «термопара»"), QStringLiteral("стендовый интерфейс"),
-                 QStringLiteral("интерфейс управления не подтверждён"));
+    addEquipment("AKIP", QStringLiteral("Источник питания АКИП-1160/6"),
+                 QStringLiteral("USB по А.1; legacy UDP/4001"),
+                 QStringLiteral("плагин не реализован; фактический транспорт нужно подтвердить"));
+    addEquipment("RIGOL", QStringLiteral("Генератор Rigol DG-1022Z"), QStringLiteral("USB / VISA"),
+                 QStringLiteral("плагин SCPI не реализован"));
+    addEquipment("G3", QStringLiteral("Осциллограф АКИП-4113/2"), QStringLiteral("USB / драйвер"),
+                 QStringLiteral("плагин не реализован"));
+    addEquipment("R4831", QStringLiteral("Магазин сопротивлений Р4831"), QStringLiteral("USB / COM"),
+                 QStringLiteral("плагин ASCII не реализован; проверить, является ли FTDI COM7 магазином"));
+    addEquipment("THERMO_SIM", QStringLiteral("Имитатор датчика «термопара»"),
+                 QStringLiteral("сигнальная линия через ИСД"),
+                 QStringLiteral("установите и подключите имитатор по схеме"), true);
+    addEquipment("SCHEME", QStringLiteral("Кабели и оснастка по схеме А.1 / В.1"),
+                 QStringLiteral("нет"),
+                 QStringLiteral("подтвердите сборку выбранной схемы и включение приборов"), true);
     equipmentTable_->setMinimumHeight(240);
     left->addWidget(equipmentTable_, 1);
 
@@ -309,6 +317,20 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
             this, &TestPage::updateStartAvailability);
     connect(testCombo_, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &TestPage::updateSelectionSummary);
+    connect(equipmentTable_, &QTableWidget::itemChanged, this,
+            [this](QTableWidgetItem* item) {
+        if (!item || item->column() != 3) return;
+        for (auto it = equipmentRows_.begin(); it != equipmentRows_.end(); ++it) {
+            if (it->row != item->row() || !it->operatorConfirmation) continue;
+            it->ready = item->checkState() == Qt::Checked;
+            const QSignalBlocker blocker(equipmentTable_);
+            item->setText(it->ready ? QStringLiteral("ПОДТВЕРЖДЕНО")
+                                    : QStringLiteral("ПОДТВЕРДИТЬ"));
+            item->setForeground(it->ready ? QColor("#70d79b") : QColor("#d7a95b"));
+            updateStartAvailability();
+            break;
+        }
+    });
     rebuildScopes();
     scopeCombo_->setCurrentIndex(scopeCombo_->findData(QStringLiteral("ЯЛК-96")));
     testCombo_->setCurrentIndex(testCombo_->findData(QStringLiteral("YALK_ANALOG")));
@@ -383,11 +405,11 @@ void TestPage::updateSelectionSummary()
     if (test.endsWith(QStringLiteral("NORMAL_5_6"))) {
         scopeLabel_->setText(object == QStringLiteral("BSI")
             ? QStringLiteral("Полная схема В.1 из ТУ БСИ 5.6. Это состав стенда для проверки всего блока, а не требование к каждой ячейке. Источники результата выбираются по тракту; аппаратная процедура ещё переносится.")
-            : QStringLiteral("Полная схема А.1 из ТУ УБСИ 5.6. Это состав стенда для проверки всего блока, а не требование к каждой ячейке. Аппаратная процедура ещё переносится."));
+            : QStringLiteral("Полная схема А.1 из ТУ УБСИ 5.6. Е20 на схеме А.1 нет: данные ячеек читает Ethernet-адаптер. ИСД переключает цепи, а значения формируют отдельные приборы. Аппаратная процедура ещё переносится."));
     } else if (test == QStringLiteral("YALK_ANALOG")) {
         scopeLabel_->setText(object == QStringLiteral("BSI")
-            ? QStringLiteral("ЯЛК-96 БСИ: ИСД задаёт воздействие → В7-78/1 измеряет эталон → значение читается из телеметрии Орбита → допуск ±0,5 % шкалы 6,2 В.")
-            : QStringLiteral("ЯЛК-96 УБСИ: ИСД задаёт воздействие → В7-78/1 измеряет эталон → Ethernet-адаптер читает 16 кодов → допуск ±0,5 % шкалы 6,2 В."));
+            ? QStringLiteral("ЯЛК-96 БСИ: источник формирует воздействие → ИСД подключает нужный вход/выход → В7-78/1 измеряет эталон → значение читается из телеметрии Орбита → допуск ±0,5 % шкалы 6,2 В.")
+            : QStringLiteral("ЯЛК-96 УБСИ: источник формирует воздействие → ИСД подключает нужный вход/выход → В7-78/1 измеряет эталон → Ethernet-адаптер читает 16 кодов → допуск ±0,5 % шкалы 6,2 В."));
     } else {
         scopeLabel_->setText(QStringLiteral("%1 · %2: диагностический прогон проверяет наличие источника данных, адресной привязки и стабильной выборки. Он не выдаётся за приёмочное испытание по ТУ.")
             .arg(object == QStringLiteral("BSI") ? QStringLiteral("БСИ") : QStringLiteral("УБСИ № 7"), scope));
@@ -409,28 +431,42 @@ void TestPage::updateSelectionSummary()
 }
 
 void TestPage::addEquipment(const QString& code, const QString& name,
-                            const QString& connection, const QString& initialDetail)
+                            const QString& connection, const QString& initialDetail,
+                            bool operatorConfirmation)
 {
     const int row = equipmentTable_->rowCount();
     equipmentTable_->insertRow(row);
     equipmentTable_->setItem(row, 0, new QTableWidgetItem(name));
     equipmentTable_->setItem(row, 1, new QTableWidgetItem(connection));
-    equipmentTable_->setItem(row, 2, new QTableWidgetItem(QStringLiteral("НЕ ПРОВЕРЕНО")));
-    equipmentTable_->setItem(row, 3, new QTableWidgetItem(initialDetail));
-    equipmentTable_->item(row, 3)->setToolTip(initialDetail);
-    equipmentRows_.insert(code, EquipmentRow{row, false});
+    equipmentTable_->setItem(row, 2, new QTableWidgetItem(
+        operatorConfirmation ? QStringLiteral("Оператор") : QStringLiteral("Автоматически")));
+    auto* state = new QTableWidgetItem(operatorConfirmation
+        ? QStringLiteral("ПОДТВЕРДИТЬ") : QStringLiteral("НЕ ПРОВЕРЕНО"));
+    if (operatorConfirmation) {
+        state->setFlags((state->flags() | Qt::ItemIsUserCheckable) & ~Qt::ItemIsEditable);
+        state->setCheckState(Qt::Unchecked);
+        state->setForeground(QColor("#d7a95b"));
+    }
+    equipmentTable_->setItem(row, 3, state);
+    equipmentTable_->setItem(row, 4, new QTableWidgetItem(initialDetail));
+    equipmentTable_->item(row, 4)->setToolTip(initialDetail);
+    equipmentRows_.insert(code, EquipmentRow{row, false, operatorConfirmation});
 }
 
 void TestPage::setEquipmentStatus(const QString& code, bool ready, const QString& detail)
 {
     auto it = equipmentRows_.find(code);
     if (it == equipmentRows_.end()) return;
+    if (it->operatorConfirmation) return;
     it->ready = ready;
-    auto* state = equipmentTable_->item(it->row, 2);
-    state->setText(ready ? QStringLiteral("ГОТОВО") : QStringLiteral("НЕ ГОТОВО"));
+    auto* state = equipmentTable_->item(it->row, 3);
+    const bool missingPlugin = !ready && detail.contains(QStringLiteral("плагин"), Qt::CaseInsensitive);
+    state->setText(ready ? QStringLiteral("ГОТОВО")
+                         : missingPlugin ? QStringLiteral("НЕТ ПЛАГИНА")
+                                         : QStringLiteral("НЕ ГОТОВО"));
     state->setForeground(ready ? QColor("#70d79b") : QColor("#e1766d"));
-    equipmentTable_->item(it->row, 3)->setText(detail);
-    equipmentTable_->item(it->row, 3)->setToolTip(detail);
+    equipmentTable_->item(it->row, 4)->setText(detail);
+    equipmentTable_->item(it->row, 4)->setToolTip(detail);
     if (!ready) {
         diagnosticLabel_->setText(QStringLiteral("%1: %2").arg(code, detail));
         diagnosticLabel_->setStyleSheet(
@@ -449,11 +485,12 @@ void TestPage::setEquipmentChecking(const QString& code, const QString& detail)
 {
     auto it = equipmentRows_.find(code);
     if (it == equipmentRows_.end()) return;
+    if (it->operatorConfirmation) return;
     it->ready = false;
-    equipmentTable_->item(it->row, 2)->setText(QStringLiteral("ПРОВЕРКА…"));
-    equipmentTable_->item(it->row, 2)->setForeground(QColor("#d7a95b"));
-    equipmentTable_->item(it->row, 3)->setText(detail);
-    equipmentTable_->item(it->row, 3)->setToolTip(detail);
+    equipmentTable_->item(it->row, 3)->setText(QStringLiteral("ПРОВЕРКА…"));
+    equipmentTable_->item(it->row, 3)->setForeground(QColor("#d7a95b"));
+    equipmentTable_->item(it->row, 4)->setText(detail);
+    equipmentTable_->item(it->row, 4)->setToolTip(detail);
     diagnosticLabel_->setText(QStringLiteral("%1: %2").arg(code, detail));
 }
 
@@ -470,9 +507,9 @@ QStringList TestPage::requiredEquipment() const
             : QStringList{"RS485", "ISD", "V7"};
     }
     if (test == QStringLiteral("BSI_NORMAL_5_6")) {
-        return {"E20", "RS485", "ISD", "V7", "AKIP", "RIGOL", "R4831", "THERMO_SIM"};
+        return {"E20", "ISD", "V7", "AKIP", "RIGOL", "R4831", "THERMO_SIM", "SCHEME"};
     }
-    return {"E20", "RS485", "ISD", "V7", "AKIP", "RIGOL", "G3", "R4831", "THERMO_SIM"};
+    return {"RS485", "ISD", "V7", "AKIP", "RIGOL", "G3", "R4831", "THERMO_SIM", "SCHEME"};
 }
 
 void TestPage::updateStartAvailability()

@@ -38,6 +38,8 @@ int main(int argc, char** argv)
     auto* mode = page.findChild<QComboBox*>(QStringLiteral("testMode"));
     auto* equipment = page.findChild<QTableWidget*>(QStringLiteral("equipmentTable"));
     require(object && scope && test && mode && equipment, "test page controls not found");
+    require(equipment->columnCount() == 5,
+            "equipment table must distinguish PC link, control type, status and diagnostics");
     require(object->count() == 2, "BSI and UBSI must both be selectable");
     require(object->currentData() == QStringLiteral("UBSI-7"), "UBSI must be the initial object");
     require(scope->currentData() == QStringLiteral("ЯЛК-96"),
@@ -71,6 +73,33 @@ int main(int argc, char** argv)
             "UBSI YALK must require the direct adapter");
     require(equipment->isRowHidden(rowByName(equipment, QStringLiteral("E20-10"))),
             "direct UBSI YALK procedure must not require E20");
+
+    scope->setCurrentIndex(scope->findData(QStringLiteral("BLOCK")));
+    require(test->currentData() == QStringLiteral("UBSI_NORMAL_5_6"),
+            "whole UBSI must select the TU 5.6 procedure");
+    require(equipment->isRowHidden(rowByName(equipment, QStringLiteral("E20-10"))),
+            "scheme A.1 must not invent E20 as mandatory equipment");
+    const int adapterRow = rowByName(equipment, QStringLiteral("Адаптер RS-485"));
+    const int thermoRow = rowByName(equipment, QStringLiteral("Имитатор датчика"));
+    const int schemeRow = rowByName(equipment, QStringLiteral("Кабели и оснастка"));
+    require(adapterRow >= 0 && !equipment->isRowHidden(adapterRow),
+            "whole UBSI must use the Ethernet RS-485 adapter");
+    require(thermoRow >= 0 && !equipment->isRowHidden(thermoRow),
+            "whole UBSI must show the thermocouple simulator");
+    require(schemeRow >= 0 && !equipment->isRowHidden(schemeRow),
+            "whole UBSI must require operator confirmation of scheme A.1");
+    require(equipment->item(thermoRow, 2)->text() == QStringLiteral("Оператор"),
+            "thermocouple simulator must not be presented as automatically controlled");
+    require(equipment->item(schemeRow, 3)->flags().testFlag(Qt::ItemIsUserCheckable),
+            "scheme readiness must be confirmable by the operator");
+    equipment->item(schemeRow, 3)->setCheckState(Qt::Checked);
+    require(equipment->item(schemeRow, 3)->text() == QStringLiteral("ПОДТВЕРЖДЕНО"),
+            "operator confirmation must update the visible status");
+
+    object->setCurrentIndex(object->findData(QStringLiteral("BSI")));
+    scope->setCurrentIndex(scope->findData(QStringLiteral("BLOCK")));
+    require(equipment->isRowHidden(rowByName(equipment, QStringLiteral("Адаптер RS-485"))),
+            "whole BSI must not require the UBSI direct adapter");
 
     mode->setCurrentIndex(1);
     require(mode->currentData().isNull() || mode->currentIndex() == 1,

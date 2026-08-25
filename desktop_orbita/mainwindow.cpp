@@ -470,19 +470,17 @@ void MainWindow::onCheckTestEquipment()
         e20Available_ ? "устройство открыто библиотекой liborbita"
                       : "E20-10 не открыт; см. журнал мониторинга");
     testPage_->setEquipmentStatus("RS485", false,
-        "Ethernet-адаптер доступен в сети, но драйвер обмена ещё не подключён");
+        "Ethernet-адаптер доступен в сети, но плагин UDP-обмена ещё не реализован");
     testPage_->setEquipmentStatus("ISD", false,
-        "не подтверждены рабочий IP, аналоговые команды и безопасный сброс");
+        "плагин HTTP-команд не реализован; ИСД переключает цепи, но не управляет приборами");
     testPage_->setEquipmentStatus("AKIP", false,
-        "драйвер управления АКИП-1160/6 ещё не подключён");
+        "плагин АКИП-1160/6 не реализован; транспорт USB/legacy UDP нужно подтвердить");
     testPage_->setEquipmentStatus("RIGOL", false,
-        "драйвер управления Rigol DG-1022Z ещё не подключён");
+        "плагин VISA/SCPI для Rigol DG-1022Z не реализован");
     testPage_->setEquipmentStatus("G3", false,
-        "драйвер осциллографа АКИП-4113/2 ещё не подключён");
+        "плагин осциллографа АКИП-4113/2 не реализован");
     testPage_->setEquipmentStatus("R4831", false,
-        "драйвер магазина сопротивлений Р4831 ещё не подключён");
-    testPage_->setEquipmentStatus("THERMO_SIM", false,
-        "интерфейс имитатора термопары ещё не подтверждён");
+        "плагин магазина Р4831 не реализован; legacy-протокол — ASCII + CRLF по COM");
 
     testPage_->setEquipmentChecking("V7", "поиск NI-VISA и безопасный запрос READ?");
     QApplication::setOverrideCursor(Qt::WaitCursor);
