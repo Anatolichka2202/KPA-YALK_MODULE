@@ -58,12 +58,20 @@ struct YalkProcedureResult {
     std::string message;
 };
 
-class IIsdController {
+class IIsdRouter {
 public:
-    virtual ~IIsdController() = default;
+    virtual ~IIsdRouter() = default;
     virtual void reset() = 0;
-    virtual void setVoltage(unsigned channel, double volts) = 0;
-    virtual void disable(unsigned channel) = 0;
+    virtual void connectChannel(unsigned channel) = 0;
+    virtual void disconnectChannel(unsigned channel) = 0;
+};
+
+class IVoltageSource {
+public:
+    virtual ~IVoltageSource() = default;
+    virtual void setVoltage(double volts) = 0;
+    virtual void outputOn() = 0;
+    virtual void outputOff() = 0;
 };
 
 class IReferenceVoltmeter {
@@ -92,7 +100,8 @@ public:
 
     YalkProcedureResult execute(
         unsigned channel,
-        IIsdController& isd,
+        IIsdRouter& isd,
+        IVoltageSource& source,
         IReferenceVoltmeter& voltmeter,
         IYalkReader& yalk,
         IProcedureWaiter& waiter) const;

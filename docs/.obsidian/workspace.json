@@ -1,0 +1,205 @@
+{
+  "main": {
+    "id": "d5eb526cd6ddc5eb",
+    "type": "split",
+    "children": [
+      {
+        "id": "6135f394c31e168d",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "5e5bae2d7bf44659",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "02_АРХИТЕКТУРА.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "02_АРХИТЕКТУРА"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "1f1ed03eb05b1782",
+    "type": "split",
+    "children": [
+      {
+        "id": "186d25b76f9180d0",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "a07aca6e8c01bc5c",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Файловый менеджер"
+            }
+          },
+          {
+            "id": "4f3bc07bb631c999",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Поиск"
+            }
+          },
+          {
+            "id": "48c3a1aaa71fad83",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-bookmark",
+              "title": "Закладки"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "afcd73453afa5dcc",
+    "type": "split",
+    "children": [
+      {
+        "id": "209a3ae11307222c",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "f4bd85d12de0df23",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "02_АРХИТЕКТУРА.md",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Обратные ссылки"
+            }
+          },
+          {
+            "id": "a14bbb23c5caf99b",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "02_АРХИТЕКТУРА.md",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Исходящие ссылки"
+            }
+          },
+          {
+            "id": "e2cb1e21ba5986bb",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Теги"
+            }
+          },
+          {
+            "id": "f76f436201280cf1",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "Все свойства"
+            }
+          },
+          {
+            "id": "fb619ab1582c3a2c",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "02_АРХИТЕКТУРА.md",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Структура"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Меню быстрого перехода": false,
+      "graph:Граф": false,
+      "canvas:Создать новый холст": false,
+      "daily-notes:Сегодняшняя заметка": false,
+      "templates:Вставить шаблон": false,
+      "command-palette:Открыть палитру команд": false,
+      "bases:Создать новую базу": false
+    }
+  },
+  "active": "5e5bae2d7bf44659",
+  "lastOpenFiles": [
+    "16_РАЗБОР_ПРОТОТИПА_ИНТЕРФЕЙСА.md",
+    "15_ТУ_БСИ_468157_001.md",
+    "14_ТУ_УБСИ_468157_002.md",
+    "13_ПРОВЕРКА_ЯЛК_АНАЛОГ.md",
+    "12_ДИАГНОСТИКА_СТЕНДА_2026-08-24.md",
+    "11_ПАРАМЕТР_АДРЕС_ЯЧЕЙКА.md",
+    "01_НАЗНАЧЕНИЕ.md",
+    "README.md",
+    "10_АДАПТЕР_485_ETHERNET.md",
+    "09_ПРИЛОЖЕНИЯ_1_И_2.md",
+    "07_РАЗВЕРТЫВАНИЕ.md"
+  ]
+}

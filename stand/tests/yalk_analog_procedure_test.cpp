@@ -26,15 +26,11 @@ double voltsToCode(double volts, const YalkCalibration& calibration)
         + volts / 6.2 * (calibration.fullScaleCode - calibration.zeroCode);
 }
 
-class FakeIsd final : public IIsdController {
+class FakeIsd final : public IIsdRouter {
 public:
     void reset() override { resetCalled = true; }
-    void setVoltage(unsigned channel, double volts) override
-    {
-        channels.push_back(channel);
-        commands.push_back(volts);
-    }
-    void disable(unsigned channel) override
+    void connectChannel(unsigned channel) override { connectedChannel = channel; }
+    void disconnectChannel(unsigned channel) override
     {
         disabledChannel = channel;
         disableCalled = true;
@@ -42,8 +38,18 @@ public:
 
     bool resetCalled = false;
     bool disableCalled = false;
+    unsigned connectedChannel = 0;
     unsigned disabledChannel = 0;
-    std::vector<unsigned> channels;
+};
+
+class FakeSource final : public IVoltageSource {
+public:
+    void setVoltage(double volts) override { commands.push_back(volts); }
+    void outputOn() override { outputEnabled = true; }
+    void outputOff() override { outputEnabled = false; outputOffCalled = true; }
+
+    bool outputEnabled = false;
+    bool outputOffCalled = false;
     std::vector<double> commands;
 };
 
@@ -116,6 +122,7 @@ void referenceLikeRunPasses()
             "linear conversion must reproduce the preserved KPA report");
 
     FakeIsd isd;
+    FakeSource source;
     FakeVoltmeter voltmeter({-0.020890, 3.107138, 6.220211});
     FakeYalk yalk(
         {121.8, 922.0},
@@ -123,14 +130,17 @@ void referenceLikeRunPasses()
         {false, true});
     FakeWaiter waiter;
 
-    const auto result = YalkAnalogProcedure{}.execute(1, isd, voltmeter, yalk, waiter);
+    const auto result = YalkAnalogProcedure{}.execute(1, isd, source, voltmeter, yalk, waiter);
 
     require(result.verdict == Verdict::Ok, "reference-like run must pass");
     require(result.points.size() == 3, "three voltage points are required");
     require(isd.resetCalled, "ISD reset is required");
-    require(isd.commands == std::vector<double>({0.0, 3.1, 6.2}), "wrong ISD points");
+    require(source.commands == std::vector<double>({0.0, 3.1, 6.2}), "wrong source points");
+    require(isd.connectedChannel == 1, "ISD must route the selected channel");
     require(waiter.waits == std::vector<unsigned>({150, 150, 150}), "wrong stabilization waits");
     require(isd.disableCalled && isd.disabledChannel == 1, "ISD channel must be disabled");
+    require(source.outputOffCalled && !source.outputEnabled,
+            "voltage source output must be disabled");
     require(std::abs(result.points[1].lowerLimitVolts - 3.076138) < 1e-9,
             "0.5 percent of 6.2 V must be 0.031 V");
 }
@@ -138,11 +148,12 @@ void referenceLikeRunPasses()
 void excessiveFullScaleErrorFails()
 {
     FakeIsd isd;
+    FakeSource source;
     FakeVoltmeter voltmeter({0.0, 3.1, 6.2});
     FakeYalk yalk({121.8, 922.0}, {0.0, 3.14, 6.2}, {false, true});
     FakeWaiter waiter;
 
-    const auto result = YalkAnalogProcedure{}.execute(7, isd, voltmeter, yalk, waiter);
+    const auto result = YalkAnalogProcedure{}.execute(7, isd, source, voltmeter, yalk, waiter);
 
     require(result.verdict == Verdict::Fail, "40 mV error must exceed the 31 mV limit");
     require(result.points[1].verdict == Verdict::Fail, "middle point must fail");
@@ -152,14 +163,16 @@ void excessiveFullScaleErrorFails()
 void equipmentErrorStillDisablesIsd()
 {
     FakeIsd isd;
+    FakeSource source;
     FakeVoltmeter voltmeter({0.0});
     FakeYalk yalk({121.8, 922.0}, {}, {});
     FakeWaiter waiter;
 
-    const auto result = YalkAnalogProcedure{}.execute(2, isd, voltmeter, yalk, waiter);
+    const auto result = YalkAnalogProcedure{}.execute(2, isd, source, voltmeter, yalk, waiter);
 
     require(result.verdict == Verdict::Error, "equipment failure must produce ERROR");
     require(isd.disableCalled, "ISD must be disabled after an equipment error");
+    require(source.outputOffCalled, "source must be disabled after an equipment error");
 }
 
 void legacyVisaFallbackIsPreserved()

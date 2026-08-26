@@ -19,6 +19,7 @@ public:
     explicit TestPage(QWidget* parent = nullptr);
 
     void setEquipmentStatus(const QString& code, bool ready, const QString& detail);
+    void setEquipmentMissingPlugin(const QString& code, const QString& detail);
     void setEquipmentChecking(const QString& code, const QString& detail);
 
 signals:

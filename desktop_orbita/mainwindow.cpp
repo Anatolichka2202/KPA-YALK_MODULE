@@ -13,11 +13,13 @@
 #include <QMenu>
 #include <QMenuBar>
 #include <QIcon>
+#include <QSettings>
 #include <sstream>
 #include <regex>
 #include <iomanip>
 
 #include "orbita_stand/v7_visa_voltmeter.h"
+#include "orbita_stand/equipment_adapters.h"
 
 #define ORBITA_VERSION "0.1.0-alpha"
 
@@ -465,22 +467,79 @@ void MainWindow::onOpenScenario()
 
 void MainWindow::onCheckTestEquipment()
 {
+    const QString profilePath = QDir(QCoreApplication::applicationDirPath()).filePath("stand.ini");
+    QSettings settings(profilePath, QSettings::IniFormat);
+    const auto reportFailure = [this](const char* code, const std::exception& error) {
+        testPage_->setEquipmentStatus(code, false, QString::fromUtf8(error.what()));
+        log(QStringLiteral("%1 не готов: %2").arg(QString::fromLatin1(code),
+                                                   QString::fromUtf8(error.what())));
+    };
+
     testPage_->setEquipmentStatus(
         "E20", e20Available_,
         e20Available_ ? "устройство открыто библиотекой liborbita"
                       : "E20-10 не открыт; см. журнал мониторинга");
-    testPage_->setEquipmentStatus("RS485", false,
-        "Ethernet-адаптер доступен в сети, но плагин UDP-обмена ещё не реализован");
-    testPage_->setEquipmentStatus("ISD", false,
-        "плагин HTTP-команд не реализован; ИСД переключает цепи, но не управляет приборами");
-    testPage_->setEquipmentStatus("AKIP", false,
-        "плагин АКИП-1160/6 не реализован; транспорт USB/legacy UDP нужно подтвердить");
-    testPage_->setEquipmentStatus("RIGOL", false,
-        "плагин VISA/SCPI для Rigol DG-1022Z не реализован");
-    testPage_->setEquipmentStatus("G3", false,
-        "плагин осциллографа АКИП-4113/2 не реализован");
-    testPage_->setEquipmentStatus("R4831", false,
-        "плагин магазина Р4831 не реализован; legacy-протокол — ASCII + CRLF по COM");
+
+    try {
+        orbita::stand::UbsiUdpAdapter adapter({
+            settings.value("ubsiAdapter/host", "192.168.0.101").toString().toStdString(),
+            settings.value("network/localAddress", "192.168.0.50").toString().toStdString(),
+            static_cast<std::uint16_t>(settings.value("ubsiAdapter/dataPort", 1001).toUInt()),
+            static_cast<std::uint16_t>(settings.value("ubsiAdapter/ackPort", 1101).toUInt()),
+            settings.value("ubsiAdapter/timeoutMs", 800).toUInt()});
+        const bool packetSeen = adapter.waitForPassivePacket();
+        testPage_->setEquipmentStatus("RS485", packetSeen,
+            packetSeen ? "UDP-плагин получил пакет от адаптера"
+                       : "UDP-плагин загружен; пассивно пакетов нет, режим адаптера не изменялся");
+    } catch (const std::exception& error) { reportFailure("RS485", error); }
+
+    try {
+        orbita::stand::IsdHttpRouter isd({
+            settings.value("isd/host", "192.168.0.55").toString().toStdString(),
+            static_cast<std::uint16_t>(settings.value("isd/port", 80).toUInt()),
+            settings.value("isd/timeoutMs", 1500).toUInt(),
+            settings.value("isd/switchType", 2).toUInt(), {}});
+        const std::string response = isd.probe();
+        testPage_->setEquipmentStatus("ISD", true,
+            QStringLiteral("HTTP-плагин: ответ от %1 (%2 байт)")
+                .arg(settings.value("isd/host", "192.168.0.55").toString())
+                .arg(response.size()));
+    } catch (const std::exception& error) { reportFailure("ISD", error); }
+
+    try {
+        orbita::stand::RigolVisaGenerator rigol;
+        const std::string identity = rigol.identity();
+        testPage_->setEquipmentStatus("RIGOL", true,
+            QStringLiteral("%1; *IDN? = %2")
+                .arg(QString::fromStdString(rigol.resourceName()),
+                     QString::fromStdString(identity).trimmed()));
+    } catch (const std::exception& error) { reportFailure("RIGOL", error); }
+
+    try {
+        const QString port = settings.value("r4831/port", "COM7").toString();
+        orbita::stand::R4831SerialAdapter store({
+            port.toStdString(), settings.value("r4831/baud", 9600).toInt(),
+            settings.value("r4831/timeoutMs", 1000).toUInt(),
+            settings.value("r4831/decimalComma", false).toBool()});
+        testPage_->setEquipmentStatus("R4831", true, QString::fromStdString(store.probe()));
+    } catch (const std::exception& error) { reportFailure("R4831", error); }
+
+    try {
+        const bool activeAllowed = settings.value("powerSupply/allowLegacyCommands", false).toBool();
+        orbita::stand::LegacyUdpPowerSupply supply({
+            settings.value("powerSupply/host", "192.168.0.221").toString().toStdString(),
+            static_cast<std::uint16_t>(settings.value("powerSupply/commandPort", 4001).toUInt()),
+            static_cast<std::uint16_t>(settings.value("powerSupply/localReplyPort", 6008).toUInt()),
+            settings.value("powerSupply/timeoutMs", 1500).toUInt(), activeAllowed});
+        const std::string response = supply.probe();
+        testPage_->setEquipmentStatus("AKIP", activeAllowed,
+            activeAllowed
+                ? QStringLiteral("UDP-плагин GETD: %1").arg(QString::fromStdString(response).trimmed())
+                : QStringLiteral("GETD отвечает, но активные legacy-команды запрещены в stand.ini"));
+    } catch (const std::exception& error) { reportFailure("AKIP", error); }
+
+    testPage_->setEquipmentMissingPlugin("G3",
+        "не найден протокол управления/SDK АКИП-4113/2; наличие USB-драйвера не даёт API измерений");
 
     testPage_->setEquipmentChecking("V7", "поиск NI-VISA и безопасный запрос READ?");
     QApplication::setOverrideCursor(Qt::WaitCursor);

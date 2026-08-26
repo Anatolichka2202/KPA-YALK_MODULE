@@ -1,0 +1,58 @@
+#include "orbita_stand/equipment_adapters.h"
+
+#include <cstdlib>
+#include <iostream>
+#include <stdexcept>
+#include <string>
+#include <vector>
+
+using namespace orbita::stand;
+
+namespace {
+void require(bool condition, const char* message)
+{
+    if (!condition) throw std::runtime_error(message);
+}
+}
+
+int main()
+{
+    try {
+        require(IsdHttpRouter::switchPath(2, 17, true) == "/type=2num=17val=1",
+                "ISD switching command differs from Delphi reference");
+        require(IsdHttpRouter::analogPath(5, 2000, false)
+                    == "/type=1num=5val=2000work=0",
+                "ISD analog command differs from Delphi reference");
+        require(R4831SerialAdapter::resistanceCommand(680.5) == "680.5\r\n",
+                "R4831 ASCII command differs from Delphi reference");
+        require(R4831SerialAdapter::resistanceCommand(680.5, true) == "680,5\r\n",
+                "R4831 decimal-comma profile is broken");
+        require(LegacyUdpPowerSupply::voltageCommand(27.0) == "VOLT 02700\r",
+                "legacy power-supply voltage command differs from Delphi reference");
+        require(LegacyUdpPowerSupply::currentCommand(1.25) == "CURR 00125\r",
+                "legacy power-supply current command differs from Delphi reference");
+        require(UbsiUdpAdapter::modeCommand(8) == std::vector<std::uint8_t>({0x44, 0x01, 0x08}),
+                "UBSI mode frame differs from adapter firmware");
+        require(UbsiUdpAdapter::modeCommand(8, true)
+                    == std::vector<std::uint8_t>({0x44, 0x03, 0x08}),
+                "UBSI single-mode flag differs from adapter firmware");
+        std::vector<std::uint8_t> yalkPacket(200, 0);
+        yalkPacket[0] = 0x34;
+        yalkPacket[1] = 0xA2;
+        yalkPacket[192] = 0x79; // Delphi BufferYALK[97], zero calibration
+        yalkPacket[196] = 0x9A; // Delphi BufferYALK[99], full-scale calibration
+        const auto yalk9 = UbsiUdpAdapter::decodeYalkPacket(yalkPacket, 0x01FF);
+        require(yalk9.size() == 100 && yalk9[0] == 0x0034,
+                "YALK mode 0/6 little-endian 9-bit decode is wrong");
+        require(yalk9[96] == 0x0079 && yalk9[98] == 0x009A,
+                "YALK calibration positions 97/99 are wrong");
+        const auto yalk10 = UbsiUdpAdapter::decodeYalkPacket(yalkPacket, 0x03FF);
+        require(yalk10[0] == 0x0234,
+                "YALK mode 11 10-bit decode is wrong");
+        std::cout << "Equipment protocol tests passed\n";
+        return EXIT_SUCCESS;
+    } catch (const std::exception& error) {
+        std::cerr << "Equipment protocol test failed: " << error.what() << '\n';
+        return EXIT_FAILURE;
+    }
+}

@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)   # без этого resources.qrc (styles.qss) не попадает в бинарник → тема не грузится
 
-find_package(Qt6 REQUIRED COMPONENTS Core Widgets PrintSupport Sql Svg)
+find_package(Qt6 REQUIRED COMPONENTS Core Widgets PrintSupport Sql Svg SerialPort)
 
 add_executable(OrbitaDesktop
     main.cpp
@@ -55,12 +55,13 @@ target_include_directories(OrbitaDesktop PRIVATE
 
 target_link_libraries(OrbitaDesktop PRIVATE
     orbita
-    orbita_stand_domain
+    orbita_stand_adapters
     Qt6::Core
     Qt6::Widgets
     Qt6::PrintSupport
     Qt6::Sql
     Qt6::Svg
+    Qt6::SerialPort
 )
 
 if(WIN32)
@@ -79,6 +80,12 @@ set(ADDR_SRC ${CMAKE_SOURCE_DIR}/orbita/config/address)
 # Ресурсы рабочего каталога обновляются при каждом запуске сборки. Это важно:
 # изменение БД или адресных списков не обязано приводить к перелинковке exe.
 add_custom_target(OrbitaRuntimeResources ALL
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        $<TARGET_FILE:Qt6::SerialPort>
+        $<TARGET_FILE_DIR:OrbitaDesktop>
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_CURRENT_SOURCE_DIR}/resources/stand.ini
+        $<TARGET_FILE_DIR:OrbitaDesktop>/stand.ini
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         ${ADDR_SRC}/parameters.db
         $<TARGET_FILE_DIR:OrbitaDesktop>/parameters.db

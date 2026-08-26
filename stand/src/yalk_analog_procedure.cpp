@@ -67,7 +67,8 @@ double YalkAnalogProcedure::codeToVolts(
 
 YalkProcedureResult YalkAnalogProcedure::execute(
     unsigned channel,
-    IIsdController& isd,
+    IIsdRouter& isd,
+    IVoltageSource& source,
     IReferenceVoltmeter& voltmeter,
     IYalkReader& yalk,
     IProcedureWaiter& waiter) const
@@ -80,7 +81,8 @@ YalkProcedureResult YalkAnalogProcedure::execute(
         return result;
     }
 
-    bool channelWasEnabled = false;
+    bool channelWasConnected = false;
+    bool sourceWasEnabled = false;
     try {
         isd.reset();
         result.calibration = yalk.readCalibration(channel);
@@ -100,8 +102,15 @@ YalkProcedureResult YalkAnalogProcedure::execute(
             pointResult.commandVolts = point.commandVolts;
             pointResult.expectedSignal = point.expectedSignal;
 
-            channelWasEnabled = true;
-            isd.setVoltage(channel, point.commandVolts);
+            source.setVoltage(point.commandVolts);
+            if (!sourceWasEnabled) {
+                source.outputOn();
+                sourceWasEnabled = true;
+            }
+            if (!channelWasConnected) {
+                isd.connectChannel(channel);
+                channelWasConnected = true;
+            }
             waiter.waitMilliseconds(config_.stabilizationMilliseconds);
 
             pointResult.referenceVolts = voltmeter.readVoltage();
@@ -153,19 +162,28 @@ YalkProcedureResult YalkAnalogProcedure::execute(
             result.points.push_back(std::move(pointResult));
         }
 
-        isd.disable(channel);
-        channelWasEnabled = false;
+        isd.disconnectChannel(channel);
+        channelWasConnected = false;
+        source.outputOff();
+        sourceWasEnabled = false;
         result.message = result.verdict == Verdict::Ok
             ? "All YALK analog points passed"
             : "One or more YALK analog points failed";
     } catch (const std::exception& error) {
         result.verdict = Verdict::Error;
         result.message = error.what();
-        if (channelWasEnabled) {
+        if (channelWasConnected) {
             try {
-                isd.disable(channel);
+                isd.disconnectChannel(channel);
             } catch (...) {
                 result.message += "; failed to disable ISD channel";
+            }
+        }
+        if (sourceWasEnabled) {
+            try {
+                source.outputOff();
+            } catch (...) {
+                result.message += "; failed to disable voltage source";
             }
         }
     }

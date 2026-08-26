@@ -224,20 +224,20 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
     addEquipment("E20", QStringLiteral("E20-10 + Орбита"), QStringLiteral("USB / Lusbapi"),
                  QStringLiteral("ещё не проверено"));
     addEquipment("RS485", QStringLiteral("Адаптер RS-485 ЛВРМ.424349.001"), QStringLiteral("Ethernet"),
-                 QStringLiteral("плагин UDP-обмена не реализован"));
+                 QStringLiteral("UDP-плагин: нажмите «Проверить оборудование»"));
     addEquipment("ISD", QStringLiteral("ИСД ЛВРМ.468173.001"), QStringLiteral("Ethernet / HTTP"),
-                 QStringLiteral("плагин HTTP-команд не реализован; ИСД только переключает цепи"));
+                 QStringLiteral("HTTP-плагин: нажмите «Проверить оборудование»"));
     addEquipment("V7", QStringLiteral("В7-78/1"), QStringLiteral("USB / NI-VISA"),
                  QStringLiteral("нажмите «Проверить оборудование»"));
     addEquipment("AKIP", QStringLiteral("Источник питания АКИП-1160/6"),
                  QStringLiteral("USB по А.1; legacy UDP/4001"),
-                 QStringLiteral("плагин не реализован; фактический транспорт нужно подтвердить"));
+                 QStringLiteral("UDP-плагин готов; активные команды требуют подтверждения профиля"));
     addEquipment("RIGOL", QStringLiteral("Генератор Rigol DG-1022Z"), QStringLiteral("USB / VISA"),
-                 QStringLiteral("плагин SCPI не реализован"));
+                 QStringLiteral("VISA/SCPI-плагин: нажмите «Проверить оборудование»"));
     addEquipment("G3", QStringLiteral("Осциллограф АКИП-4113/2"), QStringLiteral("USB / драйвер"),
                  QStringLiteral("плагин не реализован"));
     addEquipment("R4831", QStringLiteral("Магазин сопротивлений Р4831"), QStringLiteral("USB / COM"),
-                 QStringLiteral("плагин ASCII не реализован; проверить, является ли FTDI COM7 магазином"));
+                 QStringLiteral("COM-плагин: проверить, является ли FTDI COM7 магазином"));
     addEquipment("THERMO_SIM", QStringLiteral("Имитатор датчика «термопара»"),
                  QStringLiteral("сигнальная линия через ИСД"),
                  QStringLiteral("установите и подключите имитатор по схеме"), true);
@@ -460,10 +460,7 @@ void TestPage::setEquipmentStatus(const QString& code, bool ready, const QString
     if (it->operatorConfirmation) return;
     it->ready = ready;
     auto* state = equipmentTable_->item(it->row, 3);
-    const bool missingPlugin = !ready && detail.contains(QStringLiteral("плагин"), Qt::CaseInsensitive);
-    state->setText(ready ? QStringLiteral("ГОТОВО")
-                         : missingPlugin ? QStringLiteral("НЕТ ПЛАГИНА")
-                                         : QStringLiteral("НЕ ГОТОВО"));
+    state->setText(ready ? QStringLiteral("ГОТОВО") : QStringLiteral("НЕ ГОТОВО"));
     state->setForeground(ready ? QColor("#70d79b") : QColor("#e1766d"));
     equipmentTable_->item(it->row, 4)->setText(detail);
     equipmentTable_->item(it->row, 4)->setToolTip(detail);
@@ -478,6 +475,23 @@ void TestPage::setEquipmentStatus(const QString& code, bool ready, const QString
             "background:#17251e; color:#9de0b8; border:1px solid #356b4b; "
             "padding:7px 9px; border-radius:4px;");
     }
+    updateStartAvailability();
+}
+
+void TestPage::setEquipmentMissingPlugin(const QString& code, const QString& detail)
+{
+    auto it = equipmentRows_.find(code);
+    if (it == equipmentRows_.end() || it->operatorConfirmation) return;
+    it->ready = false;
+    auto* state = equipmentTable_->item(it->row, 3);
+    state->setText(QStringLiteral("НЕТ ПЛАГИНА"));
+    state->setForeground(QColor("#e1766d"));
+    equipmentTable_->item(it->row, 4)->setText(detail);
+    equipmentTable_->item(it->row, 4)->setToolTip(detail);
+    diagnosticLabel_->setText(QStringLiteral("%1: %2").arg(code, detail));
+    diagnosticLabel_->setStyleSheet(
+        "background:#291b1d; color:#f0b0aa; border:1px solid #713b40; "
+        "padding:7px 9px; border-radius:4px;");
     updateStartAvailability();
 }
 
