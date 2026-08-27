@@ -78,9 +78,10 @@ inline bool booleanValue(
 
 inline void requireActiveOutputs(const std::map<std::string, std::string>& configuration)
 {
-    if (!booleanValue(configuration, "profile.active_outputs_confirmed")) {
+    if (!booleanValue(configuration, "profile.active_outputs_confirmed")
+        && !booleanValue(configuration, "device.active_commands_confirmed")) {
         throw std::runtime_error(
-            "Активные воздействия запрещены: подтвердите схему и установите active_outputs_confirmed: true");
+            "Активные воздействия запрещены: подтвердите весь профиль или активные команды этого устройства");
     }
 }
 

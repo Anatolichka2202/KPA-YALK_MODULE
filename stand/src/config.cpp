@@ -42,6 +42,28 @@ std::map<std::string, std::string> stringMap(const yaml::Node* node)
     return result;
 }
 
+std::map<std::string, std::string> routeMap(const yaml::Node* node)
+{
+    std::map<std::string, std::string> result;
+    if (!node) return result;
+    if (!node->isMap()) throw yaml::Error("Expected routes to be a YAML mapping");
+    for (const auto& [name, value] : node->map) {
+        if (value.isScalar()) {
+            result[name] = value.scalar;
+            continue;
+        }
+        if (!value.isMap()) throw yaml::Error("Route " + name + " must be scalar or mapping");
+        for (const auto& [field, fieldValue] : value.map) {
+            if (!fieldValue.isScalar()) throw yaml::Error(
+                "Route field " + name + "." + field + " must be scalar");
+            result[name + "." + field] = fieldValue.scalar;
+            if (field == "base") result[name] = fieldValue.scalar;
+        }
+        if (!result.count(name)) throw yaml::Error("Route " + name + " requires base");
+    }
+    return result;
+}
+
 ScenarioNode scenarioNode(const yaml::Node& value)
 {
     if (!value.isMap()) throw yaml::Error("Scenario step must be a mapping");
@@ -74,7 +96,7 @@ StandProfile loadStandProfile(const std::string& path)
     profile.version = root.value("version");
     profile.title = root.value("title");
     profile.activeOutputsConfirmed = boolean(root.value("active_outputs_confirmed"), false);
-    profile.routes = stringMap(root.find("routes"));
+    profile.routes = routeMap(root.find("routes"));
     const auto& devices = root.at("devices");
     if (!devices.isSequence()) throw yaml::Error("Profile devices must be a sequence");
     for (const auto& value : devices.sequence) {

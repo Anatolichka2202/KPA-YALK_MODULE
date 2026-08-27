@@ -170,6 +170,8 @@ private:
 
 private slots:
     void onOpenScenario();
+    void onOpenCatalog();
+    void onOpenStandProfile();
     void onCheckTestEquipment();
     void onRunScenario(const QString& scenarioCode, const QString& objectSerial,
                        bool allowPartial);

@@ -113,6 +113,7 @@ public:
     ~UbsiUdpAdapter();
     bool waitForPassivePacket();
     void selectMode(std::uint8_t mode, bool single = false);
+    void sendRawCommand(const std::vector<std::uint8_t>& command);
     std::vector<std::uint8_t> receiveRawPacket();
     static std::vector<std::uint8_t> modeCommand(std::uint8_t mode, bool single = false);
     static std::vector<std::uint16_t> decodeYalkPacket(

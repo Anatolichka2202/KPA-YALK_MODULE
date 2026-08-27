@@ -109,14 +109,117 @@ double readReferenceVoltage(ProcedureContext& context)
         "measure.reference_voltage", "read_voltage", {}), "volts");
 }
 
-double readYalkRaw(
-    ProcedureContext& context, const std::string& parameterKey, unsigned offset,
-    unsigned samples, unsigned mask = 0xFFFF)
+double readReferenceAcVoltage(ProcedureContext& context)
 {
-    return responseNumber(context.equipment.invoke("ubsi.parameter_source", "read_yalk", {
-        {"parameter_key", parameterKey}, {"offset", std::to_string(offset)},
-        {"sample_count", std::to_string(samples)},
-        {"mask", std::to_string(mask)}}), "raw");
+    return responseNumber(context.equipment.invoke(
+        "measure.reference_ac_voltage", "read_ac_voltage", {}), "volts");
+}
+
+double readReferenceFrequency(ProcedureContext& context)
+{
+    return responseNumber(context.equipment.invoke(
+        "measure.reference_frequency", "read_frequency", {}), "hertz");
+}
+
+struct LogicalBinding {
+    std::string source;
+    std::string locatorType;
+    std::string locator;
+    unsigned mask = 0xFFFF;
+    unsigned mode = 0;
+    std::string stimulusRoute;
+    unsigned stimulusOffset = 0;
+    bool confirmed = false;
+};
+
+LogicalBinding resolveLogicalBinding(
+    ProcedureContext& context, const std::string& parameterGroup, unsigned channel)
+{
+    const auto values = responseValues(context.equipment.invoke(
+        "catalog.parameter_resolver", "resolve", {
+            {"block_type", "UBSI_468157_002"},
+            {"parameter_group", parameterGroup},
+            {"channel_index", std::to_string(channel)}}));
+    const auto required = [&values, &parameterGroup](const char* key) -> const std::string& {
+        const auto value = values.find(key);
+        if (value == values.end()) {
+            throw std::runtime_error("Каталог не вернул " + std::string(key)
+                + " для " + parameterGroup);
+        }
+        return value->second;
+    };
+    LogicalBinding result;
+    result.source = required("source");
+    result.locatorType = required("locator_type");
+    result.locator = required("locator");
+    result.mask = static_cast<unsigned>(std::stoul(required("mask")));
+    result.mode = static_cast<unsigned>(std::stoul(required("mode")));
+    result.stimulusRoute = required("stimulus_route");
+    result.stimulusOffset = static_cast<unsigned>(std::stoul(required("stimulus_offset")));
+    result.confirmed = required("confirmed") == "true";
+    return result;
+}
+
+bool bindingsReady(ProcedureContext& context, const std::string& group,
+                   unsigned count, bool requireStimulus = false)
+{
+    for (unsigned channel = 0; channel < count; ++channel) {
+        const auto binding = resolveLogicalBinding(context, group, channel);
+        if (!binding.confirmed || binding.locator.empty()
+            || (requireStimulus && binding.stimulusRoute.empty())) return false;
+    }
+    return true;
+}
+
+double readLogicalParameter(
+    ProcedureContext& context, const std::string& parameterKey, unsigned offset,
+    unsigned samples)
+{
+    const auto binding = resolveLogicalBinding(context, parameterKey, offset);
+    if (!context.equipment.hasCapability(binding.source)) {
+        throw std::runtime_error("Для " + parameterKey + " недоступен источник " + binding.source);
+    }
+    if (binding.source == "ubsi.parameter_source") {
+        context.equipment.invoke(binding.source, "select_mode", {
+            {"mode", std::to_string(binding.mode)}, {"single", "false"}});
+        return responseNumber(context.equipment.invoke(binding.source, "read", {
+            {binding.locatorType == "ulk_address" ? "ulk_address" : "word_index", binding.locator},
+            {"locator_type", binding.locatorType},
+            {"parameter_group", parameterKey},
+            {"sample_count", std::to_string(samples)},
+            {"mask", std::to_string(binding.mask)}}), "raw");
+    }
+    if (binding.source == "orbita.parameter_source") {
+        return responseNumber(context.equipment.invoke(binding.source, "read", {
+            {"address", binding.locator},
+            {"sample_count", std::to_string(samples)}}), "value");
+    }
+    throw std::runtime_error("Каталог вернул неподдерживаемый источник " + binding.source);
+}
+
+ProcedureResult bindingCheck(const ScenarioNode& node, ProcedureContext& context)
+{
+    const std::string group = argument(node, "parameter_group");
+    const unsigned count = natural(node, "channel_count");
+    if (group.empty() || !count) throw std::invalid_argument("Не задана группа/число каналов каталога");
+    bool confirmed = true;
+    const bool requireStimulus = argument(node, "require_stimulus_route") == "true";
+    std::string source;
+    for (unsigned channel = 0; channel < count; ++channel) {
+        const auto binding = resolveLogicalBinding(context, group, channel);
+        if (source.empty()) source = binding.source;
+        if (binding.source != source) {
+            throw std::runtime_error("Группа " + group + " смешивает разные источники");
+        }
+        confirmed = confirmed && binding.confirmed && !binding.locator.empty()
+            && (!requireStimulus || !binding.stimulusRoute.empty());
+    }
+    return confirmed
+        ? ProcedureResult{RunVerdict::Ok,
+            "БД: " + group + " → " + source + ", каналов " + std::to_string(count), {}}
+        : ProcedureResult{RunVerdict::Incomplete,
+            "БД содержит " + group + " → " + source
+                + ", но стендовая привязка ещё не подтверждена живыми данными", {}};
 }
 
 ProcedureResult readiness(const ScenarioNode& node, ProcedureContext& context)
@@ -153,11 +256,13 @@ ProcedureResult supplyRange(const ScenarioNode& node, ProcedureContext& context)
     if (points.empty()) throw std::invalid_argument("Для проверки питания нужны voltage_points_v");
     const unsigned settleMs = natural(node, "settle_ms", 500);
     const double currentLimit = number(node, "current_limit_a", 0.4);
+    context.equipment.invoke("power.dc_supply", "set_current_limit", {
+        {"amperes", std::to_string(number(node, "supply_current_limit_a", 0.6))}});
     for (const double voltage : points) {
         context.equipment.invoke("power.dc_supply", "set_voltage", {{"volts", std::to_string(voltage)}});
         wait(context, settleMs);
         const double current = responseNumber(context.equipment.invoke(
-            "measure.dc_current", "read_current", {}), "amperes");
+            "power.dc_supply", "read_state", {}), "amperes");
         append(result, measurement("ubsi.supply_current", "Ток при " + std::to_string(voltage) + " В",
                                    0.0, current, 0.0, currentLimit, "А"));
         const auto alive = responseValues(context.equipment.invoke("ubsi.parameter_source", "alive", {}));
@@ -216,7 +321,6 @@ ProcedureResult yalkAnalog(const ScenarioNode& node, ProcedureContext& context)
     ProcedureResult result{RunVerdict::Ok, "Проверены аналоговые каналы ЯЛК", {}};
     const unsigned channelCount = natural(node, "channel_count", 60);
     const std::string parameterGroup = argument(node, "parameter_group", "yalk_analog");
-    const std::string isdRoute = argument(node, "isd_analog_route", "yalk_analog");
     const unsigned samples = natural(node, "sample_count", 16);
     const unsigned settle = natural(node, "settle_ms", 150);
     const double fullScale = number(node, "full_scale_v", 6.2);
@@ -226,29 +330,40 @@ ProcedureResult yalkAnalog(const ScenarioNode& node, ProcedureContext& context)
     if (!channelCount || pointVolts.empty() || pointVolts.size() != pointCodes.size()) {
         throw std::invalid_argument("Не заполнена методика ЯЛК: point_volts/isd_codes");
     }
-    double zeroRaw = number(node, "calibration_zero_raw", 0.0);
-    double fullRaw = number(node, "calibration_full_raw", 0.0);
     const std::string zeroParameter = argument(node, "calibration_zero_parameter");
     const std::string fullParameter = argument(node, "calibration_full_parameter");
+    if (!bindingsReady(context, parameterGroup, channelCount, true)
+        || (!zeroParameter.empty() && !bindingsReady(context, zeroParameter, 1))
+        || (!fullParameter.empty() && !bindingsReady(context, fullParameter, 1))) {
+        return {RunVerdict::Incomplete,
+            "Адреса УЛК/маршруты ЯЛК не подтверждены; воздействия не выполнялись", {}};
+    }
+    double zeroRaw = number(node, "calibration_zero_raw", 0.0);
+    double fullRaw = number(node, "calibration_full_raw", 0.0);
     if (!zeroParameter.empty() && !fullParameter.empty()) {
-        zeroRaw = readYalkRaw(context, zeroParameter, 0, samples);
-        fullRaw = readYalkRaw(context, fullParameter, 0, samples);
+        zeroRaw = readLogicalParameter(context, zeroParameter, 0, samples);
+        fullRaw = readLogicalParameter(context, fullParameter, 0, samples);
     }
     if (!(fullRaw > zeroRaw)) throw std::invalid_argument("Не настроены калибровочные коды ЯЛК");
     for (unsigned channel = 0; channel < channelCount; ++channel) {
+        const auto binding = resolveLogicalBinding(context, parameterGroup, channel);
+        if (binding.stimulusRoute.empty()) {
+            throw std::runtime_error("В БД не задан маршрут воздействия для "
+                + parameterGroup + "/" + std::to_string(channel + 1));
+        }
         for (std::size_t point = 0; point < pointVolts.size(); ++point) {
             context.equipment.invoke("stand.switch_matrix", "analog", {
-                {"route", isdRoute}, {"offset", std::to_string(channel)},
+                {"route", binding.stimulusRoute}, {"offset", std::to_string(binding.stimulusOffset)},
                 {"value", std::to_string(static_cast<unsigned>(pointCodes[point]))}, {"enabled", "true"}});
             wait(context, settle);
             const double reference = readReferenceVoltage(context);
-            const double raw = readYalkRaw(context, parameterGroup, channel, samples);
+            const double raw = readLogicalParameter(context, parameterGroup, channel, samples);
             const double measured = (raw - zeroRaw) * fullScale / (fullRaw - zeroRaw);
             append(result, measurement("ubsi.yalk." + std::to_string(channel + 1),
                 "ЯЛК канал " + std::to_string(channel + 1), reference, measured,
                 reference - tolerance, reference + tolerance, "В"));
             context.equipment.invoke("stand.switch_matrix", "analog", {
-                {"route", isdRoute}, {"offset", std::to_string(channel)}, {"value", "0"}, {"enabled", "false"}});
+                {"route", binding.stimulusRoute}, {"offset", std::to_string(binding.stimulusOffset)}, {"value", "0"}, {"enabled", "false"}});
         }
     }
     return result;
@@ -258,15 +373,23 @@ ProcedureResult yalkContacts(const ScenarioNode& node, ProcedureContext& context
 {
     ProcedureResult result{RunVerdict::Ok, "Проверены контактные каналы", {}};
     const unsigned count = natural(node, "channel_count", 30);
-    const std::string switchRoute = argument(node, "isd_switch_route", "yalk_contacts");
     const std::string parameterGroup = argument(node, "parameter_group", "yalk_contacts");
-    const unsigned mask = natural(node, "mask", 1);
+    if (!bindingsReady(context, parameterGroup, count, true)) {
+        return {RunVerdict::Incomplete,
+            "Адреса УЛК/маршруты контактных каналов не подтверждены; воздействия не выполнялись", {}};
+    }
     for (unsigned channel = 0; channel < count; ++channel) {
+        const auto binding = resolveLogicalBinding(context, parameterGroup, channel);
+        if (binding.stimulusRoute.empty()) {
+            throw std::runtime_error("В БД не задан маршрут воздействия для "
+                + parameterGroup + "/" + std::to_string(channel + 1));
+        }
         for (const bool state : {false, true}) {
             context.equipment.invoke("stand.switch_matrix", "switch", {
-                {"route", switchRoute}, {"offset", std::to_string(channel)}, {"enabled", state ? "true" : "false"}});
+                {"route", binding.stimulusRoute}, {"offset", std::to_string(binding.stimulusOffset)}, {"enabled", state ? "true" : "false"}});
             wait(context, natural(node, "settle_ms", 100));
-            const double raw = readYalkRaw(context, parameterGroup, channel, natural(node, "sample_count", 4), mask);
+            const double raw = readLogicalParameter(
+                context, parameterGroup, channel, natural(node, "sample_count", 4));
             append(result, measurement("ubsi.yalk.contact." + std::to_string(channel + 1),
                 "Контактный канал " + std::to_string(channel + 1), state ? 1 : 0,
                 raw > 0.5 ? 1 : 0, state ? 1 : 0, state ? 1 : 0, "лог."));
@@ -277,6 +400,11 @@ ProcedureResult yalkContacts(const ScenarioNode& node, ProcedureContext& context
 
 ProcedureResult yalkFaults(const ScenarioNode& node, ProcedureContext& context)
 {
+    if (argument(node, "diagnostic_mapping_confirmed", "false") != "true") {
+        return {RunVerdict::Incomplete,
+            "Адреса УЛК найдены, но алгоритм сравнения сохранённых кодов при ±12 В "
+            "ещё не подтверждён на подключённом УБСИ; опасное воздействие не выполнялось", {}};
+    }
     ProcedureResult result{RunVerdict::Ok, "Проверены обрыв и перегрузка входов", {}};
     const std::string openRoute = argument(node, "open_route", "yalk_open");
     const std::string positiveRoute = argument(node, "positive_overload_route", "yalk_overload_positive");
@@ -300,8 +428,35 @@ ProcedureResult referenceVoltage(const ScenarioNode& node, ProcedureContext& con
     ProcedureResult result{RunVerdict::Ok, "Проверено эталонное напряжение", {}};
     const double nominal = number(node, "nominal_v", 6.2);
     const double tolerance = number(node, "tolerance_v", 0.03);
-    append(result, measurement("ubsi.reference_6v2", "Эталонное напряжение", nominal,
-        readReferenceVoltage(context), nominal - tolerance, nominal + tolerance, "В"));
+    const double v7 = readReferenceVoltage(context);
+    append(result, measurement("ubsi.reference_6v2", "Эталонное напряжение по В7", nominal,
+        v7, nominal - tolerance, nominal + tolerance, "В"));
+    const std::string adapterGroup = argument(node, "adapter_parameter_group");
+    if (!adapterGroup.empty()) {
+        const std::string zeroGroup = argument(node, "calibration_zero_parameter", "yalk_calibration_zero");
+        const std::string fullGroup = argument(node, "calibration_full_parameter", "yalk_calibration_full");
+        if (!bindingsReady(context, adapterGroup, 1)
+            || !bindingsReady(context, zeroGroup, 1)
+            || !bindingsReady(context, fullGroup, 1)) {
+            result.verdict = combineVerdicts(result.verdict, RunVerdict::Incomplete);
+            result.message = "В7 проверен; адреса УЛК 97/98/99 ещё не подтверждены";
+            return result;
+        }
+        const double zeroRaw = readLogicalParameter(context,
+            zeroGroup, 0,
+            natural(node, "sample_count", 16));
+        const double fullRaw = readLogicalParameter(context,
+            fullGroup, 0,
+            natural(node, "sample_count", 16));
+        const double raw = readLogicalParameter(context, adapterGroup, 0,
+            natural(node, "sample_count", 16));
+        if (!(fullRaw > zeroRaw)) throw std::runtime_error(
+            "Некорректные калибровки ЯЛК для адреса УЛК 98");
+        const double adapterVoltage = (raw - zeroRaw) * nominal / (fullRaw - zeroRaw);
+        append(result, measurement("ubsi.reference_6v2.adapter",
+            "Эталон 6,2 В по адресу УЛК 98", v7, adapterVoltage,
+            v7 - tolerance, v7 + tolerance, "В"));
+    }
     return result;
 }
 
@@ -311,20 +466,60 @@ ProcedureResult ytp(const ScenarioNode& node, ProcedureContext& context)
     const unsigned count = natural(node, "channel_count", 30);
     const std::string parameterGroup = argument(node, "parameter_group", "ytp_temperature");
     const auto points = numbers(node, "resistance_points_ohm");
-    const double zeroRaw = number(node, "calibration_zero_raw");
-    const double fullRaw = number(node, "calibration_full_raw");
+    double zeroRaw = number(node, "calibration_zero_raw");
+    double fullRaw = number(node, "calibration_full_raw");
     const double fullScale = number(node, "full_scale_ohm", 240.0);
     const double tolerance = fullScale * number(node, "tolerance_percent_fs", 0.5) / 100.0;
+    const std::string zeroParameter = argument(node, "calibration_zero_parameter");
+    const std::string fullParameter = argument(node, "calibration_full_parameter");
+    if (!bindingsReady(context, parameterGroup, count, true)
+        || (!zeroParameter.empty() && !bindingsReady(context, zeroParameter, 1))
+        || (!fullParameter.empty() && !bindingsReady(context, fullParameter, 1))) {
+        return {RunVerdict::Incomplete,
+            "Адреса УЛК/маршруты ЯТП и калибровки 32/31 не подтверждены; ручные точки не запрашивались", {}};
+    }
+    if (!zeroParameter.empty() && !fullParameter.empty()) {
+        zeroRaw = readLogicalParameter(context, zeroParameter, 0,
+            natural(node, "sample_count", 16));
+        fullRaw = readLogicalParameter(context, fullParameter, 0,
+            natural(node, "sample_count", 16));
+    }
     if (points.empty() || !(fullRaw > zeroRaw)) throw std::invalid_argument("Не заполнена карта/калибровка ЯТП");
     for (const double resistance : points) {
-        context.equipment.invoke("signal.resistance", "set_resistance", {{"ohms", std::to_string(resistance)}});
+        const auto confirmation = responseValues(context.equipment.invoke(
+            "operator.manual_input", "confirm_value", {
+                {"title", "Р4831: установите сопротивление для проверки ЯТП"},
+                {"target_value", std::to_string(resistance)}, {"unit", "Ом"}}));
+        const auto actualValue = confirmation.find("value");
+        if (actualValue == confirmation.end()) {
+            throw std::runtime_error("Ручной этап Р4831 не вернул фактическое сопротивление");
+        }
+        const double actualResistance = std::stod(actualValue->second);
+        MeasurementResult audit = measurement("ubsi.ytp.manual_reference",
+            "Р4831: подтверждённая ручная точка", resistance, actualResistance,
+            0.0, fullScale, "Ом");
+        audit.message = "Оператор=" + (confirmation.count("operator")
+            ? confirmation.at("operator") : std::string("не указан"))
+            + "; время=" + (confirmation.count("timestamp")
+                ? confirmation.at("timestamp") : std::string("не указано"));
+        append(result, std::move(audit));
         wait(context, natural(node, "settle_ms", 1500));
         for (unsigned channel = 0; channel < count; ++channel) {
-            const double raw = readYalkRaw(context, parameterGroup, channel, natural(node, "sample_count", 16));
+            const auto binding = resolveLogicalBinding(context, parameterGroup, channel);
+            if (binding.stimulusRoute.empty()) throw std::runtime_error(
+                "В БД не задан маршрут ЯТП для канала " + std::to_string(channel + 1));
+            context.equipment.invoke("stand.switch_matrix", "switch", {
+                {"route", binding.stimulusRoute}, {"offset", std::to_string(binding.stimulusOffset)},
+                {"enabled", "true"}});
+            const double raw = readLogicalParameter(
+                context, parameterGroup, channel, natural(node, "sample_count", 16));
             const double measured = (raw - zeroRaw) * fullScale / (fullRaw - zeroRaw);
             append(result, measurement("ubsi.ytp." + std::to_string(channel + 1),
-                "ЯТП канал " + std::to_string(channel + 1), resistance, measured,
-                resistance - tolerance, resistance + tolerance, "Ом"));
+                "ЯТП канал " + std::to_string(channel + 1), actualResistance, measured,
+                actualResistance - tolerance, actualResistance + tolerance, "Ом"));
+            context.equipment.invoke("stand.switch_matrix", "switch", {
+                {"route", binding.stimulusRoute}, {"offset", std::to_string(binding.stimulusOffset)},
+                {"enabled", "false"}});
         }
     }
     return result;
@@ -336,41 +531,66 @@ ProcedureResult yvp(const ScenarioNode& node, ProcedureContext& context)
     const unsigned channels = natural(node, "channel_count", 8);
     const auto frequencies = numbers(node, "frequencies_hz");
     const auto gains = numbers(node, "gains_mv_per_pcl");
+    const std::string parameterGroup = argument(node, "parameter_group", "yvp_fast");
     if (frequencies.empty() || gains.empty()) throw std::invalid_argument("Не заданы частоты и коэффициенты ЯВП");
+    if (!bindingsReady(context, parameterGroup, channels, true)) {
+        return {RunVerdict::Incomplete,
+            "Адреса Орбиты/маршруты ЯВП-8 не подтверждены; генератор не включался", {}};
+    }
     const double amplitude = number(node, "amplitude_vpp", 0.3875);
     for (unsigned channel = 1; channel <= channels; ++channel) {
-        double referenceVpp = 0.0;
+        const std::string inputRoute = argument(node, "input_route", "yvp_input");
+        context.equipment.invoke("stand.switch_matrix", "switch", {
+            {"route", inputRoute}, {"offset", std::to_string(channel - 1)}, {"enabled", "true"}});
         for (const double frequency : frequencies) {
             context.equipment.invoke("signal.generator", "set_sine", {
                 {"channel", "1"}, {"frequency_hz", std::to_string(frequency)},
                 {"amplitude_vpp", std::to_string(amplitude)}, {"offset_v", "0"}});
             context.equipment.invoke("signal.generator", "output", {{"channel", "1"}, {"enabled", "true"}});
             wait(context, natural(node, "settle_ms", 200));
-            const auto scope = responseValues(context.equipment.invoke("measure.waveform", "capture", {
-                {"channel", std::to_string(natural(node, "scope_channel", 1))}}));
-            const double vpp = std::stod(scope.at("maximum_v")) - std::stod(scope.at("minimum_v"));
-            if (std::abs(frequency - number(node, "reference_frequency_hz", 1000.0)) < 0.001) referenceVpp = vpp;
-            const double reference = referenceVpp > 0.0 ? referenceVpp : amplitude;
+            const double measuredFrequency = readReferenceFrequency(context);
+            const double measuredRms = readReferenceAcVoltage(context);
+            const double referenceVpp = measuredRms * 2.0 * std::sqrt(2.0);
+            const double orbitaValue = readLogicalParameter(
+                context, parameterGroup, channel - 1, natural(node, "sample_count", 16));
+            const double frequencyTolerance = number(node, "frequency_tolerance_percent", 1.0);
+            append(result, measurement("ubsi.yvp.frequency." + std::to_string(channel),
+                "ЯВП " + std::to_string(channel) + ": частота воздействия",
+                frequency, measuredFrequency, frequency * (1.0 - frequencyTolerance / 100.0),
+                frequency * (1.0 + frequencyTolerance / 100.0), "Гц"));
+            const double stimulusTolerance = number(node, "stimulus_tolerance_percent", 5.0);
+            append(result, measurement("ubsi.yvp.stimulus." + std::to_string(channel),
+                "ЯВП " + std::to_string(channel) + ": воздействие по В7",
+                amplitude, referenceVpp, amplitude * (1.0 - stimulusTolerance / 100.0),
+                amplitude * (1.0 + stimulusTolerance / 100.0), "В пик-пик"));
             const double percent = std::abs(frequency - 2.0) < 0.001 || std::abs(frequency - 2000.0) < 0.001
                 ? number(node, "edge_tolerance_percent", 10.0) : number(node, "middle_tolerance_percent", 5.0);
             append(result, measurement("ubsi.yvp." + std::to_string(channel),
                 "ЯВП " + std::to_string(channel) + ", " + std::to_string(frequency) + " Гц",
-                reference, vpp, reference * (1.0 - percent / 100.0), reference * (1.0 + percent / 100.0), "В пик-пик"));
+                referenceVpp, orbitaValue, referenceVpp * (1.0 - percent / 100.0),
+                referenceVpp * (1.0 + percent / 100.0), "В пик-пик"));
         }
-        for (std::size_t gainIndex = 0; gainIndex < gains.size(); ++gainIndex) {
-            const double gain = gains[gainIndex];
+        if (argument(node, "gain_conversion_confirmed", "false") == "true") {
+            for (std::size_t gainIndex = 0; gainIndex < gains.size(); ++gainIndex) {
             // Выбор усиления выполняется внешней кроссировкой ИСД; профиль задаёт
             // базовый канал и один шаг на значение ряда.
             context.equipment.invoke("stand.switch_matrix", "switch", {
                 {"route", argument(node, "gain_route", "yvp_gain")},
                  {"offset", std::to_string((channel - 1) * gains.size() + gainIndex)}, {"enabled", "true"}});
-            append(result, measurement("ubsi.yvp.gain." + std::to_string(channel),
-                "ЯВП " + std::to_string(channel) + ": коэффициент " + std::to_string(gain),
-                1, 1, 1, 1, "лог."));
+            // Формула будет включена только вместе с подтверждённым преобразованием
+            // конкретного адреса Орбиты; до этого ветка недоступна из published YAML.
+            throw std::runtime_error("Для коэффициентов ЯВП не задан подтверждённый пересчёт");
             context.equipment.invoke("stand.switch_matrix", "switch", {
                 {"route", argument(node, "gain_route", "yvp_gain")},
                  {"offset", std::to_string((channel - 1) * gains.size() + gainIndex)}, {"enabled", "false"}});
+            }
+        } else {
+            result.verdict = combineVerdicts(result.verdict, RunVerdict::Incomplete);
+            result.message = "АЧХ измерена; коэффициенты ЯВП не коммутировались: "
+                "пересчёт данных Орбиты по референсу KPA ещё не подтверждён";
         }
+        context.equipment.invoke("stand.switch_matrix", "switch", {
+            {"route", inputRoute}, {"offset", std::to_string(channel - 1)}, {"enabled", "false"}});
     }
     context.equipment.invoke("signal.generator", "output", {{"channel", "1"}, {"enabled", "false"}});
     return result;
@@ -380,6 +600,7 @@ ProcedureResult yvp(const ScenarioNode& node, ProcedureContext& context)
 
 void registerUbsiProcedures(ScenarioEngine& engine)
 {
+    engine.registerProcedure("ubsi.binding_check", bindingCheck);
     engine.registerProcedure("ubsi.readiness", readiness);
     engine.registerProcedure("ubsi.supply_range", supplyRange);
     engine.registerProcedure("ubsi.sensor_supply", sensorSupply);

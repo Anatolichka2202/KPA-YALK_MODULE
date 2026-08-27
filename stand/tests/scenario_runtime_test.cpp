@@ -132,6 +132,32 @@ void configurationAndCatalog(const QString& root)
             "BSI diagnostic scenario must be published as a non-acceptance procedure");
     require(profile.id == "ktma-main" && !profile.activeOutputsConfirmed,
             "Default stand profile must keep active outputs locked");
+    require(profile.routes.at("yalk_analog.type") == "1"
+                && profile.routes.at("yalk_analog.max") == "4095"
+                && profile.routes.at("yvp_input.safe") == "off",
+            "Structured ISD route fields were not loaded from the profile");
+    bool kpaProtocol = false;
+    for (const auto& device : profile.devices) {
+        if (device.pluginId == "orbita.ubsi_udp") {
+            kpaProtocol = device.configuration.at("protocol") == "kpa_rokot_udp"
+                && device.configuration.at("data_port") == "1113";
+        }
+    }
+    require(kpaProtocol, "Default adapter profile must preserve the working KPA protocol candidate");
+
+    std::set<std::string> scenarioCapabilities;
+    std::function<void(const ScenarioNode&)> collectCapabilities = [&](const ScenarioNode& node) {
+        scenarioCapabilities.insert(node.requiredCapabilities.begin(), node.requiredCapabilities.end());
+        for (const auto& child : node.children) collectCapabilities(child);
+    };
+    for (const auto& step : scenario.steps) collectCapabilities(step);
+    require(scenarioCapabilities.count("operator.manual_input") != 0
+                && scenarioCapabilities.count("measure.reference_ac_voltage") != 0
+                && scenarioCapabilities.count("measure.reference_frequency") != 0,
+            "UBSI scenario must contain manual R4831 audit and V7 AC/frequency checks");
+    require(scenarioCapabilities.count("signal.resistance") == 0
+                && scenarioCapabilities.count("measure.waveform") == 0,
+            "UBSI scenario must not require automatic R4831 or an oscilloscope");
 
     QTemporaryDir temporary;
     require(temporary.isValid(), "Cannot create temporary directory");
@@ -144,6 +170,39 @@ void configurationAndCatalog(const QString& root)
             "Normalized catalog has an unexpected object composition");
     const auto loaded = loadCatalog(db.toUtf8().toStdString());
     require(loaded.version == scenario.catalogVersion, "Scenario and catalog versions must match");
+
+    const auto yalk = resolveCatalogParameterBinding(
+        db.toUtf8().toStdString(), "UBSI_468157_002", "yalk_analog", 7);
+    require(yalk.source == "ubsi.parameter_source" && yalk.locatorType == "ulk_address"
+                && yalk.locator == "8" && yalk.mode == 6 && yalk.mask == 0x01FF,
+            "YALK must resolve to the reference ULK address/mode from catalog");
+    require(yalk.stimulusRoute == "yalk_analog" && yalk.stimulusOffset == 7,
+            "YALK ISD stimulus route must resolve from catalog");
+    const auto yalkAfterGap = resolveCatalogParameterBinding(
+        db.toUtf8().toStdString(), "UBSI_468157_002", "yalk_analog", 28);
+    require(yalkAfterGap.locator == "32" && yalkAfterGap.stimulusOffset == 31,
+            "ULK address gaps must be preserved in data and ISD offset mappings");
+    const auto yalkCalibration = resolveCatalogParameterBinding(
+        db.toUtf8().toStdString(), "UBSI_468157_002", "yalk_calibration_full", 0);
+    require(yalkCalibration.locatorType == "ulk_address" && yalkCalibration.locator == "99",
+            "YALK calibration must use reference ULK address 99");
+    const auto ytp = resolveCatalogParameterBinding(
+        db.toUtf8().toStdString(), "UBSI_468157_002", "ytp_temperature", 3);
+    require(ytp.source == "ubsi.parameter_source" && ytp.locatorType == "ulk_address"
+                && ytp.locator == "4"
+                && ytp.mode == 2,
+            "YTP must resolve to ULK address and adapter mode 2 from catalog");
+    const auto ytpCalibration = resolveCatalogParameterBinding(
+        db.toUtf8().toStdString(), "UBSI_468157_002", "ytp_calibration_zero", 0);
+    require(ytpCalibration.locator == "32",
+            "YTP lower calibration must use reference ULK address 32");
+    const auto yvp = resolveCatalogParameterBinding(
+        db.toUtf8().toStdString(), "UBSI_468157_002", "yvp_fast", 0);
+    require(yvp.source == "orbita.parameter_source"
+                && yvp.locator == "M16P1A11B21T21",
+            "YVP must resolve to an Orbita address from catalog");
+    require(!yalk.confirmed && !ytp.confirmed && !yvp.confirmed,
+            "Unverified live mappings must not allow acceptance OK");
 
     FakeEquipment diagnosticEquipment;
     diagnosticEquipment.capabilities.insert("orbita.parameter_source");
@@ -188,15 +247,23 @@ void pluginContracts()
         .filePath(QStringLiteral("../plugins"));
     EquipmentPluginManager manager;
     manager.loadDirectory(pluginDirectory.toUtf8().toStdString());
-    require(manager.plugins().size() == 7, "All first-release equipment DLLs must load");
+    require(manager.plugins().size() == 6, "All first-release equipment DLLs must load");
     bool ubsi = false;
     bool scope = false;
+    bool akip = false;
+    bool v7 = false;
     for (const auto& descriptor : manager.plugins()) {
         ubsi = ubsi || descriptor.id == "orbita.ubsi_udp";
         scope = scope || (descriptor.id == "orbita.rigol_dho8xx"
             && descriptor.capabilities.count("measure.waveform") != 0);
+        akip = akip || (descriptor.id == "orbita.akip_1160_pair"
+            && descriptor.capabilities.count("power.dc_supply") != 0);
+        v7 = v7 || (descriptor.id == "orbita.v7_visa"
+            && descriptor.capabilities.count("measure.reference_ac_voltage") != 0
+            && descriptor.capabilities.count("measure.reference_frequency") != 0);
     }
-    require(ubsi && scope, "Plugin ABI descriptors do not expose required capabilities");
+    require(ubsi && scope && akip && v7,
+            "Plugin ABI descriptors do not expose required capabilities");
 }
 
 void persistenceAndReport()

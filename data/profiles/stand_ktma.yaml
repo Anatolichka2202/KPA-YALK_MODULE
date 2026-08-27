@@ -1,6 +1,6 @@
 schema: 1
 id: ktma-main
-version: 2026.08.26-2
+version: 2026.08.27-ubsi-1
 title: Основной стенд КТМА, Windows 11
 
 # Пока карта кабелей и активные команды не подтверждены на самом стенде,
@@ -8,14 +8,58 @@ title: Основной стенд КТМА, Windows 11
 active_outputs_confirmed: false
 
 routes:
-  sensor_load_350ma: TODO_CONFIRM
-  sensor_load_450ma: TODO_CONFIRM
-  yalk_analog: TODO_CONFIRM
-  yalk_contacts: TODO_CONFIRM
-  yalk_open: TODO_CONFIRM
-  yalk_overload_positive: 96
-  yalk_overload_negative: 95
-  yvp_gain: TODO_CONFIRM
+  sensor_load_350ma:
+    base: TODO_CONFIRM
+    type: 2
+    bus: 0
+    safe: off
+  sensor_load_450ma:
+    base: TODO_CONFIRM
+    type: 2
+    bus: 0
+    safe: off
+  yalk_analog:
+    base: TODO_CONFIRM
+    type: 1
+    bus: 0
+    min: 0
+    max: 4095
+    safe: off
+  yalk_contacts:
+    base: TODO_CONFIRM
+    type: 2
+    bus: 0
+    safe: off
+  yalk_open:
+    base: TODO_CONFIRM
+    type: 2
+    bus: 0
+    safe: off
+  yalk_overload_positive:
+    base: 96
+    type: 2
+    bus: 0
+    safe: off
+  yalk_overload_negative:
+    base: 95
+    type: 2
+    bus: 0
+    safe: off
+  yvp_gain:
+    base: TODO_CONFIRM
+    type: 2
+    bus: 0
+    safe: off
+  ytp_channel:
+    base: TODO_CONFIRM
+    type: 2
+    bus: 0
+    safe: off
+  yvp_input:
+    base: TODO_CONFIRM
+    type: 2
+    bus: 0
+    safe: off
 
 devices:
   - id: ubsi-adapter
@@ -23,22 +67,21 @@ devices:
     bind:
       - ubsi.parameter_source
     config:
-      # .101 подтверждён как ИСД, а не адаптер. .115 — лишь кандидат:
-      # его MAC совпадает с серией прошивки, но UDP-обмен ещё не записан.
-      host: TODO_CONFIRM
-      candidate_host: 192.168.0.115
-      candidate_mac: 00-35-65-03-74-06
+      # .101 подтверждён как ИСД. .115/MAC ...74-06 — подключённый адаптер.
+      # Порты 1001/1101 взяты из прошивки; старый KPA-сценарий использует
+      # отдельный вариант протокола на 1113, поэтому реальный пакет ещё пишем.
+      host: 192.168.0.115
+      expected_mac: 00-35-65-03-74-06
       local_address: 192.168.0.50
-      data_port: 1001
-      ack_port: 1101
+      data_port: 1113
+      ack_port: 1113
       timeout_ms: 800
-      parameter.yalk_analog.word_base: TODO_CONFIRM
-      parameter.yalk_contacts.word_base: TODO_CONFIRM
-      parameter.yalk_contacts.mask: 1
-      parameter.yalk_calibration_zero.word_base: TODO_CONFIRM
-      parameter.yalk_calibration_full.word_base: TODO_CONFIRM
-      parameter.ytp_temperature.word_base: TODO_CONFIRM
-      parameter.yvp_fast.word_base: TODO_CONFIRM
+      # Рабочая KPA открывает приём 1113 и передачу на .115:1113. Байты
+      # команд ещё нужно снять, поэтому активный выбор режима запрещён.
+      device.active_commands_confirmed: false
+      protocol: kpa_rokot_udp
+      kpa.mode.6.hex: TODO_CAPTURE_YALK_COMMAND
+      kpa.mode.2.hex: TODO_CAPTURE_YTP_COMMAND
   - id: isd
     plugin: orbita.isd_http
     bind:
@@ -55,41 +98,45 @@ devices:
     bind:
       - measure.reference_voltage
       - measure.dc_current
+      - measure.reference_ac_voltage
+      - measure.reference_frequency
     config:
       resource: USB[0-9]*::0x164E::0x0DAD::?*INSTR
       fallback_resource: USB[0-9]*::5710::3501::?*INSTR
       timeout_ms: 2000
       voltage_command: READ?
       current_command: MEAS:CURR:DC?
+      ac_voltage_command: MEAS:VOLT:AC?
+      frequency_command: MEAS:FREQ?
   - id: dc-supply
-    plugin: orbita.power_udp
+    plugin: orbita.akip_1160_pair
     bind:
       - power.dc_supply
+    # Исторически это две АКИП-1160/6 (ипНИ и ипБИ). Ресурсы назначаются
+    # только после безопасного *IDN?; COM7 пока не идентифицирован.
+    enabled: false
     config:
-      host: 192.168.0.221
-      command_port: 4001
-      reply_port: 6008
-      timeout_ms: 1500
-      allow_legacy_commands: false
+      disabled_reason: Не назначены оба VISA-ресурса АКИП для ролей ипНИ и ипБИ
+      resource_ni: TODO_ASSIGN_VISA_RESOURCE
+      resource_bi: TODO_ASSIGN_VISA_RESOURCE
+      expected_idn: AKIP-1160/6
+      timeout_ms: 2000
   - id: generator
     plugin: orbita.rigol_generator
     bind:
       - signal.generator
+    # На текущей сборке УБСИ генератор не подключён.
+    enabled: false
     config:
+      disabled_reason: Генератор в текущей сборке стенда не подключён
       timeout_ms: 2000
-  - id: resistance-store
-    plugin: orbita.r4831
-    bind:
-      - signal.resistance
-    config:
-      port: COM7
-      baud: 9600
-      timeout_ms: 1000
-      decimal_comma: false
   - id: oscilloscope
     plugin: orbita.rigol_dho8xx
     bind:
       - measure.waveform
+    # Подключён к схеме, но автоматический канал пока не подтверждён.
+    enabled: false
     config:
+      disabled_reason: Осциллограф подключён к схеме, но программный захват ещё не подтверждён
       resource: USB[0-9]*::0x1AB1::?*::?*INSTR
       timeout_ms: 4000

@@ -1,5 +1,5 @@
 schema: 1
-version: 2026.08.26-2
+version: 2026.08.27-5
 title: Каталог объектов и логических параметров стенда КТМА
 
 cell_types:
@@ -88,12 +88,30 @@ parameter_groups:
     category: калибровочные
     unit: код
     count: 1
+  - id: yalk_reference_supply
+    name: Эталонное питание 6,2 В в данных ЯЛК
+    cell_type: YALK_96
+    category: калибровочные
+    unit: В
+    count: 1
   - id: ytp_temperature
     name: Каналы термосопротивления ЯТП
     cell_type: YTP
     category: температурные
     unit: Ом
     count: 30
+  - id: ytp_calibration_zero
+    name: Нижняя калибровка ЯТП
+    cell_type: YTP
+    category: калибровочные
+    unit: код
+    count: 1
+  - id: ytp_calibration_full
+    name: Верхняя калибровка ЯТП
+    cell_type: YTP
+    category: калибровочные
+    unit: код
+    count: 1
   - id: yvp_fast
     name: Быстроменяющиеся каналы ЯВП
     cell_type: YVP_8
@@ -106,22 +124,130 @@ bindings:
     slot: yalk_96
     parameter_group: yalk_analog
     source: ubsi.parameter_source
-    address_key: parameter.yalk_analog.word_base
+    address_key: address_set.ulk_yalk_reference
+    locator_type: ulk_address
+    # Референс KPA «ТУ_УЛК»: адреса 1–28, 32–43, 45–70, 74–87.
+    # Для минимальных 60 каналов ТУ берутся первые 60 адресов списка.
+    address_file: address_sets/ulk_yalk_reference.txt
+    address_offset: 0
+    count: 60
+    mask: 0x01FF
+    mode: 6
+    stimulus_route: yalk_analog
+    stimulus_offset_base: 0
+    stimulus_offset_from_locator: true
+    confirmed: false
   - block_type: UBSI_468157_002
     slot: yalk_96
     parameter_group: yalk_contacts
     source: ubsi.parameter_source
-    address_key: parameter.yalk_contacts.word_base
+    address_key: address_set.ulk_yalk_reference
+    locator_type: ulk_address
+    # В KPA аналоговое значение «ед» и сигнальный признак «сиг» читаются
+    # по одному адресу УЛК; маска определяет требуемое поле.
+    address_file: address_sets/ulk_yalk_reference.txt
+    address_offset: 0
+    count: 30
+    mask: 0x0200
+    mode: 6
+    stimulus_route: yalk_contacts
+    stimulus_offset_base: 0
+    stimulus_offset_from_locator: true
+    confirmed: false
+  - block_type: UBSI_468157_002
+    slot: yalk_96
+    parameter_group: yalk_calibration_zero
+    source: ubsi.parameter_source
+    address_key: address_set.ulk_yalk_calibration_reference
+    locator_type: ulk_address
+    address_file: address_sets/ulk_yalk_calibration_reference.txt
+    address_offset: 0
+    count: 1
+    mask: 0x01FF
+    mode: 6
+    confirmed: false
+  - block_type: UBSI_468157_002
+    slot: yalk_96
+    parameter_group: yalk_calibration_full
+    source: ubsi.parameter_source
+    address_key: address_set.ulk_yalk_calibration_reference
+    locator_type: ulk_address
+    address_file: address_sets/ulk_yalk_calibration_reference.txt
+    address_offset: 2
+    count: 1
+    mask: 0x01FF
+    mode: 6
+    confirmed: false
+  - block_type: UBSI_468157_002
+    slot: yalk_96
+    parameter_group: yalk_reference_supply
+    source: ubsi.parameter_source
+    address_key: address_set.ulk_yalk_calibration_reference
+    locator_type: ulk_address
+    # 97/99 прямо подтверждены как калибровки в KPA. Адрес 98 —
+    # лишь кандидат эталона 6,2 В до подтверждения живым откликом.
+    address_file: address_sets/ulk_yalk_calibration_reference.txt
+    address_offset: 1
+    count: 1
+    mask: 0x01FF
+    mode: 6
+    confirmed: false
   - block_type: UBSI_468157_002
     slot: ytp
     parameter_group: ytp_temperature
     source: ubsi.parameter_source
-    address_key: parameter.ytp_temperature.word_base
+    address_key: address_set.ulk_ytp_reference
+    locator_type: ulk_address
+    # Рабочая KPA задаёт адрЯТП 1 1 1 и проверяет каналы 1–30.
+    address_file: address_sets/ulk_ytp_reference.txt
+    address_offset: 0
+    count: 30
+    mask: 0xFFFF
+    mode: 2
+    stimulus_route: ytp_channel
+    stimulus_offset_base: 0
+    stimulus_offset_from_locator: true
+    confirmed: false
+  - block_type: UBSI_468157_002
+    slot: ytp
+    parameter_group: ytp_calibration_zero
+    source: ubsi.parameter_source
+    address_key: address_set.ulk_ytp_calibration_reference
+    locator_type: ulk_address
+    address_file: address_sets/ulk_ytp_calibration_reference.txt
+    address_offset: 0
+    count: 1
+    mask: 0xFFFF
+    mode: 2
+    confirmed: false
+  - block_type: UBSI_468157_002
+    slot: ytp
+    parameter_group: ytp_calibration_full
+    source: ubsi.parameter_source
+    address_key: address_set.ulk_ytp_calibration_reference
+    locator_type: ulk_address
+    address_file: address_sets/ulk_ytp_calibration_reference.txt
+    address_offset: 1
+    count: 1
+    mask: 0xFFFF
+    mode: 2
+    confirmed: false
   - block_type: UBSI_468157_002
     slot: yvp_8
     parameter_group: yvp_fast
-    source: ubsi.parameter_source
-    address_key: parameter.yvp_fast.word_base
+    source: orbita.parameter_source
+    address_key: address_set.ubsi_yvp_fast
+    locator_type: orbita_address
+    # Кандидаты перенесены из старой конфигурации «Быстрые»; confirmed=false
+    # запрещает приёмочный OK до проверки на живом потоке ЯВП-8.
+    address_file: address_sets/ubsi_yvp_fast.txt
+    address_offset: 0
+    count: 8
+    mask: 0xFFFF
+    mode: 0
+    stimulus_route: yvp_input
+    stimulus_offset_base: 0
+    confirmed: false
 
 instances:
   - id: ubsi-7-current

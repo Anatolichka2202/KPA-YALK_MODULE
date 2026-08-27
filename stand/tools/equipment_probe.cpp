@@ -24,7 +24,13 @@ int main(int argc, char** argv)
 
         bool allReady = true;
         for (const auto& definition : profile.devices) {
-            if (!definition.enabled) continue;
+            if (!definition.enabled) {
+                const auto reason = definition.configuration.find("disabled_reason");
+                std::cout << "DISABLED " << definition.id << " " << definition.pluginId;
+                if (reason != definition.configuration.end()) std::cout << " " << reason->second;
+                std::cout << '\n';
+                continue;
+            }
             try {
                 auto config = definition.configuration;
                 config["profile.active_outputs_confirmed"] =
@@ -35,8 +41,13 @@ int main(int argc, char** argv)
                     throw std::runtime_error("profile has no bound capability");
                 }
                 const auto response = device->invoke(definition.bindCapabilities.front(), "probe");
-                std::cout << "OK " << definition.id << " " << definition.pluginId << " "
-                          << response << '\n';
+                const bool ready = response.find("status=no_data") == std::string::npos
+                    && response.find("status=error") == std::string::npos
+                    && response.find("alive=0") == std::string::npos
+                    && response.find("alive=false") == std::string::npos;
+                if (!ready) allReady = false;
+                std::cout << (ready ? "OK " : "NOT_READY ") << definition.id << " "
+                          << definition.pluginId << " " << response << '\n';
                 device->safeStop();
             } catch (const std::exception& error) {
                 allReady = false;

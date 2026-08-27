@@ -5,9 +5,10 @@
 #include <QHBoxLayout>
 #include <QFileDialog>
 #include <QMessageBox>
+#include <QInputDialog>
+#include <QDateTime>
 #include <QApplication>
 #include <QCoreApplication>
-#include <QDateTime>
 #include <QDir>
 #include <QActionGroup>
 #include <QMenu>
@@ -465,6 +466,10 @@ void MainWindow::setupToolBar()
     toolsMenu_ = menuBar()->addMenu("Инструменты");
     actScenario_ = toolsMenu_->addAction("Редактор сценариев (экспериментальный)");
     connect(actScenario_, &QAction::triggered, this, &MainWindow::onOpenScenario);
+    auto* catalogAction = toolsMenu_->addAction("Каталог параметров и адресов");
+    connect(catalogAction, &QAction::triggered, this, &MainWindow::onOpenCatalog);
+    auto* profileAction = toolsMenu_->addAction("Профиль стенда и маршруты");
+    connect(profileAction, &QAction::triggered, this, &MainWindow::onOpenStandProfile);
 
     connect(testPage_, &TestPage::equipmentCheckRequested,
             this, &MainWindow::onCheckTestEquipment);
@@ -498,6 +503,22 @@ void MainWindow::onOpenScenario()
     editor.exec();
 }
 
+void MainWindow::onOpenCatalog()
+{
+    const QString path = QDir(QCoreApplication::applicationDirPath())
+        .filePath(QStringLiteral("catalog/catalog.yaml"));
+    ScenarioYamlEditor editor(path, this);
+    editor.exec();
+}
+
+void MainWindow::onOpenStandProfile()
+{
+    const QString path = QDir(QCoreApplication::applicationDirPath())
+        .filePath(QStringLiteral("profiles/stand_ktma.yaml"));
+    ScenarioYamlEditor editor(path, this);
+    editor.exec();
+}
+
 void MainWindow::initializeStandRuntime()
 {
     try {
@@ -517,8 +538,9 @@ void MainWindow::initializeStandRuntime()
             {"ubsi.parameter_source", "RS485"}, {"stand.switch_matrix", "ISD"},
             {"orbita.parameter_source", "E20"},
             {"measure.reference_voltage", "V7"}, {"measure.dc_current", "V7"},
+            {"measure.reference_ac_voltage", "V7"}, {"measure.reference_frequency", "V7"},
             {"power.dc_supply", "AKIP"}, {"signal.generator", "RIGOL"},
-            {"signal.resistance", "R4831"}, {"measure.waveform", "SCOPE"}};
+            {"operator.manual_input", "R4831"}, {"measure.waveform", "SCOPE"}};
         scenarios_.clear();
         testPage_->setScenarioInfo("UBSI_NORMAL_5_6", false, false, {},
             QStringLiteral("Сценарий УБСИ не загружен"));
@@ -614,15 +636,77 @@ void MainWindow::onCheckTestEquipment()
 
     const QHash<QString, QString> uiCodes = {
         {"orbita.ubsi_udp", "RS485"}, {"orbita.isd_http", "ISD"},
-        {"orbita.v7_visa", "V7"}, {"orbita.power_udp", "AKIP"},
-        {"orbita.rigol_generator", "RIGOL"}, {"orbita.r4831", "R4831"},
+        {"orbita.v7_visa", "V7"}, {"orbita.akip_1160_pair", "AKIP"},
+        {"orbita.rigol_generator", "RIGOL"},
         {"orbita.rigol_dho8xx", "SCOPE"}};
     const QSet<QString> activeCapabilities = {
-        "stand.switch_matrix", "power.dc_supply", "signal.generator", "signal.resistance"};
+        "stand.switch_matrix", "power.dc_supply", "signal.generator"};
 
     equipmentRegistry_->safeStopAll();
     equipmentRegistry_->clear();
     equipmentDevices_.clear();
+    const std::string catalogDatabase = QDir(QCoreApplication::applicationDirPath())
+        .filePath(QStringLiteral("parameters.db")).toUtf8().toStdString();
+    equipmentRegistry_->bind("catalog.parameter_resolver",
+        [catalogDatabase](const std::string& operation,
+                          const std::map<std::string, std::string>& arguments) {
+            if (operation != "resolve") {
+                throw std::invalid_argument("Неизвестная операция каталога: " + operation);
+            }
+            const auto required = [&arguments](const char* key) -> const std::string& {
+                const auto value = arguments.find(key);
+                if (value == arguments.end() || value->second.empty()) {
+                    throw std::invalid_argument(std::string("Каталогу требуется ") + key);
+                }
+                return value->second;
+            };
+            const auto binding = orbita::stand::resolveCatalogParameterBinding(
+                catalogDatabase, required("block_type"), required("parameter_group"),
+                static_cast<unsigned>(std::stoul(required("channel_index"))));
+            std::ostringstream response;
+            response << "source=" << binding.source << '\n'
+                     << "locator_type=" << binding.locatorType << '\n'
+                     << "locator=" << binding.locator << '\n'
+                     << "mask=" << binding.mask << '\n'
+                     << "mode=" << binding.mode << '\n'
+                     << "stimulus_route=" << binding.stimulusRoute << '\n'
+                     << "stimulus_offset=" << binding.stimulusOffset << '\n'
+                     << "confirmed=" << (binding.confirmed ? "true" : "false") << '\n';
+            return response.str();
+        });
+    equipmentRegistry_->bind("operator.manual_input",
+        [this](const std::string& operation,
+               const std::map<std::string, std::string>& arguments) {
+            if (operation != "confirm_value") {
+                throw std::invalid_argument("Неизвестная ручная операция: " + operation);
+            }
+            bool accepted = false;
+            double actual = 0.0;
+            QString title = QStringLiteral("Ручная операция");
+            QString prompt = QStringLiteral("Введите фактическое значение");
+            if (const auto found = arguments.find("title"); found != arguments.end())
+                title = QString::fromStdString(found->second);
+            if (const auto target = arguments.find("target_value"); target != arguments.end()) {
+                const QString unit = arguments.count("unit")
+                    ? QString::fromStdString(arguments.at("unit")) : QString();
+                prompt = QStringLiteral("Требуется: %1 %2\nВведите фактически установленное значение:")
+                    .arg(QString::fromStdString(target->second), unit);
+                actual = QString::fromStdString(target->second).toDouble();
+            }
+            QMetaObject::invokeMethod(this, [&] {
+                actual = QInputDialog::getDouble(this, title, prompt, actual,
+                    -1000000.0, 1000000.0, 6, &accepted);
+            }, Qt::BlockingQueuedConnection);
+            if (!accepted) throw std::runtime_error("Ручная операция отменена оператором");
+            const QString operatorName = qEnvironmentVariable("USERNAME",
+                qEnvironmentVariable("USER", QStringLiteral("неизвестен")));
+            std::ostringstream response;
+            response << std::setprecision(15) << "status=confirmed\nvalue=" << actual
+                     << "\noperator=" << operatorName.toStdString()
+                     << "\ntimestamp=" << QDateTime::currentDateTime().toString(Qt::ISODateWithMs).toStdString()
+                     << "\n";
+            return response.str();
+        });
     testPage_->setEquipmentChecking("E20", QStringLiteral("Проверка E20-10 и активного набора Орбиты…"));
     const bool orbitaReady = e20Available_ && !currentSpecs_.empty();
     if (orbitaReady) {
@@ -634,8 +718,17 @@ void MainWindow::onCheckTestEquipment()
     }
     QApplication::setOverrideCursor(Qt::WaitCursor);
     for (const auto& definition : standProfile_.devices) {
-        if (!definition.enabled) continue;
         const QString code = uiCodes.value(QString::fromStdString(definition.pluginId));
+        if (!definition.enabled) {
+            const auto reason = definition.configuration.find("disabled_reason");
+            const QString detail = reason == definition.configuration.end()
+                ? QStringLiteral("Отключено в профиле стенда")
+                : QString::fromStdString(reason->second);
+            if (!code.isEmpty()) testPage_->setEquipmentStatus(code, false, detail);
+            log(QStringLiteral("%1: %2")
+                .arg(QString::fromStdString(definition.id), detail));
+            continue;
+        }
         if (!code.isEmpty()) testPage_->setEquipmentChecking(code, QStringLiteral("Загрузка DLL и безопасный probe…"));
         try {
             auto config = definition.configuration;

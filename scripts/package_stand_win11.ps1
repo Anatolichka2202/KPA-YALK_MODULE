@@ -40,11 +40,12 @@ $runtimeFiles = @(
     'OrbitaDesktop.exe',
     'orbita_equipment_probe.exe',
     'orbita_telemetry_probe.exe',
+    'orbita_ubsi_udp_probe.exe',
     'visa_discover.exe',
     'Lusbapi64.dll',
     # windeployqt sees dependencies of OrbitaDesktop.exe, but not dependencies
-    # imported only by equipment DLLs. SerialPort is required by ISD/R4831/UDP
-    # adapters and must travel with the release explicitly.
+    # imported only by equipment DLLs. SerialPort remains a low-level runtime
+    # dependency of stand adapters and must travel with the release explicitly.
     'Qt6SerialPort.dll',
     'parameters.db',
     'stand.ini'
@@ -56,13 +57,32 @@ foreach ($name in $runtimeFiles) {
     }
 }
 
-$runtimeDirectories = @('address', 'catalog', 'profiles', 'scenarios', 'plugins')
+$runtimeDirectories = @('address', 'catalog', 'profiles', 'scenarios')
 foreach ($name in $runtimeDirectories) {
     $source = Join-Path $runtimeRoot $name
     if (-not (Test-Path -LiteralPath $source -PathType Container)) {
         throw "Required runtime directory not found: $source"
     }
     Copy-Item -LiteralPath $source -Destination $packageRoot -Recurse
+}
+
+$pluginSource = Join-Path $runtimeRoot 'plugins'
+$pluginTarget = Join-Path $packageRoot 'plugins'
+New-Item -ItemType Directory -Path $pluginTarget -Force | Out-Null
+$pluginAllowList = @(
+    'orbita_plugin_ubsi_udp.dll',
+    'orbita_plugin_isd_http.dll',
+    'orbita_plugin_v7_visa.dll',
+    'orbita_plugin_akip_1160.dll',
+    'orbita_plugin_rigol_generator.dll',
+    'orbita_plugin_rigol_dho8xx.dll'
+)
+foreach ($name in $pluginAllowList) {
+    $source = Join-Path $pluginSource $name
+    if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
+        throw "Required equipment plugin not found: $source"
+    }
+    Copy-Item -LiteralPath $source -Destination $pluginTarget
 }
 
 New-Item -ItemType Directory -Path (Join-Path $packageRoot 'records') -Force | Out-Null

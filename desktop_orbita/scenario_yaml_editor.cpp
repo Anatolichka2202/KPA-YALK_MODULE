@@ -19,12 +19,16 @@
 ScenarioYamlEditor::ScenarioYamlEditor(QString path, QWidget* parent)
     : QDialog(parent), path_(std::move(path))
 {
-    setWindowTitle(QStringLiteral("Редактор сценария YAML"));
+    scenario_ = QFileInfo(path_).dir().dirName() == QStringLiteral("scenarios");
+    setWindowTitle(scenario_ ? QStringLiteral("Редактор сценария YAML")
+                             : QStringLiteral("Редактор конфигурации YAML"));
     resize(900, 700);
     auto* layout = new QVBoxLayout(this);
-    auto* explanation = new QLabel(QStringLiteral(
+    auto* explanation = new QLabel(scenario_ ? QStringLiteral(
         "Сценарий содержит типизированные процедуры. Низкоуровневые HTTP/SCPI/UDP-команды "
-        "находятся внутри плагинов. Опубликованная версия неизменяема — для правки создайте черновик."));
+        "находятся внутри плагинов. Опубликованная версия неизменяема — для правки создайте черновик.")
+        : QStringLiteral("Инженерная конфигурация каталога или профиля стенда. "
+                         "Перед сохранением проверьте YAML; изменения применятся после повторной проверки оборудования."));
     explanation->setWordWrap(true);
     layout->addWidget(explanation);
     editor_ = new QTextEdit;
@@ -36,17 +40,18 @@ ScenarioYamlEditor::ScenarioYamlEditor(QString path, QWidget* parent)
     layout->addWidget(status_);
     auto* actions = new QHBoxLayout;
     auto* validateButton = new QPushButton(QStringLiteral("Проверить YAML"));
-    auto* draftButton = new QPushButton(QStringLiteral("Создать черновик"));
+    draftButton_ = new QPushButton(QStringLiteral("Создать черновик"));
+    draftButton_->setVisible(scenario_);
     saveButton_ = new QPushButton(QStringLiteral("Сохранить"));
     auto* closeButton = new QPushButton(QStringLiteral("Закрыть"));
     actions->addWidget(validateButton);
-    actions->addWidget(draftButton);
+    actions->addWidget(draftButton_);
     actions->addStretch(1);
     actions->addWidget(saveButton_);
     actions->addWidget(closeButton);
     layout->addLayout(actions);
     connect(validateButton, &QPushButton::clicked, this, &ScenarioYamlEditor::validate);
-    connect(draftButton, &QPushButton::clicked, this, &ScenarioYamlEditor::createDraft);
+    connect(draftButton_, &QPushButton::clicked, this, &ScenarioYamlEditor::createDraft);
     connect(saveButton_, &QPushButton::clicked, this, &ScenarioYamlEditor::save);
     connect(closeButton, &QPushButton::clicked, this, &QDialog::accept);
     load();
@@ -63,25 +68,35 @@ void ScenarioYamlEditor::load()
     editor_->setPlainText(QString::fromUtf8(file.readAll()));
     try {
         const auto root = orbita::stand::yaml::parse(editor_->toPlainText().toStdString());
-        published_ = root.value("state") == "published";
+        published_ = scenario_ && root.value("state") == "published";
     } catch (...) {
         published_ = false;
     }
     saveButton_->setEnabled(!published_);
     status_->setText(published_
         ? QStringLiteral("Опубликованная версия: сохранение поверх файла запрещено")
-        : QStringLiteral("Черновик можно редактировать и сохранять"));
+        : scenario_ ? QStringLiteral("Черновик можно редактировать и сохранять")
+                    : QStringLiteral("Конфигурацию можно редактировать и сохранять"));
 }
 
 void ScenarioYamlEditor::validate()
 {
     try {
         const auto root = orbita::stand::yaml::parse(editor_->toPlainText().toStdString());
-        if (!root.isMap() || root.value("schema") != "1" || root.value("id").empty()
-            || root.value("version").empty() || !root.find("steps")) {
-            throw std::runtime_error("нужны schema: 1, id, version и steps");
+        if (!root.isMap() || root.value("schema") != "1")
+            throw std::runtime_error("нужны корневой объект и schema: 1");
+        if (scenario_) {
+            if (root.value("id").empty() || root.value("version").empty() || !root.find("steps"))
+                throw std::runtime_error("для сценария нужны id, version и steps");
+        } else if (QFileInfo(path_).dir().dirName() == QStringLiteral("profiles")) {
+            if (root.value("id").empty() || root.value("version").empty()
+                || !root.find("devices") || !root.find("routes"))
+                throw std::runtime_error("для профиля нужны id, version, routes и devices");
+        } else if (root.value("version").empty() || !root.find("bindings")
+                   || !root.find("parameter_groups")) {
+            throw std::runtime_error("для каталога нужны version, parameter_groups и bindings");
         }
-        status_->setText(QStringLiteral("YAML корректен; схема, идентификатор, версия и шаги присутствуют"));
+        status_->setText(QStringLiteral("YAML корректен; обязательные разделы присутствуют"));
         status_->setStyleSheet(QStringLiteral("color:#70d79b"));
     } catch (const std::exception& error) {
         status_->setText(QStringLiteral("Ошибка: %1").arg(QString::fromUtf8(error.what())));

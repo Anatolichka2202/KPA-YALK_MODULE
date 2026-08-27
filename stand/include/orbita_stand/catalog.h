@@ -30,6 +30,25 @@ struct CatalogBlockInstance {
     std::string serial;
 };
 
+// Конкретная привязка одного логического канала. Сценарий работает с
+// parameterGroup/channelIndex; источник и физический локатор берутся отсюда.
+struct CatalogParameterBinding {
+    std::string blockType;
+    std::string slotId;
+    std::string parameterGroup;
+    unsigned channelIndex = 0;
+    std::string source;
+    std::string locatorType;
+    std::string locator;
+    unsigned mask = 0xFFFF;
+    unsigned mode = 0;
+    // Семантический маршрут воздействия. Физический базовый канал этого
+    // маршрута назначается в профиле конкретного стенда.
+    std::string stimulusRoute;
+    unsigned stimulusOffset = 0;
+    bool confirmed = false;
+};
+
 struct StandCatalog {
     std::string version;
     std::string title;
@@ -42,5 +61,9 @@ struct StandCatalog {
 // Старые parameters/addresses не изменяются.
 StandCatalog importCatalogYaml(const std::string& yamlPath, const std::string& sqlitePath);
 StandCatalog loadCatalog(const std::string& sqlitePath);
+
+CatalogParameterBinding resolveCatalogParameterBinding(
+    const std::string& sqlitePath, const std::string& blockType,
+    const std::string& parameterGroup, unsigned channelIndex);
 
 } // namespace orbita::stand

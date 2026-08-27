@@ -290,6 +290,16 @@ void UbsiUdpAdapter::selectMode(std::uint8_t mode, bool single)
     }
     throw std::runtime_error("UBSI adapter returned an invalid mode acknowledgement");
 }
+void UbsiUdpAdapter::sendRawCommand(const std::vector<std::uint8_t>& bytes)
+{
+    if (bytes.empty()) throw std::invalid_argument("UBSI raw command must not be empty");
+    const QByteArray command(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+    QUdpSocket sender;
+    if (sender.writeDatagram(command, impl_->adapter, impl_->config.commandAndDataPort)
+        != command.size()) {
+        throw qtError("UBSI raw command send failed", sender.errorString());
+    }
+}
 std::vector<std::uint8_t> UbsiUdpAdapter::modeCommand(std::uint8_t mode, bool single)
 {
     return {0x44, static_cast<std::uint8_t>(0x01 | (single ? 0x02 : 0x00)), mode};

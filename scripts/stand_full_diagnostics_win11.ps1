@@ -15,8 +15,8 @@
 param(
     [string]$OutputDirectory = (Get-Location).Path,
     [string]$StandAddress = '192.168.0.50',
-    [string]$AdapterAddress = '192.168.0.101',
-    [string]$AdapterMac = '00-35-65-03-74-01',
+    [string]$AdapterAddress = '192.168.0.115',
+    [string]$AdapterMac = '00-35-65-03-74-06',
     [ValidateRange(1, 30)]
     [int]$PassiveListenSeconds = 3,
     [switch]$SkipPassiveUdpCapture,
@@ -182,7 +182,8 @@ Safety:
 Expected stand address: $StandAddress
 Known adapter firmware address: $AdapterAddress
 Known adapter firmware MAC: $AdapterMac
-Known adapter UDP ports: data/control 1001, acknowledgements 1101, raw bridge 999.
+Known firmware UDP ports: data/control 1001, acknowledgements 1101, raw bridge 999.
+Legacy KPA scenario also uses UDP 1113; it is captured passively as a separate protocol candidate.
 Run as administrator for the most complete driver, firewall and event-log data.
 Running as administrator: $isAdministrator
 "@
@@ -309,7 +310,7 @@ Save-Report '13_known_addresses.txt' {
     }
     '--- Known UDP port ownership ---'
     Get-NetUDPEndpoint -ErrorAction SilentlyContinue |
-        Where-Object { $_.LocalPort -in @(999, 1001, 1101) } |
+        Where-Object { $_.LocalPort -in @(999, 1001, 1101, 1113) } |
         Format-Table LocalAddress, LocalPort, OwningProcess -AutoSize
 }
 
@@ -321,6 +322,7 @@ Save-Report '14_passive_udp_capture.txt' {
         "Waiting up to $PassiveListenSeconds second(s) per port. No packet is transmitted."
         Receive-PassiveUdpPacket -Port 1001 -TimeoutSeconds $PassiveListenSeconds | Format-List
         Receive-PassiveUdpPacket -Port 1101 -TimeoutSeconds $PassiveListenSeconds | Format-List
+        Receive-PassiveUdpPacket -Port 1113 -TimeoutSeconds $PassiveListenSeconds | Format-List
     }
 }
 

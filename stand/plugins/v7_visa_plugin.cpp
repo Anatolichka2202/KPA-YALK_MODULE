@@ -20,6 +20,8 @@ orbita_plugin_status_v1 create(const char*, const char* text, void** output, orb
         value.readDelayMilliseconds = plugin::unsignedValue(config, "read_delay_ms", value.readDelayMilliseconds);
         if (config.count("voltage_command")) value.voltageCommand = config.at("voltage_command");
         if (config.count("current_command")) value.currentCommand = config.at("current_command");
+        if (config.count("ac_voltage_command")) value.acVoltageCommand = config.at("ac_voltage_command");
+        if (config.count("frequency_command")) value.frequencyCommand = config.at("frequency_command");
         auto instance = std::make_unique<Instance>();
         instance->meter = std::make_unique<V7VisaVoltmeter>(std::move(value));
         *output = instance.release();
@@ -33,20 +35,28 @@ orbita_plugin_status_v1 invoke(void* value, const char* capability, const char* 
     return plugin::guarded(response, [&] {
         auto& instance = *static_cast<Instance*>(value);
         if (!capability || (std::string(capability) != "measure.reference_voltage"
-            && std::string(capability) != "measure.dc_current")) throw std::invalid_argument("Unsupported capability");
+            && std::string(capability) != "measure.dc_current"
+            && std::string(capability) != "measure.reference_ac_voltage"
+            && std::string(capability) != "measure.reference_frequency")) throw std::invalid_argument("Unsupported capability");
         const std::string command = operation ? operation : "";
-        if (command != "probe" && command != "read_voltage" && command != "read_current") throw std::invalid_argument("Unsupported V7 operation");
+        if (command != "probe" && command != "read_voltage" && command != "read_current"
+            && command != "read_ac_voltage" && command != "read_frequency") {
+            throw std::invalid_argument("Unsupported V7 operation");
+        }
         std::ostringstream result;
-        result << std::setprecision(15) << "resource=" << instance.meter->resourceName()
-               << (command == "read_current" ? "\namperes=" : "\nvolts=")
-               << (command == "read_current" ? instance.meter->readCurrent() : instance.meter->readVoltage()) << "\n";
+        result << std::setprecision(15) << "resource=" << instance.meter->resourceName();
+        if (command == "read_current") result << "\namperes=" << instance.meter->readCurrent();
+        else if (command == "read_frequency") result << "\nhertz=" << instance.meter->readFrequency();
+        else if (command == "read_ac_voltage") result << "\nvolts=" << instance.meter->readAcVoltage();
+        else result << "\nvolts=" << instance.meter->readVoltage();
+        result << "\n";
         return result.str();
     });
 }
 void cancel(void*) {}
 void safeStop(void*) {}
 const orbita_equipment_api_v1 api{ORBITA_EQUIPMENT_ABI_V1, sizeof(orbita_equipment_api_v1),
-    "orbita.v7_visa", "Вольтметр В7-78/1", "measure.reference_voltage;measure.dc_current",
+    "orbita.v7_visa", "Вольтметр В7-78/1", "measure.reference_voltage;measure.dc_current;measure.reference_ac_voltage;measure.reference_frequency",
     create, destroy, invoke, cancel, safeStop};
 }
 extern "C" ORBITA_PLUGIN_EXPORT const orbita_equipment_api_v1* orbita_plugin_get_api_v1(void) { return &api; }

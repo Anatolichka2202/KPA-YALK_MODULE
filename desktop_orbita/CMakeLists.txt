@@ -114,6 +114,9 @@ add_custom_target(OrbitaRuntimeResources ALL
         $<TARGET_FILE:orbita_telemetry_probe>
         $<TARGET_FILE_DIR:OrbitaDesktop>
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        $<TARGET_FILE:orbita_ubsi_udp_probe>
+        $<TARGET_FILE_DIR:OrbitaDesktop>
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
         $<TARGET_FILE:visa_discover>
         $<TARGET_FILE_DIR:OrbitaDesktop>
     COMMENT "Updating OrbitaDesktop runtime database and address files"
@@ -122,7 +125,8 @@ add_custom_target(OrbitaRuntimeResources ALL
 if(WIN32)
     set_target_properties(OrbitaDesktop PROPERTIES WIN32_EXECUTABLE TRUE)
 endif()
-add_dependencies(OrbitaRuntimeResources OrbitaDesktop orbita_equipment_plugins orbita_equipment_probe orbita_telemetry_probe visa_discover)
+add_dependencies(OrbitaRuntimeResources OrbitaDesktop orbita_equipment_plugins
+    orbita_equipment_probe orbita_telemetry_probe orbita_ubsi_udp_probe visa_discover)
 
 if(BUILD_TESTING)
     add_executable(test_page_smoke_test

@@ -92,8 +92,7 @@ add_orbita_equipment_plugin(orbita_plugin_ubsi_udp plugins/ubsi_udp_plugin.cpp)
 add_orbita_equipment_plugin(orbita_plugin_isd_http plugins/isd_http_plugin.cpp)
 add_orbita_equipment_plugin(orbita_plugin_v7_visa plugins/v7_visa_plugin.cpp)
 add_orbita_equipment_plugin(orbita_plugin_rigol_generator plugins/rigol_generator_plugin.cpp)
-add_orbita_equipment_plugin(orbita_plugin_r4831 plugins/r4831_plugin.cpp)
-add_orbita_equipment_plugin(orbita_plugin_power_udp plugins/power_supply_plugin.cpp)
+add_orbita_equipment_plugin(orbita_plugin_akip_1160 plugins/power_supply_plugin.cpp)
 add_orbita_equipment_plugin(orbita_plugin_rigol_dho8xx plugins/rigol_dho8xx_plugin.cpp)
 
 add_custom_target(orbita_equipment_plugins ALL DEPENDS
@@ -101,8 +100,7 @@ add_custom_target(orbita_equipment_plugins ALL DEPENDS
     orbita_plugin_isd_http
     orbita_plugin_v7_visa
     orbita_plugin_rigol_generator
-    orbita_plugin_r4831
-    orbita_plugin_power_udp
+    orbita_plugin_akip_1160
     orbita_plugin_rigol_dho8xx)
 
 add_executable(catalog_import tools/catalog_import.cpp)
@@ -113,6 +111,9 @@ target_link_libraries(orbita_equipment_probe PRIVATE orbita_stand_runtime Qt6::C
 
 add_executable(orbita_telemetry_probe tools/orbita_telemetry_probe.cpp)
 target_link_libraries(orbita_telemetry_probe PRIVATE orbita)
+
+add_executable(orbita_ubsi_udp_probe tools/ubsi_udp_probe.cpp)
+target_link_libraries(orbita_ubsi_udp_probe PRIVATE orbita_stand_adapters)
 
 if(WIN32)
     add_executable(visa_discover tools/visa_discover.cpp)

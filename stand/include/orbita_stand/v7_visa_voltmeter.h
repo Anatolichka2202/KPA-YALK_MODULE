@@ -16,6 +16,8 @@ struct V7VisaConfig {
     unsigned readDelayMilliseconds = 45;
     std::string voltageCommand = "READ?";
     std::string currentCommand = "MEAS:CURR:DC?";
+    std::string acVoltageCommand = "MEAS:VOLT:AC?";
+    std::string frequencyCommand = "MEAS:FREQ?";
 };
 
 // Windows adapter for the V7-78/1. NI-VISA is loaded at runtime, so the
@@ -32,6 +34,8 @@ public:
 
     double readVoltage() override;
     double readCurrent();
+    double readAcVoltage();
+    double readFrequency();
     const std::string& resourceName() const;
 
 private:

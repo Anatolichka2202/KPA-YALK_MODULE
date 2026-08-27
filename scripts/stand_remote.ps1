@@ -3,9 +3,12 @@ param(
     [ValidateSet('Status', 'Shell', 'Upload', 'Download', 'Run', 'V7Probe', 'DeployOrbita')]
     [string]$Action = 'Status',
     [string]$UserName = 'Azerty',
-    # .50 is the wired interface used by the bench devices. SSH must use the
-    # Wi-Fi interface because both networks currently use 192.168.0.0/24.
-    [string]$StandAddress = '192.168.0.31',
+    # No default is intentional: the currently confirmed SSH address is .31,
+    # but it is assigned to Wi-Fi and may change. Supplying it explicitly and
+    # verifying the hostname prevents commands reaching another Windows PC.
+    [Parameter(Mandatory = $true)]
+    [string]$StandAddress,
+    [string]$ExpectedComputerName = 'DESKTOP-5EO9J5A',
     [string]$Path,
     [string]$Command
 )
@@ -36,6 +39,20 @@ function Invoke-Checked {
         throw "$Program exited with code $LASTEXITCODE"
     }
 }
+
+function Assert-StandIdentity {
+    $actual = & ssh.exe @sshCommon $target 'hostname'
+    if ($LASTEXITCODE -ne 0) {
+        throw "Cannot verify stand identity at $StandAddress"
+    }
+    $actualName = ($actual | Out-String).Trim()
+    if ($actualName -ne $ExpectedComputerName) {
+        throw "SSH target mismatch: expected $ExpectedComputerName, received $actualName"
+    }
+    Write-Host "Verified stand: $actualName ($StandAddress)"
+}
+
+Assert-StandIdentity
 
 switch ($Action) {
     'Status' {

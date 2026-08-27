@@ -252,14 +252,14 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
     addEquipment("V7", QStringLiteral("В7-78/1"), QStringLiteral("USB / NI-VISA"),
                  QStringLiteral("нажмите «Проверить оборудование»"));
     addEquipment("AKIP", QStringLiteral("Источник питания АКИП-1160/6"),
-                 QStringLiteral("USB по А.1; legacy UDP/4001"),
-                 QStringLiteral("UDP-плагин готов; активные команды требуют подтверждения профиля"));
+                 QStringLiteral("2 × COM/VISA: ипНИ и ипБИ"),
+                 QStringLiteral("назначьте оба VISA-ресурса; активные команды требуют подтверждения профиля"));
     addEquipment("RIGOL", QStringLiteral("Генератор Rigol DG-1022Z"), QStringLiteral("USB / VISA"),
                  QStringLiteral("VISA/SCPI-плагин: нажмите «Проверить оборудование»"));
     addEquipment("SCOPE", QStringLiteral("Осциллограф (DHO8xx или совместимый)"), QStringLiteral("USB / VISA"),
                  QStringLiteral("роль WaveformAcquirer; конкретная модель не обязательна"));
-    addEquipment("R4831", QStringLiteral("Магазин сопротивлений Р4831"), QStringLiteral("USB / COM"),
-                 QStringLiteral("COM-плагин: проверить, является ли FTDI COM7 магазином"));
+    addEquipment("R4831", QStringLiteral("Магазин сопротивлений Р4831 (ручной)"), QStringLiteral("нет"),
+                 QStringLiteral("оператор выставляет каждую точку и вводит фактическое значение"), true);
     addEquipment("THERMO_SIM", QStringLiteral("Имитатор датчика «термопара»"),
                  QStringLiteral("сигнальная линия через ИСД"),
                  QStringLiteral("установите и подключите имитатор по схеме"), true);

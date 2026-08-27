@@ -24,5 +24,7 @@ private:
     QTextEdit* editor_ = nullptr;
     QLabel* status_ = nullptr;
     QPushButton* saveButton_ = nullptr;
+    QPushButton* draftButton_ = nullptr;
     bool published_ = false;
+    bool scenario_ = false;
 };

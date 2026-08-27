@@ -57,12 +57,24 @@ orbita_plugin_status_v1 invoke(void* value, const char* capability, const char* 
             return plugin::unsignedValue(args, "channel");
         };
         if (command == "reset") instance.router->reset();
-        else if (command == "switch") instance.router->setSwitch(
-            plugin::unsignedValue(args, "type", plugin::unsignedValue(instance.config, "switch_type", 2)),
-            resolvedChannel(), plugin::booleanValue(args, "enabled"));
-        else if (command == "analog") instance.router->setAnalog(
-            resolvedChannel(), plugin::unsignedValue(args, "value"),
-            plugin::booleanValue(args, "enabled"));
+        else if (command == "switch") {
+            unsigned type = plugin::unsignedValue(args, "type",
+                plugin::unsignedValue(instance.config, "switch_type", 2));
+            if (args.count("route")) type = plugin::unsignedValue(instance.config,
+                "route." + args.at("route") + ".type", type);
+            instance.router->setSwitch(type, resolvedChannel(), plugin::booleanValue(args, "enabled"));
+        } else if (command == "analog") {
+            const unsigned value = plugin::unsignedValue(args, "value");
+            if (args.count("route")) {
+                const std::string prefix = "route." + args.at("route") + ".";
+                const unsigned minimum = plugin::unsignedValue(instance.config, prefix + "min", 0);
+                const unsigned maximum = plugin::unsignedValue(instance.config, prefix + "max", 4095);
+                if (value < minimum || value > maximum) throw std::invalid_argument(
+                    "Значение ИСД вне разрешённого диапазона маршрута " + args.at("route"));
+            }
+            instance.router->setAnalog(resolvedChannel(), value,
+                plugin::booleanValue(args, "enabled"));
+        }
         else throw std::invalid_argument("Unsupported ISD operation: " + command);
         return std::string("status=ok\n");
     });
@@ -72,7 +84,8 @@ void safeStop(void* value)
 {
     if (!value) return;
     auto& instance = *static_cast<Instance*>(value);
-    try { if (plugin::booleanValue(instance.config, "profile.active_outputs_confirmed")) instance.router->reset(); }
+    try { if (plugin::booleanValue(instance.config, "profile.active_outputs_confirmed")
+        || plugin::booleanValue(instance.config, "device.active_commands_confirmed")) instance.router->reset(); }
     catch (...) {}
 }
 const orbita_equipment_api_v1 api{ORBITA_EQUIPMENT_ABI_V1, sizeof(orbita_equipment_api_v1),

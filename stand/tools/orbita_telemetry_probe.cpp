@@ -42,11 +42,11 @@ std::vector<orbita::ChannelSpec> loadChannels(const char* path)
     return result;
 }
 
-void printSnapshot(const orbita::Snapshot& snapshot)
+std::size_t printSnapshot(const char* kind, const orbita::Snapshot& snapshot)
 {
     std::size_t valid = 0;
     for (const auto& value : snapshot.values) if (value.valid) ++valid;
-    std::cout << "SNAPSHOT mtv=" << snapshot.mtv_seconds
+    std::cout << kind << " mtv=" << snapshot.mtv_seconds
               << " frames=" << snapshot.stats.frames_processed
               << " phrase_error_percent=" << snapshot.stats.phrase_error_percent
               << " group_error_percent=" << snapshot.stats.group_error_percent
@@ -55,6 +55,7 @@ void printSnapshot(const orbita::Snapshot& snapshot)
     for (const auto& value : snapshot.values) {
         if (value.valid) std::cout << "VALUE " << value.address << '=' << value.value << '\n';
     }
+    return valid;
 }
 
 } // namespace
@@ -79,6 +80,7 @@ int main(int argc, char** argv)
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(seconds);
         auto nextSnapshot = std::chrono::steady_clock::now();
         bool received = false;
+        std::size_t lastValid = 0;
         while (std::chrono::steady_clock::now() < deadline) {
             const auto now = std::chrono::steady_clock::now();
             if (now < nextSnapshot) {
@@ -86,13 +88,18 @@ int main(int argc, char** argv)
                 continue;
             }
             if (source.waitForData(std::chrono::milliseconds(intervalMilliseconds))) {
-                printSnapshot(source.getSnapshot());
+                lastValid = printSnapshot("SNAPSHOT", source.getSnapshot());
                 received = true;
                 nextSnapshot = std::chrono::steady_clock::now()
                     + std::chrono::milliseconds(intervalMilliseconds);
             }
         }
+        const auto finalSnapshot = source.getSnapshot();
         source.stop();
+        lastValid = printSnapshot("FINAL", finalSnapshot);
+        std::cout << "RESULT received=" << (received ? "true" : "false")
+                  << " valid=" << lastValid << '/' << channels.size()
+                  << " frames=" << finalSnapshot.stats.frames_processed << '\n';
         return received ? 0 : 3;
     } catch (const std::exception& error) {
         std::cerr << "ERROR " << error.what() << '\n';
