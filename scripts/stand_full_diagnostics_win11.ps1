@@ -7,7 +7,8 @@
 .DESCRIPTION
     Collects Windows, network, driver, PnP, VISA, LCard/E20-10 and SSH data.
     It pings the known Ethernet/RS-485 adapter and can passively listen for one
-    UDP datagram. It never sends UDP commands and never opens COM/VISA devices.
+    UDP datagram. If a deployed Orbita package is supplied, its probe utility
+    performs read-only plugin checks (*IDN?, GETD or the device equivalent).
 ##>
 
 [CmdletBinding()]
@@ -18,7 +19,8 @@ param(
     [string]$AdapterMac = '00-35-65-03-74-01',
     [ValidateRange(1, 30)]
     [int]$PassiveListenSeconds = 3,
-    [switch]$SkipPassiveUdpCapture
+    [switch]$SkipPassiveUdpCapture,
+    [string]$OrbitaDirectory = ''
 )
 
 Set-StrictMode -Version 2.0
@@ -172,7 +174,8 @@ This archive was created by stand_full_diagnostics_win11.ps1.
 
 Safety:
 - no UDP control command was sent to the Ethernet/RS-485 adapter;
-- no COM port, VISA resource, ADC or laboratory instrument was opened;
+- the optional equipment probe only sends documented identification/state queries;
+- no source output, route, generator, resistance or operating mode was changed;
 - passive UDP capture, when enabled, only waited for an already transmitted packet;
 - the script did not change drivers, firewall, network settings or services.
 
@@ -475,6 +478,38 @@ Save-Report '30_visa.txt' {
             }
         }
     ) | Format-List
+}
+
+Save-Report '34_orbita_plugins_and_safe_probes.txt' {
+    if ([string]::IsNullOrWhiteSpace($OrbitaDirectory)) {
+        'SKIPPED: pass -OrbitaDirectory C:\Orbita\releases\<version> to run plugin probes.'
+        return
+    }
+    $orbitaRoot = [System.IO.Path]::GetFullPath($OrbitaDirectory)
+    $probe = Join-Path $orbitaRoot 'orbita_equipment_probe.exe'
+    $profile = Join-Path $orbitaRoot 'profiles\stand_ktma.yaml'
+    $plugins = Join-Path $orbitaRoot 'plugins'
+    "Orbita directory: $orbitaRoot"
+    "Probe: $(Test-Path -LiteralPath $probe)"
+    "Profile: $(Test-Path -LiteralPath $profile)"
+    "Plugins: $(Test-Path -LiteralPath $plugins)"
+    if (-not (Test-Path -LiteralPath $probe)) { return }
+    if (-not (Test-Path -LiteralPath $profile)) { return }
+    if (-not (Test-Path -LiteralPath $plugins)) { return }
+
+    '--- Plugin DLL versions and hashes ---'
+    Get-ChildItem -LiteralPath $plugins -Filter '*.dll' -File -ErrorAction SilentlyContinue |
+        ForEach-Object {
+            [pscustomobject]@{
+                Name = $_.Name
+                Version = $_.VersionInfo.FileVersion
+                SHA256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash
+            }
+        } | Format-Table -AutoSize
+
+    '--- Safe equipment probes ---'
+    & $probe $profile $plugins 2>&1
+    "Exit code: $LASTEXITCODE"
 }
 
 Save-Report '31_installed_software.txt' {

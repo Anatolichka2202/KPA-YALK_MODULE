@@ -3,7 +3,9 @@ param(
     [ValidateSet('Status', 'Shell', 'Upload', 'Download', 'Run', 'V7Probe', 'DeployOrbita')]
     [string]$Action = 'Status',
     [string]$UserName = 'Azerty',
-    [string]$StandAddress = '192.168.0.50',
+    # .50 is the wired interface used by the bench devices. SSH must use the
+    # Wi-Fi interface because both networks currently use 192.168.0.0/24.
+    [string]$StandAddress = '192.168.0.31',
     [string]$Path,
     [string]$Command
 )
@@ -11,7 +13,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $keyPath = Join-Path $env:USERPROFILE '.ssh\id_ed25519_orbita_stand'
 if (-not (Test-Path -LiteralPath $keyPath)) {
-    throw "Не найден ключ $keyPath"
+    throw "SSH key not found: $keyPath"
 }
 
 $target = "$UserName@$StandAddress"
@@ -31,7 +33,7 @@ function Invoke-Checked {
 
     & $Program @Arguments
     if ($LASTEXITCODE -ne 0) {
-        throw "$Program завершился с кодом $LASTEXITCODE"
+        throw "$Program exited with code $LASTEXITCODE"
     }
 }
 
@@ -45,23 +47,30 @@ switch ($Action) {
         Invoke-Checked -Program 'ssh.exe' -Arguments ($sshCommon + @('-t', $target, 'powershell.exe -NoProfile'))
     }
     'Upload' {
-        if (-not $Path) { throw 'Для Upload укажите -Path' }
+        if (-not $Path) { throw 'Upload requires -Path' }
         $resolved = (Resolve-Path -LiteralPath $Path).Path
         Invoke-Checked -Program 'scp.exe' -Arguments (
             $sshCommon + @('-r', $resolved, "${target}:C:/Orbita/incoming/")
         )
     }
     'Download' {
-        if (-not $Path) { throw 'Для Download укажите локальный -Path' }
+        if (-not $Path) { throw 'Download requires a local -Path' }
         New-Item -ItemType Directory -Force -Path $Path | Out-Null
         Invoke-Checked -Program 'scp.exe' -Arguments (
             $sshCommon + @('-r', "${target}:C:/Orbita/records/.", $Path)
         )
     }
     'Run' {
-        if (-not $Command) { throw 'Для Run укажите -Command' }
+        if (-not $Command) { throw 'Run requires -Command' }
+        # Windows sshd starts the command through cmd.exe. Passing a script
+        # after -Command loses pipes, braces and non-ASCII text there; the
+        # encoded form is parsed only by the target PowerShell process.
+        $encodedCommand = [Convert]::ToBase64String(
+            [System.Text.Encoding]::Unicode.GetBytes($Command))
         Invoke-Checked -Program 'ssh.exe' -Arguments (
-            $sshCommon + @($target, "powershell.exe -NoProfile -Command `"$Command`"")
+            # The bypass applies only to this remote command and does not
+            # change the stand computer execution policy.
+            $sshCommon + @($target, "powershell.exe -NoProfile -ExecutionPolicy Bypass -EncodedCommand $encodedCommand")
         )
     }
     'V7Probe' {
@@ -76,14 +85,28 @@ switch ($Action) {
         )
     }
     'DeployOrbita' {
-        $archive = Join-Path $PSScriptRoot '..\build\deploy\orbita_desktop_ubsi_20260824_v2.zip'
+        if ($Path) {
+            $archive = $Path
+        } else {
+            $archive = Get-ChildItem (Join-Path $PSScriptRoot '..\build\deploy') `
+                -Filter 'orbita_desktop_ubsi_priority_*.zip' -File |
+                Sort-Object LastWriteTime -Descending |
+                Select-Object -First 1 -ExpandProperty FullName
+        }
+        if (-not $archive) {
+            throw 'No orbita_desktop_ubsi_priority_*.zip release found; run package_stand_win11.ps1 first'
+        }
         $resolvedArchive = (Resolve-Path -LiteralPath $archive).Path
+        $archiveName = Split-Path -Leaf $resolvedArchive
+        $releaseName = [System.IO.Path]::GetFileNameWithoutExtension($archiveName)
         Invoke-Checked -Program 'scp.exe' -Arguments (
-            $sshCommon + @($resolvedArchive, "${target}:C:/Orbita/incoming/orbita_desktop_ubsi_v2.zip")
+            $sshCommon + @($resolvedArchive, "${target}:C:/Orbita/incoming/$archiveName")
         )
-        $remoteCommand = "`$destination = 'C:\Orbita\releases\ubsi-ui-20260824-v2'; New-Item -ItemType Directory -Force -Path `$destination | Out-Null; Expand-Archive -LiteralPath 'C:\Orbita\incoming\orbita_desktop_ubsi_v2.zip' -DestinationPath `$destination -Force; Get-Item -LiteralPath (`$destination + '\OrbitaDesktop.exe') | Select-Object FullName,Length,LastWriteTime"
+        $remoteCommand = "`$destination = 'C:\Orbita\releases\$releaseName'; if (Test-Path -LiteralPath `$destination) { throw 'Release already exists: ' + `$destination }; Expand-Archive -LiteralPath 'C:\Orbita\incoming\$archiveName' -DestinationPath 'C:\Orbita\releases'; Get-Item -LiteralPath (`$destination + '\OrbitaDesktop.exe') | Select-Object FullName,Length,LastWriteTime"
+        $encodedCommand = [Convert]::ToBase64String(
+            [System.Text.Encoding]::Unicode.GetBytes($remoteCommand))
         Invoke-Checked -Program 'ssh.exe' -Arguments (
-            $sshCommon + @($target, "powershell.exe -NoProfile -Command `"$remoteCommand`"")
+            $sshCommon + @($target, "powershell.exe -NoProfile -EncodedCommand $encodedCommand")
         )
     }
 }

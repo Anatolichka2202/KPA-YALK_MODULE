@@ -16,17 +16,24 @@
 #include <QStatusBar>
 #include <QComboBox>
 #include <QDir>
+#include <QFutureWatcher>
+#include <QHash>
+
+#include "orbita_stand/config.h"
+#include "orbita_stand/equipment_runtime.h"
+#include "orbita_stand/run_store.h"
 
 #include "orbita.h"
 #include "metadata_service.h"
 #include "tolerance_resolver.h"
-#include "scenario_wizard.h"
 #include "main_page.h"
 #include "detail_view.h"
 #include "parameter_browser.h"
 #include "config_manager_widget.h"
 #include "watch_set_widget.h"
 #include "test_page.h"
+
+class QMenu;
 
 class MainWindow : public QMainWindow
 {
@@ -70,6 +77,11 @@ private:
     QString nextRecordingPath() const;
     void log(const QString& msg);
     void updateStatusBar(const orbita::Snapshot& snap);
+    void initializeStandRuntime();
+    void setEngineerMode(bool enabled);
+    std::string invokeOrbitaParameterSource(
+        const std::string& operation,
+        const std::map<std::string, std::string>& arguments);
 
     // Вспомогательные методы
     static int extractChannelNumber(const std::string& address);
@@ -138,15 +150,30 @@ private:
 
     // Быстрый выбор конфига в тулбаре
     QComboBox* configCombo_ = nullptr;
+    QComboBox* accessModeCombo_ = nullptr;
 
     // Сценарий проверки
     QAction* actScenario_ = nullptr;
+    QMenu* toolsMenu_ = nullptr;
 
     bool e20Available_ = false;
+
+    std::unique_ptr<orbita::stand::EquipmentPluginManager> equipmentPlugins_;
+    std::unique_ptr<orbita::stand::EquipmentRegistry> equipmentRegistry_;
+    std::vector<std::shared_ptr<orbita::stand::EquipmentDevice>> equipmentDevices_;
+    std::unique_ptr<orbita::stand::ScenarioEngine> scenarioEngine_;
+    std::unique_ptr<orbita::stand::RunStore> runStore_;
+    orbita::stand::StandProfile standProfile_;
+    QHash<QString, orbita::stand::ScenarioDefinition> scenarios_;
+    QFutureWatcher<orbita::stand::ScenarioRunResult>* scenarioWatcher_ = nullptr;
+    bool standRuntimeReady_ = false;
 
 private slots:
     void onOpenScenario();
     void onCheckTestEquipment();
+    void onRunScenario(const QString& scenarioCode, const QString& objectSerial,
+                       bool allowPartial);
+    void onStopScenario();
 };
 
 #endif // MAINWINDOW_H

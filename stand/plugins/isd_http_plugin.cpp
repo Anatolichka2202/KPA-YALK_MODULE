@@ -1,0 +1,82 @@
+#include "plugin_support.h"
+#include "orbita_stand/equipment_adapters.h"
+
+#include <memory>
+#include <sstream>
+
+namespace {
+using namespace orbita::stand;
+
+std::vector<unsigned> channels(const std::string& value)
+{
+    std::vector<unsigned> result;
+    std::stringstream stream(value);
+    std::string token;
+    while (std::getline(stream, token, ',')) if (!token.empty()) result.push_back(std::stoul(token));
+    return result;
+}
+
+struct Instance {
+    std::map<std::string, std::string> config;
+    std::unique_ptr<IsdHttpRouter> router;
+};
+
+orbita_plugin_status_v1 create(const char*, const char* text, void** output, orbita_plugin_buffer_v1* diagnostic)
+{
+    return plugin::guarded(diagnostic, [&] {
+        if (!output) throw std::invalid_argument("Instance output pointer is required");
+        auto instance = std::make_unique<Instance>();
+        instance->config = plugin::arguments(text);
+        instance->router = std::make_unique<IsdHttpRouter>(IsdHttpConfig{
+            plugin::required(instance->config, "host"),
+            static_cast<std::uint16_t>(plugin::unsignedValue(instance->config, "port", 80)),
+            plugin::unsignedValue(instance->config, "timeout_ms", 1500),
+            plugin::unsignedValue(instance->config, "switch_type", 2),
+            channels(instance->config["reset_channels"])});
+        *output = instance.release();
+        return std::string("ISD HTTP router created");
+    });
+}
+void destroy(void* value) { delete static_cast<Instance*>(value); }
+orbita_plugin_status_v1 invoke(void* value, const char* capability, const char* operation,
+                              const char* request, orbita_plugin_buffer_v1* response)
+{
+    return plugin::guarded(response, [&] {
+        auto& instance = *static_cast<Instance*>(value);
+        if (!capability || std::string(capability) != "stand.switch_matrix") throw std::invalid_argument("Unsupported capability");
+        const std::string command = operation ? operation : "";
+        const auto args = plugin::arguments(request);
+        if (command == "probe") return instance.router->probe();
+        plugin::requireActiveOutputs(instance.config);
+        const auto resolvedChannel = [&]() {
+            if (args.count("route")) {
+                const std::string key = "route." + args.at("route");
+                if (!instance.config.count(key)) throw std::invalid_argument("Не назначен маршрут ИСД " + args.at("route"));
+                return plugin::unsignedValue(instance.config, key) + plugin::unsignedValue(args, "offset", 0);
+            }
+            return plugin::unsignedValue(args, "channel");
+        };
+        if (command == "reset") instance.router->reset();
+        else if (command == "switch") instance.router->setSwitch(
+            plugin::unsignedValue(args, "type", plugin::unsignedValue(instance.config, "switch_type", 2)),
+            resolvedChannel(), plugin::booleanValue(args, "enabled"));
+        else if (command == "analog") instance.router->setAnalog(
+            resolvedChannel(), plugin::unsignedValue(args, "value"),
+            plugin::booleanValue(args, "enabled"));
+        else throw std::invalid_argument("Unsupported ISD operation: " + command);
+        return std::string("status=ok\n");
+    });
+}
+void cancel(void*) {}
+void safeStop(void* value)
+{
+    if (!value) return;
+    auto& instance = *static_cast<Instance*>(value);
+    try { if (plugin::booleanValue(instance.config, "profile.active_outputs_confirmed")) instance.router->reset(); }
+    catch (...) {}
+}
+const orbita_equipment_api_v1 api{ORBITA_EQUIPMENT_ABI_V1, sizeof(orbita_equipment_api_v1),
+    "orbita.isd_http", "Имитатор сигналов датчиков", "stand.switch_matrix",
+    create, destroy, invoke, cancel, safeStop};
+}
+extern "C" ORBITA_PLUGIN_EXPORT const orbita_equipment_api_v1* orbita_plugin_get_api_v1(void) { return &api; }

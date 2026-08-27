@@ -40,13 +40,13 @@ void validateConfig(const YalkAnalogProcedureConfig& config)
 
 } // namespace
 
-YalkAnalogProcedure::YalkAnalogProcedure(YalkAnalogProcedureConfig config)
+CheckYalkAnalogChannel::CheckYalkAnalogChannel(YalkAnalogProcedureConfig config)
     : config_(std::move(config))
 {
     validateConfig(config_);
 }
 
-double YalkAnalogProcedure::codeToVolts(
+double CheckYalkAnalogChannel::codeToVolts(
     double rawCode,
     const YalkCalibration& calibration,
     double fullScaleVolts)
@@ -65,7 +65,7 @@ double YalkAnalogProcedure::codeToVolts(
         / (calibration.fullScaleCode - calibration.zeroCode);
 }
 
-YalkProcedureResult YalkAnalogProcedure::execute(
+YalkProcedureResult CheckYalkAnalogChannel::execute(
     unsigned channel,
     IIsdRouter& isd,
     IVoltageSource& source,

@@ -1,0 +1,134 @@
+schema: 1
+version: 2026.08.26-2
+title: Каталог объектов и логических параметров стенда КТМА
+
+cell_types:
+  - id: YP_P
+    name: ЯП-П
+  - id: YTP
+    name: ЯТП
+  - id: YVP_8
+    name: ЯВП-8
+  - id: YALK_96
+    name: ЯЛК-96
+  - id: YP_A
+    name: ЯП-А
+  - id: YGR
+    name: ЯГР
+  - id: YSM
+    name: ЯСМ
+  - id: YFK
+    name: ЯФК
+
+block_types:
+  - id: UBSI_468157_002
+    name: УБСИ
+    designation: ЛВРМ.468157.002
+    slots:
+      - id: yp_p
+        cell_type: YP_P
+        order: 1
+      - id: ytp
+        cell_type: YTP
+        order: 2
+      - id: yvp_8
+        cell_type: YVP_8
+        order: 3
+      - id: yalk_96
+        cell_type: YALK_96
+        order: 4
+  - id: BSI_468157_003
+    name: БСИ
+    designation: ЛВРМ.468157.003
+    slots:
+      - id: yp_a
+        cell_type: YP_A
+        order: 1
+      - id: ygr
+        cell_type: YGR
+        order: 2
+      - id: ysm
+        cell_type: YSM
+        order: 3
+      - id: ytp
+        cell_type: YTP
+        order: 4
+      - id: yvp_8
+        cell_type: YVP_8
+        order: 5
+      - id: yalk_96
+        cell_type: YALK_96
+        order: 6
+      - id: yfk
+        cell_type: YFK
+        order: 7
+
+parameter_groups:
+  - id: yalk_analog
+    name: Потенциометрические каналы ЯЛК
+    cell_type: YALK_96
+    category: аналоговые
+    unit: В
+    count: 60
+  - id: yalk_contacts
+    name: Контактные каналы ЯЛК
+    cell_type: YALK_96
+    category: контактные
+    unit: лог.
+    count: 30
+  - id: yalk_calibration_zero
+    name: Калибровочный ноль ЯЛК
+    cell_type: YALK_96
+    category: калибровочные
+    unit: код
+    count: 1
+  - id: yalk_calibration_full
+    name: Калибровочная шкала 6,2 В ЯЛК
+    cell_type: YALK_96
+    category: калибровочные
+    unit: код
+    count: 1
+  - id: ytp_temperature
+    name: Каналы термосопротивления ЯТП
+    cell_type: YTP
+    category: температурные
+    unit: Ом
+    count: 30
+  - id: yvp_fast
+    name: Быстроменяющиеся каналы ЯВП
+    cell_type: YVP_8
+    category: пьезоэлектрические
+    unit: В
+    count: 8
+
+bindings:
+  - block_type: UBSI_468157_002
+    slot: yalk_96
+    parameter_group: yalk_analog
+    source: ubsi.parameter_source
+    address_key: parameter.yalk_analog.word_base
+  - block_type: UBSI_468157_002
+    slot: yalk_96
+    parameter_group: yalk_contacts
+    source: ubsi.parameter_source
+    address_key: parameter.yalk_contacts.word_base
+  - block_type: UBSI_468157_002
+    slot: ytp
+    parameter_group: ytp_temperature
+    source: ubsi.parameter_source
+    address_key: parameter.ytp_temperature.word_base
+  - block_type: UBSI_468157_002
+    slot: yvp_8
+    parameter_group: yvp_fast
+    source: ubsi.parameter_source
+    address_key: parameter.yvp_fast.word_base
+
+instances:
+  - id: ubsi-7-current
+    block_type: UBSI_468157_002
+    name: УБСИ № 7
+    serial: ""
+  - id: bsi-current
+    block_type: BSI_468157_003
+    name: БСИ на стенде
+    serial: ""

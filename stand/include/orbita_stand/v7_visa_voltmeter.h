@@ -14,6 +14,8 @@ struct V7VisaConfig {
     std::string fallbackResourceExpression = "USB[0-9]*::5710::3501::?*INSTR";
     unsigned timeoutMilliseconds = 2000;
     unsigned readDelayMilliseconds = 45;
+    std::string voltageCommand = "READ?";
+    std::string currentCommand = "MEAS:CURR:DC?";
 };
 
 // Windows adapter for the V7-78/1. NI-VISA is loaded at runtime, so the
@@ -29,6 +31,7 @@ public:
     V7VisaVoltmeter& operator=(V7VisaVoltmeter&&) noexcept;
 
     double readVoltage() override;
+    double readCurrent();
     const std::string& resourceName() const;
 
 private:

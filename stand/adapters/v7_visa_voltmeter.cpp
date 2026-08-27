@@ -12,9 +12,13 @@ struct V7VisaVoltmeter::Impl {
         : instrument({{std::move(config.resourceExpression),
                        std::move(config.fallbackResourceExpression)},
                       config.timeoutMilliseconds}),
-          readDelayMilliseconds(config.readDelayMilliseconds) {}
+          readDelayMilliseconds(config.readDelayMilliseconds),
+          voltageCommand(std::move(config.voltageCommand)),
+          currentCommand(std::move(config.currentCommand)) {}
     VisaInstrument instrument;
     unsigned readDelayMilliseconds;
+    std::string voltageCommand;
+    std::string currentCommand;
 };
 
 V7VisaVoltmeter::V7VisaVoltmeter(V7VisaConfig config)
@@ -25,11 +29,24 @@ V7VisaVoltmeter& V7VisaVoltmeter::operator=(V7VisaVoltmeter&&) noexcept = defaul
 
 double V7VisaVoltmeter::readVoltage()
 {
-    const std::string response = impl_->instrument.query("READ?", impl_->readDelayMilliseconds);
+    const std::string response = impl_->instrument.query(
+        impl_->voltageCommand, impl_->readDelayMilliseconds);
     std::size_t consumed = 0;
     const double value = std::stod(response, &consumed);
     if (!consumed || !std::isfinite(value)) {
         throw std::runtime_error("V7-78/1 returned an invalid numeric reading");
+    }
+    return value;
+}
+
+double V7VisaVoltmeter::readCurrent()
+{
+    const std::string response = impl_->instrument.query(
+        impl_->currentCommand, impl_->readDelayMilliseconds);
+    std::size_t consumed = 0;
+    const double value = std::stod(response, &consumed);
+    if (!consumed || !std::isfinite(value)) {
+        throw std::runtime_error("V7-78/1 returned an invalid current reading");
     }
     return value;
 }

@@ -129,11 +129,18 @@ struct VisaInstrument::Impl {
     {
         write(command);
         std::this_thread::sleep_for(std::chrono::milliseconds(delayMilliseconds));
-        unsigned char buffer[1024]{};
+        const auto bytes = readRaw(1024);
+        return {reinterpret_cast<const char*>(bytes.data()), bytes.size()};
+    }
+    std::vector<std::uint8_t> readRaw(std::size_t maximumBytes)
+    {
+        if (!maximumBytes) throw std::invalid_argument("VISA read buffer must not be empty");
+        std::vector<std::uint8_t> buffer(maximumBytes);
         ViUInt32 received = 0;
-        requireSuccess(viRead(instrument, buffer, sizeof(buffer) - 1, &received), "viRead");
+        requireSuccess(viRead(instrument, buffer.data(), static_cast<ViUInt32>(buffer.size()), &received), "viRead");
         if (!received) throw std::runtime_error("VISA instrument returned an empty response");
-        return {reinterpret_cast<const char*>(buffer), received};
+        buffer.resize(received);
+        return buffer;
     }
 #endif
 };
@@ -150,11 +157,29 @@ void VisaInstrument::write(const std::string& command) {
     (void)command; throw std::runtime_error("VISA adapter is available only on Windows");
 #endif
 }
+std::vector<std::uint8_t> VisaInstrument::readRaw(std::size_t maximumBytes) {
+#ifdef _WIN32
+    return impl_->readRaw(maximumBytes);
+#else
+    (void)maximumBytes; throw std::runtime_error("VISA adapter is available only on Windows");
+#endif
+}
 std::string VisaInstrument::query(const std::string& command, unsigned delayMilliseconds) {
 #ifdef _WIN32
     return impl_->query(command, delayMilliseconds);
 #else
     (void)command; (void)delayMilliseconds; throw std::runtime_error("VISA adapter is available only on Windows");
+#endif
+}
+std::vector<std::uint8_t> VisaInstrument::queryRaw(
+    const std::string& command, std::size_t maximumBytes, unsigned delayMilliseconds) {
+#ifdef _WIN32
+    impl_->write(command);
+    std::this_thread::sleep_for(std::chrono::milliseconds(delayMilliseconds));
+    return impl_->readRaw(maximumBytes);
+#else
+    (void)command; (void)maximumBytes; (void)delayMilliseconds;
+    throw std::runtime_error("VISA adapter is available only on Windows");
 #endif
 }
 const std::string& VisaInstrument::resourceName() const { return impl_->resource; }

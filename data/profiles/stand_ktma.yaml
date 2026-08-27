@@ -1,0 +1,95 @@
+schema: 1
+id: ktma-main
+version: 2026.08.26-2
+title: Основной стенд КТМА, Windows 11
+
+# Пока карта кабелей и активные команды не подтверждены на самом стенде,
+# плагины разрешают только безопасную диагностику.
+active_outputs_confirmed: false
+
+routes:
+  sensor_load_350ma: TODO_CONFIRM
+  sensor_load_450ma: TODO_CONFIRM
+  yalk_analog: TODO_CONFIRM
+  yalk_contacts: TODO_CONFIRM
+  yalk_open: TODO_CONFIRM
+  yalk_overload_positive: 96
+  yalk_overload_negative: 95
+  yvp_gain: TODO_CONFIRM
+
+devices:
+  - id: ubsi-adapter
+    plugin: orbita.ubsi_udp
+    bind:
+      - ubsi.parameter_source
+    config:
+      # .101 подтверждён как ИСД, а не адаптер. .115 — лишь кандидат:
+      # его MAC совпадает с серией прошивки, но UDP-обмен ещё не записан.
+      host: TODO_CONFIRM
+      candidate_host: 192.168.0.115
+      candidate_mac: 00-35-65-03-74-06
+      local_address: 192.168.0.50
+      data_port: 1001
+      ack_port: 1101
+      timeout_ms: 800
+      parameter.yalk_analog.word_base: TODO_CONFIRM
+      parameter.yalk_contacts.word_base: TODO_CONFIRM
+      parameter.yalk_contacts.mask: 1
+      parameter.yalk_calibration_zero.word_base: TODO_CONFIRM
+      parameter.yalk_calibration_full.word_base: TODO_CONFIRM
+      parameter.ytp_temperature.word_base: TODO_CONFIRM
+      parameter.yvp_fast.word_base: TODO_CONFIRM
+  - id: isd
+    plugin: orbita.isd_http
+    bind:
+      - stand.switch_matrix
+    config:
+      # Подтверждено безопасным HTTP GET 26.08.2026: ответ имеет формат
+      # референсной Delphi-программы type=1num=<N>val=<CODE>work=<0|1>.
+      host: 192.168.0.101
+      port: 80
+      timeout_ms: 1500
+      switch_type: 2
+  - id: v7-reference
+    plugin: orbita.v7_visa
+    bind:
+      - measure.reference_voltage
+      - measure.dc_current
+    config:
+      resource: USB[0-9]*::0x164E::0x0DAD::?*INSTR
+      fallback_resource: USB[0-9]*::5710::3501::?*INSTR
+      timeout_ms: 2000
+      voltage_command: READ?
+      current_command: MEAS:CURR:DC?
+  - id: dc-supply
+    plugin: orbita.power_udp
+    bind:
+      - power.dc_supply
+    config:
+      host: 192.168.0.221
+      command_port: 4001
+      reply_port: 6008
+      timeout_ms: 1500
+      allow_legacy_commands: false
+  - id: generator
+    plugin: orbita.rigol_generator
+    bind:
+      - signal.generator
+    config:
+      timeout_ms: 2000
+  - id: resistance-store
+    plugin: orbita.r4831
+    bind:
+      - signal.resistance
+    config:
+      port: COM7
+      baud: 9600
+      timeout_ms: 1000
+      decimal_comma: false
+  - id: oscilloscope
+    plugin: orbita.rigol_dho8xx
+    bind:
+      - measure.waveform
+    config:
+      resource: USB[0-9]*::0x1AB1::?*::?*INSTR
+      timeout_ms: 4000

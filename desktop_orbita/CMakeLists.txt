@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)   # без этого resources.qrc (styles.qss) не попадает в бинарник → тема не грузится
 
-find_package(Qt6 REQUIRED COMPONENTS Core Widgets PrintSupport Sql Svg SerialPort)
+find_package(Qt6 REQUIRED COMPONENTS Core Widgets PrintSupport Sql Svg SerialPort Concurrent)
 
 add_executable(OrbitaDesktop
     main.cpp
@@ -41,10 +41,7 @@ add_executable(OrbitaDesktop
     readout_widget.h readout_widget.cpp
     channel_status.h
     plot_theme.h
-    scenario_model.h
-    scenario_io.h scenario_io.cpp
-    scenario_wizard.h scenario_wizard.cpp
-    channel_picker_dialog.h channel_picker_dialog.cpp
+    scenario_yaml_editor.h scenario_yaml_editor.cpp
 )
 
 
@@ -56,12 +53,14 @@ target_include_directories(OrbitaDesktop PRIVATE
 target_link_libraries(OrbitaDesktop PRIVATE
     orbita
     orbita_stand_adapters
+    orbita_stand_runtime
     Qt6::Core
     Qt6::Widgets
     Qt6::PrintSupport
     Qt6::Sql
     Qt6::Svg
     Qt6::SerialPort
+    Qt6::Concurrent
 )
 
 if(WIN32)
@@ -96,13 +95,34 @@ add_custom_target(OrbitaRuntimeResources ALL
         $<TARGET_FILE_DIR:OrbitaDesktop>/address
     COMMAND ${CMAKE_COMMAND} -E make_directory
         $<TARGET_FILE_DIR:OrbitaDesktop>/records
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_SOURCE_DIR}/data/catalog
+        $<TARGET_FILE_DIR:OrbitaDesktop>/catalog
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_SOURCE_DIR}/data/profiles
+        $<TARGET_FILE_DIR:OrbitaDesktop>/profiles
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_SOURCE_DIR}/data/scenarios
+        $<TARGET_FILE_DIR:OrbitaDesktop>/scenarios
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_BINARY_DIR}/plugins
+        $<TARGET_FILE_DIR:OrbitaDesktop>/plugins
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        $<TARGET_FILE:orbita_equipment_probe>
+        $<TARGET_FILE_DIR:OrbitaDesktop>
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        $<TARGET_FILE:orbita_telemetry_probe>
+        $<TARGET_FILE_DIR:OrbitaDesktop>
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        $<TARGET_FILE:visa_discover>
+        $<TARGET_FILE_DIR:OrbitaDesktop>
     COMMENT "Updating OrbitaDesktop runtime database and address files"
 )
 
 if(WIN32)
     set_target_properties(OrbitaDesktop PROPERTIES WIN32_EXECUTABLE TRUE)
 endif()
-add_dependencies(OrbitaRuntimeResources OrbitaDesktop)
+add_dependencies(OrbitaRuntimeResources OrbitaDesktop orbita_equipment_plugins orbita_equipment_probe orbita_telemetry_probe visa_discover)
 
 if(BUILD_TESTING)
     add_executable(test_page_smoke_test
@@ -111,7 +131,7 @@ if(BUILD_TESTING)
         test_page.h
     )
     target_include_directories(test_page_smoke_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-    target_link_libraries(test_page_smoke_test PRIVATE Qt6::Core Qt6::Widgets)
+    target_link_libraries(test_page_smoke_test PRIVATE orbita_stand_domain Qt6::Core Qt6::Widgets)
     if(WIN32)
         add_test(NAME desktop.test_page_smoke COMMAND test_page_smoke_test)
     else()

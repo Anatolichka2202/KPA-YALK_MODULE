@@ -1,12 +1,17 @@
 #pragma once
 
 #include <QHash>
+#include <QStringList>
 #include <QWidget>
+
+#include "orbita_stand/scenario.h"
 
 class QComboBox;
 class QLabel;
 class QProgressBar;
 class QPushButton;
+class QLineEdit;
+class QCheckBox;
 class QTableWidget;
 class QTimer;
 class TestPlotWidget;
@@ -21,9 +26,20 @@ public:
     void setEquipmentStatus(const QString& code, bool ready, const QString& detail);
     void setEquipmentMissingPlugin(const QString& code, const QString& detail);
     void setEquipmentChecking(const QString& code, const QString& detail);
+    void setScenarioInfo(const QString& code, bool available, bool diagnostic,
+                         const QStringList& requiredEquipment,
+                         const QString& detail);
+    void setEngineerMode(bool enabled);
+    void setRunInProgress(bool running, const QString& stage = {});
+    void setRunEvent(const orbita::stand::RunEvent& event);
+    void setRunResult(const orbita::stand::ScenarioRunResult& result,
+                      const QString& reportPath = {});
 
 signals:
     void equipmentCheckRequested();
+    void runRequested(const QString& scenarioCode, const QString& objectSerial,
+                      bool allowPartial);
+    void stopRequested();
 
 private slots:
     void updateStartAvailability();
@@ -38,6 +54,12 @@ private:
         int row = -1;
         bool ready = false;
         bool operatorConfirmation = false;
+    };
+    struct ScenarioInfo {
+        bool available = false;
+        bool diagnostic = false;
+        QStringList requiredEquipment;
+        QString detail;
     };
 
     void addEquipment(const QString& code, const QString& name,
@@ -56,6 +78,7 @@ private:
     QComboBox* modeCombo_ = nullptr;
     QTableWidget* equipmentTable_ = nullptr;
     QTableWidget* resultTable_ = nullptr;
+    QTableWidget* summaryTable_ = nullptr;
     QLabel* readinessLabel_ = nullptr;
     QLabel* diagnosticLabel_ = nullptr;
     QLabel* verdictLabel_ = nullptr;
@@ -63,8 +86,16 @@ private:
     QProgressBar* progress_ = nullptr;
     QPushButton* checkButton_ = nullptr;
     QPushButton* startButton_ = nullptr;
+    QPushButton* stopButton_ = nullptr;
+    QPushButton* detailsButton_ = nullptr;
+    QLineEdit* serialEdit_ = nullptr;
+    QCheckBox* partialCheck_ = nullptr;
     TestPlotWidget* plot_ = nullptr;
     QTimer* demoTimer_ = nullptr;
     QHash<QString, EquipmentRow> equipmentRows_;
+    QHash<QString, ScenarioInfo> scenarios_;
     int demoStep_ = 0;
+    bool runInProgress_ = false;
+    bool engineerMode_ = false;
+    int completedSteps_ = 0;
 };

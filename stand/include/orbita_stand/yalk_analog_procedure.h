@@ -94,9 +94,9 @@ public:
     virtual void waitMilliseconds(unsigned milliseconds) = 0;
 };
 
-class YalkAnalogProcedure {
+class CheckYalkAnalogChannel {
 public:
-    explicit YalkAnalogProcedure(YalkAnalogProcedureConfig config = {});
+    explicit CheckYalkAnalogChannel(YalkAnalogProcedureConfig config = {});
 
     YalkProcedureResult execute(
         unsigned channel,
@@ -114,5 +114,9 @@ public:
 private:
     YalkAnalogProcedureConfig config_;
 };
+
+// Совместимость исходного API. Новое имя подчёркивает, что это атомарная
+// процедура сценарного движка, а не самостоятельный сценарий испытаний.
+using YalkAnalogProcedure = CheckYalkAnalogChannel;
 
 } // namespace orbita::stand

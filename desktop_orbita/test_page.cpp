@@ -5,6 +5,8 @@
 #include <QHeaderView>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QLineEdit>
+#include <QCheckBox>
 #include <QPainter>
 #include <QPainterPath>
 #include <QProgressBar>
@@ -17,6 +19,7 @@
 #include <QVector>
 
 #include <iterator>
+#include <functional>
 
 namespace {
 
@@ -95,7 +98,8 @@ protected:
             if (values.isEmpty()) return;
             QPainterPath path;
             for (int i = 0; i < values.size(); ++i) {
-                const double x = area.left() + (area.width() * i / 2.0);
+                const double x = area.left() + (values.size() == 1 ? area.width() / 2.0
+                    : area.width() * i / static_cast<double>(values.size() - 1));
                 const double normalized = qBound(0.0, values[i] / 6.2, 1.0);
                 const double y = area.bottom() - normalized * area.height();
                 if (i == 0) path.moveTo(x, y); else path.lineTo(x, y);
@@ -190,10 +194,28 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
     testCombo_->setObjectName(QStringLiteral("testType"));
     modeCombo_->setObjectName(QStringLiteral("testMode"));
     objectCombo_->addItem(QStringLiteral("УБСИ № 7 · ЛВРМ.468157.002"), QStringLiteral("UBSI-7"));
-    objectCombo_->addItem(QStringLiteral("БСИ · ЛВРМ.468157.001"), QStringLiteral("BSI"));
+    objectCombo_->addItem(QStringLiteral("БСИ · ЛВРМ.468157.003"), QStringLiteral("BSI"));
     modeCombo_->addItem(QStringLiteral("Стенд — реальное оборудование"));
     modeCombo_->addItem(QStringLiteral("Демонстрация интерфейса — имитация"));
     root->addLayout(selectors);
+
+    auto* runOptions = new QHBoxLayout;
+    auto* serialLabel = new QLabel(QStringLiteral("Заводской номер (необязательно):"));
+    serialLabel->setStyleSheet("color:#8e9aa8;");
+    serialEdit_ = new QLineEdit;
+    serialEdit_->setObjectName(QStringLiteral("objectSerial"));
+    serialEdit_->setPlaceholderText(QStringLiteral("например, УБСИ-007"));
+    serialEdit_->setMaximumWidth(230);
+    serialEdit_->setStyleSheet("background:#0e1115; color:#dfe6ee; border:1px solid #2a313b; padding:7px;");
+    partialCheck_ = new QCheckBox(QStringLiteral("Диагностический запуск без части оборудования"));
+    partialCheck_->setObjectName(QStringLiteral("allowPartial"));
+    partialCheck_->setToolTip(QStringLiteral("Такой запуск никогда не получает итог ОК"));
+    runOptions->addWidget(serialLabel);
+    runOptions->addWidget(serialEdit_);
+    runOptions->addSpacing(16);
+    runOptions->addWidget(partialCheck_);
+    runOptions->addStretch(1);
+    root->addLayout(runOptions);
 
     scopeLabel_ = new QLabel;
     scopeLabel_->setWordWrap(true);
@@ -206,7 +228,7 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
     body->setSpacing(12);
 
     auto* left = new QVBoxLayout;
-    left->addWidget(makeSectionTitle(QStringLiteral("Оборудование выбранной процедуры")));
+    left->addWidget(makeSectionTitle(QStringLiteral("Готовность выбранной процедуры")));
     equipmentTable_ = new QTableWidget(0, 5);
     equipmentTable_->setObjectName(QStringLiteral("equipmentTable"));
     equipmentTable_->setHorizontalHeaderLabels(
@@ -234,8 +256,8 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
                  QStringLiteral("UDP-плагин готов; активные команды требуют подтверждения профиля"));
     addEquipment("RIGOL", QStringLiteral("Генератор Rigol DG-1022Z"), QStringLiteral("USB / VISA"),
                  QStringLiteral("VISA/SCPI-плагин: нажмите «Проверить оборудование»"));
-    addEquipment("G3", QStringLiteral("Осциллограф АКИП-4113/2"), QStringLiteral("USB / драйвер"),
-                 QStringLiteral("плагин не реализован"));
+    addEquipment("SCOPE", QStringLiteral("Осциллограф (DHO8xx или совместимый)"), QStringLiteral("USB / VISA"),
+                 QStringLiteral("роль WaveformAcquirer; конкретная модель не обязательна"));
     addEquipment("R4831", QStringLiteral("Магазин сопротивлений Р4831"), QStringLiteral("USB / COM"),
                  QStringLiteral("COM-плагин: проверить, является ли FTDI COM7 магазином"));
     addEquipment("THERMO_SIM", QStringLiteral("Имитатор датчика «термопара»"),
@@ -249,11 +271,14 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
 
     auto* readinessBar = new QHBoxLayout;
     checkButton_ = new QPushButton(QStringLiteral("Проверить оборудование"));
+    detailsButton_ = new QPushButton(QStringLiteral("Открыть подробности"));
+    detailsButton_->setObjectName(QStringLiteral("equipmentDetails"));
     readinessLabel_ = new QLabel(QStringLiteral("Стенд ещё не проверен"));
     readinessLabel_->setWordWrap(true);
     readinessLabel_->setStyleSheet("color:#d7a95b;");
     readinessBar->addWidget(checkButton_);
     readinessBar->addWidget(readinessLabel_, 1);
+    readinessBar->addWidget(detailsButton_);
     left->addLayout(readinessBar);
 
     diagnosticLabel_ = new QLabel(QStringLiteral(
@@ -269,10 +294,25 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
     right->addWidget(makeSectionTitle(QStringLiteral("Ход и результат")));
     plot_ = new TestPlotWidget;
     right->addWidget(plot_);
-    resultTable_ = new QTableWidget(0, 6);
+    summaryTable_ = new QTableWidget(0, 4);
+    summaryTable_->setObjectName(QStringLiteral("cellSummaryTable"));
+    summaryTable_->setHorizontalHeaderLabels(
+        {QStringLiteral("Этап / ячейка"), QStringLiteral("ОК"),
+         QStringLiteral("НЕ ОК"), QStringLiteral("Итог")});
+    summaryTable_->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
+    summaryTable_->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
+    summaryTable_->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
+    summaryTable_->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
+    summaryTable_->verticalHeader()->hide();
+    summaryTable_->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    summaryTable_->setSelectionMode(QAbstractItemView::NoSelection);
+    summaryTable_->setMaximumHeight(170);
+    right->addWidget(summaryTable_);
+    resultTable_ = new QTableWidget(0, 7);
     resultTable_->setHorizontalHeaderLabels(
         {QStringLiteral("Тракт"), QStringLiteral("Точка"), QStringLiteral("В7"),
-         QStringLiteral("Измерено"), QStringLiteral("Допуск"), QStringLiteral("Итог")});
+         QStringLiteral("Измерено"), QStringLiteral("Допуск"), QStringLiteral("Итог"),
+         QStringLiteral("ТУ")});
     resultTable_->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     resultTable_->verticalHeader()->hide();
     resultTable_->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -301,6 +341,12 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
         "QPushButton:hover { background:#327e58; }"
         "QPushButton:disabled { background:#171b21; border-color:#252b33; color:#626d79; }");
     actionBar->addWidget(verdictLabel_, 1);
+    stopButton_ = new QPushButton(QStringLiteral("Безопасно остановить"));
+    stopButton_->setEnabled(false);
+    stopButton_->setStyleSheet(
+        "QPushButton { background:#5d2d31; border:1px solid #9a4d55; font-weight:600; padding:11px 18px; }"
+        "QPushButton:disabled { background:#171b21; border-color:#252b33; color:#626d79; }");
+    actionBar->addWidget(stopButton_);
     actionBar->addWidget(startButton_);
     root->addLayout(actionBar);
 
@@ -308,7 +354,16 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
     demoTimer_->setInterval(450);
     connect(demoTimer_, &QTimer::timeout, this, &TestPage::advanceDemo);
     connect(checkButton_, &QPushButton::clicked, this, &TestPage::equipmentCheckRequested);
+    connect(detailsButton_, &QPushButton::clicked, this, [this]() {
+        const bool show = equipmentTable_->isColumnHidden(1);
+        for (const int column : {1, 2, 4}) equipmentTable_->setColumnHidden(column, !show);
+        diagnosticLabel_->setVisible(show || engineerMode_);
+        detailsButton_->setText(show ? QStringLiteral("Скрыть подробности")
+                                     : QStringLiteral("Открыть подробности"));
+    });
     connect(startButton_, &QPushButton::clicked, this, &TestPage::startSelectedTest);
+    connect(stopButton_, &QPushButton::clicked, this, &TestPage::stopRequested);
+    connect(partialCheck_, &QCheckBox::toggled, this, &TestPage::updateStartAvailability);
     connect(objectCombo_, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &TestPage::rebuildScopes);
     connect(scopeCombo_, QOverload<int>::of(&QComboBox::currentIndexChanged),
@@ -332,8 +387,8 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
         }
     });
     rebuildScopes();
-    scopeCombo_->setCurrentIndex(scopeCombo_->findData(QStringLiteral("ЯЛК-96")));
-    testCombo_->setCurrentIndex(testCombo_->findData(QStringLiteral("YALK_ANALOG")));
+    scopeCombo_->setCurrentIndex(scopeCombo_->findData(QStringLiteral("BLOCK")));
+    setEngineerMode(false);
 }
 
 QString TestPage::selectedObjectCode() const
@@ -377,8 +432,8 @@ void TestPage::rebuildTests()
     testCombo_->clear();
     if (selectedScopeCode() == QStringLiteral("BLOCK")) {
         if (selectedObjectCode() == QStringLiteral("BSI")) {
-            testCombo_->addItem(QStringLiteral("Функционирование в нормальных условиях · ТУ 5.6"),
-                                QStringLiteral("BSI_NORMAL_5_6"));
+            testCombo_->addItem(QStringLiteral("Диагностика потока Орбита · не испытание ТУ"),
+                                QStringLiteral("BSI_DIAGNOSTIC"));
         } else {
             testCombo_->addItem(QStringLiteral("Функционирование в нормальных условиях · ТУ 5.6"),
                                 QStringLiteral("UBSI_NORMAL_5_6"));
@@ -402,10 +457,12 @@ void TestPage::updateSelectionSummary()
     const QString object = selectedObjectCode();
     const QString scope = selectedScopeCode();
     const QString test = selectedTestCode();
-    if (test.endsWith(QStringLiteral("NORMAL_5_6"))) {
-        scopeLabel_->setText(object == QStringLiteral("BSI")
-            ? QStringLiteral("Полная схема В.1 из ТУ БСИ 5.6. Это состав стенда для проверки всего блока, а не требование к каждой ячейке. Источники результата выбираются по тракту; аппаратная процедура ещё переносится.")
-            : QStringLiteral("Полная схема А.1 из ТУ УБСИ 5.6. Е20 на схеме А.1 нет: данные ячеек читает Ethernet-адаптер. ИСД переключает цепи, а значения формируют отдельные приборы. Аппаратная процедура ещё переносится."));
+    if (test == QStringLiteral("UBSI_NORMAL_5_6")) {
+        scopeLabel_->setText(QStringLiteral(
+            "УБСИ по ТУ 5.6: Орбита контролирует выходной поток блока, Ethernet-адаптер читает внутренние коды ячеек, ИСД выполняет коммутацию, а приборы формируют и измеряют воздействия."));
+    } else if (test == QStringLiteral("BSI_DIAGNOSTIC")) {
+        scopeLabel_->setText(QStringLiteral(
+            "Подключённый БСИ используется для обкатки общей цепочки Орбита → сценарий → журнал → интерфейс. Результат всегда НЕПОЛНАЯ: БСИ по ТУ 5.6 не оценивается."));
     } else if (test == QStringLiteral("YALK_ANALOG")) {
         scopeLabel_->setText(object == QStringLiteral("BSI")
             ? QStringLiteral("ЯЛК-96 БСИ: источник формирует воздействие → ИСД подключает нужный вход/выход → В7-78/1 измеряет эталон → значение читается из телеметрии Орбита → допуск ±0,5 % шкалы 6,2 В.")
@@ -420,6 +477,7 @@ void TestPage::updateSelectionSummary()
         equipmentTable_->setRowHidden(it->row, !required.contains(it.key()));
     }
     resultTable_->setRowCount(0);
+    summaryTable_->setRowCount(0);
     plot_->clear();
     progress_->setValue(0);
     progress_->setFormat(QStringLiteral("Проверка не запущена"));
@@ -520,14 +578,23 @@ QStringList TestPage::requiredEquipment() const
             ? QStringList{"E20", "ISD", "V7"}
             : QStringList{"RS485", "ISD", "V7"};
     }
-    if (test == QStringLiteral("BSI_NORMAL_5_6")) {
-        return {"E20", "ISD", "V7", "AKIP", "RIGOL", "R4831", "THERMO_SIM", "SCHEME"};
+    const auto scenario = scenarios_.constFind(test);
+    if (scenario != scenarios_.cend()) {
+        return scenario->requiredEquipment;
     }
-    return {"RS485", "ISD", "V7", "AKIP", "RIGOL", "G3", "R4831", "THERMO_SIM", "SCHEME"};
+    return {"RS485", "ISD", "V7", "AKIP", "RIGOL", "SCOPE", "R4831", "SCHEME"};
 }
 
 void TestPage::updateStartAvailability()
 {
+    if (runInProgress_) {
+        startButton_->setEnabled(false);
+        checkButton_->setEnabled(false);
+        stopButton_->setEnabled(true);
+        return;
+    }
+    checkButton_->setEnabled(true);
+    stopButton_->setEnabled(false);
     const bool demo = modeCombo_->currentIndex() == kDemoMode;
     if (demo) {
         startButton_->setText(QStringLiteral("Запустить демонстрацию"));
@@ -540,18 +607,34 @@ void TestPage::updateStartAvailability()
 
     startButton_->setText(QStringLiteral("Запустить проверку"));
 
+    const auto scenario = scenarios_.constFind(selectedTestCode());
+    if (scenario == scenarios_.cend() || !scenario->available) {
+        startButton_->setEnabled(false);
+        readinessLabel_->setText(scenario == scenarios_.cend()
+            ? QStringLiteral("Для выбранной процедуры нет исполняемого сценария")
+            : scenario->detail);
+        readinessLabel_->setStyleSheet("color:#e1766d;");
+        return;
+    }
+
     const QStringList required = requiredEquipment();
     QStringList missing;
     for (const auto& code : required) {
         const auto it = equipmentRows_.constFind(code);
         if (it == equipmentRows_.cend() || !it->ready) missing << code;
     }
-    startButton_->setEnabled(missing.isEmpty() && !demoTimer_->isActive());
+    const bool partial = partialCheck_->isChecked() || scenario->diagnostic;
+    startButton_->setEnabled((missing.isEmpty() || partial) && !demoTimer_->isActive());
     if (missing.isEmpty()) {
-        startButton_->setEnabled(false);
+        readinessLabel_->setText(scenario->diagnostic
+            ? QStringLiteral("Диагностический запуск готов. Итог будет НЕПОЛНАЯ.")
+            : QStringLiteral("Все возможности сценария готовы. Можно запускать проверку."));
+        readinessLabel_->setStyleSheet(scenario->diagnostic ? "color:#69aee6;" : "color:#70d79b;");
+    } else if (partial) {
         readinessLabel_->setText(QStringLiteral(
-            "Обязательные устройства готовы, но аппаратный исполнитель этой процедуры ещё не подключён"));
-        readinessLabel_->setStyleSheet("color:#d7a95b;");
+            "Диагностический запуск разрешён. Не готовы: %1. Итог будет НЕПОЛНАЯ или ОШИБКА.")
+            .arg(missing.join(", ")));
+        readinessLabel_->setStyleSheet("color:#69aee6;");
     } else {
         readinessLabel_->setText(QStringLiteral("Запуск заблокирован. Не готовы: %1").arg(missing.join(", ")));
         readinessLabel_->setStyleSheet("color:#d7a95b;");
@@ -571,7 +654,15 @@ void TestPage::resetResults()
 
 void TestPage::startSelectedTest()
 {
-    if (modeCombo_->currentIndex() != kDemoMode) return;
+    if (modeCombo_->currentIndex() != kDemoMode) {
+        resetResults();
+        setRunInProgress(true, QStringLiteral("Подготовка и безопасная проверка оборудования"));
+        const auto scenario = scenarios_.constFind(selectedTestCode());
+        const bool diagnostic = scenario != scenarios_.cend() && scenario->diagnostic;
+        emit runRequested(selectedTestCode(), serialEdit_->text().trimmed(),
+                          partialCheck_->isChecked() || diagnostic);
+        return;
+    }
     resetResults();
     demoStep_ = 0;
     startButton_->setEnabled(false);
@@ -655,5 +746,159 @@ void TestPage::finishDemo()
         "font-size:16px; font-weight:700; color:#70d79b; padding:8px 12px;"
         "border:1px solid #3d8f65; border-radius:4px;");
     progress_->setFormat(QStringLiteral("Демонстрационный прогон завершён"));
+    updateStartAvailability();
+}
+
+void TestPage::setScenarioInfo(
+    const QString& code, bool available, bool diagnostic,
+    const QStringList& requiredEquipment, const QString& detail)
+{
+    scenarios_.insert(code, ScenarioInfo{available, diagnostic, requiredEquipment, detail});
+    diagnosticLabel_->setText(detail);
+    diagnosticLabel_->setStyleSheet(available
+        ? QStringLiteral("background:#17251e; color:#9de0b8; border:1px solid #356b4b; padding:7px 9px; border-radius:4px;")
+        : QStringLiteral("background:#291b1d; color:#f0b0aa; border:1px solid #713b40; padding:7px 9px; border-radius:4px;"));
+    updateSelectionSummary();
+}
+
+void TestPage::setEngineerMode(bool enabled)
+{
+    engineerMode_ = enabled;
+    if (modeCombo_ && modeCombo_->parentWidget()) modeCombo_->parentWidget()->setVisible(enabled);
+    partialCheck_->setVisible(enabled);
+    for (const int column : {1, 2, 4}) equipmentTable_->setColumnHidden(column, !enabled);
+    diagnosticLabel_->setVisible(enabled);
+    detailsButton_->setText(enabled ? QStringLiteral("Скрыть подробности")
+                                    : QStringLiteral("Открыть подробности"));
+}
+
+void TestPage::setRunInProgress(bool running, const QString& stage)
+{
+    runInProgress_ = running;
+    if (running) {
+        completedSteps_ = 0;
+        progress_->setRange(0, 0);
+        progress_->setFormat(stage.isEmpty() ? QStringLiteral("Выполняется…") : stage);
+    } else {
+        progress_->setRange(0, 100);
+        progress_->setValue(100);
+    }
+    updateStartAvailability();
+}
+
+void TestPage::setRunEvent(const orbita::stand::RunEvent& event)
+{
+    if (!runInProgress_) return;
+    if (event.stage == "START") {
+        progress_->setFormat(QStringLiteral("Выполняется: %1")
+            .arg(QString::fromStdString(event.message)));
+    } else if (event.stage == "FINISH") {
+        ++completedSteps_;
+        progress_->setFormat(QStringLiteral("Завершено этапов: %1 · %2")
+            .arg(completedSteps_)
+            .arg(QString::fromStdString(event.message)));
+    }
+}
+
+void TestPage::setRunResult(const orbita::stand::ScenarioRunResult& result,
+                            const QString& reportPath)
+{
+    runInProgress_ = false;
+    resultTable_->setRowCount(0);
+    summaryTable_->setRowCount(0);
+    plot_->clear();
+
+    std::function<void(const orbita::stand::StepRunResult&)> appendStep;
+    appendStep = [this, &appendStep](const orbita::stand::StepRunResult& step) {
+        for (const auto& measurement : step.measurements) {
+            const int row = resultTable_->rowCount();
+            resultTable_->insertRow(row);
+            const QString limit = QStringLiteral("%1…%2 %3")
+                .arg(measurement.lowerLimit, 0, 'g', 8)
+                .arg(measurement.upperLimit, 0, 'g', 8)
+                .arg(QString::fromStdString(measurement.unit));
+            const QStringList values = {
+                QString::fromStdString(step.title),
+                QString::fromStdString(measurement.title.empty() ? measurement.parameterKey : measurement.title),
+                QString::number(measurement.reference, 'g', 9),
+                QString::number(measurement.measured, 'g', 9) + " " + QString::fromStdString(measurement.unit),
+                limit,
+                QString::fromLatin1(orbita::stand::toString(measurement.verdict)),
+                QString::fromStdString(step.tuRequirement)
+            };
+            for (int column = 0; column < values.size(); ++column) {
+                auto* item = new QTableWidgetItem(values[column]);
+                if (column == 5) {
+                    item->setForeground(measurement.verdict == orbita::stand::RunVerdict::Ok
+                        ? QColor("#70d79b") : QColor("#e1766d"));
+                }
+                resultTable_->setItem(row, column, item);
+            }
+            if (measurement.unit == "V") plot_->addPoint(measurement.reference, measurement.measured);
+        }
+        if (step.measurements.empty() && step.children.empty()) {
+            const int row = resultTable_->rowCount();
+            resultTable_->insertRow(row);
+            const QStringList values = {
+                QString::fromStdString(step.title), QString::fromStdString(step.tuRequirement),
+                QStringLiteral("—"), QString::fromStdString(step.message), QStringLiteral("—"),
+                QString::fromLatin1(orbita::stand::toString(step.verdict)),
+                QString::fromStdString(step.tuRequirement)};
+            for (int column = 0; column < values.size(); ++column)
+                resultTable_->setItem(row, column, new QTableWidgetItem(values[column]));
+        }
+        for (const auto& child : step.children) appendStep(child);
+    };
+    for (const auto& step : result.steps) {
+        int ok = 0;
+        int failed = 0;
+        std::function<void(const orbita::stand::StepRunResult&)> count;
+        count = [&](const orbita::stand::StepRunResult& item) {
+            for (const auto& measurement : item.measurements) {
+                if (measurement.verdict == orbita::stand::RunVerdict::Ok) ++ok;
+                else if (measurement.verdict == orbita::stand::RunVerdict::Fail) ++failed;
+            }
+            for (const auto& child : item.children) count(child);
+        };
+        count(step);
+        const int row = summaryTable_->rowCount();
+        summaryTable_->insertRow(row);
+        const QStringList values = {
+            QString::fromStdString(step.title), QString::number(ok),
+            QString::number(failed),
+            QString::fromLatin1(orbita::stand::toString(step.verdict))};
+        for (int column = 0; column < values.size(); ++column) {
+            auto* item = new QTableWidgetItem(values[column]);
+            if (column == 3) {
+                item->setForeground(step.verdict == orbita::stand::RunVerdict::Ok
+                    ? QColor("#70d79b")
+                    : step.verdict == orbita::stand::RunVerdict::Incomplete
+                        ? QColor("#69aee6") : QColor("#e1766d"));
+            }
+            summaryTable_->setItem(row, column, item);
+        }
+        appendStep(step);
+    }
+
+    QString verdict;
+    QColor color;
+    switch (result.verdict) {
+    case orbita::stand::RunVerdict::Ok: verdict = QStringLiteral("ОК"); color = QColor("#70d79b"); break;
+    case orbita::stand::RunVerdict::Fail: verdict = QStringLiteral("НЕ ОК"); color = QColor("#e1766d"); break;
+    case orbita::stand::RunVerdict::Incomplete: verdict = QStringLiteral("НЕПОЛНАЯ"); color = QColor("#69aee6"); break;
+    case orbita::stand::RunVerdict::Aborted: verdict = QStringLiteral("ОСТАНОВЛЕНО"); color = QColor("#d7a95b"); break;
+    default: verdict = QStringLiteral("ОШИБКА"); color = QColor("#e1766d"); break;
+    }
+    verdictLabel_->setText(QStringLiteral("ИТОГ: %1 · запуск %2").arg(verdict, QString::fromStdString(result.runId)));
+    verdictLabel_->setStyleSheet(QStringLiteral(
+        "font-size:16px; font-weight:700; color:%1; padding:8px 12px; border:1px solid %1; border-radius:4px;")
+        .arg(color.name()));
+    progress_->setRange(0, 100);
+    progress_->setValue(100);
+    progress_->setFormat(QStringLiteral("Проверка завершена: %1").arg(verdict));
+    if (!reportPath.isEmpty()) {
+        diagnosticLabel_->setText(QStringLiteral("Отчёт: %1").arg(reportPath));
+        diagnosticLabel_->setToolTip(reportPath);
+    }
     updateStartAvailability();
 }

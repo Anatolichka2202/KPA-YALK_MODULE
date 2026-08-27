@@ -1,6 +1,8 @@
 #pragma once
 
 #include <memory>
+#include <cstddef>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -21,7 +23,12 @@ public:
     VisaInstrument& operator=(VisaInstrument&&) noexcept;
 
     void write(const std::string& command);
+    std::vector<std::uint8_t> readRaw(std::size_t maximumBytes = 4 * 1024 * 1024);
     std::string query(const std::string& command, unsigned delayMilliseconds = 45);
+    std::vector<std::uint8_t> queryRaw(
+        const std::string& command,
+        std::size_t maximumBytes = 4 * 1024 * 1024,
+        unsigned delayMilliseconds = 45);
     const std::string& resourceName() const;
 
 private:

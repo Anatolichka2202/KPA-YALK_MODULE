@@ -1,0 +1,164 @@
+schema: 1
+id: ubsi.468157.002.tu5_6.normal
+title: УБСИ ЛВРМ.468157.002 — функционирование в нормальных условиях
+version: 1.0.0
+catalog_version: 2026.08.26-2
+object_type: UBSI_468157_002
+state: published
+
+steps:
+  - id: orbita_stream
+    title: Выходной поток телеметрии Орбита
+    tu: 1.1.4.9
+    procedure: telemetry.health
+    requires:
+      - orbita.parameter_source
+    args:
+      max_phrase_error_percent: 0
+      max_group_error_percent: 0
+  - id: power_and_readiness
+    title: Питание и готовность блока
+    steps:
+      - id: readiness_30s
+        title: Время готовности после включения
+        tu: 1.1.4.13
+        procedure: ubsi.readiness
+        requires:
+          - power.dc_supply
+          - ubsi.parameter_source
+        args:
+          voltage_v: 27
+          timeout_ms: 30000
+      - id: supply_range
+        title: Диапазон питания, предельные уровни и ток потребления
+        tu: 1.1.4.3, 1.1.4.5
+        procedure: ubsi.supply_range
+        requires:
+          - power.dc_supply
+          - measure.dc_current
+          - ubsi.parameter_source
+        args:
+          voltage_points_v: 24,27,35
+          survival_points_v: 19,37
+          survival_seconds: 300,60
+          current_limit_a: 0.4
+          settle_ms: 500
+  - id: yp_p
+    title: ЯП-П — питание датчиков
+    steps:
+      - id: sensor_supply
+        title: 6,2 В, нагрузка, защита и восстановление
+        tu: 1.1.4.2
+        procedure: ubsi.sensor_supply
+        requires:
+          - stand.switch_matrix
+          - measure.reference_voltage
+        args:
+          load_350_route: sensor_load_350ma
+          load_450_route: sensor_load_450ma
+          voltage_min_v: 6.0
+          voltage_max_v: 6.4
+          trip_max_v: 1.0
+          settle_ms: 500
+  - id: yalk_96
+    title: ЯЛК-96 — потенциометрические и контактные каналы
+    steps:
+      - id: yalk_analog
+        title: Аналоговые каналы 0–6,2 В
+        tu: 1.1.4.1, 1.1.4.14
+        procedure: ubsi.yalk_analog
+        requires:
+          - stand.switch_matrix
+          - measure.reference_voltage
+          - ubsi.parameter_source
+        args:
+          channel_count: 60
+          parameter_group: yalk_analog
+          calibration_zero_parameter: yalk_calibration_zero
+          calibration_full_parameter: yalk_calibration_full
+          isd_analog_route: yalk_analog
+          point_volts: 0,3.1,6.2
+          isd_codes: 0,2048,4095
+          full_scale_v: 6.2
+          tolerance_percent_fs: 0.5
+          sample_count: 16
+          settle_ms: 150
+      - id: yalk_contacts
+        title: Контактные каналы
+        tu: 1.1.4.1
+        procedure: ubsi.yalk_contacts
+        requires:
+          - stand.switch_matrix
+          - ubsi.parameter_source
+        args:
+          channel_count: 30
+          parameter_group: yalk_contacts
+          isd_switch_route: yalk_contacts
+          mask: 1
+          sample_count: 4
+          settle_ms: 100
+      - id: yalk_faults
+        title: Обрыв и перегрузка ±12 В
+        tu: 1.1.4.10, 1.1.4.11
+        procedure: ubsi.yalk_faults
+        requires:
+          - stand.switch_matrix
+          - ubsi.parameter_source
+        args:
+          open_route: yalk_open
+          positive_overload_route: yalk_overload_positive
+          negative_overload_route: yalk_overload_negative
+          settle_ms: 150
+      - id: reference_6v2
+        title: Эталонное напряжение 6,2 В
+        tu: 1.1.4.9
+        procedure: ubsi.reference_voltage
+        requires:
+          - measure.reference_voltage
+        args:
+          nominal_v: 6.2
+          tolerance_v: 0.03
+  - id: ytp
+    title: ЯТП — термосопротивления
+    steps:
+      - id: ytp_channels
+        title: Диапазон 0–240 Ом, линия 50 м и погрешность
+        tu: 1.1.4.1, 1.1.4.6, 1.1.4.14
+        procedure: ubsi.ytp
+        requires:
+          - signal.resistance
+          - stand.switch_matrix
+          - ubsi.parameter_source
+        args:
+          channel_count: 30
+          parameter_group: ytp_temperature
+          resistance_points_ohm: 0,100,240
+          full_scale_ohm: 240
+          calibration_zero_raw: 0
+          calibration_full_raw: 4095
+          tolerance_percent_fs: 0.5
+          sample_count: 16
+          settle_ms: 1500
+  - id: yvp_8
+    title: ЯВП-8 — пьезоэлектрические каналы
+    steps:
+      - id: yvp_response_gain
+        title: АЧХ, затухание, коэффициенты усиления и погрешность
+        tu: 1.1.4.1, 1.1.4.7, 1.1.4.8, 1.1.4.14
+        procedure: ubsi.yvp
+        requires:
+          - signal.generator
+          - stand.switch_matrix
+          - measure.waveform
+          - ubsi.parameter_source
+        args:
+          channel_count: 8
+          frequencies_hz: 2,6,20,100,400,1000,1800,2000,4000
+          reference_frequency_hz: 1000
+          amplitude_vpp: 0.3875
+          gains_mv_per_pcl: 0.25,0.5,1,2,4,8,32
+          gain_route: yvp_gain
+          scope_channel: 1
+          middle_tolerance_percent: 5
+          edge_tolerance_percent: 10
+          settle_ms: 200

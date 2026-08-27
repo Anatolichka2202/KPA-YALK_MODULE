@@ -14,12 +14,21 @@
 #include <QMenuBar>
 #include <QIcon>
 #include <QSettings>
+#include <QFileInfo>
+#include <QSet>
+#include <QtConcurrent/QtConcurrentRun>
 #include <sstream>
+#include <algorithm>
+#include <chrono>
 #include <regex>
 #include <iomanip>
+#include <functional>
 
-#include "orbita_stand/v7_visa_voltmeter.h"
-#include "orbita_stand/equipment_adapters.h"
+#include "orbita_stand/report_writer.h"
+#include "orbita_stand/ubsi_procedures.h"
+#include "orbita_stand/telemetry_procedures.h"
+#include "orbita_stand/catalog.h"
+#include "scenario_yaml_editor.h"
 
 #define ORBITA_VERSION "0.1.0-alpha"
 
@@ -59,6 +68,8 @@ MainWindow::MainWindow(QWidget* parent)
                 .arg(QString::fromLocal8Bit(e.what())));
     }
 
+    initializeStandRuntime();
+
     // Таймер обновления
     connect(updateTimer_, &QTimer::timeout, this, &MainWindow::updateData);
     updateTimer_->start(100);
@@ -66,7 +77,12 @@ MainWindow::MainWindow(QWidget* parent)
     log("Система инициализирована. Выберите объект и вид испытания.");
 }
 
-MainWindow::~MainWindow() = default;
+MainWindow::~MainWindow()
+{
+    if (scenarioEngine_) scenarioEngine_->requestStop();
+    if (equipmentRegistry_) equipmentRegistry_->safeStopAll();
+    if (scenarioWatcher_ && scenarioWatcher_->isRunning()) scenarioWatcher_->waitForFinished();
+}
 
 // ----------------------------------------------------------------------------
 //  Инициализация UI
@@ -320,6 +336,15 @@ void MainWindow::setupToolBar()
     toolbar->setMovable(false);
     toolbar->setStyleSheet("QToolBar { spacing: 4px; }");
 
+    accessModeCombo_ = new QComboBox;
+    accessModeCombo_->setObjectName(QStringLiteral("accessMode"));
+    accessModeCombo_->addItem(QStringLiteral("Оператор"), false);
+    accessModeCombo_->addItem(QStringLiteral("Инженер"), true);
+    accessModeCombo_->setToolTip(QStringLiteral(
+        "Инженерный режим открывает сырые параметры, конфигурацию и редактор сценариев"));
+    toolbar->addWidget(accessModeCombo_);
+    toolbar->addSeparator();
+
     // --- Группа переключения режимов ---
     QActionGroup* modeGroup = new QActionGroup(this);
     modeGroup->setExclusive(true);
@@ -437,17 +462,24 @@ void MainWindow::setupToolBar()
 
     // Ранний редактор оставлен как диагностический инструмент, но убран из
     // основного операторского потока.
-    QMenu* toolsMenu = menuBar()->addMenu("Инструменты");
-    actScenario_ = toolsMenu->addAction("Редактор сценариев (экспериментальный)");
+    toolsMenu_ = menuBar()->addMenu("Инструменты");
+    actScenario_ = toolsMenu_->addAction("Редактор сценариев (экспериментальный)");
     connect(actScenario_, &QAction::triggered, this, &MainWindow::onOpenScenario);
 
     connect(testPage_, &TestPage::equipmentCheckRequested,
             this, &MainWindow::onCheckTestEquipment);
+    connect(testPage_, &TestPage::runRequested,
+            this, &MainWindow::onRunScenario);
+    connect(testPage_, &TestPage::stopRequested,
+            this, &MainWindow::onStopScenario);
+    connect(accessModeCombo_, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, [this](int index) { setEngineerMode(index == 1); });
 
     // --- Подключаем config combo ---
     connect(configCombo_, QOverload<int>::of(&QComboBox::activated), this, [this](int i) {
         if (i > 0) applyConfiguration(configCombo_->itemText(i));
     });
+    setEngineerMode(false);
 }
 
 // ----------------------------------------------------------------------------
@@ -455,113 +487,320 @@ void MainWindow::setupToolBar()
 // ----------------------------------------------------------------------------
 void MainWindow::onOpenScenario()
 {
-    // Передаём провайдер значений как лямбду — ScenarioWizard не зависит от ядра напрямую
-    ValueProvider provider = [this](const QString& addr) -> std::optional<double> {
-        return orbita_->getValueByAddress(addr.toStdString());
-    };
+    const QString path = QDir(QCoreApplication::applicationDirPath())
+        .filePath(QStringLiteral("scenarios/ubsi_tu_5_6.yaml"));
+    if (!QFileInfo::exists(path)) {
+        QMessageBox::warning(this, QStringLiteral("Сценарий"),
+            QStringLiteral("Файл сценария не найден:\n%1").arg(path));
+        return;
+    }
+    ScenarioYamlEditor editor(path, this);
+    editor.exec();
+}
 
-    ScenarioWizard wizard(provider, this);
-    wizard.setChannelContext(orbita_->getChannels(), dbProvider_.get());
-    wizard.exec();
+void MainWindow::initializeStandRuntime()
+{
+    try {
+        const QDir root(QCoreApplication::applicationDirPath());
+        standProfile_ = orbita::stand::loadStandProfile(
+            root.filePath("profiles/stand_ktma.yaml").toStdString());
+        const auto catalog = orbita::stand::importCatalogYaml(
+            root.filePath("catalog/catalog.yaml").toStdString(),
+            root.filePath("parameters.db").toStdString());
+        equipmentPlugins_ = std::make_unique<orbita::stand::EquipmentPluginManager>();
+        equipmentPlugins_->loadDirectory(root.filePath("plugins").toStdString());
+        equipmentRegistry_ = std::make_unique<orbita::stand::EquipmentRegistry>();
+        scenarioEngine_ = std::make_unique<orbita::stand::ScenarioEngine>();
+        orbita::stand::registerUbsiProcedures(*scenarioEngine_);
+        orbita::stand::registerTelemetryProcedures(*scenarioEngine_);
+        const QHash<QString, QString> equipmentForCapability = {
+            {"ubsi.parameter_source", "RS485"}, {"stand.switch_matrix", "ISD"},
+            {"orbita.parameter_source", "E20"},
+            {"measure.reference_voltage", "V7"}, {"measure.dc_current", "V7"},
+            {"power.dc_supply", "AKIP"}, {"signal.generator", "RIGOL"},
+            {"signal.resistance", "R4831"}, {"measure.waveform", "SCOPE"}};
+        scenarios_.clear();
+        testPage_->setScenarioInfo("UBSI_NORMAL_5_6", false, false, {},
+            QStringLiteral("Сценарий УБСИ не загружен"));
+        testPage_->setScenarioInfo("BSI_DIAGNOSTIC", false, true, {},
+            QStringLiteral("Диагностический сценарий БСИ не загружен"));
+        const QDir scenarioDirectory(root.filePath("scenarios"));
+        for (const auto& file : scenarioDirectory.entryInfoList(
+                 {QStringLiteral("*.yaml")}, QDir::Files, QDir::Name)) {
+            const auto scenario = orbita::stand::loadScenarioYaml(
+                file.absoluteFilePath().toUtf8().toStdString());
+            QString code;
+            bool diagnostic = false;
+            if (scenario.id == "ubsi.468157.002.tu5_6.normal") {
+                code = QStringLiteral("UBSI_NORMAL_5_6");
+            } else if (scenario.id == "bsi.468157.003.telemetry.diagnostic") {
+                code = QStringLiteral("BSI_DIAGNOSTIC");
+                diagnostic = true;
+            } else {
+                continue;
+            }
+            QStringList errors;
+            if (catalog.version != scenario.catalogVersion) {
+                errors << QStringLiteral("Версия каталога %1 не совпадает со сценарием %2")
+                    .arg(QString::fromStdString(catalog.version),
+                         QString::fromStdString(scenario.catalogVersion));
+            }
+            for (const auto& error : scenarioEngine_->validate(scenario)) {
+                errors << QString::fromStdString(error);
+            }
+            QSet<QString> requiredRoles;
+            if (!diagnostic) requiredRoles.insert(QStringLiteral("SCHEME"));
+            std::function<void(const orbita::stand::ScenarioNode&)> collectRequired;
+            collectRequired = [&](const orbita::stand::ScenarioNode& node) {
+                for (const auto& capability : node.requiredCapabilities) {
+                    const QString role = equipmentForCapability.value(
+                        QString::fromStdString(capability));
+                    if (!role.isEmpty()) requiredRoles.insert(role);
+                }
+                for (const auto& child : node.children) collectRequired(child);
+            };
+            for (const auto& step : scenario.steps) collectRequired(step);
+            QStringList required = requiredRoles.values();
+            required.sort();
+            const bool available = errors.isEmpty();
+            const QString detail = available
+                ? QStringLiteral("Загружен сценарий «%1», версия %2; профиль %3")
+                    .arg(QString::fromStdString(scenario.title),
+                         QString::fromStdString(scenario.version),
+                         QString::fromStdString(standProfile_.version))
+                : errors.join(QStringLiteral("; "));
+            if (available) scenarios_.insert(code, scenario);
+            testPage_->setScenarioInfo(code, available, diagnostic, required, detail);
+        }
+        if (!scenarios_.contains(QStringLiteral("UBSI_NORMAL_5_6"))) {
+            throw std::runtime_error("Опубликованный сценарий УБСИ 5.6 не готов");
+        }
+        QDir().mkpath(root.filePath("runs"));
+        runStore_ = std::make_unique<orbita::stand::RunStore>(
+            root.filePath("runs/runs.db").toStdString());
+        scenarioWatcher_ = new QFutureWatcher<orbita::stand::ScenarioRunResult>(this);
+        connect(scenarioWatcher_, &QFutureWatcherBase::finished, this, [this]() {
+            const auto result = scenarioWatcher_->result();
+            QString reportPath;
+            try {
+                runStore_->save(result);
+                const QDir root(QCoreApplication::applicationDirPath());
+                const QString reportDir = root.filePath("runs/" + QString::fromStdString(result.runId));
+                const auto paths = orbita::stand::writeHtmlCsvReport(result, reportDir.toStdString());
+                reportPath = QString::fromStdString(paths.html);
+                log(QStringLiteral("Отчёт сформирован: %1").arg(reportPath));
+            } catch (const std::exception& error) {
+                log(QStringLiteral("Не удалось сохранить результат: %1").arg(QString::fromUtf8(error.what())));
+            }
+            testPage_->setRunResult(result, reportPath);
+        });
+        standRuntimeReady_ = true;
+        log(QStringLiteral("Плагины оборудования: загружено %1").arg(equipmentPlugins_->plugins().size()));
+    } catch (const std::exception& error) {
+        standRuntimeReady_ = false;
+        const QString detail = QStringLiteral("Стендовый движок не готов: %1")
+            .arg(QString::fromUtf8(error.what()));
+        testPage_->setScenarioInfo("UBSI_NORMAL_5_6", false, false, {}, detail);
+        log(detail);
+    }
 }
 
 void MainWindow::onCheckTestEquipment()
 {
-    const QString profilePath = QDir(QCoreApplication::applicationDirPath()).filePath("stand.ini");
-    QSettings settings(profilePath, QSettings::IniFormat);
-    const auto reportFailure = [this](const char* code, const std::exception& error) {
-        testPage_->setEquipmentStatus(code, false, QString::fromUtf8(error.what()));
-        log(QStringLiteral("%1 не готов: %2").arg(QString::fromLatin1(code),
-                                                   QString::fromUtf8(error.what())));
-    };
+    if (!standRuntimeReady_) {
+        initializeStandRuntime();
+        if (!standRuntimeReady_) return;
+    }
 
-    testPage_->setEquipmentStatus(
-        "E20", e20Available_,
-        e20Available_ ? "устройство открыто библиотекой liborbita"
-                      : "E20-10 не открыт; см. журнал мониторинга");
+    const QHash<QString, QString> uiCodes = {
+        {"orbita.ubsi_udp", "RS485"}, {"orbita.isd_http", "ISD"},
+        {"orbita.v7_visa", "V7"}, {"orbita.power_udp", "AKIP"},
+        {"orbita.rigol_generator", "RIGOL"}, {"orbita.r4831", "R4831"},
+        {"orbita.rigol_dho8xx", "SCOPE"}};
+    const QSet<QString> activeCapabilities = {
+        "stand.switch_matrix", "power.dc_supply", "signal.generator", "signal.resistance"};
 
-    try {
-        orbita::stand::UbsiUdpAdapter adapter({
-            settings.value("ubsiAdapter/host", "192.168.0.101").toString().toStdString(),
-            settings.value("network/localAddress", "192.168.0.50").toString().toStdString(),
-            static_cast<std::uint16_t>(settings.value("ubsiAdapter/dataPort", 1001).toUInt()),
-            static_cast<std::uint16_t>(settings.value("ubsiAdapter/ackPort", 1101).toUInt()),
-            settings.value("ubsiAdapter/timeoutMs", 800).toUInt()});
-        const bool packetSeen = adapter.waitForPassivePacket();
-        testPage_->setEquipmentStatus("RS485", packetSeen,
-            packetSeen ? "UDP-плагин получил пакет от адаптера"
-                       : "UDP-плагин загружен; пассивно пакетов нет, режим адаптера не изменялся");
-    } catch (const std::exception& error) { reportFailure("RS485", error); }
-
-    try {
-        orbita::stand::IsdHttpRouter isd({
-            settings.value("isd/host", "192.168.0.55").toString().toStdString(),
-            static_cast<std::uint16_t>(settings.value("isd/port", 80).toUInt()),
-            settings.value("isd/timeoutMs", 1500).toUInt(),
-            settings.value("isd/switchType", 2).toUInt(), {}});
-        const std::string response = isd.probe();
-        testPage_->setEquipmentStatus("ISD", true,
-            QStringLiteral("HTTP-плагин: ответ от %1 (%2 байт)")
-                .arg(settings.value("isd/host", "192.168.0.55").toString())
-                .arg(response.size()));
-    } catch (const std::exception& error) { reportFailure("ISD", error); }
-
-    try {
-        orbita::stand::RigolVisaGenerator rigol;
-        const std::string identity = rigol.identity();
-        testPage_->setEquipmentStatus("RIGOL", true,
-            QStringLiteral("%1; *IDN? = %2")
-                .arg(QString::fromStdString(rigol.resourceName()),
-                     QString::fromStdString(identity).trimmed()));
-    } catch (const std::exception& error) { reportFailure("RIGOL", error); }
-
-    try {
-        const QString port = settings.value("r4831/port", "COM7").toString();
-        orbita::stand::R4831SerialAdapter store({
-            port.toStdString(), settings.value("r4831/baud", 9600).toInt(),
-            settings.value("r4831/timeoutMs", 1000).toUInt(),
-            settings.value("r4831/decimalComma", false).toBool()});
-        testPage_->setEquipmentStatus("R4831", true, QString::fromStdString(store.probe()));
-    } catch (const std::exception& error) { reportFailure("R4831", error); }
-
-    try {
-        const bool activeAllowed = settings.value("powerSupply/allowLegacyCommands", false).toBool();
-        orbita::stand::LegacyUdpPowerSupply supply({
-            settings.value("powerSupply/host", "192.168.0.221").toString().toStdString(),
-            static_cast<std::uint16_t>(settings.value("powerSupply/commandPort", 4001).toUInt()),
-            static_cast<std::uint16_t>(settings.value("powerSupply/localReplyPort", 6008).toUInt()),
-            settings.value("powerSupply/timeoutMs", 1500).toUInt(), activeAllowed});
-        const std::string response = supply.probe();
-        testPage_->setEquipmentStatus("AKIP", activeAllowed,
-            activeAllowed
-                ? QStringLiteral("UDP-плагин GETD: %1").arg(QString::fromStdString(response).trimmed())
-                : QStringLiteral("GETD отвечает, но активные legacy-команды запрещены в stand.ini"));
-    } catch (const std::exception& error) { reportFailure("AKIP", error); }
-
-    testPage_->setEquipmentMissingPlugin("G3",
-        "не найден протокол управления/SDK АКИП-4113/2; наличие USB-драйвера не даёт API измерений");
-
-    testPage_->setEquipmentChecking("V7", "поиск NI-VISA и безопасный запрос READ?");
+    equipmentRegistry_->safeStopAll();
+    equipmentRegistry_->clear();
+    equipmentDevices_.clear();
+    testPage_->setEquipmentChecking("E20", QStringLiteral("Проверка E20-10 и активного набора Орбиты…"));
+    const bool orbitaReady = e20Available_ && !currentSpecs_.empty();
+    if (orbitaReady) {
+        equipmentRegistry_->bind("orbita.parameter_source",
+            [this](const std::string& operation,
+                   const std::map<std::string, std::string>& arguments) {
+                return invokeOrbitaParameterSource(operation, arguments);
+            });
+    }
     QApplication::setOverrideCursor(Qt::WaitCursor);
-    try {
-        orbita::stand::V7VisaVoltmeter meter;
-        const double value = meter.readVoltage();
-        std::ostringstream detail;
-        detail << meter.resourceName() << "; READ? = "
-               << std::fixed << std::setprecision(6) << value << " V";
-        testPage_->setEquipmentStatus("V7", true, QString::fromStdString(detail.str()));
-        log("В7-78/1 готов: " + QString::fromStdString(detail.str()));
-    } catch (const std::exception& error) {
-        testPage_->setEquipmentStatus(
-            "V7", false, QString::fromLocal8Bit(error.what()));
-        log("В7-78/1 не готов: " + QString::fromLocal8Bit(error.what()));
+    for (const auto& definition : standProfile_.devices) {
+        if (!definition.enabled) continue;
+        const QString code = uiCodes.value(QString::fromStdString(definition.pluginId));
+        if (!code.isEmpty()) testPage_->setEquipmentChecking(code, QStringLiteral("Загрузка DLL и безопасный probe…"));
+        try {
+            auto config = definition.configuration;
+            config["profile.active_outputs_confirmed"] = standProfile_.activeOutputsConfirmed ? "true" : "false";
+            for (const auto& [key, value] : standProfile_.routes) config["route." + key] = value;
+            auto device = equipmentPlugins_->createDevice(
+                definition.pluginId, definition.id, config);
+            if (definition.bindCapabilities.empty()) throw std::runtime_error("В профиле не указана возможность устройства");
+            const std::string probeCapability = definition.bindCapabilities.front();
+            const std::string response = device->invoke(probeCapability, "probe");
+            bool passiveReady = response.find("alive=0") == std::string::npos
+                && response.find("alive=false") == std::string::npos;
+            bool activeBlocked = false;
+            for (const auto& capability : definition.bindCapabilities) {
+                if (!standProfile_.activeOutputsConfirmed
+                    && activeCapabilities.contains(QString::fromStdString(capability))) {
+                    activeBlocked = true;
+                    continue;
+                }
+                equipmentRegistry_->bind(capability, device);
+            }
+            equipmentDevices_.push_back(device);
+            const bool ready = passiveReady && !activeBlocked;
+            QString detail = QString::fromStdString(response).trimmed();
+            if (activeBlocked) detail += QStringLiteral(
+                "; активные воздействия заблокированы профилем до подтверждения схемы");
+            if (!code.isEmpty()) testPage_->setEquipmentStatus(code, ready, detail);
+            log(QStringLiteral("%1: %2").arg(QString::fromStdString(definition.id), detail));
+        } catch (const std::exception& error) {
+            const QString detail = QString::fromUtf8(error.what());
+            if (!code.isEmpty()) testPage_->setEquipmentStatus(code, false, detail);
+            log(QStringLiteral("%1 не готов: %2")
+                .arg(QString::fromStdString(definition.id), detail));
+        }
     }
     QApplication::restoreOverrideCursor();
+    testPage_->setEquipmentStatus("E20", orbitaReady,
+        !e20Available_
+            ? QStringLiteral("E20-10 не открыт")
+            : currentSpecs_.empty()
+                ? QStringLiteral("E20-10 найден, но активный набор параметров пуст; откройте инженерный режим и выберите конфигурацию")
+                : QStringLiteral("E20-10 найден; активных параметров: %1")
+                    .arg(currentSpecs_.size()));
+}
+
+std::string MainWindow::invokeOrbitaParameterSource(
+    const std::string& operation,
+    const std::map<std::string, std::string>& arguments)
+{
+    if (!e20Available_) return "status=disconnected\ndiagnostic=E20-10 не открыт\n";
+    const auto channels = orbita_->getChannels();
+    if (operation == "probe") {
+        return "status=" + std::string(channels.empty() ? "not_configured" : "ready")
+            + "\nrunning=" + (orbita_->isRunning() ? "true" : "false")
+            + "\nchannel_count=" + std::to_string(channels.size()) + "\n";
+    }
+    if (channels.empty()) {
+        return "status=not_configured\ndiagnostic=Активный набор параметров Орбиты пуст\n"
+               "channel_count=0\nframes_processed=0\nphrase_error_percent=100\n"
+               "group_error_percent=100\n";
+    }
+    if (!orbita_->isRunning()) {
+        return "status=not_running\ndiagnostic=Сбор Орбиты не запущен\n"
+            "channel_count=" + std::to_string(channels.size()) + "\n"
+            "frames_processed=0\nphrase_error_percent=100\ngroup_error_percent=100\n";
+    }
+    if (operation == "health" || operation == "alive") {
+        orbita_->waitForData(std::chrono::milliseconds(1000));
+        const auto snapshot = orbita_->getSnapshot();
+        const bool ready = snapshot.stats.frames_processed > 0;
+        return "status=" + std::string(ready ? "ready" : "no_data")
+            + "\ndiagnostic=" + (ready ? std::string("Поток принимается")
+                                         : std::string("Нет актуального кадра"))
+            + "\nchannel_count=" + std::to_string(channels.size())
+            + "\nframes_processed=" + std::to_string(snapshot.stats.frames_processed)
+            + "\nphrase_error_percent=" + std::to_string(snapshot.stats.phrase_error_percent)
+            + "\ngroup_error_percent=" + std::to_string(snapshot.stats.group_error_percent)
+            + "\n";
+    }
+    if (operation == "read") {
+        const auto address = arguments.find("address");
+        if (address == arguments.end() || address->second.empty()) {
+            throw std::invalid_argument("Для чтения Орбиты требуется address");
+        }
+        unsigned sampleCount = 1;
+        if (const auto count = arguments.find("sample_count"); count != arguments.end()) {
+            sampleCount = std::max(1u, static_cast<unsigned>(std::stoul(count->second)));
+        }
+        double sum = 0.0;
+        unsigned accepted = 0;
+        for (unsigned index = 0; index < sampleCount; ++index) {
+            orbita_->waitForData(std::chrono::milliseconds(500));
+            const auto snapshot = orbita_->getSnapshot();
+            for (const auto& value : snapshot.values) {
+                if (value.address == address->second && value.valid) {
+                    sum += value.value;
+                    ++accepted;
+                    break;
+                }
+            }
+        }
+        if (!accepted) {
+            return "status=no_data\ndiagnostic=Параметр не обновлялся\n";
+        }
+        return "status=ready\nvalue=" + std::to_string(sum / accepted)
+            + "\nsample_count=" + std::to_string(accepted) + "\n";
+    }
+    throw std::invalid_argument("Неизвестная операция источника Орбита: " + operation);
+}
+
+void MainWindow::onRunScenario(
+    const QString& scenarioCode, const QString& objectSerial, bool allowPartial)
+{
+    if (!standRuntimeReady_ || !scenarioWatcher_ || scenarioWatcher_->isRunning()) return;
+    const auto iterator = scenarios_.constFind(scenarioCode);
+    if (iterator == scenarios_.cend()) {
+        testPage_->setRunInProgress(false);
+        log(QStringLiteral("Сценарий %1 не загружен").arg(scenarioCode));
+        return;
+    }
+    const auto scenario = iterator.value();
+    if (equipmentRegistry_->hasCapability("orbita.parameter_source")
+        && !orbita_->isRunning()) {
+        onStart();
+    }
+    scenarioEngine_->resetStop();
+    const std::string serial = objectSerial.toStdString();
+    const bool partial = allowPartial;
+    testPage_->setRunInProgress(true, QStringLiteral("Выполняется: %1")
+        .arg(QString::fromStdString(scenario.title)));
+    log(QStringLiteral("Запуск сценария %1, объект %2")
+        .arg(QString::fromStdString(scenario.id),
+             objectSerial.isEmpty() ? QStringLiteral("без заводского номера") : objectSerial));
+    scenarioWatcher_->setFuture(QtConcurrent::run([this, scenario, serial, partial]() {
+        return scenarioEngine_->run(scenario, *equipmentRegistry_,
+            standProfile_.version, serial, partial,
+            [this](const orbita::stand::RunEvent& event) {
+                QMetaObject::invokeMethod(this, [this, event]() {
+                    testPage_->setRunEvent(event);
+                }, Qt::QueuedConnection);
+            });
+    }));
+}
+
+void MainWindow::onStopScenario()
+{
+    if (scenarioEngine_) scenarioEngine_->requestStop();
+    if (equipmentRegistry_) equipmentRegistry_->safeStopAll();
+    testPage_->setRunInProgress(true, QStringLiteral("Остановка и безопасный сброс оборудования…"));
+    log(QStringLiteral("Оператор запросил безопасную остановку сценария"));
 }
 
 // ----------------------------------------------------------------------------
 //  Управление режимами
 // ----------------------------------------------------------------------------
+void MainWindow::setEngineerMode(bool enabled)
+{
+    testPage_->setEngineerMode(enabled);
+    for (auto* action : {actMain_, actDetail_, actConfig_, actDb_}) {
+        if (action) action->setVisible(enabled);
+    }
+    if (toolsMenu_) toolsMenu_->menuAction()->setVisible(enabled);
+    if (!enabled) setMode(ModeTests);
+}
+
 void MainWindow::setMode(int mode)
 {
     // Ранний выход если стек не инициализирован
