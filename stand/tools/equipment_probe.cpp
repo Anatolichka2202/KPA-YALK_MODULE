@@ -3,14 +3,19 @@
 
 #include <QCoreApplication>
 
+#include <algorithm>
 #include <cstdlib>
 #include <iostream>
+#include <map>
 
 int main(int argc, char** argv)
 {
     QCoreApplication application(argc, argv);
-    if (argc != 3) {
-        std::cerr << "Usage: orbita_equipment_probe <stand-profile.yaml> <plugin-directory>\n";
+    if (argc != 3 && argc < 6) {
+        std::cerr << "Usage:\n"
+                  << "  orbita_equipment_probe <stand-profile.yaml> <plugin-directory>\n"
+                  << "  orbita_equipment_probe <stand-profile.yaml> <plugin-directory> "
+                     "<device-id> <capability> <operation> [key=value ...]\n";
         return EXIT_FAILURE;
     }
 
@@ -21,6 +26,42 @@ int main(int argc, char** argv)
         std::cout << "PROFILE " << profile.id << " " << profile.version << '\n';
         std::cout << "ACTIVE_OUTPUTS " << (profile.activeOutputsConfirmed ? "CONFIRMED" : "BLOCKED") << '\n';
         std::cout << "PLUGINS " << manager.plugins().size() << '\n';
+
+        if (argc >= 6) {
+            const std::string requestedDevice = argv[3];
+            const auto definition = std::find_if(profile.devices.begin(), profile.devices.end(),
+                [&](const auto& item) { return item.id == requestedDevice; });
+            if (definition == profile.devices.end()) {
+                throw std::runtime_error("Device is absent from profile: " + requestedDevice);
+            }
+            if (!definition->enabled) {
+                throw std::runtime_error("Device is disabled in profile: " + requestedDevice);
+            }
+            auto config = definition->configuration;
+            config["profile.active_outputs_confirmed"] =
+                profile.activeOutputsConfirmed ? "true" : "false";
+            for (const auto& [key, value] : profile.routes) config["route." + key] = value;
+            auto device = manager.createDevice(definition->pluginId, definition->id, config);
+            std::map<std::string, std::string> arguments;
+            for (int index = 6; index < argc; ++index) {
+                const std::string item = argv[index];
+                const auto separator = item.find('=');
+                if (separator == std::string::npos || separator == 0) {
+                    throw std::invalid_argument("Expected key=value argument: " + item);
+                }
+                arguments[item.substr(0, separator)] = item.substr(separator + 1);
+            }
+            try {
+                const auto response = device->invoke(argv[4], argv[5], arguments);
+                std::cout << "INVOKE_OK " << requestedDevice << " " << argv[4] << "."
+                          << argv[5] << '\n' << response << '\n';
+                device->safeStop();
+                return EXIT_SUCCESS;
+            } catch (...) {
+                device->safeStop();
+                throw;
+            }
+        }
 
         bool allReady = true;
         for (const auto& definition : profile.devices) {

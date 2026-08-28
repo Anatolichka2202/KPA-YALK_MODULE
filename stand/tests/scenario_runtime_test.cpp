@@ -139,15 +139,16 @@ void configurationAndCatalog(const QString& root)
     require(profile.connections.at("adapter_rs485") == "Адаптер RS-485 → X1 ЯП-П"
                 && profile.connections.at("isd_to_yalk") == "ИСД → X1, X2, X3 ЯЛК",
             "Confirmed stand cable topology was not loaded from the profile");
-    bool firmwareProtocol = false;
+    bool liveKpaProtocol = false;
     for (const auto& device : profile.devices) {
         if (device.pluginId == "orbita.ubsi_udp") {
-            firmwareProtocol = device.configuration.at("protocol") == "ktma_firmware_udp_v1"
-                && device.configuration.at("data_port") == "1001"
-                && device.configuration.at("ack_port") == "1101";
+            liveKpaProtocol = device.configuration.at("protocol") == "kpa_rokot_udp"
+                && device.configuration.at("host") == "192.168.0.115"
+                && device.configuration.at("data_port") == "1113"
+                && device.configuration.at("ack_port") == "1113";
         }
     }
-    require(firmwareProtocol, "Default adapter profile must use the documented firmware protocol");
+    require(liveKpaProtocol, "Default adapter profile must use the live KPA/Rokot protocol");
 
     std::set<std::string> scenarioCapabilities;
     std::function<void(const ScenarioNode&)> collectCapabilities = [&](const ScenarioNode& node) {

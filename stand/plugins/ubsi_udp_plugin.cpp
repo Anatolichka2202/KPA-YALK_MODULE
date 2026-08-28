@@ -7,6 +7,7 @@
 #include <numeric>
 #include <sstream>
 #include <cctype>
+#include <thread>
 
 namespace {
 using namespace orbita::stand;
@@ -18,6 +19,40 @@ struct Instance {
     int selectedMode = -1;
     std::string protocol;
 };
+
+std::string prepareRokotYalk(Instance& instance, const std::map<std::string, std::string>& args)
+{
+    const auto adapterChannel = static_cast<std::uint8_t>(
+        plugin::unsignedValue(args, "adapter_channel", 1));
+    const auto addressCount = static_cast<std::uint8_t>(
+        plugin::unsignedValue(args, "address_count", 43));
+    const auto yalkNumber = static_cast<std::uint8_t>(
+        plugin::unsignedValue(args, "yalk_number", 1));
+    const bool slow = plugin::booleanValue(args, "slow", true);
+    const bool fast = plugin::booleanValue(args, "fast", false);
+
+    instance.adapter->sendRawCommand(UbsiUdpAdapter::rokotResetCommand());
+    instance.adapter->sendRawCommand(UbsiUdpAdapter::rokotConfigureYalkCommand(
+        adapterChannel, addressCount, slow, fast));
+    instance.adapter->sendRawCommand(UbsiUdpAdapter::rokotConfigureYtpCommand());
+    instance.adapter->sendRawCommand(UbsiUdpAdapter::rokotSelectYalkCommand(yalkNumber));
+
+    // Подтверждение — не архивное echo, а возобновившийся рабочий кадр ЯЛК:
+    // 02 <номер-1> <число адресов> 00 + 100 little-endian слов.
+    const auto frame = instance.adapter->receiveRawPacket();
+    if (frame.size() != 204 || frame[0] != 0x02 || frame[1] != yalkNumber - 1
+        || frame[2] != addressCount) {
+        throw std::runtime_error("Адаптер не подтвердил рабочий поток ЯЛК после настройки ROKOT");
+    }
+    instance.selectedMode = 6;
+    std::ostringstream result;
+    result << "status=ready\nprotocol=kpa_rokot_udp\nmode=6\nadapter_channel="
+           << static_cast<unsigned>(adapterChannel) << "\nyalk_number="
+           << static_cast<unsigned>(yalkNumber) << "\naddress_count="
+           << static_cast<unsigned>(addressCount) << "\nslow=" << (slow ? "true" : "false")
+           << "\nfast=" << (fast ? "true" : "false") << "\n";
+    return result.str();
+}
 
 std::vector<std::uint8_t> hexBytes(const std::string& text)
 {
@@ -86,36 +121,65 @@ orbita_plugin_status_v1 invoke(
         if (command == "select_mode") {
             plugin::requireActiveOutputs(instance.config);
             const int requestedMode = static_cast<int>(plugin::unsignedValue(args, "mode"));
-            if (instance.selectedMode != requestedMode || plugin::booleanValue(args, "single")) {
-                if (instance.protocol == "ktma_firmware_udp_v1") {
-                    instance.adapter->selectMode(static_cast<std::uint8_t>(requestedMode),
-                        plugin::booleanValue(args, "single"));
-                } else {
-                    const std::string key = "kpa.mode." + std::to_string(requestedMode) + ".hex";
-                    if (!instance.config.count(key) || instance.config.at(key).empty()
-                        || instance.config.at(key).find("TODO") != std::string::npos) {
-                        throw std::runtime_error("Для kpa_rokot_udp не записана захваченная команда режима "
-                            + std::to_string(requestedMode));
-                    }
-                    instance.adapter->sendRawCommand(hexBytes(instance.config.at(key)));
+            if (requestedMode < 0 || requestedMode > 30) {
+                throw std::invalid_argument("Режим адаптера должен быть в диапазоне 0..30");
+            }
+            if (instance.protocol == "kpa_rokot_udp") {
+                if (requestedMode != 6) {
+                    throw std::invalid_argument(
+                        "Для рабочего протокола ROKOT подтверждён только режим ЯЛК 8 кГц (6)");
                 }
+                if (instance.selectedMode != requestedMode) return prepareRokotYalk(instance, args);
+            } else if (instance.selectedMode != requestedMode
+                       || plugin::booleanValue(args, "single")) {
+                instance.adapter->selectMode(static_cast<std::uint8_t>(requestedMode),
+                    plugin::booleanValue(args, "single"));
                 instance.selectedMode = requestedMode;
             }
-            return std::string("status=ok\n");
+            return std::string("status=ok\nmode=") + std::to_string(requestedMode)
+                + "\nsingle=" + (plugin::booleanValue(args, "single") ? "true" : "false") + "\n";
+        }
+        if (command == "prepare_yalk") {
+            plugin::requireActiveOutputs(instance.config);
+            if (instance.protocol != "kpa_rokot_udp") {
+                throw std::invalid_argument("prepare_yalk доступна только для kpa_rokot_udp");
+            }
+            return prepareRokotYalk(instance, args);
+        }
+        if (command == "reset_adapter" || command == "configure_yalk"
+            || command == "configure_ytp" || command == "select_yalk") {
+            plugin::requireActiveOutputs(instance.config);
+            if (instance.protocol != "kpa_rokot_udp") {
+                throw std::invalid_argument("Операция ROKOT недоступна для архивного протокола");
+            }
+            if (command == "reset_adapter") {
+                instance.adapter->sendRawCommand(UbsiUdpAdapter::rokotResetCommand());
+                instance.selectedMode = -1;
+            } else if (command == "configure_yalk") {
+                instance.adapter->sendRawCommand(UbsiUdpAdapter::rokotConfigureYalkCommand(
+                    static_cast<std::uint8_t>(plugin::unsignedValue(args, "adapter_channel", 1)),
+                    static_cast<std::uint8_t>(plugin::unsignedValue(args, "address_count", 43)),
+                    plugin::booleanValue(args, "slow", true),
+                    plugin::booleanValue(args, "fast", false)));
+            } else if (command == "configure_ytp") {
+                instance.adapter->sendRawCommand(UbsiUdpAdapter::rokotConfigureYtpCommand(
+                    static_cast<std::uint8_t>(plugin::unsignedValue(args, "adapter_channel", 1)),
+                    static_cast<std::uint8_t>(plugin::unsignedValue(args, "first_address", 1)),
+                    static_cast<std::uint8_t>(plugin::unsignedValue(args, "address_count", 1))));
+            } else {
+                instance.adapter->sendRawCommand(UbsiUdpAdapter::rokotSelectYalkCommand(
+                    static_cast<std::uint8_t>(plugin::unsignedValue(args, "yalk_number", 1))));
+                instance.selectedMode = 6;
+            }
+            return "status=sent\nprotocol=kpa_rokot_udp\noperation=" + command + "\n";
         }
         if (command == "read" || command == "read_yalk") {
             const unsigned count = std::max(1u, plugin::unsignedValue(args, "sample_count", 16));
             unsigned wordIndex = plugin::unsignedValue(args, "word_index",
                 std::max(1u, plugin::unsignedValue(args, "channel", 1)) - 1);
             if (args.count("ulk_address")) {
-                const std::string mapKey = "ulk."
-                    + plugin::required(args, "parameter_group") + ".word."
-                    + args.at("ulk_address");
-                if (!instance.config.count(mapKey)) {
-                    throw std::runtime_error("Адрес УЛК " + args.at("ulk_address")
-                        + " известен из KPA, но его позиция в пакете текущего протокола не подтверждена");
-                }
-                wordIndex = plugin::unsignedValue(instance.config, mapKey);
+                wordIndex = UbsiUdpAdapter::wordIndexForUlkAddress(
+                    plugin::unsignedValue(args, "ulk_address"));
             }
             unsigned configuredMask = plugin::unsignedValue(args, "mask", 0xFFFF);
             if (args.count("parameter_key")) {
@@ -145,6 +209,25 @@ orbita_plugin_status_v1 invoke(
             std::ostringstream result;
             result << "size=" << bytes.size() << "\nhex=" << std::hex << std::setfill('0');
             for (const auto byte : bytes) result << std::setw(2) << static_cast<unsigned>(byte);
+            result << '\n';
+            return result.str();
+        }
+        if (command == "read_frame") {
+            // Инженерская операция: только приём уже идущего потока.  Она не
+            // выбирает режим адаптера и не посылает команд в стенд.
+            const auto bytes = instance.adapter->receiveRawPacket();
+            const auto words = UbsiUdpAdapter::decodeYalkPacket(bytes, 0xFFFF);
+            std::ostringstream result;
+            result << "status=ready\nsize=" << bytes.size() << "\nheader=";
+            const std::size_t headerSize = bytes.size() == 204 ? 4 : 0;
+            result << std::hex << std::setfill('0');
+            for (std::size_t index = 0; index < headerSize; ++index)
+                result << std::setw(2) << static_cast<unsigned>(bytes[index]);
+            result << std::dec << "\nwords=";
+            for (std::size_t index = 0; index < words.size(); ++index) {
+                if (index) result << ',';
+                result << words[index];
+            }
             result << '\n';
             return result.str();
         }

@@ -29,6 +29,7 @@ public:
     void setAnalog(unsigned channel, unsigned value, bool enabled);
     static std::string switchPath(unsigned type, unsigned channel, bool enabled);
     static std::string analogPath(unsigned channel, unsigned value, bool enabled);
+    static std::string fullResetPath();
 private:
     struct Impl;
     std::unique_ptr<Impl> impl_;
@@ -119,6 +120,15 @@ public:
     void sendRawCommand(const std::vector<std::uint8_t>& command);
     std::vector<std::uint8_t> receiveRawPacket();
     static std::vector<std::uint8_t> modeCommand(std::uint8_t mode, bool single = false);
+    static std::vector<std::uint8_t> rokotResetCommand();
+    static std::vector<std::uint8_t> rokotConfigureYalkCommand(
+        std::uint8_t adapterChannel = 1, std::uint8_t addressCount = 43,
+        bool slowParameters = true, bool fastParameters = false);
+    static std::vector<std::uint8_t> rokotConfigureYtpCommand(
+        std::uint8_t adapterChannel = 1, std::uint8_t firstAddress = 1,
+        std::uint8_t addressCount = 1);
+    static std::vector<std::uint8_t> rokotSelectYalkCommand(std::uint8_t yalkNumber = 1);
+    static unsigned wordIndexForUlkAddress(unsigned address);
     static std::vector<std::uint16_t> decodeYalkPacket(
         const std::vector<std::uint8_t>& packet, std::uint16_t mask);
 private:

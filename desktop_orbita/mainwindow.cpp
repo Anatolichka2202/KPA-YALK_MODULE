@@ -30,6 +30,8 @@
 #include "orbita_stand/telemetry_procedures.h"
 #include "orbita_stand/catalog.h"
 #include "scenario_yaml_editor.h"
+#include "adapter_monitor_widget.h"
+#include "equipment_control_widget.h"
 
 #define ORBITA_VERSION "0.1.0-alpha"
 
@@ -490,6 +492,38 @@ void MainWindow::setupToolBar()
     connect(catalogAction, &QAction::triggered, this, &MainWindow::onOpenCatalog);
     auto* profileAction = toolsMenu_->addAction("Профиль стенда и маршруты");
     connect(profileAction, &QAction::triggered, this, &MainWindow::onOpenStandProfile);
+    auto* adapterMonitorAction = toolsMenu_->addAction("ЯЛК / УЛК: живой поток адаптера");
+    adapterMonitorAction->setToolTip(QStringLiteral(
+        "Пассивно показывает UDP-кадры адаптера. Никаких команд в стенд не отправляет."));
+    connect(adapterMonitorAction, &QAction::triggered, this, [this] {
+        if (!equipmentRegistry_ || !equipmentRegistry_->hasCapability("ubsi.parameter_source")) {
+            QMessageBox::information(this, QStringLiteral("Адаптер ЯЛК / УЛК"),
+                QStringLiteral("Сначала нажмите «Проверить оборудование» на странице испытаний.\n"
+                               "Это загрузит плагин адаптера и выполнит безопасную проверку потока."));
+            return;
+        }
+        auto* monitor = new AdapterMonitorWidget([this] {
+            return equipmentRegistry_->invoke("ubsi.parameter_source", "read_frame", {});
+        }, this);
+        monitor->show();
+    });
+    auto* equipmentControlAction = toolsMenu_->addAction(
+        QStringLiteral("Ручное управление ИСД и адаптером"));
+    connect(equipmentControlAction, &QAction::triggered, this, [this] {
+        if (!equipmentRegistry_
+            || !equipmentRegistry_->hasCapability("ubsi.parameter_source")
+            || !equipmentRegistry_->hasCapability("stand.switch_matrix")) {
+            QMessageBox::information(this, QStringLiteral("Ручное управление"),
+                QStringLiteral("Сначала нажмите «Проверить оборудование» на странице испытаний."));
+            return;
+        }
+        auto* control = new EquipmentControlWidget([this](
+            const std::string& capability, const std::string& operation,
+            const std::map<std::string, std::string>& arguments) {
+                return equipmentRegistry_->invoke(capability, operation, arguments);
+            }, this);
+        control->show();
+    });
 
     connect(testPage_, &TestPage::equipmentCheckRequested,
             this, &MainWindow::onCheckTestEquipment);
@@ -762,8 +796,13 @@ void MainWindow::onCheckTestEquipment()
             bool passiveReady = response.find("alive=0") == std::string::npos
                 && response.find("alive=false") == std::string::npos;
             bool activeBlocked = false;
+            const bool deviceActiveCommandsConfirmed =
+                config.count("device.active_commands_confirmed")
+                && (config.at("device.active_commands_confirmed") == "true"
+                    || config.at("device.active_commands_confirmed") == "1");
             for (const auto& capability : definition.bindCapabilities) {
                 if (!standProfile_.activeOutputsConfirmed
+                    && !deviceActiveCommandsConfirmed
                     && activeCapabilities.contains(QString::fromStdString(capability))) {
                     activeBlocked = true;
                     continue;

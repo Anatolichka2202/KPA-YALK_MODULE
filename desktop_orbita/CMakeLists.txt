@@ -42,6 +42,8 @@ add_executable(OrbitaDesktop
     channel_status.h
     plot_theme.h
     scenario_yaml_editor.h scenario_yaml_editor.cpp
+    adapter_monitor_widget.h adapter_monitor_widget.cpp
+    equipment_control_widget.h equipment_control_widget.cpp
 )
 
 

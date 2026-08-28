@@ -33,7 +33,7 @@ void printPacket(unsigned index, const std::vector<std::uint8_t>& bytes)
     }
     std::cout << std::dec << '\n';
 
-    if (bytes.size() != 200) return;
+    if (bytes.size() != 200 && bytes.size() != 204) return;
     const auto words = orbita::stand::UbsiUdpAdapter::decodeYalkPacket(bytes, 0xFFFF);
     unsigned nonzero = 0;
     for (const auto word : words) if (word) ++nonzero;

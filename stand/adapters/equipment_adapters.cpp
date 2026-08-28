@@ -1,7 +1,9 @@
 #include "orbita_stand/equipment_adapters.h"
+#include "orbita_stand/yalk_frame.h"
 #include "orbita_stand/visa_instrument.h"
 
 #include <QEventLoop>
+#include <QElapsedTimer>
 #include <QHostAddress>
 #include <QNetworkAccessManager>
 #include <QNetworkDatagram>
@@ -70,9 +72,13 @@ QByteArray httpGet(const IsdHttpConfig& config, const QString& path)
 void requireIsdSuccess(const QByteArray& body)
 {
     if (body.isEmpty()) throw std::runtime_error("ISD returned an empty response");
+    const QByteArray trimmed = body.trimmed();
     const QString utf8 = QString::fromUtf8(body);
     const QString local = QString::fromLocal8Bit(body);
-    if (!utf8.contains(QStringLiteral("успешно"), Qt::CaseInsensitive)
+    // Фактическая прошивка стенда на 192.168.0.101 отвечает коротким "OK".
+    // В старой Delphi-конфигурации встречается развёрнутое «успешно».
+    if (trimmed.compare("OK", Qt::CaseInsensitive) != 0
+        && !utf8.contains(QStringLiteral("успешно"), Qt::CaseInsensitive)
         && !local.contains(QStringLiteral("успешно"), Qt::CaseInsensitive)) {
         throw std::runtime_error("ISD did not confirm command: " + body.left(160).toStdString());
     }
@@ -93,10 +99,9 @@ IsdHttpRouter::~IsdHttpRouter() = default;
 std::string IsdHttpRouter::probe() { return httpGet(impl_->config, QStringLiteral("/")).left(200).toStdString(); }
 void IsdHttpRouter::reset()
 {
-    if (impl_->config.resetChannels.empty()) {
-        throw std::runtime_error("ISD reset channel list is not configured");
-    }
-    for (unsigned channel : impl_->config.resetChannels) disconnectChannel(channel);
+    // Референсная Delphi-программа и KPA выполняют «сброс полный» одной
+    // штатной командой type=4. Перебор каналов type=2 не эквивалентен ей.
+    requireIsdSuccess(httpGet(impl_->config, QString::fromStdString(fullResetPath())));
 }
 void IsdHttpRouter::connectChannel(unsigned channel) { setSwitch(impl_->config.switchType, channel, true); }
 void IsdHttpRouter::disconnectChannel(unsigned channel) { setSwitch(impl_->config.switchType, channel, false); }
@@ -119,6 +124,10 @@ std::string IsdHttpRouter::analogPath(unsigned channel, unsigned value, bool ena
     if (!channel) throw std::invalid_argument("ISD channel starts at one");
     return "/type=1num=" + std::to_string(channel) + "val=" + std::to_string(value)
         + "work=" + (enabled ? "1" : "0");
+}
+std::string IsdHttpRouter::fullResetPath()
+{
+    return "/type=4num=1";
 }
 
 struct RigolVisaGenerator::Impl {
@@ -247,10 +256,19 @@ struct UbsiUdpAdapter::Impl {
     explicit Impl(UbsiUdpConfig value)
         : config(std::move(value)), adapter(requiredAddress(config.adapterHost, "UBSI adapter host")),
           local(config.localAddress.empty() ? QHostAddress::AnyIPv4
-                                            : requiredAddress(config.localAddress, "UBSI local address")) {}
+                                            : requiredAddress(config.localAddress, "UBSI local address"))
+    {
+        // Порт должен быть открыт до команды: рабочий адаптер начинает отдавать
+        // короткую серию кадров сразу после ROKT select и позднее открытие их теряет.
+        if (!dataSocket.bind(local, config.commandAndDataPort,
+                             QUdpSocket::ShareAddress | QUdpSocket::ReuseAddressHint)) {
+            throw qtError("UBSI data port bind failed", dataSocket.errorString());
+        }
+    }
     UbsiUdpConfig config;
     QHostAddress adapter;
     QHostAddress local;
+    QUdpSocket dataSocket;
     bool accepts(const QHostAddress& sender) const
     {
         return config.acceptAnySender || sender == adapter;
@@ -260,14 +278,10 @@ UbsiUdpAdapter::UbsiUdpAdapter(UbsiUdpConfig config) : impl_(std::make_unique<Im
 UbsiUdpAdapter::~UbsiUdpAdapter() = default;
 bool UbsiUdpAdapter::waitForPassivePacket()
 {
-    QUdpSocket socket;
-    if (!socket.bind(impl_->local, impl_->config.commandAndDataPort,
-                     QUdpSocket::ShareAddress | QUdpSocket::ReuseAddressHint)) {
-        throw qtError("UBSI data port bind failed", socket.errorString());
-    }
-    if (!socket.waitForReadyRead(impl_->config.timeoutMilliseconds)) return false;
-    while (socket.hasPendingDatagrams()) {
-        const auto packet = socket.receiveDatagram();
+    if (!impl_->dataSocket.hasPendingDatagrams()
+        && !impl_->dataSocket.waitForReadyRead(impl_->config.timeoutMilliseconds)) return false;
+    while (impl_->dataSocket.hasPendingDatagrams()) {
+        const auto packet = impl_->dataSocket.receiveDatagram();
         if (impl_->accepts(packet.senderAddress())) return true;
     }
     return false;
@@ -277,25 +291,40 @@ void UbsiUdpAdapter::selectMode(std::uint8_t mode, bool single)
     if (impl_->config.acceptAnySender) {
         throw std::runtime_error("Нельзя отправлять команду режиму адаптера без подтверждённого IP источника");
     }
-    QUdpSocket acknowledgement;
-    if (!acknowledgement.bind(impl_->local, impl_->config.acknowledgementPort,
-                              QUdpSocket::ShareAddress | QUdpSocket::ReuseAddressHint)) {
-        throw qtError("UBSI acknowledgement port bind failed", acknowledgement.errorString());
+    QUdpSocket separateAcknowledgement;
+    QUdpSocket* acknowledgement = &impl_->dataSocket;
+    if (impl_->config.acknowledgementPort != impl_->config.commandAndDataPort) {
+        if (!separateAcknowledgement.bind(impl_->local, impl_->config.acknowledgementPort,
+                                          QUdpSocket::ShareAddress | QUdpSocket::ReuseAddressHint)) {
+            throw qtError("UBSI acknowledgement port bind failed",
+                          separateAcknowledgement.errorString());
+        }
+        acknowledgement = &separateAcknowledgement;
     }
     const auto bytes = modeCommand(mode, single);
     const QByteArray command(reinterpret_cast<const char*>(bytes.data()), bytes.size());
-    QUdpSocket sender;
-    if (sender.writeDatagram(command, impl_->adapter, impl_->config.commandAndDataPort) != command.size()) {
-        throw qtError("UBSI mode command send failed", sender.errorString());
+    if (impl_->dataSocket.writeDatagram(command, impl_->adapter,
+                                        impl_->config.commandAndDataPort) != command.size()) {
+        throw qtError("UBSI mode command send failed", impl_->dataSocket.errorString());
     }
-    if (!acknowledgement.waitForReadyRead(impl_->config.timeoutMilliseconds)) {
-        throw std::runtime_error("UBSI adapter did not acknowledge mode command");
+    // В рабочем варианте порт подтверждения совпадает с портом непрерывного
+    // потока (1113). Игнорируем кадры данных 200/204 байта и ждём именно echo
+    // трёхбайтовой команды до общего тайм-аута.
+    QElapsedTimer elapsed;
+    elapsed.start();
+    while (elapsed.elapsed() < static_cast<qint64>(impl_->config.timeoutMilliseconds)) {
+        const qint64 remaining = static_cast<qint64>(impl_->config.timeoutMilliseconds) - elapsed.elapsed();
+        if (!acknowledgement->hasPendingDatagrams()
+            && !acknowledgement->waitForReadyRead(
+                static_cast<int>(std::max<qint64>(1, remaining)))) {
+            break;
+        }
+        while (acknowledgement->hasPendingDatagrams()) {
+            const auto packet = acknowledgement->receiveDatagram();
+            if (packet.senderAddress() == impl_->adapter && packet.data() == command) return;
+        }
     }
-    while (acknowledgement.hasPendingDatagrams()) {
-        const auto packet = acknowledgement.receiveDatagram();
-        if (packet.senderAddress() == impl_->adapter && packet.data() == command) return;
-    }
-    throw std::runtime_error("UBSI adapter returned an invalid mode acknowledgement");
+    throw std::runtime_error("UBSI adapter did not acknowledge mode command");
 }
 void UbsiUdpAdapter::sendRawCommand(const std::vector<std::uint8_t>& bytes)
 {
@@ -304,44 +333,98 @@ void UbsiUdpAdapter::sendRawCommand(const std::vector<std::uint8_t>& bytes)
     }
     if (bytes.empty()) throw std::invalid_argument("UBSI raw command must not be empty");
     const QByteArray command(reinterpret_cast<const char*>(bytes.data()), bytes.size());
-    QUdpSocket sender;
-    if (sender.writeDatagram(command, impl_->adapter, impl_->config.commandAndDataPort)
+    if (impl_->dataSocket.writeDatagram(command, impl_->adapter, impl_->config.commandAndDataPort)
         != command.size()) {
-        throw qtError("UBSI raw command send failed", sender.errorString());
+        throw qtError("UBSI raw command send failed", impl_->dataSocket.errorString());
     }
 }
 std::vector<std::uint8_t> UbsiUdpAdapter::modeCommand(std::uint8_t mode, bool single)
 {
     return {0x44, static_cast<std::uint8_t>(0x01 | (single ? 0x02 : 0x00)), mode};
 }
+
+namespace {
+std::vector<std::uint8_t> rokotPacket(std::uint8_t command)
+{
+    std::vector<std::uint8_t> packet(128, 0);
+    packet[0] = 'R';
+    packet[1] = 'O';
+    packet[2] = 'K';
+    packet[3] = 'T';
+    packet[4] = command;
+    return packet;
+}
+}
+
+std::vector<std::uint8_t> UbsiUdpAdapter::rokotResetCommand()
+{
+    return rokotPacket(0x16);
+}
+
+std::vector<std::uint8_t> UbsiUdpAdapter::rokotConfigureYalkCommand(
+    std::uint8_t adapterChannel, std::uint8_t addressCount,
+    bool slowParameters, bool fastParameters)
+{
+    if (!adapterChannel || !addressCount) {
+        throw std::invalid_argument("ROKOT YALK adapter channel and address count start at one");
+    }
+    auto packet = rokotPacket(0x14);
+    packet[5] = adapterChannel;
+    packet[6] = addressCount;
+    packet[7] = slowParameters ? 1 : 0;
+    packet[8] = fastParameters ? 1 : 0;
+    return packet;
+}
+
+std::vector<std::uint8_t> UbsiUdpAdapter::rokotConfigureYtpCommand(
+    std::uint8_t adapterChannel, std::uint8_t firstAddress, std::uint8_t addressCount)
+{
+    if (!adapterChannel || !firstAddress || !addressCount) {
+        throw std::invalid_argument("ROKOT YTP values start at one");
+    }
+    auto packet = rokotPacket(0x15);
+    packet[5] = adapterChannel;
+    packet[6] = firstAddress;
+    packet[7] = addressCount;
+    return packet;
+}
+
+std::vector<std::uint8_t> UbsiUdpAdapter::rokotSelectYalkCommand(std::uint8_t yalkNumber)
+{
+    if (!yalkNumber) throw std::invalid_argument("ROKOT YALK number starts at one");
+    auto packet = rokotPacket(0x0A);
+    // Сценарий KPA «ЯЛК -я1 -кад_вх -п3» даёт 0A 00 00 01.
+    packet[7] = yalkNumber;
+    return packet;
+}
+unsigned UbsiUdpAdapter::wordIndexForUlkAddress(unsigned address)
+{
+    if (address < 1 || address > 100) {
+        throw std::invalid_argument("ULK address must be in range 1..100");
+    }
+    return address - 1;
+}
 std::vector<std::uint16_t> UbsiUdpAdapter::decodeYalkPacket(
     const std::vector<std::uint8_t>& packet, std::uint16_t mask)
 {
-    if (packet.size() != 200) {
-        throw std::invalid_argument("YALK packet must contain exactly 200 bytes");
-    }
+    // Архивная прошивка передаёт 100 слов (200 байт). Работающий вариант
+    // KPA/Rokot на UDP 1113 добавляет перед ними четырёхбайтный заголовок.
+    // Заголовок относится к транспорту, а не к данным ЯЛК.
     if (!mask) throw std::invalid_argument("YALK word mask must not be zero");
+    const auto samples = decodeYalkSlowFrame(packet);
     std::vector<std::uint16_t> result;
     result.reserve(100);
-    for (std::size_t index = 0; index < packet.size(); index += 2) {
-        const std::uint16_t word = static_cast<std::uint16_t>(packet[index])
-            | static_cast<std::uint16_t>(packet[index + 1]) << 8;
-        result.push_back(word & mask);
-    }
+    for (const auto& sample : samples) result.push_back(sample.rawWord & mask);
     return result;
 }
 std::vector<std::uint8_t> UbsiUdpAdapter::receiveRawPacket()
 {
-    QUdpSocket socket;
-    if (!socket.bind(impl_->local, impl_->config.commandAndDataPort,
-                     QUdpSocket::ShareAddress | QUdpSocket::ReuseAddressHint)) {
-        throw qtError("UBSI data port bind failed", socket.errorString());
-    }
-    if (!socket.waitForReadyRead(impl_->config.timeoutMilliseconds)) {
+    if (!impl_->dataSocket.hasPendingDatagrams()
+        && !impl_->dataSocket.waitForReadyRead(impl_->config.timeoutMilliseconds)) {
         throw std::runtime_error("UBSI adapter data timeout");
     }
-    while (socket.hasPendingDatagrams()) {
-        const auto packet = socket.receiveDatagram();
+    while (impl_->dataSocket.hasPendingDatagrams()) {
+        const auto packet = impl_->dataSocket.receiveDatagram();
         if (!impl_->accepts(packet.senderAddress())) continue;
         const QByteArray data = packet.data();
         return {reinterpret_cast<const std::uint8_t*>(data.constData()),

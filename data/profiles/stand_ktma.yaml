@@ -1,6 +1,6 @@
 schema: 1
 id: ktma-main
-version: 2026.08.28-ubsi-2
+version: 2026.08.28-ubsi-3
 title: Основной стенд КТМА, Windows 11
 
 # Пока карта кабелей и активные команды не подтверждены на самом стенде,
@@ -31,7 +31,8 @@ routes:
     bus: 0
     safe: off
   yalk_analog:
-    base: TODO_CONFIRM
+    # KPA: «ИСД <id> а <номер канала ЯЛК> вольты ...» — номера совпадают.
+    base: 1
     type: 1
     bus: 0
     min: 0
@@ -80,19 +81,20 @@ devices:
       - ubsi.parameter_source
     config:
       # RS-485 адаптера физически подключён к X1 ЯП-П. Адаптер передаёт
-      # коды ЯЛК/ЯТП на Ethernet ПЭВМ.
-      # Приём идёт на 192.168.0.50:1001; IP источника намеренно не предполагается.
-      # Команды адаптеру остаются запрещены, пока IP источника не подтверждён.
-      host: 0.0.0.0
+      # коды ЯЛК/ЯТП широковещательно на Ethernet ПЭВМ. Живой поток ЯЛК
+      # подтверждён 28.08.2026: 192.168.0.115:1113 -> 192.168.0.255:1113,
+      # 4 байта заголовка + 100 16-битных слов.
+      host: 192.168.0.115
       local_address: 192.168.0.50
-      data_port: 1001
-      ack_port: 1101
+      data_port: 1113
+      ack_port: 1113
       timeout_ms: 800
-      accept_any_sender: true
-      # Прямой протокол архивной прошивки: команда режима 44 01 NN, ACK 1101.
-      # Старый KPA-вариант на 1113 остаётся отдельным неподтверждённым вариантом.
-      device.active_commands_confirmed: false
-      protocol: ktma_firmware_udp_v1
+      accept_any_sender: false
+      # Рабочий протокол подтверждён дампом действующей KPA и живой пробой:
+      # 128 байт, сигнатура ROKT, команды 16/14/15/0A. После подготовки
+      # ЯЛК адаптер выдаёт кадр 02 00 2B 00 + 100 слов примерно раз в 18 мс.
+      device.active_commands_confirmed: true
+      protocol: kpa_rokot_udp
   - id: isd
     plugin: orbita.isd_http
     bind:
@@ -104,6 +106,9 @@ devices:
       port: 80
       timeout_ms: 1500
       switch_type: 2
+      # Форматы type=1/2/3/4 подтверждены Delphi и KPA. Ручная панель всё
+      # равно запрашивает подтверждение перед каждой активной командой.
+      device.active_commands_confirmed: true
   - id: v7-reference
     plugin: orbita.v7_visa
     bind:

@@ -46,7 +46,11 @@ orbita_plugin_status_v1 invoke(void* value, const char* capability, const char* 
         if (!capability || std::string(capability) != "stand.switch_matrix") throw std::invalid_argument("Unsupported capability");
         const std::string command = operation ? operation : "";
         const auto args = plugin::arguments(request);
-        if (command == "probe") return instance.router->probe();
+        if (command == "probe") {
+            const auto body = instance.router->probe();
+            return std::string("status=ready\nalive=1\nmessage=ИСД ответил по HTTP\nresponse=")
+                + body + "\n";
+        }
         plugin::requireActiveOutputs(instance.config);
         const auto resolvedChannel = [&]() {
             if (args.count("route")) {
@@ -56,7 +60,7 @@ orbita_plugin_status_v1 invoke(void* value, const char* capability, const char* 
             }
             return plugin::unsignedValue(args, "channel");
         };
-        if (command == "reset") instance.router->reset();
+        if (command == "reset" || command == "full_reset") instance.router->reset();
         else if (command == "switch") {
             unsigned type = plugin::unsignedValue(args, "type",
                 plugin::unsignedValue(instance.config, "switch_type", 2));
@@ -76,7 +80,7 @@ orbita_plugin_status_v1 invoke(void* value, const char* capability, const char* 
                 plugin::booleanValue(args, "enabled"));
         }
         else throw std::invalid_argument("Unsupported ISD operation: " + command);
-        return std::string("status=ok\n");
+        return std::string("status=ok\noperation=") + command + "\n";
     });
 }
 void cancel(void*) {}
