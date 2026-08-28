@@ -62,8 +62,19 @@ std::size_t printSnapshot(const char* kind, const orbita::Snapshot& snapshot)
 
 int main(int argc, char** argv)
 {
+    if (argc == 3 && std::string(argv[1]) == "--validate") {
+        try {
+            const auto channels = loadChannels(argv[2]);
+            std::cout << "VALID channels=" << channels.size() << '\n';
+            return 0;
+        } catch (const std::exception& error) {
+            std::cerr << "ERROR " << error.what() << '\n';
+            return 1;
+        }
+    }
     if (argc < 2 || argc > 4) {
-        std::cerr << "Usage: orbita_telemetry_probe <address-file> [seconds] [interval-ms]\n";
+        std::cerr << "Usage: orbita_telemetry_probe <address-file> [seconds] [interval-ms]\n"
+                  << "   or: orbita_telemetry_probe --validate <address-file>\n";
         return 2;
     }
     const int seconds = argc >= 3 ? std::max(1, std::atoi(argv[2])) : 10;
