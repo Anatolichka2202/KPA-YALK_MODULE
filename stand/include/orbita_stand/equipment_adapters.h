@@ -105,6 +105,9 @@ struct UbsiUdpConfig {
     std::uint16_t commandAndDataPort = 1001;
     std::uint16_t acknowledgementPort = 1101;
     unsigned timeoutMilliseconds = 1500;
+    // Адаптер штатно передаёт UDP широковещательно. В этом режиме ПЭВМ
+    // принимает пакеты на своём Ethernet-интерфейсе, не предполагая IP источника.
+    bool acceptAnySender = false;
 };
 
 class UbsiUdpAdapter final {

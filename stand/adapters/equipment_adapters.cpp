@@ -251,6 +251,10 @@ struct UbsiUdpAdapter::Impl {
     UbsiUdpConfig config;
     QHostAddress adapter;
     QHostAddress local;
+    bool accepts(const QHostAddress& sender) const
+    {
+        return config.acceptAnySender || sender == adapter;
+    }
 };
 UbsiUdpAdapter::UbsiUdpAdapter(UbsiUdpConfig config) : impl_(std::make_unique<Impl>(std::move(config))) {}
 UbsiUdpAdapter::~UbsiUdpAdapter() = default;
@@ -264,12 +268,15 @@ bool UbsiUdpAdapter::waitForPassivePacket()
     if (!socket.waitForReadyRead(impl_->config.timeoutMilliseconds)) return false;
     while (socket.hasPendingDatagrams()) {
         const auto packet = socket.receiveDatagram();
-        if (packet.senderAddress() == impl_->adapter) return true;
+        if (impl_->accepts(packet.senderAddress())) return true;
     }
     return false;
 }
 void UbsiUdpAdapter::selectMode(std::uint8_t mode, bool single)
 {
+    if (impl_->config.acceptAnySender) {
+        throw std::runtime_error("Нельзя отправлять команду режиму адаптера без подтверждённого IP источника");
+    }
     QUdpSocket acknowledgement;
     if (!acknowledgement.bind(impl_->local, impl_->config.acknowledgementPort,
                               QUdpSocket::ShareAddress | QUdpSocket::ReuseAddressHint)) {
@@ -292,6 +299,9 @@ void UbsiUdpAdapter::selectMode(std::uint8_t mode, bool single)
 }
 void UbsiUdpAdapter::sendRawCommand(const std::vector<std::uint8_t>& bytes)
 {
+    if (impl_->config.acceptAnySender) {
+        throw std::runtime_error("Нельзя отправлять UDP-команду адаптеру без подтверждённого IP источника");
+    }
     if (bytes.empty()) throw std::invalid_argument("UBSI raw command must not be empty");
     const QByteArray command(reinterpret_cast<const char*>(bytes.data()), bytes.size());
     QUdpSocket sender;
@@ -332,7 +342,7 @@ std::vector<std::uint8_t> UbsiUdpAdapter::receiveRawPacket()
     }
     while (socket.hasPendingDatagrams()) {
         const auto packet = socket.receiveDatagram();
-        if (packet.senderAddress() != impl_->adapter) continue;
+        if (!impl_->accepts(packet.senderAddress())) continue;
         const QByteArray data = packet.data();
         return {reinterpret_cast<const std::uint8_t*>(data.constData()),
                 reinterpret_cast<const std::uint8_t*>(data.constData()) + data.size()};

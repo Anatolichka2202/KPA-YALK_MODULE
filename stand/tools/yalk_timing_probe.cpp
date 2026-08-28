@@ -1,6 +1,8 @@
 #include "orbita_stand/equipment_adapters.h"
 #include "orbita_stand/v7_visa_voltmeter.h"
 
+#include <QCoreApplication>
+
 #include <array>
 #include <chrono>
 #include <cmath>
@@ -45,16 +47,19 @@ std::optional<unsigned> firstChangedWord(const std::vector<std::uint16_t>& befor
 
 int main(int argc, char** argv)
 {
+    QCoreApplication application(argc, argv);
     if (argc != 6) {
-        std::cerr << "Usage: yalk_timing_probe <isd-ip> <isd-channel> <adapter-ip> <local-ip> <seconds-per-point>\n"
+        std::cerr << "Usage: yalk_timing_probe <isd-ip> <isd-channel> <adapter-ip|passive> <local-ip> <seconds-per-point>\n"
                      "Sets 0, 3 and 6 V through the ISD analog channel, reads V7-78/1 and YALK mode 6.\n";
         return 2;
     }
 
     const auto isdChannel = number(argv[2], "ISD channel", 255);
     const auto secondsPerPoint = number(argv[5], "duration", 60);
+    const bool passiveBroadcast = std::string(argv[3]) == "passive";
     orbita::stand::IsdHttpRouter isd({argv[1], 80, 1500, 2, {}});
-    orbita::stand::UbsiUdpAdapter adapter({argv[3], argv[4], 1001, 1101, 100});
+    orbita::stand::UbsiUdpAdapter adapter({passiveBroadcast ? "0.0.0.0" : argv[3],
+                                            argv[4], 1001, 1101, 100, passiveBroadcast});
     orbita::stand::V7VisaVoltmeter meter;
 
     // Из Delphi: 4095 соответствует 10 В, поэтому 3 и 6 В представлены
@@ -65,15 +70,21 @@ int main(int argc, char** argv)
     try {
         std::cout << "TARGET isd=" << argv[1] << " channel=" << isdChannel
                   << " adapter=" << argv[3] << " v7=" << meter.resourceName() << '\n';
-        std::cout << "SELECT adapter_mode=6(YALK)\n";
-        adapter.selectMode(6);
-
-        std::vector<std::uint16_t> previousWords;
-        try { previousWords = orbita::stand::UbsiUdpAdapter::decodeYalkPacket(
-            adapter.receiveRawPacket(), 0xFFFF); }
-        catch (const std::exception& error) {
-            std::cout << "BASELINE_ADAPTER unavailable=" << error.what() << '\n';
+        if (passiveBroadcast) {
+            std::cout << "ADAPTER passive_broadcast=true port=1001\n";
+        } else {
+            std::cout << "SELECT adapter_mode=6(YALK)\n";
+            adapter.selectMode(6);
         }
+
+        const auto baselinePacket = adapter.receiveRawPacket();
+        if (baselinePacket.size() != 200) {
+            throw std::runtime_error("Адаптер передал пакет не ЯЛК: ожидалось 200 байт, получено "
+                + std::to_string(baselinePacket.size()));
+        }
+        std::vector<std::uint16_t> previousWords =
+            orbita::stand::UbsiUdpAdapter::decodeYalkPacket(baselinePacket, 0xFFFF);
+        std::cout << "BASELINE_ADAPTER bytes=200 words=100\n";
 
         for (const double volts : points) {
             const unsigned code = static_cast<unsigned>(std::lround(volts * codesPerVolt));

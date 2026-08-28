@@ -56,7 +56,8 @@ orbita_plugin_status_v1 create(
             instance->config["local_address"],
             static_cast<std::uint16_t>(plugin::unsignedValue(instance->config, "data_port", 1001)),
             static_cast<std::uint16_t>(plugin::unsignedValue(instance->config, "ack_port", 1101)),
-            plugin::unsignedValue(instance->config, "timeout_ms", 800)});
+            plugin::unsignedValue(instance->config, "timeout_ms", 800),
+            plugin::booleanValue(instance->config, "accept_any_sender")});
         *output = instance.release();
         return std::string("UBSI Ethernet adapter created");
     });
