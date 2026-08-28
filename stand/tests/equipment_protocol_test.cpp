@@ -1,4 +1,5 @@
 #include "orbita_stand/equipment_adapters.h"
+#include "orbita_stand/yalk_frame.h"
 
 #include <cstdlib>
 #include <iostream>
@@ -49,6 +50,39 @@ int main()
         const auto yalk10 = UbsiUdpAdapter::decodeYalkPacket(yalkPacket, 0x03FF);
         require(yalk10[0] == 0x0234,
                 "YALK mode 11 10-bit decode is wrong");
+
+        //бок проверки декодирования данных адаптера
+        const auto sample = decodeYalkSample(0x0323);
+        require(sample.rawWord == 0x0323,
+                "raw YALK word is wrong");
+        require(sample.analogCode == 0x0123,
+                "YALK analog code is wrong");
+        require(sample.contact,
+                "YALK contact bit is wrong");
+        std::vector<std::uint8_t> slowFrame(200,0);
+        slowFrame[0] = 0x23; // младший байт
+        slowFrame[1] = 0x03; // старший байт
+
+        const auto samples = decodeYalkSlowFrame(slowFrame);
+        require(samples.size() == 100,
+                "YALK slow frame must contain 100 samples");
+        require(samples[0].rawWord == 0x0323,
+                "YALK slow raw word is wrong");
+        require(samples[0].analogCode == 0x0123,
+                "YALK slow analog code is wrong");
+        require(samples[0].contact,
+                "YALK slow contact is wrong");
+        std::vector<std::uint8_t> badFrame(120, 0);
+        bool badFrameRejected = false;
+        try{
+        decodeYalkSlowFrame(badFrame);
+        }catch (const std::invalid_argument&) {
+            badFrameRejected = true;
+        }
+        require(
+            badFrameRejected,
+            "YALK decoder accepted invalid 120-byte frame"
+            );
         std::cout << "Equipment protocol tests passed\n";
         return EXIT_SUCCESS;
     } catch (const std::exception& error) {

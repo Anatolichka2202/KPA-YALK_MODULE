@@ -34,6 +34,7 @@ add_library(orbita_stand_adapters STATIC
     adapters/v7_visa_voltmeter.cpp
     adapters/visa_instrument.cpp
     adapters/dho_waveform.cpp
+    adapters/yalk_frame.cpp
 )
 target_include_directories(orbita_stand_adapters
     PUBLIC
