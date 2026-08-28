@@ -41,6 +41,7 @@ $runtimeFiles = @(
     'orbita_equipment_probe.exe',
     'orbita_telemetry_probe.exe',
     'orbita_ubsi_udp_probe.exe',
+    'yalk_timing_probe.exe',
     'visa_discover.exe',
     'Lusbapi64.dll',
     # windeployqt sees dependencies of OrbitaDesktop.exe, but not dependencies

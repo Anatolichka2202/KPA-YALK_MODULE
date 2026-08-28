@@ -115,6 +115,9 @@ target_link_libraries(orbita_telemetry_probe PRIVATE orbita)
 add_executable(orbita_ubsi_udp_probe tools/ubsi_udp_probe.cpp)
 target_link_libraries(orbita_ubsi_udp_probe PRIVATE orbita_stand_adapters)
 
+add_executable(yalk_timing_probe tools/yalk_timing_probe.cpp)
+target_link_libraries(yalk_timing_probe PRIVATE orbita_stand_adapters)
+
 if(WIN32)
     add_executable(visa_discover tools/visa_discover.cpp)
 endif()
