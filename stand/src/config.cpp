@@ -97,6 +97,7 @@ StandProfile loadStandProfile(const std::string& path)
     profile.title = root.value("title");
     profile.activeOutputsConfirmed = boolean(root.value("active_outputs_confirmed"), false);
     profile.routes = routeMap(root.find("routes"));
+    profile.connections = stringMap(root.find("connections"));
     const auto& devices = root.at("devices");
     if (!devices.isSequence()) throw yaml::Error("Profile devices must be a sequence");
     for (const auto& value : devices.sequence) {

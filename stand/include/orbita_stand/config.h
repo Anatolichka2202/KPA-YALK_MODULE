@@ -24,6 +24,9 @@ struct StandProfile {
     bool activeOutputsConfirmed = false;
     std::vector<DeviceProfile> devices;
     std::map<std::string, std::string> routes;
+    // Подтверждённая физическая топология стенда. Сценарии используют routes,
+    // а connections нужны инженеру для проверки кабелей перед запуском.
+    std::map<std::string, std::string> connections;
 };
 
 StandProfile loadStandProfile(const std::string& path);

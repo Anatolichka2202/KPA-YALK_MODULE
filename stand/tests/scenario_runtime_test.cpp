@@ -136,6 +136,9 @@ void configurationAndCatalog(const QString& root)
                 && profile.routes.at("yalk_analog.max") == "4095"
                 && profile.routes.at("yvp_input.safe") == "off",
             "Structured ISD route fields were not loaded from the profile");
+    require(profile.connections.at("adapter_rs485") == "Адаптер RS-485 → X1 ЯП-П"
+                && profile.connections.at("isd_to_yalk") == "ИСД → X1, X2, X3 ЯЛК",
+            "Confirmed stand cable topology was not loaded from the profile");
     bool firmwareProtocol = false;
     for (const auto& device : profile.devices) {
         if (device.pluginId == "orbita.ubsi_udp") {
