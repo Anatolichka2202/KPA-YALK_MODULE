@@ -8,6 +8,10 @@ title: Основной стенд КТМА, Windows 11
 active_outputs_confirmed: false
 
 routes:
+  # Подтверждено безопасным чтением 28.08.2026: поток КТМА приходит на AI1.
+  # Это параметр ПЭВМ/E20, не команда ИСД.
+  orbita_e20_channel: 1
+  orbita_e20_rate_khz: 10000
   sensor_load_350ma:
     base: TODO_CONFIRM
     type: 2
@@ -67,21 +71,18 @@ devices:
     bind:
       - ubsi.parameter_source
     config:
-      # .101 подтверждён как ИСД. .115/MAC ...74-06 — подключённый адаптер.
-      # Порты 1001/1101 взяты из прошивки; старый KPA-сценарий использует
-      # отдельный вариант протокола на 1113, поэтому реальный пакет ещё пишем.
+      # .101 подтверждён как ИСД. Адрес адаптера на стенде пока НЕ подтверждён:
+      # .115 не отвечает ARP/ACK 28.08.2026. В архивной прошивке адрес .101,
+      # но он конфликтует с ИСД, поэтому не подставляется как рабочий.
       host: 192.168.0.115
-      expected_mac: 00-35-65-03-74-06
       local_address: 192.168.0.50
-      data_port: 1113
-      ack_port: 1113
+      data_port: 1001
+      ack_port: 1101
       timeout_ms: 800
-      # Рабочая KPA открывает приём 1113 и передачу на .115:1113. Байты
-      # команд ещё нужно снять, поэтому активный выбор режима запрещён.
+      # Прямой протокол архивной прошивки: команда режима 44 01 NN, ACK 1101.
+      # Старый KPA-вариант на 1113 остаётся отдельным неподтверждённым вариантом.
       device.active_commands_confirmed: false
-      protocol: kpa_rokot_udp
-      kpa.mode.6.hex: TODO_CAPTURE_YALK_COMMAND
-      kpa.mode.2.hex: TODO_CAPTURE_YTP_COMMAND
+      protocol: ktma_firmware_udp_v1
   - id: isd
     plugin: orbita.isd_http
     bind:

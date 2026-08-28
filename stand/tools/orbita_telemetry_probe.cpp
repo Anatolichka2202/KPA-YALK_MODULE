@@ -72,21 +72,29 @@ int main(int argc, char** argv)
             return 1;
         }
     }
-    if (argc < 2 || argc > 4) {
-        std::cerr << "Usage: orbita_telemetry_probe <address-file> [seconds] [interval-ms]\n"
+    if (argc < 2 || argc > 6) {
+        std::cerr << "Usage: orbita_telemetry_probe <address-file> [seconds] [interval-ms] [adc-channel] [rate-khz]\n"
                   << "   or: orbita_telemetry_probe --validate <address-file>\n";
         return 2;
     }
     const int seconds = argc >= 3 ? std::max(1, std::atoi(argv[2])) : 10;
-    const int intervalMilliseconds = argc == 4
+    const int intervalMilliseconds = argc >= 4
         ? std::max(100, std::atoi(argv[3]))
         : 1000;
+    const unsigned adcChannel = argc >= 5
+        ? std::min(15u, static_cast<unsigned>(std::max(0, std::atoi(argv[4]))))
+        : 0;
+    const double rateKhz = argc == 6
+        ? std::max(1.0, std::atof(argv[5]))
+        : 10000.0;
     try {
         orbita::Orbita source;
-        source.setDeviceE2010(0, 10000.0);
+        source.setDeviceE2010(adcChannel, rateKhz);
         const auto channels = loadChannels(argv[1]);
         source.setChannels(channels);
-        std::cout << "CHANNELS " << channels.size() << '\n';
+        std::cout << "CHANNELS " << channels.size()
+                  << " adc_channel=" << adcChannel
+                  << " rate_khz=" << rateKhz << '\n';
         source.start();
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(seconds);
         auto nextSnapshot = std::chrono::steady_clock::now();

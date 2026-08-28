@@ -57,19 +57,39 @@ MainWindow::MainWindow(QWidget* parent)
     // Теперь все элементы созданы — можно выставить начальный режим
     setMode(ModeTests);
 
+    // Сначала читаем профиль: E20 подключён к разным входам в разных стойках.
+    // Номер входа не должен быть скрыт в исходном коде приложения.
+    initializeStandRuntime();
+    unsigned e20Channel = 0;
+    double e20RateKhz = 10000.0;
+    try {
+        if (const auto value = standProfile_.routes.find("orbita_e20_channel");
+            value != standProfile_.routes.end()) {
+            e20Channel = static_cast<unsigned>(std::stoul(value->second));
+        }
+        if (const auto value = standProfile_.routes.find("orbita_e20_rate_khz");
+            value != standProfile_.routes.end()) {
+            e20RateKhz = std::stod(value->second);
+        }
+    } catch (const std::exception& error) {
+        log(QStringLiteral("Профиль E20 некорректен, используется вход 0: %1")
+            .arg(QString::fromUtf8(error.what())));
+        e20Channel = 0;
+        e20RateKhz = 10000.0;
+    }
+
     // Инициализация устройства
     try {
-        orbita_->setDeviceE2010(0, 10000.0);
+        orbita_->setDeviceE2010(e20Channel, e20RateKhz);
         e20Available_ = true;
-        log("Устройство E20-10 найдено");
+        log(QStringLiteral("Устройство E20-10 найдено: вход %1, %2 кГц")
+            .arg(e20Channel).arg(e20RateKhz));
     } catch (const std::exception& e) {
         e20Available_ = false;
         orbita_->setDeviceNone();
         log(QString("E20-10 недоступно (%1). Режим без устройства.")
                 .arg(QString::fromLocal8Bit(e.what())));
     }
-
-    initializeStandRuntime();
 
     // Таймер обновления
     connect(updateTimer_, &QTimer::timeout, this, &MainWindow::updateData);

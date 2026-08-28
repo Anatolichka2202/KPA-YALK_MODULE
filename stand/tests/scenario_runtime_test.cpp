@@ -136,14 +136,15 @@ void configurationAndCatalog(const QString& root)
                 && profile.routes.at("yalk_analog.max") == "4095"
                 && profile.routes.at("yvp_input.safe") == "off",
             "Structured ISD route fields were not loaded from the profile");
-    bool kpaProtocol = false;
+    bool firmwareProtocol = false;
     for (const auto& device : profile.devices) {
         if (device.pluginId == "orbita.ubsi_udp") {
-            kpaProtocol = device.configuration.at("protocol") == "kpa_rokot_udp"
-                && device.configuration.at("data_port") == "1113";
+            firmwareProtocol = device.configuration.at("protocol") == "ktma_firmware_udp_v1"
+                && device.configuration.at("data_port") == "1001"
+                && device.configuration.at("ack_port") == "1101";
         }
     }
-    require(kpaProtocol, "Default adapter profile must preserve the working KPA protocol candidate");
+    require(firmwareProtocol, "Default adapter profile must use the documented firmware protocol");
 
     std::set<std::string> scenarioCapabilities;
     std::function<void(const ScenarioNode&)> collectCapabilities = [&](const ScenarioNode& node) {
