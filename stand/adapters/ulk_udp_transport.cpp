@@ -107,39 +107,51 @@ struct UlkUdpTransport::Impl {
     void start(std::uint8_t mode)
     {
         stop();
+
         {
             std::lock_guard<std::mutex> lock(mutex);
             queue.clear();
             counters = {};
         }
+
         openSocket();
         stopping.store(false);
+
         {
             std::lock_guard<std::mutex> lock(mutex);
             counters.running = true;
         }
+
         receiver = std::thread([this] { receiveLoop(); });
 
-        const auto bytes = UlkUdpTransport::modeCommand(mode);
-        const auto remote = endpoint(config.remoteHost, config.port);
+        const auto bytes =
+            UlkUdpTransport::modeCommand(mode);
 
-        Socket sender = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+        const auto remote =
+            endpoint(config.remoteHost, config.port);
 
-        if(sender == InvalidSocket)
-        {
+        Socket sender =
+            ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+
+        if (sender == InvalidSocket) {
             stop();
-            throw std::runtime_error("Cannot open ULK command socket");
+            throw std::runtime_error(
+                "Cannot open ULK command socket");
         }
 
-        const auto source = endpoint(config.localHost,0);
+        const auto source =
+            endpoint(config.localHost, 0);
 
-        if(::bind(sender,
-                   reinterpret_cast<const sockaddr*>(&source),
-                   sizeof(source))!=0)
-        {
+        if (::bind(
+                sender,
+                reinterpret_cast<const sockaddr*>(&source),
+                sizeof(source)) != 0) {
+
             closeSocket(sender);
             stop();
-            throw std::runtime_error("Cannot bind ULK command socket");
+
+            throw std::runtime_error(
+                "Cannot bind ULK command socket");
         }
 
         const int sent = ::sendto(
@@ -157,6 +169,131 @@ struct UlkUdpTransport::Impl {
             throw std::runtime_error(
                 "Cannot send ULK mode command");
         }
+    }
+
+    void startYalkReference()
+    {
+        stop();
+
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            queue.clear();
+            counters = {};
+        }
+
+        openSocket();
+        stopping.store(false);
+
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            counters.running = true;
+        }
+
+        receiver = std::thread([this] { receiveLoop(); });
+
+        const auto remote =
+            endpoint(config.remoteHost, config.port);
+
+        Socket sender =
+            ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+
+        if (sender == InvalidSocket) {
+            stop();
+            throw std::runtime_error(
+                "Cannot open ULK ROKT command socket");
+        }
+
+        const auto source =
+            endpoint(config.localHost, 0);
+
+        if (::bind(
+                sender,
+                reinterpret_cast<const sockaddr*>(&source),
+                sizeof(source)) != 0) {
+
+            closeSocket(sender);
+            stop();
+
+            throw std::runtime_error(
+                "Cannot bind ULK ROKT command socket");
+        }
+
+        std::array<std::uint8_t, 128> reset{};
+        reset[0] = 'R';
+        reset[1] = 'O';
+        reset[2] = 'K';
+        reset[3] = 'T';
+        reset[4] = 0x16;
+
+        std::array<std::uint8_t, 128> addrYalk{};
+        addrYalk[0] = 'R';
+        addrYalk[1] = 'O';
+        addrYalk[2] = 'K';
+        addrYalk[3] = 'T';
+        addrYalk[4] = 0x14;
+        addrYalk[5] = 0x01;
+        addrYalk[6] = 0x2B;
+        addrYalk[7] = 0x01;
+        addrYalk[8] = 0x00;
+
+        std::array<std::uint8_t, 128> addrYtp{};
+        addrYtp[0] = 'R';
+        addrYtp[1] = 'O';
+        addrYtp[2] = 'K';
+        addrYtp[3] = 'T';
+        addrYtp[4] = 0x15;
+        addrYtp[5] = 0x01;
+        addrYtp[6] = 0x01;
+        addrYtp[7] = 0x01;
+        addrYtp[8] = 0x00;
+
+        std::array<std::uint8_t, 128> startYalk{};
+        startYalk[0] = 'R';
+        startYalk[1] = 'O';
+        startYalk[2] = 'K';
+        startYalk[3] = 'T';
+        startYalk[4] = 0x0A;
+        startYalk[5] = 0x00;
+        startYalk[6] = 0x00;
+        startYalk[7] = 0x01;
+        startYalk[8] = 0x00;
+
+        const auto sendCommand =
+            [&](const std::array<std::uint8_t, 128>& command) {
+
+                const int sent = ::sendto(
+                    sender,
+                    reinterpret_cast<const char*>(
+                        command.data()),
+                    static_cast<int>(command.size()),
+                    0,
+                    reinterpret_cast<const sockaddr*>(&remote),
+                    sizeof(remote));
+
+                if (sent != static_cast<int>(command.size())) {
+                    closeSocket(sender);
+                    stop();
+
+                    throw std::runtime_error(
+                        "Cannot send ULK ROKT command");
+                }
+            };
+
+        sendCommand(reset);
+        std::this_thread::sleep_for(
+            std::chrono::milliseconds(50));
+
+        sendCommand(addrYalk);
+        std::this_thread::sleep_for(
+            std::chrono::milliseconds(50));
+
+        sendCommand(addrYtp);
+        std::this_thread::sleep_for(
+            std::chrono::milliseconds(50));
+
+        sendCommand(startYalk);
+
+        closeSocket(sender);
     }
 
     void stop() noexcept
@@ -234,13 +371,30 @@ struct UlkUdpTransport::Impl {
                 std::lock_guard<std::mutex> lock(mutex);
                 frame.sequence = ++counters.lastSequence;
                 switch (frame.kind) {
-                case UlkFrameKind::Service4: ++counters.service4; break;
-                case UlkFrameKind::Fast120: ++counters.fast120; break;
-                case UlkFrameKind::Slow200: ++counters.slow200; break;
-                case UlkFrameKind::Unknown: ++counters.unknown; break;
+                case UlkFrameKind::Service4:
+                    ++counters.service4;
+                    break;
+
+                case UlkFrameKind::Fast120:
+                    ++counters.fast120;
+                    break;
+
+                case UlkFrameKind::Slow200:
+                    ++counters.slow200;
+                    break;
+
+                case UlkFrameKind::Reference204:
+                    ++counters.reference204;
+                    break;
+
+                case UlkFrameKind::Unknown:
+                    ++counters.unknown;
+                    break;
                 }
                 if (frame.kind == UlkFrameKind::Fast120
-                    || frame.kind == UlkFrameKind::Slow200) counters.streaming = true;
+                    || frame.kind == UlkFrameKind::Slow200
+                    || frame.kind == UlkFrameKind::Reference204)
+                    counters.streaming = true;
                 if (queue.size() == config.queueCapacity) {
                     queue.pop_front();
                     ++counters.dropped;
@@ -298,6 +452,10 @@ UlkUdpTransport::UlkUdpTransport(KtmaUlkUdpConfig config)
     : impl_(std::make_unique<Impl>(std::move(config))) {}
 UlkUdpTransport::~UlkUdpTransport() = default;
 void UlkUdpTransport::start(std::uint8_t mode) { impl_->start(mode); }
+void UlkUdpTransport::startYalkReference()
+{
+    impl_->startYalkReference();
+}
 void UlkUdpTransport::stop() noexcept { impl_->stop(); }
 
 UlkFrame UlkUdpTransport::waitFrame(UlkFrameKind kind, std::uint64_t afterSequence,
@@ -337,6 +495,7 @@ UlkFrameKind UlkUdpTransport::classify(std::size_t size) noexcept
     if (size == 4) return UlkFrameKind::Service4;
     if (size == 120) return UlkFrameKind::Fast120;
     if (size == 200) return UlkFrameKind::Slow200;
+    if (size == 204) return UlkFrameKind::Reference204;
     return UlkFrameKind::Unknown;
 }
 
@@ -346,6 +505,7 @@ const char* toString(UlkFrameKind kind) noexcept
     case UlkFrameKind::Service4: return "service4";
     case UlkFrameKind::Fast120: return "fast120";
     case UlkFrameKind::Slow200: return "slow200";
+    case UlkFrameKind::Reference204: return "reference204";
     case UlkFrameKind::Unknown: return "unknown";
     }
     return "unknown";

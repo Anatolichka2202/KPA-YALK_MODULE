@@ -21,6 +21,7 @@ enum class UlkFrameKind : std::uint8_t {
     Service4,
     Fast120,
     Slow200,
+    Reference204,
     Unknown,
 };
 
@@ -38,6 +39,7 @@ struct UlkStreamStats {
     std::uint64_t service4 = 0;
     std::uint64_t fast120 = 0;
     std::uint64_t slow200 = 0;
+    std::uint64_t reference204 = 0;
     std::uint64_t unknown = 0;
     std::uint64_t dropped = 0;
 };
@@ -50,6 +52,7 @@ public:
     UlkUdpTransport& operator=(const UlkUdpTransport&) = delete;
 
     void start(std::uint8_t mode);
+    void startYalkReference();
     void stop() noexcept;
     UlkFrame waitFrame(UlkFrameKind kind, std::uint64_t afterSequence,
                        std::chrono::milliseconds timeout);
