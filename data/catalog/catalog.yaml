@@ -1,5 +1,5 @@
-schema: 1
-version: 2026.08.27-5
+schema: 2
+version: 2026.08.29-yalk-1
 title: Каталог объектов и логических параметров стенда КТМА
 
 cell_types:
@@ -64,18 +64,18 @@ block_types:
         order: 7
 
 parameter_groups:
-  - id: yalk_analog
-    name: Потенциометрические каналы ЯЛК
+  - id: yalk_voltage
+    name: Напряжение каналов ЯЛК
     cell_type: YALK_96
     category: аналоговые
     unit: В
-    count: 60
-  - id: yalk_contacts
-    name: Контактные каналы ЯЛК
+    count: 80
+  - id: yalk_signal
+    name: Сигнальный признак каналов ЯЛК
     cell_type: YALK_96
     category: контактные
     unit: лог.
-    count: 30
+    count: 80
   - id: yalk_calibration_zero
     name: Калибровочный ноль ЯЛК
     cell_type: YALK_96
@@ -119,69 +119,87 @@ parameter_groups:
     unit: В
     count: 8
 
+streams:
+  - id: yalk_mode6
+    source: ulk.parameter_source
+    adapter_mode: 6
+    slow_frame_bytes: 200
+    fast_frame_bytes: 120
+
+conversions:
+  - id: yalk_two_point_6v2
+    type: two_point
+    zero_address: 97
+    full_address: 99
+    full_scale_v: 6.2
+
 bindings:
   - block_type: UBSI_468157_002
     slot: yalk_96
-    parameter_group: yalk_analog
-    source: ubsi.parameter_source
+    parameter_group: yalk_voltage
+    source: ulk.parameter_source
     address_key: address_set.ulk_yalk_reference
     locator_type: ulk_address
     # Референс KPA «ТУ_УЛК»: адреса 1–28, 32–43, 45–70, 74–87.
-    # Для минимальных 60 каналов ТУ берутся первые 60 адресов списка.
     address_file: address_sets/ulk_yalk_reference.txt
     address_offset: 0
-    count: 60
+    count: 80
+    stream: yalk_mode6
     mask: 0x01FF
     mode: 6
+    shift: 0
+    conversion: yalk_two_point_6v2
     stimulus_route: yalk_analog
     stimulus_offset_base: 0
     stimulus_offset_from_locator: true
     confirmed: false
   - block_type: UBSI_468157_002
     slot: yalk_96
-    parameter_group: yalk_contacts
-    source: ubsi.parameter_source
+    parameter_group: yalk_signal
+    source: ulk.parameter_source
     address_key: address_set.ulk_yalk_reference
     locator_type: ulk_address
     # В KPA аналоговое значение «ед» и сигнальный признак «сиг» читаются
     # по одному адресу УЛК; маска определяет требуемое поле.
     address_file: address_sets/ulk_yalk_reference.txt
     address_offset: 0
-    count: 30
+    count: 80
+    stream: yalk_mode6
     mask: 0x0200
+    shift: 9
     mode: 6
-    stimulus_route: yalk_contacts
-    stimulus_offset_base: 0
-    stimulus_offset_from_locator: true
     confirmed: false
   - block_type: UBSI_468157_002
     slot: yalk_96
     parameter_group: yalk_calibration_zero
-    source: ubsi.parameter_source
+    source: ulk.parameter_source
     address_key: address_set.ulk_yalk_calibration_reference
     locator_type: ulk_address
     address_file: address_sets/ulk_yalk_calibration_reference.txt
     address_offset: 0
     count: 1
     mask: 0x01FF
+    stream: yalk_mode6
     mode: 6
     confirmed: false
   - block_type: UBSI_468157_002
     slot: yalk_96
     parameter_group: yalk_calibration_full
-    source: ubsi.parameter_source
+    source: ulk.parameter_source
     address_key: address_set.ulk_yalk_calibration_reference
     locator_type: ulk_address
     address_file: address_sets/ulk_yalk_calibration_reference.txt
     address_offset: 2
     count: 1
     mask: 0x01FF
+    stream: yalk_mode6
+    conversion: yalk_two_point_6v2
     mode: 6
     confirmed: false
   - block_type: UBSI_468157_002
     slot: yalk_96
     parameter_group: yalk_reference_supply
-    source: ubsi.parameter_source
+    source: ulk.parameter_source
     address_key: address_set.ulk_yalk_calibration_reference
     locator_type: ulk_address
     # 97/99 прямо подтверждены как калибровки в KPA. Адрес 98 —
@@ -195,7 +213,7 @@ bindings:
   - block_type: UBSI_468157_002
     slot: ytp
     parameter_group: ytp_temperature
-    source: ubsi.parameter_source
+    source: ulk.parameter_source
     address_key: address_set.ulk_ytp_reference
     locator_type: ulk_address
     # Рабочая KPA задаёт адрЯТП 1 1 1 и проверяет каналы 1–30.
@@ -211,7 +229,7 @@ bindings:
   - block_type: UBSI_468157_002
     slot: ytp
     parameter_group: ytp_calibration_zero
-    source: ubsi.parameter_source
+    source: ulk.parameter_source
     address_key: address_set.ulk_ytp_calibration_reference
     locator_type: ulk_address
     address_file: address_sets/ulk_ytp_calibration_reference.txt
@@ -223,7 +241,7 @@ bindings:
   - block_type: UBSI_468157_002
     slot: ytp
     parameter_group: ytp_calibration_full
-    source: ubsi.parameter_source
+    source: ulk.parameter_source
     address_key: address_set.ulk_ytp_calibration_reference
     locator_type: ulk_address
     address_file: address_sets/ulk_ytp_calibration_reference.txt

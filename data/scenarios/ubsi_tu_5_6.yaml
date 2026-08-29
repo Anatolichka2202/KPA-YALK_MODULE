@@ -2,7 +2,7 @@ schema: 1
 id: ubsi.468157.002.tu5_6.normal
 title: УБСИ ЛВРМ.468157.002 — функционирование в нормальных условиях
 version: 1.4.1
-catalog_version: 2026.08.27-5
+catalog_version: 2026.08.29-yalk-1
 object_type: UBSI_468157_002
 state: published
 
@@ -16,7 +16,7 @@ steps:
         procedure: ubsi.readiness
         requires:
           - power.dc_supply
-          - ubsi.parameter_source
+          - ulk.parameter_source
         args:
           voltage_v: 27
           timeout_ms: 30000
@@ -26,7 +26,7 @@ steps:
         procedure: ubsi.supply_range
         requires:
           - power.dc_supply
-          - ubsi.parameter_source
+          - ulk.parameter_source
         args:
           voltage_points_v: 24,27,35
           survival_points_v: 19,37
@@ -52,126 +52,78 @@ steps:
           trip_max_v: 1.0
           settle_ms: 500
   - id: yalk_96
-    title: ЯЛК-96 — потенциометрические и контактные каналы
+    title: ЯЛК-96 — полный контур ИСД / В7 / адаптер УЛК
     steps:
-      - id: yalk_binding
-        title: БД: ЯЛК читается через Ethernet/RS-485 адаптер
-        tu: 1.1.4.1
-        procedure: ubsi.binding_check
+      - id: yalk_stream
+        title: Режим ЯЛК 8 кГц и запись сырого потока
+        tu: 5.6 / ЯЛК
+        procedure: yalk.start_stream
+        requires:
+          - ulk.parameter_source
+        args:
+          mode: 6
+          timeout_ms: 3000
+      - id: yalk_calibration
+        title: Калибровка по адресам УЛК 97 и 99
+        tu: 1.1.4.1, 1.1.4.14
+        procedure: yalk.read_calibration
         requires:
           - catalog.parameter_resolver
-          - ubsi.parameter_source
-        args:
-          parameter_group: yalk_analog
-          channel_count: 60
-          require_stimulus_route: true
-      - id: yalk_analog
-        title: Аналоговые каналы 0–6,2 В
-        tu: 1.1.4.1, 1.1.4.14
-        procedure: ubsi.yalk_analog
-        requires:
+          - ulk.parameter_source
           - stand.switch_matrix
           - measure.reference_voltage
-          - ubsi.parameter_source
-          - catalog.parameter_resolver
         args:
-          channel_count: 60
-          parameter_group: yalk_analog
-          calibration_zero_parameter: yalk_calibration_zero
-          calibration_full_parameter: yalk_calibration_full
+          channel_count: 80
+          sample_count: 16
+          settle_ms: 150
+          commissioning: true
+      - id: yalk_initial
+        title: Исходное состояние 80 адресов
+        tu: 1.1.4.1
+        procedure: yalk.check_initial_state
+        requires:
+          - catalog.parameter_resolver
+          - ulk.parameter_source
+          - stand.switch_matrix
+        args:
+          channel_count: 80
+          sample_count: 4
+          commissioning: true
+      - id: yalk_channels
+        title: Точки 0 / 3,1 / 6,2 В и сигнальные признаки
+        tu: 1.1.4.1, 1.1.4.14
+        procedure: yalk.check_channels
+        requires:
+          - catalog.parameter_resolver
+          - ulk.parameter_source
+          - stand.switch_matrix
+          - measure.reference_voltage
+        args:
+          channel_count: 80
           point_volts: 0,3.1,6.2
           isd_codes: 0,2048,4095
+          sample_count: 16
+          settle_ms: 150
           full_scale_v: 6.2
           tolerance_percent_fs: 0.5
-          sample_count: 16
-          settle_ms: 150
-      - id: yalk_contacts_binding
-        title: БД: контактные признаки ЯЛК используют те же адреса УЛК
-        tu: 1.1.4.1
-        procedure: ubsi.binding_check
-        requires:
-          - catalog.parameter_resolver
-          - ubsi.parameter_source
-        args:
-          parameter_group: yalk_contacts
-          channel_count: 30
-          require_stimulus_route: true
-      - id: yalk_contacts
-        title: Контактные каналы
-        tu: 1.1.4.1
-        procedure: ubsi.yalk_contacts
-        requires:
-          - stand.switch_matrix
-          - ubsi.parameter_source
-          - catalog.parameter_resolver
-        args:
-          channel_count: 30
-          parameter_group: yalk_contacts
-          mask: 1
-          sample_count: 4
-          settle_ms: 100
-      - id: yalk_faults
-        title: Обрыв и перегрузка ±12 В
+          commissioning: true
+      - id: yalk_overload
+        title: Обрыв и перегрузка плюс/минус 12 В
         tu: 1.1.4.10, 1.1.4.11
-        procedure: ubsi.yalk_faults
+        procedure: yalk.check_overload
         requires:
-          - stand.switch_matrix
-          - ubsi.parameter_source
-        args:
-          diagnostic_mapping_confirmed: false
-          open_route: yalk_open
-          positive_overload_route: yalk_overload_positive
-          negative_overload_route: yalk_overload_negative
-          settle_ms: 150
-      - id: reference_6v2
-        title: Эталонное напряжение 6,2 В
-        tu: 1.1.4.9
-        procedure: ubsi.reference_voltage
-        requires:
-          - measure.reference_voltage
-          - ubsi.parameter_source
           - catalog.parameter_resolver
+          - ulk.parameter_source
+          - stand.switch_matrix
         args:
-          nominal_v: 6.2
-          tolerance_v: 0.03
-          adapter_parameter_group: yalk_reference_supply
-          calibration_zero_parameter: yalk_calibration_zero
-          calibration_full_parameter: yalk_calibration_full
-          sample_count: 16
-      - id: yalk_calibration_binding
-        title: БД: калибровки ЯЛК 97/99; эталон 6,2 В — кандидат 98
-        tu: 1.1.4.9, 1.1.4.14
-        steps:
-          - id: yalk_calibration_zero_binding
-            title: Адрес УЛК 97 — нижняя калибровка ЯЛК
-            tu: 1.1.4.14
-            procedure: ubsi.binding_check
-            requires:
-              - catalog.parameter_resolver
-              - ubsi.parameter_source
-            args:
-              parameter_group: yalk_calibration_zero
-              channel_count: 1
-          - id: yalk_reference_binding
-            title: Кандидат адреса УЛК 98 — эталон 6,2 В
-            tu: 1.1.4.9
-            procedure: ubsi.binding_check
-            requires:
-              - catalog.parameter_resolver
-              - ubsi.parameter_source
-            args:
-              parameter_group: yalk_reference_supply
-              channel_count: 1
-          - id: yalk_calibration_full_binding
-            title: Адрес УЛК 99 — верхняя калибровка ЯЛК
-            tu: 1.1.4.14
-            procedure: ubsi.binding_check
-            requires:
-              - catalog.parameter_resolver
-              - ubsi.parameter_source
-            args:
-              parameter_group: yalk_calibration_full
-              channel_count: 1
+          mapping_confirmed: false
+      - id: yalk_cleanup
+        title: Безопасный сброс ЯЛК
+        tu: 5.6 / завершение проверки
+        procedure: yalk.safe_cleanup
+        requires:
+          - ulk.parameter_source
+          - stand.switch_matrix
   - id: ytp
     title: ЯТП — термосопротивления
     steps:
@@ -181,7 +133,7 @@ steps:
         procedure: ubsi.binding_check
         requires:
           - catalog.parameter_resolver
-          - ubsi.parameter_source
+          - ulk.parameter_source
         args:
           parameter_group: ytp_temperature
           channel_count: 30
@@ -193,7 +145,7 @@ steps:
         requires:
           - operator.manual_input
           - stand.switch_matrix
-          - ubsi.parameter_source
+          - ulk.parameter_source
           - catalog.parameter_resolver
         args:
           channel_count: 30
@@ -215,7 +167,7 @@ steps:
             procedure: ubsi.binding_check
             requires:
               - catalog.parameter_resolver
-              - ubsi.parameter_source
+              - ulk.parameter_source
             args:
               parameter_group: ytp_calibration_zero
               channel_count: 1
@@ -225,7 +177,7 @@ steps:
             procedure: ubsi.binding_check
             requires:
               - catalog.parameter_resolver
-              - ubsi.parameter_source
+              - ulk.parameter_source
             args:
               parameter_group: ytp_calibration_full
               channel_count: 1
@@ -278,3 +230,5 @@ steps:
           edge_tolerance_percent: 10
           settle_ms: 200
           sample_count: 16
+
+

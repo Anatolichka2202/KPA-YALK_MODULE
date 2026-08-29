@@ -1,6 +1,6 @@
 schema: 1
 id: ktma-main
-version: 2026.08.28-ubsi-3
+version: 2026.08.29-ubsi-4
 title: Основной стенд КТМА, Windows 11
 
 # Пока карта кабелей и активные команды не подтверждены на самом стенде,
@@ -76,25 +76,19 @@ routes:
 
 devices:
   - id: ubsi-adapter
-    plugin: orbita.ubsi_udp
+    plugin: orbita.ktma_adapter_udp
     bind:
-      - ubsi.parameter_source
+      - ulk.parameter_source
     config:
-      # RS-485 адаптера физически подключён к X1 ЯП-П. Адаптер передаёт
-      # коды ЯЛК/ЯТП широковещательно на Ethernet ПЭВМ. Живой поток ЯЛК
-      # подтверждён 28.08.2026: 192.168.0.115:1113 -> 192.168.0.255:1113,
-      # 4 байта заголовка + 100 16-битных слов.
+      # RS-485 адаптера физически подключён к X1 ЯП-П. Живой адаптер слушает
+      # UDP 1113; команда easyweb 44 01 06 включает ЯЛК 8 кГц.
       host: 192.168.0.115
       local_address: 192.168.0.50
       data_port: 1113
-      ack_port: 1113
       timeout_ms: 800
-      accept_any_sender: false
-      # Рабочий протокол подтверждён дампом действующей KPA и живой пробой:
-      # 128 байт, сигнатура ROKT, команды 16/14/15/0A. После подготовки
-      # ЯЛК адаптер выдаёт кадр 02 00 2B 00 + 100 слов примерно раз в 18 мс.
+      queue_capacity: 4096
+      # 29.08.2026: команда 44 01 06 дала 77 кадров за 3 секунды.
       device.active_commands_confirmed: true
-      protocol: kpa_rokot_udp
   - id: isd
     plugin: orbita.isd_http
     bind:

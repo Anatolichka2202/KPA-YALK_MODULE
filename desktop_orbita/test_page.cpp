@@ -1,4 +1,5 @@
 #include "test_page.h"
+#include "equipment_control_widget.h"
 
 #include <QComboBox>
 #include <QFrame>
@@ -11,6 +12,7 @@
 #include <QPainterPath>
 #include <QProgressBar>
 #include <QPushButton>
+#include <QScrollArea>
 #include <QSignalBlocker>
 #include <QTableWidget>
 #include <QTableWidgetItem>
@@ -20,6 +22,8 @@
 
 #include <iterator>
 #include <functional>
+#include <stdexcept>
+#include <utility>
 
 namespace {
 
@@ -308,11 +312,12 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
     summaryTable_->setSelectionMode(QAbstractItemView::NoSelection);
     summaryTable_->setMaximumHeight(170);
     right->addWidget(summaryTable_);
-    resultTable_ = new QTableWidget(0, 7);
+    resultTable_ = new QTableWidget(0, 12);
     resultTable_->setHorizontalHeaderLabels(
-        {QStringLiteral("Тракт"), QStringLiteral("Точка"), QStringLiteral("В7"),
-         QStringLiteral("Измерено"), QStringLiteral("Допуск"), QStringLiteral("Итог"),
-         QStringLiteral("ТУ")});
+        {QStringLiteral("Адрес"), QStringLiteral("Точка"), QStringLiteral("Код ИСД"),
+         QStringLiteral("Raw"), QStringLiteral("Код ЯЛК"), QStringLiteral("Сигнал"),
+         QStringLiteral("В7, В"), QStringLiteral("ЯЛК, В"), QStringLiteral("ΔU, В"),
+         QStringLiteral("γ, % шкалы"), QStringLiteral("δ, %"), QStringLiteral("Итог")});
     resultTable_->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     resultTable_->verticalHeader()->hide();
     resultTable_->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -322,6 +327,22 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
     body->addLayout(left, 5);
     body->addLayout(right, 5);
     root->addLayout(body, 1);
+
+    auto* advancedScroll = new QScrollArea;
+    advancedScroll->setWidgetResizable(true);
+    advancedScroll->setMaximumHeight(360);
+    advancedControl_ = new EquipmentControlWidget([this](
+        const std::string& capability, const std::string& operation,
+        const std::map<std::string, std::string>& arguments) {
+            if (!equipmentInvoke_) throw std::runtime_error(
+                "Сначала выполните проверку оборудования");
+            return equipmentInvoke_(capability, operation, arguments);
+        });
+    advancedScroll->setWidget(advancedControl_);
+    advancedScroll->setVisible(false);
+    advancedScroll->setObjectName(QStringLiteral("advancedEquipmentPanel"));
+    advancedContainer_ = advancedScroll;
+    root->addWidget(advancedScroll);
 
     progress_ = new QProgressBar;
     progress_->setRange(0, 3);
@@ -391,6 +412,11 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
     setEngineerMode(false);
 }
 
+void TestPage::setEquipmentInvoker(EquipmentInvoke invoke)
+{
+    equipmentInvoke_ = std::move(invoke);
+}
+
 QString TestPage::selectedObjectCode() const
 {
     return objectCombo_->currentData().toString();
@@ -441,9 +467,10 @@ void TestPage::rebuildTests()
     } else {
         testCombo_->addItem(QStringLiteral("Связь и чтение параметров · диагностика"),
                             QStringLiteral("CELL_DIAGNOSTIC"));
-        if (selectedScopeCode() == QStringLiteral("ЯЛК-96")) {
-            testCombo_->addItem(QStringLiteral("Аналоговые каналы · 0 / 3,1 / 6,2 В"),
-                                QStringLiteral("YALK_ANALOG"));
+        if (selectedScopeCode() == QStringLiteral("ЯЛК-96")
+            && selectedObjectCode() != QStringLiteral("BSI")) {
+            testCombo_->addItem(QStringLiteral("Полная проверка ЯЛК · 80 адресов · ТУ 5.6"),
+                                QStringLiteral("YALK_FULL_5_6"));
         }
     }
     const int oldIndex = testCombo_->findData(previous);
@@ -463,15 +490,15 @@ void TestPage::updateSelectionSummary()
     } else if (test == QStringLiteral("BSI_DIAGNOSTIC")) {
         scopeLabel_->setText(QStringLiteral(
             "Подключённый БСИ используется для обкатки общей цепочки Орбита → сценарий → журнал → интерфейс. Результат всегда НЕПОЛНАЯ: БСИ по ТУ 5.6 не оценивается."));
-    } else if (test == QStringLiteral("YALK_ANALOG")) {
+    } else if (test == QStringLiteral("YALK_FULL_5_6")) {
         scopeLabel_->setText(object == QStringLiteral("BSI")
-            ? QStringLiteral("ЯЛК-96 БСИ: источник формирует воздействие → ИСД подключает нужный вход/выход → В7-78/1 измеряет эталон → значение читается из телеметрии Орбита → допуск ±0,5 % шкалы 6,2 В.")
-            : QStringLiteral("ЯЛК-96 УБСИ: источник формирует воздействие → ИСД подключает нужный вход/выход → В7-78/1 измеряет эталон → Ethernet-адаптер читает 16 кодов → допуск ±0,5 % шкалы 6,2 В."));
+            ? QStringLiteral("Полный сценарий ЯЛК в этом релизе предназначен для УБСИ, а не для БСИ.")
+            : QStringLiteral("ЯЛК-96 УБСИ: ИСД задаёт 0 / 3,1 / 6,2 В, В7 измеряет эталон, адаптер УЛК читает 16 свежих кадров. Орбита и E20 не участвуют."));
     } else {
         scopeLabel_->setText(QStringLiteral("%1 · %2: диагностический прогон проверяет наличие источника данных, адресной привязки и стабильной выборки. Он не выдаётся за приёмочное испытание по ТУ.")
             .arg(object == QStringLiteral("BSI") ? QStringLiteral("БСИ") : QStringLiteral("УБСИ № 7"), scope));
     }
-    plot_->setVisible(test == QStringLiteral("YALK_ANALOG") || test.endsWith(QStringLiteral("NORMAL_5_6")));
+    plot_->setVisible(test == QStringLiteral("YALK_FULL_5_6") || test.endsWith(QStringLiteral("NORMAL_5_6")));
     const QStringList required = requiredEquipment();
     for (auto it = equipmentRows_.cbegin(); it != equipmentRows_.cend(); ++it) {
         equipmentTable_->setRowHidden(it->row, !required.contains(it.key()));
@@ -573,10 +600,10 @@ QStringList TestPage::requiredEquipment() const
     if (test == QStringLiteral("CELL_DIAGNOSTIC")) {
         return object == QStringLiteral("BSI") ? QStringList{"E20"} : QStringList{"RS485"};
     }
-    if (test == QStringLiteral("YALK_ANALOG")) {
+    if (test == QStringLiteral("YALK_FULL_5_6")) {
         return object == QStringLiteral("BSI")
-            ? QStringList{"E20", "ISD", "V7"}
-            : QStringList{"RS485", "ISD", "V7"};
+            ? QStringList{"RS485", "ISD", "V7", "SCHEME"}
+            : QStringList{"RS485", "ISD", "V7", "SCHEME"};
     }
     const auto scenario = scenarios_.constFind(test);
     if (scenario != scenarios_.cend()) {
@@ -672,7 +699,7 @@ void TestPage::startSelectedTest()
 
 void TestPage::advanceDemo()
 {
-    if (selectedTestCode() != QStringLiteral("YALK_ANALOG")) {
+    if (selectedTestCode() != QStringLiteral("YALK_FULL_5_6")) {
         static const QString stages[] = {
             QStringLiteral("Источник данных"),
             QStringLiteral("Адресная привязка"),
@@ -739,7 +766,7 @@ void TestPage::finishDemo()
     const QString target = selectedScopeCode() == QStringLiteral("BLOCK")
         ? (selectedObjectCode() == QStringLiteral("BSI") ? QStringLiteral("БСИ") : QStringLiteral("УБСИ № 7"))
         : selectedScopeCode();
-    verdictLabel_->setText(selectedTestCode() == QStringLiteral("YALK_ANALOG")
+    verdictLabel_->setText(selectedTestCode() == QStringLiteral("YALK_FULL_5_6")
         ? QStringLiteral("ДЕМО: %1 — ОК · БЛОК ЦЕЛИКОМ НЕ ОЦЕНИВАЛСЯ").arg(target)
         : QStringLiteral("ДЕМО: %1 · ДИАГНОСТИКА ГОТОВА · НЕ РЕЗУЛЬТАТ ТУ").arg(target));
     verdictLabel_->setStyleSheet(
@@ -768,6 +795,7 @@ void TestPage::setEngineerMode(bool enabled)
     partialCheck_->setVisible(enabled);
     for (const int column : {1, 2, 4}) equipmentTable_->setColumnHidden(column, !enabled);
     diagnosticLabel_->setVisible(enabled);
+    if (advancedContainer_) advancedContainer_->setVisible(enabled);
     detailsButton_->setText(enabled ? QStringLiteral("Скрыть подробности")
                                     : QStringLiteral("Открыть подробности"));
 }
@@ -797,6 +825,16 @@ void TestPage::setRunEvent(const orbita::stand::RunEvent& event)
         progress_->setFormat(QStringLiteral("Завершено этапов: %1 · %2")
             .arg(completedSteps_)
             .arg(QString::fromStdString(event.message)));
+    } else if (event.stage == "MEASUREMENT") {
+        const auto value = [&event](const char* key) -> QString {
+            const auto found = event.data.find(key);
+            return found == event.data.end() ? QString() : QString::fromStdString(found->second);
+        };
+        const double reference = value("v7_v").toDouble();
+        const double measured = value("yalk_v").toDouble();
+        plot_->addPoint(reference, measured);
+        progress_->setFormat(QStringLiteral("ЯЛК: адрес %1 · %2 В · В7 %3 В · ЯЛК %4 В")
+            .arg(value("ulk_address"), value("command_v"), value("v7_v"), value("yalk_v")));
     }
 }
 
@@ -813,22 +851,27 @@ void TestPage::setRunResult(const orbita::stand::ScenarioRunResult& result,
         for (const auto& measurement : step.measurements) {
             const int row = resultTable_->rowCount();
             resultTable_->insertRow(row);
-            const QString limit = QStringLiteral("%1…%2 %3")
-                .arg(measurement.lowerLimit, 0, 'g', 8)
-                .arg(measurement.upperLimit, 0, 'g', 8)
-                .arg(QString::fromStdString(measurement.unit));
+            const auto attribute = [&measurement](const char* key) -> QString {
+                const auto found = measurement.attributes.find(key);
+                return found == measurement.attributes.end()
+                    ? QString() : QString::fromStdString(found->second);
+            };
+            const bool yalk = !attribute("ulk_address").isEmpty();
             const QStringList values = {
-                QString::fromStdString(step.title),
+                yalk ? attribute("ulk_address") : QString::fromStdString(step.title),
                 QString::fromStdString(measurement.title.empty() ? measurement.parameterKey : measurement.title),
-                QString::number(measurement.reference, 'g', 9),
-                QString::number(measurement.measured, 'g', 9) + " " + QString::fromStdString(measurement.unit),
-                limit,
-                QString::fromLatin1(orbita::stand::toString(measurement.verdict)),
-                QString::fromStdString(step.tuRequirement)
+                attribute("isd_code"), attribute("raw"), attribute("analog_code"),
+                attribute("signal"),
+                yalk ? attribute("v7_v") : QString::number(measurement.reference, 'g', 9),
+                yalk ? attribute("yalk_v") : QString::number(measurement.measured, 'g', 9),
+                attribute("absolute_error_v"), attribute("reduced_error_percent"),
+                attribute("relative_error_percent").isEmpty() ? QStringLiteral("—")
+                                                               : attribute("relative_error_percent"),
+                QString::fromLatin1(orbita::stand::toString(measurement.verdict))
             };
             for (int column = 0; column < values.size(); ++column) {
                 auto* item = new QTableWidgetItem(values[column]);
-                if (column == 5) {
+                if (column == 11) {
                     item->setForeground(measurement.verdict == orbita::stand::RunVerdict::Ok
                         ? QColor("#70d79b") : QColor("#e1766d"));
                 }
@@ -840,10 +883,11 @@ void TestPage::setRunResult(const orbita::stand::ScenarioRunResult& result,
             const int row = resultTable_->rowCount();
             resultTable_->insertRow(row);
             const QStringList values = {
-                QString::fromStdString(step.title), QString::fromStdString(step.tuRequirement),
+                QStringLiteral("—"), QString::fromStdString(step.title), QStringLiteral("—"),
+                QStringLiteral("—"), QStringLiteral("—"), QStringLiteral("—"),
                 QStringLiteral("—"), QString::fromStdString(step.message), QStringLiteral("—"),
-                QString::fromLatin1(orbita::stand::toString(step.verdict)),
-                QString::fromStdString(step.tuRequirement)};
+                QStringLiteral("—"), QStringLiteral("—"),
+                QString::fromLatin1(orbita::stand::toString(step.verdict))};
             for (int column = 0; column < values.size(); ++column)
                 resultTable_->setItem(row, column, new QTableWidgetItem(values[column]));
         }

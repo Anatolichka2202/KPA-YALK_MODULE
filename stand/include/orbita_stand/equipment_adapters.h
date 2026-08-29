@@ -100,40 +100,4 @@ private:
     std::unique_ptr<Impl> impl_;
 };
 
-struct UbsiUdpConfig {
-    std::string adapterHost;
-    std::string localAddress;
-    std::uint16_t commandAndDataPort = 1001;
-    std::uint16_t acknowledgementPort = 1101;
-    unsigned timeoutMilliseconds = 1500;
-    // Адаптер штатно передаёт UDP широковещательно. В этом режиме ПЭВМ
-    // принимает пакеты на своём Ethernet-интерфейсе, не предполагая IP источника.
-    bool acceptAnySender = false;
-};
-
-class UbsiUdpAdapter final {
-public:
-    explicit UbsiUdpAdapter(UbsiUdpConfig config);
-    ~UbsiUdpAdapter();
-    bool waitForPassivePacket();
-    void selectMode(std::uint8_t mode, bool single = false);
-    void sendRawCommand(const std::vector<std::uint8_t>& command);
-    std::vector<std::uint8_t> receiveRawPacket();
-    static std::vector<std::uint8_t> modeCommand(std::uint8_t mode, bool single = false);
-    static std::vector<std::uint8_t> rokotResetCommand();
-    static std::vector<std::uint8_t> rokotConfigureYalkCommand(
-        std::uint8_t adapterChannel = 1, std::uint8_t addressCount = 43,
-        bool slowParameters = true, bool fastParameters = false);
-    static std::vector<std::uint8_t> rokotConfigureYtpCommand(
-        std::uint8_t adapterChannel = 1, std::uint8_t firstAddress = 1,
-        std::uint8_t addressCount = 1);
-    static std::vector<std::uint8_t> rokotSelectYalkCommand(std::uint8_t yalkNumber = 1);
-    static unsigned wordIndexForUlkAddress(unsigned address);
-    static std::vector<std::uint16_t> decodeYalkPacket(
-        const std::vector<std::uint8_t>& packet, std::uint16_t mask);
-private:
-    struct Impl;
-    std::unique_ptr<Impl> impl_;
-};
-
 } // namespace orbita::stand

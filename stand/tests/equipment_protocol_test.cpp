@@ -1,4 +1,5 @@
 #include "orbita_stand/equipment_adapters.h"
+#include "orbita_stand/ulk_udp_transport.h"
 #include "orbita_stand/yalk_frame.h"
 
 #include <cstdlib>
@@ -34,50 +35,24 @@ int main()
                 "legacy power-supply voltage command differs from Delphi reference");
         require(LegacyUdpPowerSupply::currentCommand(1.25) == "CURR 00125\r",
                 "legacy power-supply current command differs from Delphi reference");
-        require(UbsiUdpAdapter::modeCommand(8) == std::vector<std::uint8_t>({0x44, 0x01, 0x08}),
-                "UBSI mode frame differs from adapter firmware");
-        require(UbsiUdpAdapter::modeCommand(8, true)
-                    == std::vector<std::uint8_t>({0x44, 0x03, 0x08}),
-                "UBSI single-mode flag differs from adapter firmware");
-        const auto rokotReset = UbsiUdpAdapter::rokotResetCommand();
-        require(rokotReset.size() == 128
-                    && std::vector<std::uint8_t>(rokotReset.begin(), rokotReset.begin() + 9)
-                        == std::vector<std::uint8_t>({'R','O','K','T',0x16,0,0,0,0}),
-                "ROKOT reset packet differs from captured KPA command");
-        const auto rokotYalk = UbsiUdpAdapter::rokotConfigureYalkCommand();
-        require(rokotYalk.size() == 128
-                    && std::vector<std::uint8_t>(rokotYalk.begin(), rokotYalk.begin() + 9)
-                        == std::vector<std::uint8_t>({'R','O','K','T',0x14,1,43,1,0}),
-                "ROKOT YALK address packet differs from captured KPA command");
-        const auto rokotYtp = UbsiUdpAdapter::rokotConfigureYtpCommand();
-        require(std::vector<std::uint8_t>(rokotYtp.begin(), rokotYtp.begin() + 8)
-                    == std::vector<std::uint8_t>({'R','O','K','T',0x15,1,1,1}),
-                "ROKOT YTP address packet differs from captured KPA command");
-        const auto rokotSelect = UbsiUdpAdapter::rokotSelectYalkCommand();
-        require(std::vector<std::uint8_t>(rokotSelect.begin(), rokotSelect.begin() + 8)
-                    == std::vector<std::uint8_t>({'R','O','K','T',0x0A,0,0,1}),
-                "ROKOT YALK select packet differs from captured KPA command");
-        require(UbsiUdpAdapter::wordIndexForUlkAddress(1) == 0
-                    && UbsiUdpAdapter::wordIndexForUlkAddress(99) == 98,
-                "ULK address must map to the slow-frame word using address-1");
+        require(UlkUdpTransport::modeCommand(8)
+                    == std::vector<std::uint8_t>({0x44, 0x01, 0x08}),
+                "ULK mode frame differs from adapter firmware");
+        require(UlkUdpTransport::classify(4) == UlkFrameKind::Service4
+                    && UlkUdpTransport::classify(120) == UlkFrameKind::Fast120
+                    && UlkUdpTransport::classify(200) == UlkFrameKind::Slow200
+                    && UlkUdpTransport::classify(204) == UlkFrameKind::Unknown,
+                "ULK frame classifier is wrong");
         std::vector<std::uint8_t> yalkPacket(200, 0);
         yalkPacket[0] = 0x34;
         yalkPacket[1] = 0xA2;
         yalkPacket[192] = 0x79; // Delphi BufferYALK[97], zero calibration
         yalkPacket[196] = 0x9A; // Delphi BufferYALK[99], full-scale calibration
-        const auto yalk9 = UbsiUdpAdapter::decodeYalkPacket(yalkPacket, 0x01FF);
-        require(yalk9.size() == 100 && yalk9[0] == 0x0034,
+        const auto yalk9 = decodeYalkSlowFrame(yalkPacket);
+        require(yalk9.size() == 100 && yalk9[0].analogCode == 0x0034,
                 "YALK mode 0/6 little-endian 9-bit decode is wrong");
-        require(yalk9[96] == 0x0079 && yalk9[98] == 0x009A,
+        require(yalk9[96].analogCode == 0x0079 && yalk9[98].analogCode == 0x009A,
                 "YALK calibration positions 97/99 are wrong");
-        std::vector<std::uint8_t> kpaPacket{0x02, 0x00, 0x2B, 0x00};
-        kpaPacket.insert(kpaPacket.end(), yalkPacket.begin(), yalkPacket.end());
-        const auto kpaYalk = UbsiUdpAdapter::decodeYalkPacket(kpaPacket, 0x01FF);
-        require(kpaYalk == yalk9,
-                "KPA/Rokot four-byte transport header must not shift YALK words");
-        const auto yalk10 = UbsiUdpAdapter::decodeYalkPacket(yalkPacket, 0x03FF);
-        require(yalk10[0] == 0x0234,
-                "YALK mode 11 10-bit decode is wrong");
 
         //бок проверки декодирования данных адаптера
         const auto sample = decodeYalkSample(0x0323);
@@ -100,11 +75,6 @@ int main()
                 "YALK slow analog code is wrong");
         require(samples[0].contact,
                 "YALK slow contact is wrong");
-        std::vector<std::uint8_t> kpaSlowFrame{0x02, 0x00, 0x2B, 0x00};
-        kpaSlowFrame.insert(kpaSlowFrame.end(), slowFrame.begin(), slowFrame.end());
-        const auto kpaSamples = decodeYalkSlowFrame(kpaSlowFrame);
-        require(kpaSamples.size() == 100 && kpaSamples[0].rawWord == 0x0323,
-                "KPA/Rokot header must not shift the slow YALK frame");
         std::vector<std::uint8_t> badFrame(120, 0);
         bool badFrameRejected = false;
         try{

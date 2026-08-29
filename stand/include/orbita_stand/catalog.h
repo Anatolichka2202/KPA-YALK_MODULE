@@ -40,8 +40,12 @@ struct CatalogParameterBinding {
     std::string source;
     std::string locatorType;
     std::string locator;
+    std::string streamId;
+    unsigned wordIndex = 0;
     unsigned mask = 0xFFFF;
+    unsigned shift = 0;
     unsigned mode = 0;
+    std::string conversionId;
     // Семантический маршрут воздействия. Физический базовый канал этого
     // маршрута назначается в профиле конкретного стенда.
     std::string stimulusRoute;

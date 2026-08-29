@@ -44,7 +44,9 @@ orbita_plugin_status_v1 invoke(void* value, const char* capability, const char* 
     return plugin::guarded(response, [&] {
         auto& instance = *static_cast<Instance*>(value);
         if (!capability || std::string(capability) != "stand.switch_matrix") throw std::invalid_argument("Unsupported capability");
-        const std::string command = operation ? operation : "";
+        std::string command = operation ? operation : "";
+        if (command == "set_analog") command = "analog";
+        if (command == "set_switch") command = "switch";
         const auto args = plugin::arguments(request);
         if (command == "probe") {
             const auto body = instance.router->probe();
@@ -56,6 +58,11 @@ orbita_plugin_status_v1 invoke(void* value, const char* capability, const char* 
             if (args.count("route")) {
                 const std::string key = "route." + args.at("route");
                 if (!instance.config.count(key)) throw std::invalid_argument("Не назначен маршрут ИСД " + args.at("route"));
+                if (args.count("ulk_address")) {
+                    const unsigned address = plugin::unsignedValue(args, "ulk_address");
+                    if (!address) throw std::invalid_argument("Адрес УЛК начинается с 1");
+                    return plugin::unsignedValue(instance.config, key) + address - 1;
+                }
                 return plugin::unsignedValue(instance.config, key) + plugin::unsignedValue(args, "offset", 0);
             }
             return plugin::unsignedValue(args, "channel");
@@ -68,7 +75,8 @@ orbita_plugin_status_v1 invoke(void* value, const char* capability, const char* 
                 "route." + args.at("route") + ".type", type);
             instance.router->setSwitch(type, resolvedChannel(), plugin::booleanValue(args, "enabled"));
         } else if (command == "analog") {
-            const unsigned value = plugin::unsignedValue(args, "value");
+            const unsigned value = args.count("code")
+                ? plugin::unsignedValue(args, "code") : plugin::unsignedValue(args, "value");
             if (args.count("route")) {
                 const std::string prefix = "route." + args.at("route") + ".";
                 const unsigned minimum = plugin::unsignedValue(instance.config, prefix + "min", 0);

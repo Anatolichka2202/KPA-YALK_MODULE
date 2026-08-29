@@ -3,6 +3,9 @@
 #include <QHash>
 #include <QStringList>
 #include <QWidget>
+#include <functional>
+#include <map>
+#include <string>
 
 #include "orbita_stand/scenario.h"
 
@@ -15,6 +18,7 @@ class QCheckBox;
 class QTableWidget;
 class QTimer;
 class TestPlotWidget;
+class EquipmentControlWidget;
 
 class TestPage final : public QWidget
 {
@@ -22,6 +26,10 @@ class TestPage final : public QWidget
 
 public:
     explicit TestPage(QWidget* parent = nullptr);
+    using EquipmentInvoke = std::function<std::string(
+        const std::string&, const std::string&,
+        const std::map<std::string, std::string>&)>;
+    void setEquipmentInvoker(EquipmentInvoke invoke);
 
     void setEquipmentStatus(const QString& code, bool ready, const QString& detail);
     void setEquipmentMissingPlugin(const QString& code, const QString& detail);
@@ -91,6 +99,9 @@ private:
     QLineEdit* serialEdit_ = nullptr;
     QCheckBox* partialCheck_ = nullptr;
     TestPlotWidget* plot_ = nullptr;
+    EquipmentControlWidget* advancedControl_ = nullptr;
+    QWidget* advancedContainer_ = nullptr;
+    EquipmentInvoke equipmentInvoke_;
     QTimer* demoTimer_ = nullptr;
     QHash<QString, EquipmentRow> equipmentRows_;
     QHash<QString, ScenarioInfo> scenarios_;

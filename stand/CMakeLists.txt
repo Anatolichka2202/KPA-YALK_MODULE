@@ -35,6 +35,7 @@ add_library(orbita_stand_adapters STATIC
     adapters/visa_instrument.cpp
     adapters/dho_waveform.cpp
     adapters/yalk_frame.cpp
+    adapters/ulk_udp_transport.cpp
 )
 target_include_directories(orbita_stand_adapters
     PUBLIC
@@ -44,6 +45,9 @@ target_compile_features(orbita_stand_adapters PUBLIC cxx_std_17)
 target_link_libraries(orbita_stand_adapters
     PUBLIC orbita_stand_domain Qt6::Core Qt6::Network Qt6::SerialPort
 )
+if(WIN32)
+    target_link_libraries(orbita_stand_adapters PUBLIC ws2_32)
+endif()
 
 if(BUILD_TESTING)
     add_executable(yalk_analog_procedure_test
@@ -89,7 +93,7 @@ function(add_orbita_equipment_plugin target source)
         LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/plugins")
 endfunction()
 
-add_orbita_equipment_plugin(orbita_plugin_ubsi_udp plugins/ubsi_udp_plugin.cpp)
+add_orbita_equipment_plugin(orbita_plugin_ktma_adapter_udp plugins/ktma_adapter_udp_plugin.cpp)
 add_orbita_equipment_plugin(orbita_plugin_isd_http plugins/isd_http_plugin.cpp)
 add_orbita_equipment_plugin(orbita_plugin_v7_visa plugins/v7_visa_plugin.cpp)
 add_orbita_equipment_plugin(orbita_plugin_rigol_generator plugins/rigol_generator_plugin.cpp)
@@ -97,7 +101,7 @@ add_orbita_equipment_plugin(orbita_plugin_akip_1160 plugins/power_supply_plugin.
 add_orbita_equipment_plugin(orbita_plugin_rigol_dho8xx plugins/rigol_dho8xx_plugin.cpp)
 
 add_custom_target(orbita_equipment_plugins ALL DEPENDS
-    orbita_plugin_ubsi_udp
+    orbita_plugin_ktma_adapter_udp
     orbita_plugin_isd_http
     orbita_plugin_v7_visa
     orbita_plugin_rigol_generator

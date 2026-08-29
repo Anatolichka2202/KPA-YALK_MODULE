@@ -115,7 +115,8 @@ struct Connection {
 
 StandCatalog parseCatalog(const yaml::Node& root)
 {
-    if (!root.isMap() || root.value("schema") != "1") throw yaml::Error("Unsupported catalog schema");
+    if (!root.isMap() || (root.value("schema") != "1" && root.value("schema") != "2"))
+        throw yaml::Error("Unsupported catalog schema");
     StandCatalog catalog;
     catalog.version = required(root, "version");
     catalog.title = required(root, "title");
@@ -173,7 +174,9 @@ StandCatalog importCatalogYaml(const std::string& yamlPath, const std::string& s
              "CREATE TABLE IF NOT EXISTS catalog_block_slots(block_type TEXT NOT NULL REFERENCES catalog_block_types(id) ON DELETE CASCADE,slot_id TEXT NOT NULL,cell_type TEXT NOT NULL REFERENCES catalog_cell_types(id),sort_order INTEGER NOT NULL,PRIMARY KEY(block_type,slot_id))",
              "CREATE TABLE IF NOT EXISTS catalog_parameter_groups(id TEXT PRIMARY KEY,name TEXT NOT NULL,cell_type TEXT NOT NULL REFERENCES catalog_cell_types(id),category TEXT NOT NULL,unit TEXT NOT NULL,parameter_count INTEGER NOT NULL)",
              "CREATE TABLE IF NOT EXISTS catalog_bindings(block_type TEXT NOT NULL,slot_id TEXT NOT NULL,parameter_group TEXT NOT NULL REFERENCES catalog_parameter_groups(id),source TEXT NOT NULL,address_key TEXT NOT NULL,PRIMARY KEY(block_type,slot_id,parameter_group),FOREIGN KEY(block_type,slot_id) REFERENCES catalog_block_slots(block_type,slot_id))",
-             "CREATE TABLE IF NOT EXISTS catalog_parameter_bindings(block_type TEXT NOT NULL,slot_id TEXT NOT NULL,parameter_group TEXT NOT NULL REFERENCES catalog_parameter_groups(id),channel_index INTEGER NOT NULL,source TEXT NOT NULL,locator_type TEXT NOT NULL,locator TEXT NOT NULL,mask INTEGER NOT NULL,mode INTEGER NOT NULL,stimulus_route TEXT NOT NULL DEFAULT '',stimulus_offset INTEGER NOT NULL DEFAULT 0,confirmed INTEGER NOT NULL,PRIMARY KEY(block_type,slot_id,parameter_group,channel_index),FOREIGN KEY(block_type,slot_id) REFERENCES catalog_block_slots(block_type,slot_id))",
+             "CREATE TABLE IF NOT EXISTS catalog_streams(id TEXT PRIMARY KEY,source TEXT NOT NULL,adapter_mode INTEGER NOT NULL,slow_frame_bytes INTEGER NOT NULL,fast_frame_bytes INTEGER NOT NULL)",
+             "CREATE TABLE IF NOT EXISTS catalog_conversions(id TEXT PRIMARY KEY,type TEXT NOT NULL,zero_address INTEGER NOT NULL,full_address INTEGER NOT NULL,full_scale_v REAL NOT NULL)",
+             "CREATE TABLE IF NOT EXISTS catalog_parameter_bindings(block_type TEXT NOT NULL,slot_id TEXT NOT NULL,parameter_group TEXT NOT NULL REFERENCES catalog_parameter_groups(id),channel_index INTEGER NOT NULL,source TEXT NOT NULL,locator_type TEXT NOT NULL,locator TEXT NOT NULL,stream_id TEXT NOT NULL DEFAULT '',word_index INTEGER NOT NULL DEFAULT 0,mask INTEGER NOT NULL,shift INTEGER NOT NULL DEFAULT 0,mode INTEGER NOT NULL,conversion_id TEXT NOT NULL DEFAULT '',stimulus_route TEXT NOT NULL DEFAULT '',stimulus_offset INTEGER NOT NULL DEFAULT 0,confirmed INTEGER NOT NULL,PRIMARY KEY(block_type,slot_id,parameter_group,channel_index),FOREIGN KEY(block_type,slot_id) REFERENCES catalog_block_slots(block_type,slot_id))",
              "CREATE TABLE IF NOT EXISTS catalog_block_instances(id TEXT PRIMARY KEY,block_type TEXT NOT NULL REFERENCES catalog_block_types(id),name TEXT NOT NULL,serial TEXT NOT NULL DEFAULT '')",
              "CREATE TABLE IF NOT EXISTS catalog_cell_instances(id TEXT PRIMARY KEY,block_instance TEXT NOT NULL REFERENCES catalog_block_instances(id) ON DELETE CASCADE,slot_id TEXT NOT NULL,serial TEXT NOT NULL DEFAULT '')"}) {
         requireExec(query, QString::fromLatin1(sql));
@@ -192,9 +195,17 @@ StandCatalog importCatalogYaml(const std::string& yamlPath, const std::string& s
         requireExec(query, QStringLiteral(
             "ALTER TABLE catalog_parameter_bindings ADD COLUMN stimulus_offset INTEGER NOT NULL DEFAULT 0"));
     }
+    for (const auto& column : std::vector<std::pair<QString, QString>>{
+             {QStringLiteral("stream_id"), QStringLiteral("TEXT NOT NULL DEFAULT ''")},
+             {QStringLiteral("word_index"), QStringLiteral("INTEGER NOT NULL DEFAULT 0")},
+             {QStringLiteral("shift"), QStringLiteral("INTEGER NOT NULL DEFAULT 0")},
+             {QStringLiteral("conversion_id"), QStringLiteral("TEXT NOT NULL DEFAULT ''")}}) {
+        if (!bindingColumns.count(column.first)) requireExec(query, QStringLiteral(
+            "ALTER TABLE catalog_parameter_bindings ADD COLUMN %1 %2").arg(column.first, column.second));
+    }
     if (!connection.database.transaction()) throw std::runtime_error("Cannot start catalog transaction");
     try {
-        for (const auto& table : {"catalog_cell_instances", "catalog_block_instances", "catalog_parameter_bindings", "catalog_bindings",
+        for (const auto& table : {"catalog_cell_instances", "catalog_block_instances", "catalog_parameter_bindings", "catalog_bindings", "catalog_conversions", "catalog_streams",
                                   "catalog_parameter_groups", "catalog_block_slots", "catalog_block_types",
                                   "catalog_cell_types", "catalog_meta"}) {
             requireExec(query, QStringLiteral("DELETE FROM %1").arg(QString::fromLatin1(table)));
@@ -229,6 +240,30 @@ StandCatalog importCatalogYaml(const std::string& yamlPath, const std::string& s
             query.bindValue(4, QString::fromUtf8(required(group, "unit")));
             query.bindValue(5, unsignedValue(group, "count")); requirePrepared(query); query.finish();
         }
+        if (const auto* streams = root.find("streams")) {
+            if (!streams->isSequence()) throw yaml::Error("streams must be a sequence");
+            query.prepare(QStringLiteral("INSERT INTO catalog_streams(id,source,adapter_mode,slow_frame_bytes,fast_frame_bytes) VALUES(?,?,?,?,?)"));
+            for (const auto& stream : streams->sequence) {
+                query.bindValue(0, QString::fromUtf8(required(stream, "id")));
+                query.bindValue(1, QString::fromUtf8(required(stream, "source")));
+                query.bindValue(2, optionalUnsignedValue(stream, "adapter_mode", 0));
+                query.bindValue(3, optionalUnsignedValue(stream, "slow_frame_bytes", 0));
+                query.bindValue(4, optionalUnsignedValue(stream, "fast_frame_bytes", 0));
+                requirePrepared(query); query.finish();
+            }
+        }
+        if (const auto* conversions = root.find("conversions")) {
+            if (!conversions->isSequence()) throw yaml::Error("conversions must be a sequence");
+            query.prepare(QStringLiteral("INSERT INTO catalog_conversions(id,type,zero_address,full_address,full_scale_v) VALUES(?,?,?,?,?)"));
+            for (const auto& conversion : conversions->sequence) {
+                query.bindValue(0, QString::fromUtf8(required(conversion, "id")));
+                query.bindValue(1, QString::fromUtf8(required(conversion, "type")));
+                query.bindValue(2, unsignedValue(conversion, "zero_address"));
+                query.bindValue(3, unsignedValue(conversion, "full_address"));
+                query.bindValue(4, QString::fromUtf8(required(conversion, "full_scale_v")).toDouble());
+                requirePrepared(query); query.finish();
+            }
+        }
         const auto& bindings = root.at("bindings");
         if (!bindings.isSequence()) throw yaml::Error("bindings must be a sequence");
         query.prepare(QStringLiteral("INSERT INTO catalog_bindings(block_type,slot_id,parameter_group,source,address_key) VALUES(?,?,?,?,?)"));
@@ -239,7 +274,7 @@ StandCatalog importCatalogYaml(const std::string& yamlPath, const std::string& s
             query.bindValue(3, QString::fromUtf8(required(binding, "source")));
             query.bindValue(4, QString::fromUtf8(required(binding, "address_key"))); requirePrepared(query); query.finish();
         }
-        query.prepare(QStringLiteral("INSERT INTO catalog_parameter_bindings(block_type,slot_id,parameter_group,channel_index,source,locator_type,locator,mask,mode,stimulus_route,stimulus_offset,confirmed) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)"));
+        query.prepare(QStringLiteral("INSERT INTO catalog_parameter_bindings(block_type,slot_id,parameter_group,channel_index,source,locator_type,locator,stream_id,word_index,mask,shift,mode,conversion_id,stimulus_route,stimulus_offset,confirmed) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"));
         for (const auto& binding : bindings.sequence) {
             const auto blockType = required(binding, "block_type");
             const auto slot = required(binding, "slot");
@@ -248,7 +283,10 @@ StandCatalog importCatalogYaml(const std::string& yamlPath, const std::string& s
             const auto locatorType = required(binding, "locator_type");
             const unsigned count = unsignedValue(binding, "count");
             const unsigned mask = optionalUnsignedValue(binding, "mask", 0xFFFF);
+            const unsigned shift = optionalUnsignedValue(binding, "shift", 0);
             const unsigned mode = optionalUnsignedValue(binding, "mode", 0);
+            const std::string streamId = binding.value("stream");
+            const std::string conversionId = binding.value("conversion");
             const std::string stimulusRoute = binding.value("stimulus_route");
             const unsigned stimulusBase = optionalUnsignedValue(binding, "stimulus_offset_base", 0);
             const bool stimulusFromLocator = booleanValue(
@@ -283,14 +321,20 @@ StandCatalog importCatalogYaml(const std::string& yamlPath, const std::string& s
                 query.bindValue(4, QString::fromUtf8(source));
                 query.bindValue(5, QString::fromUtf8(locatorType));
                 query.bindValue(6, QString::fromUtf8(locators[index]));
-                query.bindValue(7, mask);
-                query.bindValue(8, mode);
-                query.bindValue(9, QString::fromUtf8(stimulusRoute));
+                query.bindValue(7, QString::fromUtf8(streamId));
+                const unsigned wordIndex = locatorType == "ulk_address"
+                    ? static_cast<unsigned>(std::stoul(locators[index])) - 1 : index;
+                query.bindValue(8, wordIndex);
+                query.bindValue(9, mask);
+                query.bindValue(10, shift);
+                query.bindValue(11, mode);
+                query.bindValue(12, QString::fromUtf8(conversionId));
+                query.bindValue(13, QString::fromUtf8(stimulusRoute));
                 const unsigned stimulusOffset = stimulusFromLocator
                     ? static_cast<unsigned>(std::stoul(locators[index])) - 1
                     : stimulusBase + index;
-                query.bindValue(10, stimulusOffset);
-                query.bindValue(11, confirmed ? 1 : 0);
+                query.bindValue(14, stimulusOffset);
+                query.bindValue(15, confirmed ? 1 : 0);
                 requirePrepared(query);
                 query.finish();
             }
@@ -317,7 +361,7 @@ CatalogParameterBinding resolveCatalogParameterBinding(
     QSqlQuery query(connection.database);
     query.prepare(QStringLiteral(
         "SELECT block_type,slot_id,parameter_group,channel_index,source,"
-        "locator_type,locator,mask,mode,stimulus_route,stimulus_offset,confirmed FROM catalog_parameter_bindings "
+        "locator_type,locator,stream_id,word_index,mask,shift,mode,conversion_id,stimulus_route,stimulus_offset,confirmed FROM catalog_parameter_bindings "
         "WHERE block_type=? AND parameter_group=? AND channel_index=?"));
     query.addBindValue(QString::fromUtf8(blockType));
     query.addBindValue(QString::fromUtf8(parameterGroup));
@@ -335,11 +379,15 @@ CatalogParameterBinding resolveCatalogParameterBinding(
     result.source = query.value(4).toString().toUtf8().toStdString();
     result.locatorType = query.value(5).toString().toUtf8().toStdString();
     result.locator = query.value(6).toString().toUtf8().toStdString();
-    result.mask = query.value(7).toUInt();
-    result.mode = query.value(8).toUInt();
-    result.stimulusRoute = query.value(9).toString().toUtf8().toStdString();
-    result.stimulusOffset = query.value(10).toUInt();
-    result.confirmed = query.value(11).toBool();
+    result.streamId = query.value(7).toString().toUtf8().toStdString();
+    result.wordIndex = query.value(8).toUInt();
+    result.mask = query.value(9).toUInt();
+    result.shift = query.value(10).toUInt();
+    result.mode = query.value(11).toUInt();
+    result.conversionId = query.value(12).toString().toUtf8().toStdString();
+    result.stimulusRoute = query.value(13).toString().toUtf8().toStdString();
+    result.stimulusOffset = query.value(14).toUInt();
+    result.confirmed = query.value(15).toBool();
     return result;
 }
 

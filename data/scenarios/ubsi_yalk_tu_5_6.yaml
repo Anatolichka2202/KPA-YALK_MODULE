@@ -1,0 +1,92 @@
+schema: 1
+id: ubsi.468157.002.yalk.tu5_6
+title: УБСИ · полная проверка ЯЛК-96 по ТУ 5.6
+version: 1.0.0
+catalog_version: 2026.08.29-yalk-1
+object_type: UBSI_468157_002
+state: published
+
+steps:
+  - id: yalk_stream
+    title: Режим ЯЛК 8 кГц и запись сырого потока
+    tu: 5.6 / ЯЛК
+    procedure: yalk.start_stream
+    requires:
+      - ulk.parameter_source
+    args:
+      mode: 6
+      timeout_ms: 3000
+
+  - id: yalk_calibration
+    title: Калибровка ЯЛК по адресам УЛК 97 и 99
+    tu: 1.1.4.1, 1.1.4.14
+    procedure: yalk.read_calibration
+    requires:
+      - catalog.parameter_resolver
+      - ulk.parameter_source
+      - stand.switch_matrix
+      - measure.reference_voltage
+    args:
+      channel_count: 80
+      sample_count: 16
+      settle_ms: 150
+      full_code: 4095
+      commissioning: true
+
+  - id: yalk_initial
+    title: Исходное отключённое состояние 80 адресов ЯЛК
+    tu: 1.1.4.1
+    procedure: yalk.check_initial_state
+    requires:
+      - catalog.parameter_resolver
+      - ulk.parameter_source
+      - stand.switch_matrix
+    args:
+      channel_count: 80
+      sample_count: 4
+      full_scale_v: 6.2
+      tolerance_percent_fs: 0.5
+      commissioning: true
+
+  - id: yalk_channels
+    title: Аналоговые значения и сигнальные признаки ЯЛК
+    tu: 1.1.4.1, 1.1.4.14
+    procedure: yalk.check_channels
+    requires:
+      - catalog.parameter_resolver
+      - ulk.parameter_source
+      - stand.switch_matrix
+      - measure.reference_voltage
+    args:
+      channel_count: 80
+      point_volts: 0,3.1,6.2
+      isd_codes: 0,2048,4095
+      sample_count: 16
+      settle_ms: 150
+      full_scale_v: 6.2
+      tolerance_percent_fs: 0.5
+      commissioning: true
+
+  - id: yalk_overload
+    title: Обрыв и устойчивость при плюс/минус 12 В
+    tu: 1.1.4.10, 1.1.4.11
+    procedure: yalk.check_overload
+    requires:
+      - catalog.parameter_resolver
+      - ulk.parameter_source
+      - stand.switch_matrix
+    args:
+      mapping_confirmed: false
+      positive_route: yalk_overload_positive
+      negative_route: yalk_overload_negative
+      open_route: yalk_open
+      physical_channel_count: 88
+      tolerance_percent_fs: 0.5
+
+  - id: yalk_cleanup
+    title: Безопасный сброс ЯЛК и остановка записи
+    tu: 5.6 / завершение проверки
+    procedure: yalk.safe_cleanup
+    requires:
+      - ulk.parameter_source
+      - stand.switch_matrix

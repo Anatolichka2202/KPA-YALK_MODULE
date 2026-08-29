@@ -3,6 +3,7 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDateTime>
+#include <QDoubleSpinBox>
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
@@ -11,6 +12,7 @@
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSpinBox>
+#include <QtMath>
 #include <QVBoxLayout>
 
 #include <stdexcept>
@@ -31,7 +33,6 @@ EquipmentControlWidget::EquipmentControlWidget(Invoke invoke, QWidget* parent)
     : QWidget(parent), invoke_(std::move(invoke))
 {
     setWindowTitle(QStringLiteral("Ручное управление оборудованием — Advanced mode"));
-    setAttribute(Qt::WA_DeleteOnClose);
     resize(720, 650);
     setStyleSheet("QWidget{background:#14171c;color:#dfe6ee;}"
                   "QGroupBox{border:1px solid #2a313b;margin-top:12px;padding-top:8px;}"
@@ -48,17 +49,11 @@ EquipmentControlWidget::EquipmentControlWidget(Invoke invoke, QWidget* parent)
     warning->setStyleSheet("color:#d99a4a;font-weight:bold;");
     root->addWidget(warning);
 
-    auto* adapter = new QGroupBox(QStringLiteral("Ethernet/RS-485 адаптер УБСИ"));
+    auto* adapter = new QGroupBox(QStringLiteral("Ethernet/RS-485 адаптер УЛК · 192.168.0.115:1113"));
     auto* adapterForm = new QFormLayout(adapter);
     adapterMode_ = new QComboBox;
-    adapterMode_->addItem(QStringLiteral("Подготовить ЯЛК 8 кГц (полная последовательность)"),
-                          QStringLiteral("prepare_yalk"));
-    adapterMode_->addItem(QStringLiteral("Сброс адаптера"), QStringLiteral("reset_adapter"));
-    adapterMode_->addItem(QStringLiteral("Передать таблицу адресов ЯЛК"),
-                          QStringLiteral("configure_yalk"));
-    adapterMode_->addItem(QStringLiteral("Передать таблицу адресов ЯТП"),
-                          QStringLiteral("configure_ytp"));
-    adapterMode_->addItem(QStringLiteral("Выбрать поток ЯЛК"), QStringLiteral("select_yalk"));
+    adapterMode_->addItem(QStringLiteral("Запустить ЯЛК / УЛК 8 кГц (режим 6)"),
+                          QStringLiteral("start_stream"));
     adapterChannel_ = new QSpinBox;
     adapterChannel_->setRange(1, 16);
     adapterChannel_->setValue(1);
@@ -71,10 +66,14 @@ EquipmentControlWidget::EquipmentControlWidget(Invoke invoke, QWidget* parent)
     auto* modeRow = new QHBoxLayout;
     modeRow->addWidget(adapterMode_, 1);
     auto* applyMode = new QPushButton(QStringLiteral("Выполнить"));
+    auto* stopMode = new QPushButton(QStringLiteral("Остановить поток"));
+    auto* showStats = new QPushButton(QStringLiteral("Статистика кадров"));
     modeRow->addWidget(applyMode);
-    adapterForm->addRow(QStringLiteral("Операция ROKOT:"), modeRow);
-    adapterForm->addRow(QStringLiteral("Канал адаптера:"), adapterChannel_);
-    adapterForm->addRow(QStringLiteral("Адресов ЯЛК:"), adapterAddressCount_);
+    modeRow->addWidget(stopMode);
+    modeRow->addWidget(showStats);
+    adapterForm->addRow(QStringLiteral("Режим:"), modeRow);
+    adapterForm->addRow(QStringLiteral("Физический канал адаптера:"), adapterChannel_);
+    adapterForm->addRow(QStringLiteral("Адресов в цикле:"), adapterAddressCount_);
     auto* parameterKinds = new QHBoxLayout;
     parameterKinds->addWidget(adapterSlow_);
     parameterKinds->addWidget(adapterFast_);
@@ -87,13 +86,17 @@ EquipmentControlWidget::EquipmentControlWidget(Invoke invoke, QWidget* parent)
     adapterMask_->addItem(QStringLiteral("контакт (0x0200)"), QStringLiteral("0x0200"));
     adapterMask_->addItem(QStringLiteral("сырое слово (0xFFFF)"), QStringLiteral("0xFFFF"));
     auto* readWord = new QPushButton(QStringLiteral("Считать"));
+    auto* readCalibration = new QPushButton(QStringLiteral("Считать 97/99"));
     adapterValue_ = new QLabel(QStringLiteral("—"));
+    adapterVoltage_ = new QLabel(QStringLiteral("—"));
     auto* wordRow = new QHBoxLayout;
     wordRow->addWidget(adapterAddress_);
     wordRow->addWidget(adapterMask_, 1);
     wordRow->addWidget(readWord);
+    wordRow->addWidget(readCalibration);
     wordRow->addWidget(adapterValue_);
     adapterForm->addRow(QStringLiteral("Адрес УЛК:"), wordRow);
+    adapterForm->addRow(QStringLiteral("По калибровкам 97/99:"), adapterVoltage_);
     root->addWidget(adapter);
 
     auto* isd = new QGroupBox(QStringLiteral("ИСД 192.168.0.101"));
@@ -106,6 +109,12 @@ EquipmentControlWidget::EquipmentControlWidget(Invoke invoke, QWidget* parent)
     isdChannel_->setRange(1, 256);
     isdCode_ = new QSpinBox;
     isdCode_->setRange(0, 4095);
+    isdVolts_ = new QDoubleSpinBox;
+    isdVolts_->setRange(0.0, 6.2);
+    isdVolts_->setDecimals(3);
+    isdVolts_->setSingleStep(0.1);
+    isdUseVolts_ = new QCheckBox(QStringLiteral("задавать в вольтах 0…6,2 В"));
+    isdUseVolts_->setChecked(true);
     isdEnabled_ = new QCheckBox(QStringLiteral("включено / шина+"));
     auto* applyIsd = new QPushButton(QStringLiteral("Передать команду"));
     auto* reset = new QPushButton(QStringLiteral("Полный сброс ИСД"));
@@ -113,6 +122,8 @@ EquipmentControlWidget::EquipmentControlWidget(Invoke invoke, QWidget* parent)
     isdForm->addRow(QStringLiteral("Тип:"), isdType_);
     isdForm->addRow(QStringLiteral("Номер канала:"), isdChannel_);
     isdForm->addRow(QStringLiteral("Код 0…4095:"), isdCode_);
+    isdForm->addRow(QStringLiteral("Напряжение:"), isdVolts_);
+    isdForm->addRow(QString(), isdUseVolts_);
     isdForm->addRow(QString(), isdEnabled_);
     auto* isdButtons = new QHBoxLayout;
     isdButtons->addWidget(applyIsd);
@@ -127,10 +138,34 @@ EquipmentControlWidget::EquipmentControlWidget(Invoke invoke, QWidget* parent)
 
     connect(applyMode, &QPushButton::clicked, this, &EquipmentControlWidget::applyAdapterMode);
     connect(readWord, &QPushButton::clicked, this, &EquipmentControlWidget::readAdapterWord);
+    connect(readCalibration, &QPushButton::clicked, this, [this] {
+        try {
+            const auto zero = invoke_("ulk.parameter_source", "read_channel", {
+                {"ulk_address", "97"}, {"sample_count", "16"}});
+            const auto full = invoke_("ulk.parameter_source", "read_channel", {
+                {"ulk_address", "99"}, {"sample_count", "16"}});
+            yalkZeroRaw_ = field(zero, "analog_code_mean").toDouble();
+            yalkFullRaw_ = field(full, "analog_code_mean").toDouble();
+            adapterVoltage_->setText(QStringLiteral("0=%1, 6,2=%2")
+                .arg(yalkZeroRaw_, 0, 'f', 2).arg(yalkFullRaw_, 0, 'f', 2));
+            log_->appendPlainText(QStringLiteral("Калибровки ЯЛК: %1")
+                .arg(adapterVoltage_->text()));
+        } catch (const std::exception& error) {
+            log_->appendPlainText(QStringLiteral("ОШИБКА калибровок ЯЛК: %1")
+                .arg(QString::fromUtf8(error.what())));
+        }
+    });
+    connect(stopMode, &QPushButton::clicked, this, [this] {
+        run("ulk.parameter_source", "stop_stream");
+    });
+    connect(showStats, &QPushButton::clicked, this, [this] {
+        run("ulk.parameter_source", "stats");
+    });
     connect(applyIsd, &QPushButton::clicked, this, &EquipmentControlWidget::applyIsdCommand);
     connect(reset, &QPushButton::clicked, this, &EquipmentControlWidget::resetIsd);
     connect(isdType_, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &EquipmentControlWidget::updateIsdFields);
+    connect(isdUseVolts_, &QCheckBox::toggled, this, &EquipmentControlWidget::updateIsdFields);
     updateIsdFields();
 }
 
@@ -149,8 +184,17 @@ void EquipmentControlWidget::run(const std::string& capability, const std::strin
         log_->appendPlainText(QStringLiteral("[%1] %2.%3\n%4")
             .arg(stamp, QString::fromStdString(capability), QString::fromStdString(operation),
                  QString::fromStdString(response).trimmed()));
-        if (capability == "ubsi.parameter_source" && operation == "read")
-            adapterValue_->setText(field(response, "raw"));
+        if (capability == "ulk.parameter_source" && operation == "read_channel")
+        {
+            const double raw = field(response, "analog_code_mean").toDouble();
+            adapterValue_->setText(QStringLiteral("raw=%1; code=%2; signal=%3")
+                .arg(field(response, "raw_mean"), field(response, "analog_code_mean"),
+                     field(response, "signal")));
+            if (yalkFullRaw_ > yalkZeroRaw_) {
+                adapterVoltage_->setText(QStringLiteral("%1 В")
+                    .arg((raw - yalkZeroRaw_) * 6.2 / (yalkFullRaw_ - yalkZeroRaw_), 0, 'f', 4));
+            }
+        }
     } catch (const std::exception& error) {
         log_->appendPlainText(QStringLiteral("[%1] ОШИБКА %2.%3: %4")
             .arg(stamp, QString::fromStdString(capability), QString::fromStdString(operation),
@@ -161,9 +205,10 @@ void EquipmentControlWidget::run(const std::string& capability, const std::strin
 void EquipmentControlWidget::applyAdapterMode()
 {
     const std::string operation = adapterMode_->currentData().toString().toStdString();
-    if (!confirm(QStringLiteral("Выполнить операцию адаптера «%1»?")
+    if (!confirm(QStringLiteral("Запустить поток ЯЛК / УЛК через адаптер?")
             .arg(adapterMode_->currentText()))) return;
-    run("ubsi.parameter_source", operation, {
+    run("ulk.parameter_source", operation, {
+        {"mode", "6"},
         {"adapter_channel", std::to_string(adapterChannel_->value())},
         {"address_count", std::to_string(adapterAddressCount_->value())},
         {"yalk_number", "1"}, {"first_address", "1"},
@@ -173,7 +218,7 @@ void EquipmentControlWidget::applyAdapterMode()
 
 void EquipmentControlWidget::readAdapterWord()
 {
-    run("ubsi.parameter_source", "read", {
+    run("ulk.parameter_source", "read_channel", {
         {"ulk_address", std::to_string(adapterAddress_->value())},
         {"parameter_group", "manual"}, {"mask", adapterMask_->currentData().toString().toStdString()},
         {"sample_count", "1"}});
@@ -181,7 +226,10 @@ void EquipmentControlWidget::readAdapterWord()
 
 void EquipmentControlWidget::updateIsdFields()
 {
-    isdCode_->setEnabled(isdType_->currentData().toInt() == 1);
+    const bool analog = isdType_->currentData().toInt() == 1;
+    isdCode_->setEnabled(analog && !isdUseVolts_->isChecked());
+    isdVolts_->setEnabled(analog && isdUseVolts_->isChecked());
+    isdUseVolts_->setEnabled(analog);
 }
 
 void EquipmentControlWidget::applyIsdCommand()
@@ -192,11 +240,14 @@ void EquipmentControlWidget::applyIsdCommand()
             .arg(type).arg(channel).arg(isdEnabled_->isChecked() ? QStringLiteral("ВКЛ")
                                                                  : QStringLiteral("ВЫКЛ")))) return;
     if (type == 1) {
-        run("stand.switch_matrix", "analog", {{"channel", std::to_string(channel)},
-            {"value", std::to_string(isdCode_->value())},
+        const int code = isdUseVolts_->isChecked()
+            ? qRound(isdVolts_->value() * 4095.0 / 6.2)
+            : isdCode_->value();
+        run("stand.switch_matrix", "set_analog", {{"channel", std::to_string(channel)},
+            {"code", std::to_string(code)},
             {"enabled", isdEnabled_->isChecked() ? "true" : "false"}});
     } else {
-        run("stand.switch_matrix", "switch", {{"type", std::to_string(type)},
+        run("stand.switch_matrix", "set_switch", {{"type", std::to_string(type)},
             {"channel", std::to_string(channel)},
             {"enabled", isdEnabled_->isChecked() ? "true" : "false"}});
     }

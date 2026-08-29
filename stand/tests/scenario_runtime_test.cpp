@@ -139,16 +139,16 @@ void configurationAndCatalog(const QString& root)
     require(profile.connections.at("adapter_rs485") == "Адаптер RS-485 → X1 ЯП-П"
                 && profile.connections.at("isd_to_yalk") == "ИСД → X1, X2, X3 ЯЛК",
             "Confirmed stand cable topology was not loaded from the profile");
-    bool liveKpaProtocol = false;
+    bool liveAdapterProtocol = false;
     for (const auto& device : profile.devices) {
-        if (device.pluginId == "orbita.ubsi_udp") {
-            liveKpaProtocol = device.configuration.at("protocol") == "kpa_rokot_udp"
+        if (device.pluginId == "orbita.ktma_adapter_udp") {
+            liveAdapterProtocol = device.configuration.at("protocol") == "ktma_firmware_udp_v1"
                 && device.configuration.at("host") == "192.168.0.115"
                 && device.configuration.at("data_port") == "1113"
                 && device.configuration.at("ack_port") == "1113";
         }
     }
-    require(liveKpaProtocol, "Default adapter profile must use the live KPA/Rokot protocol");
+    require(liveAdapterProtocol, "Default adapter profile must use the easyweb firmware protocol");
 
     std::set<std::string> scenarioCapabilities;
     std::function<void(const ScenarioNode&)> collectCapabilities = [&](const ScenarioNode& node) {
@@ -178,7 +178,7 @@ void configurationAndCatalog(const QString& root)
 
     const auto yalk = resolveCatalogParameterBinding(
         db.toUtf8().toStdString(), "UBSI_468157_002", "yalk_analog", 7);
-    require(yalk.source == "ubsi.parameter_source" && yalk.locatorType == "ulk_address"
+    require(yalk.source == "ulk.parameter_source" && yalk.locatorType == "ulk_address"
                 && yalk.locator == "8" && yalk.mode == 6 && yalk.mask == 0x01FF,
             "YALK must resolve to the reference ULK address/mode from catalog");
     require(yalk.stimulusRoute == "yalk_analog" && yalk.stimulusOffset == 7,
@@ -193,7 +193,7 @@ void configurationAndCatalog(const QString& root)
             "YALK calibration must use reference ULK address 99");
     const auto ytp = resolveCatalogParameterBinding(
         db.toUtf8().toStdString(), "UBSI_468157_002", "ytp_temperature", 3);
-    require(ytp.source == "ubsi.parameter_source" && ytp.locatorType == "ulk_address"
+    require(ytp.source == "ulk.parameter_source" && ytp.locatorType == "ulk_address"
                 && ytp.locator == "4"
                 && ytp.mode == 2,
             "YTP must resolve to ULK address and adapter mode 2 from catalog");
@@ -258,7 +258,7 @@ void pluginContracts()
     bool akip = false;
     bool v7 = false;
     for (const auto& descriptor : manager.plugins()) {
-        ubsi = ubsi || descriptor.id == "orbita.ubsi_udp";
+        ubsi = ubsi || descriptor.id == "orbita.ktma_adapter_udp";
         scope = scope || (descriptor.id == "orbita.rigol_dho8xx"
             && descriptor.capabilities.count("measure.waveform") != 0);
         akip = akip || (descriptor.id == "orbita.akip_1160_pair"

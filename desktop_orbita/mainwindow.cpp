@@ -121,6 +121,14 @@ void MainWindow::setupUi()
 
     // --- Создаём страницы ---
     testPage_ = new TestPage;
+    testPage_->setEquipmentInvoker([this](
+        const std::string& capability, const std::string& operation,
+        const std::map<std::string, std::string>& arguments) {
+            if (!equipmentRegistry_ || !equipmentRegistry_->hasCapability(capability)) {
+                throw std::runtime_error("Оборудование не готово: " + capability);
+            }
+            return equipmentRegistry_->invoke(capability, operation, arguments);
+        });
     centralStack_->addWidget(testPage_);
 
     // Страница "Сбор"
@@ -496,14 +504,14 @@ void MainWindow::setupToolBar()
     adapterMonitorAction->setToolTip(QStringLiteral(
         "Пассивно показывает UDP-кадры адаптера. Никаких команд в стенд не отправляет."));
     connect(adapterMonitorAction, &QAction::triggered, this, [this] {
-        if (!equipmentRegistry_ || !equipmentRegistry_->hasCapability("ubsi.parameter_source")) {
+        if (!equipmentRegistry_ || !equipmentRegistry_->hasCapability("ulk.parameter_source")) {
             QMessageBox::information(this, QStringLiteral("Адаптер ЯЛК / УЛК"),
                 QStringLiteral("Сначала нажмите «Проверить оборудование» на странице испытаний.\n"
                                "Это загрузит плагин адаптера и выполнит безопасную проверку потока."));
             return;
         }
         auto* monitor = new AdapterMonitorWidget([this] {
-            return equipmentRegistry_->invoke("ubsi.parameter_source", "read_frame", {});
+            return equipmentRegistry_->invoke("ulk.parameter_source", "read_frame", {});
         }, this);
         monitor->show();
     });
@@ -511,7 +519,7 @@ void MainWindow::setupToolBar()
         QStringLiteral("Ручное управление ИСД и адаптером"));
     connect(equipmentControlAction, &QAction::triggered, this, [this] {
         if (!equipmentRegistry_
-            || !equipmentRegistry_->hasCapability("ubsi.parameter_source")
+            || !equipmentRegistry_->hasCapability("ulk.parameter_source")
             || !equipmentRegistry_->hasCapability("stand.switch_matrix")) {
             QMessageBox::information(this, QStringLiteral("Ручное управление"),
                 QStringLiteral("Сначала нажмите «Проверить оборудование» на странице испытаний."));
@@ -589,7 +597,7 @@ void MainWindow::initializeStandRuntime()
         orbita::stand::registerUbsiProcedures(*scenarioEngine_);
         orbita::stand::registerTelemetryProcedures(*scenarioEngine_);
         const QHash<QString, QString> equipmentForCapability = {
-            {"ubsi.parameter_source", "RS485"}, {"stand.switch_matrix", "ISD"},
+            {"ulk.parameter_source", "RS485"}, {"stand.switch_matrix", "ISD"},
             {"orbita.parameter_source", "E20"},
             {"measure.reference_voltage", "V7"}, {"measure.dc_current", "V7"},
             {"measure.reference_ac_voltage", "V7"}, {"measure.reference_frequency", "V7"},
@@ -598,6 +606,8 @@ void MainWindow::initializeStandRuntime()
         scenarios_.clear();
         testPage_->setScenarioInfo("UBSI_NORMAL_5_6", false, false, {},
             QStringLiteral("Сценарий УБСИ не загружен"));
+        testPage_->setScenarioInfo("YALK_FULL_5_6", false, false, {},
+            QStringLiteral("Сценарий ЯЛК не загружен"));
         testPage_->setScenarioInfo("BSI_DIAGNOSTIC", false, true, {},
             QStringLiteral("Диагностический сценарий БСИ не загружен"));
         const QDir scenarioDirectory(root.filePath("scenarios"));
@@ -609,6 +619,8 @@ void MainWindow::initializeStandRuntime()
             bool diagnostic = false;
             if (scenario.id == "ubsi.468157.002.tu5_6.normal") {
                 code = QStringLiteral("UBSI_NORMAL_5_6");
+            } else if (scenario.id == "ubsi.468157.002.yalk.tu5_6") {
+                code = QStringLiteral("YALK_FULL_5_6");
             } else if (scenario.id == "bsi.468157.003.telemetry.diagnostic") {
                 code = QStringLiteral("BSI_DIAGNOSTIC");
                 diagnostic = true;
@@ -689,7 +701,7 @@ void MainWindow::onCheckTestEquipment()
     }
 
     const QHash<QString, QString> uiCodes = {
-        {"orbita.ubsi_udp", "RS485"}, {"orbita.isd_http", "ISD"},
+        {"orbita.ktma_adapter_udp", "RS485"}, {"orbita.isd_http", "ISD"},
         {"orbita.v7_visa", "V7"}, {"orbita.akip_1160_pair", "AKIP"},
         {"orbita.rigol_generator", "RIGOL"},
         {"orbita.rigol_dho8xx", "SCOPE"}};
@@ -721,8 +733,12 @@ void MainWindow::onCheckTestEquipment()
             response << "source=" << binding.source << '\n'
                      << "locator_type=" << binding.locatorType << '\n'
                      << "locator=" << binding.locator << '\n'
+                     << "stream_id=" << binding.streamId << '\n'
+                     << "word_index=" << binding.wordIndex << '\n'
                      << "mask=" << binding.mask << '\n'
+                     << "shift=" << binding.shift << '\n'
                      << "mode=" << binding.mode << '\n'
+                     << "conversion_id=" << binding.conversionId << '\n'
                      << "stimulus_route=" << binding.stimulusRoute << '\n'
                      << "stimulus_offset=" << binding.stimulusOffset << '\n'
                      << "confirmed=" << (binding.confirmed ? "true" : "false") << '\n';
@@ -786,6 +802,8 @@ void MainWindow::onCheckTestEquipment()
         if (!code.isEmpty()) testPage_->setEquipmentChecking(code, QStringLiteral("Загрузка DLL и безопасный probe…"));
         try {
             auto config = definition.configuration;
+            config["record_root"] = QDir(QCoreApplication::applicationDirPath())
+                .filePath(QStringLiteral("runs")).toStdString();
             config["profile.active_outputs_confirmed"] = standProfile_.activeOutputsConfirmed ? "true" : "false";
             for (const auto& [key, value] : standProfile_.routes) config["route." + key] = value;
             auto device = equipmentPlugins_->createDevice(
@@ -909,7 +927,8 @@ void MainWindow::onRunScenario(
         return;
     }
     const auto scenario = iterator.value();
-    if (equipmentRegistry_->hasCapability("orbita.parameter_source")
+    if (scenarioCode != QStringLiteral("YALK_FULL_5_6")
+        && equipmentRegistry_->hasCapability("orbita.parameter_source")
         && !orbita_->isRunning()) {
         onStart();
     }

@@ -1,4 +1,6 @@
 #include "orbita_stand/equipment_adapters.h"
+#include "orbita_stand/ulk_udp_transport.h"
+#include "orbita_stand/yalk_frame.h"
 #include "orbita_stand/v7_visa_voltmeter.h"
 
 #include <QCoreApplication>
@@ -58,8 +60,8 @@ int main(int argc, char** argv)
     const auto secondsPerPoint = number(argv[5], "duration", 60);
     const bool passiveBroadcast = std::string(argv[3]) == "passive";
     orbita::stand::IsdHttpRouter isd({argv[1], 80, 1500, 2, {}});
-    orbita::stand::UbsiUdpAdapter adapter({passiveBroadcast ? "0.0.0.0" : argv[3],
-                                            argv[4], 1001, 1101, 100, passiveBroadcast});
+    if (passiveBroadcast) throw std::invalid_argument("Для рабочего адаптера требуется IP, пассивный режим не поддерживается");
+    orbita::stand::UlkUdpTransport adapter({argv[3], argv[4], 1113, 100, 4096});
     orbita::stand::V7VisaVoltmeter meter;
 
     // Из Delphi: 4095 соответствует 10 В, поэтому 3 и 6 В представлены
@@ -70,20 +72,21 @@ int main(int argc, char** argv)
     try {
         std::cout << "TARGET isd=" << argv[1] << " channel=" << isdChannel
                   << " adapter=" << argv[3] << " v7=" << meter.resourceName() << '\n';
-        if (passiveBroadcast) {
-            std::cout << "ADAPTER passive_broadcast=true port=1001\n";
-        } else {
-            std::cout << "SELECT adapter_mode=6(YALK)\n";
-            adapter.selectMode(6);
-        }
+        std::cout << "SELECT adapter_mode=6(YALK) port=1113\n";
+        adapter.start(6);
 
-        const auto baselinePacket = adapter.receiveRawPacket();
+        auto baselineFrame = adapter.waitFrame(orbita::stand::UlkFrameKind::Slow200, 0,
+            std::chrono::milliseconds(3000));
+        const auto& baselinePacket = baselineFrame.payload;
         if (baselinePacket.size() != 200) {
             throw std::runtime_error("Адаптер передал пакет не ЯЛК: ожидалось 200 байт, получено "
                 + std::to_string(baselinePacket.size()));
         }
         std::vector<std::uint16_t> previousWords =
-            orbita::stand::UbsiUdpAdapter::decodeYalkPacket(baselinePacket, 0xFFFF);
+        {
+            const auto samples = orbita::stand::decodeYalkSlowFrame(baselinePacket);
+            for (const auto& sample : samples) previousWords.push_back(sample.rawWord);
+        }
         std::cout << "BASELINE_ADAPTER bytes=200 words=100\n";
 
         for (const double volts : points) {
@@ -100,10 +103,14 @@ int main(int argc, char** argv)
             const auto deadline = start + std::chrono::seconds(secondsPerPoint);
             while (Clock::now() < deadline) {
                 try {
-                    const auto packet = adapter.receiveRawPacket();
+                    const auto packetFrame = adapter.waitFrame(orbita::stand::UlkFrameKind::Slow200,
+                        baselineFrame.sequence, std::chrono::milliseconds(100));
+                    baselineFrame = packetFrame;
+                    const auto& packet = packetFrame.payload;
                     const auto now = millisecondsSince(start);
                     if (!adapterFirst) adapterFirst = now;
-                    const auto words = orbita::stand::UbsiUdpAdapter::decodeYalkPacket(packet, 0xFFFF);
+                    std::vector<std::uint16_t> words;
+                    for (const auto& sample : orbita::stand::decodeYalkSlowFrame(packet)) words.push_back(sample.rawWord);
                     if (!adapterChanged && !previousWords.empty()) {
                         if (const auto word = firstChangedWord(previousWords, words)) {
                             adapterChanged = now;
@@ -135,6 +142,7 @@ int main(int argc, char** argv)
                       << " v7_last=" << lastV7 << '\n';
         }
         isd.setAnalog(isdChannel, 0, false);
+        adapter.stop();
         std::cout << "SAFE_OFF isd_channel=" << isdChannel << '\n';
         return 0;
     } catch (const std::exception& error) {

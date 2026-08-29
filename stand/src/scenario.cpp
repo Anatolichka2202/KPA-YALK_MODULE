@@ -220,6 +220,8 @@ ScenarioRunResult ScenarioEngine::run(
             run.events.push_back(event);
             if (progressSink) progressSink(event);
         },
+        run.runId,
+        {},
     };
     run.verdict = RunVerdict::Ok;
     bool stopTraversal = false;
@@ -237,6 +239,7 @@ ScenarioRunResult ScenarioEngine::run(
     // Испытательное воздействие всегда завершается безопасным сбросом — в том
     // числе после полностью успешного прогона.
     equipment.safeStopAll();
+    if (allowPartial && run.verdict == RunVerdict::Ok) run.verdict = RunVerdict::Incomplete;
     run.finishedAt = std::chrono::system_clock::now();
     return run;
 }

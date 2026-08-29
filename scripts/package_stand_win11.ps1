@@ -71,7 +71,7 @@ $pluginSource = Join-Path $runtimeRoot 'plugins'
 $pluginTarget = Join-Path $packageRoot 'plugins'
 New-Item -ItemType Directory -Path $pluginTarget -Force | Out-Null
 $pluginAllowList = @(
-    'orbita_plugin_ubsi_udp.dll',
+    'orbita_plugin_ktma_adapter_udp.dll',
     'orbita_plugin_isd_http.dll',
     'orbita_plugin_v7_visa.dll',
     'orbita_plugin_akip_1160.dll',

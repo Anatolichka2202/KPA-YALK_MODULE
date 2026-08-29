@@ -34,6 +34,7 @@ struct MeasurementResult {
     std::string unit;
     RunVerdict verdict = RunVerdict::Error;
     std::string message;
+    std::map<std::string, std::string> attributes;
 };
 
 struct ProcedureResult {
@@ -68,6 +69,7 @@ struct RunEvent {
     std::string stage;
     std::string message;
     RunVerdict verdict = RunVerdict::NotRun;
+    std::map<std::string, std::string> data;
 };
 
 struct StepRunResult {
@@ -110,6 +112,8 @@ struct ProcedureContext {
     ICapabilityProvider& equipment;
     std::atomic_bool& stopRequested;
     std::function<void(const RunEvent&)> eventSink;
+    std::string runId;
+    std::map<std::string, std::string> state;
 };
 
 using ProcedureFunction = std::function<ProcedureResult(

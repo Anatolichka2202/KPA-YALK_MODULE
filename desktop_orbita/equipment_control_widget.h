@@ -11,6 +11,7 @@ class QComboBox;
 class QLabel;
 class QPlainTextEdit;
 class QSpinBox;
+class QDoubleSpinBox;
 
 class EquipmentControlWidget final : public QWidget
 {
@@ -42,9 +43,14 @@ private:
     QSpinBox* adapterAddress_ = nullptr;
     QComboBox* adapterMask_ = nullptr;
     QLabel* adapterValue_ = nullptr;
+    QLabel* adapterVoltage_ = nullptr;
+    double yalkZeroRaw_ = 0.0;
+    double yalkFullRaw_ = 0.0;
     QComboBox* isdType_ = nullptr;
     QSpinBox* isdChannel_ = nullptr;
     QSpinBox* isdCode_ = nullptr;
+    QDoubleSpinBox* isdVolts_ = nullptr;
+    QCheckBox* isdUseVolts_ = nullptr;
     QCheckBox* isdEnabled_ = nullptr;
     QPlainTextEdit* log_ = nullptr;
 };

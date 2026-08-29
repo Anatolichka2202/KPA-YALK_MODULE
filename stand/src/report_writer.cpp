@@ -2,6 +2,7 @@
 
 #include <QDateTime>
 #include <QDir>
+#include <QFile>
 #include <QSaveFile>
 #include <QTextStream>
 
@@ -70,17 +71,32 @@ ReportPaths writeHtmlCsvReport(const ScenarioRunResult& run, const std::string& 
     csv.write("\xEF\xBB\xBF");
     QTextStream csvStream(&csv);
     csvStream.setEncoding(QStringConverter::Utf8);
-    csvStream << QStringLiteral("Этап;Пункт ТУ;Параметр;Эталон;Измерено;Нижний допуск;Верхний допуск;Единица;Итог;Сообщение\n");
+    csvStream << QStringLiteral("Этап;Пункт ТУ;Параметр;Адрес УЛК;Код ИСД;Raw;Код ЯЛК;Сигнал;В7, В;ЯЛК, В;Абсолютная погрешность, В;Приведённая погрешность, %;Относительная погрешность, %;Нижний допуск;Верхний допуск;Итог;Сообщение\n");
     const auto field = [](QString value) { return QStringLiteral("\"") + value.replace('"', QStringLiteral("\"\"")) + QStringLiteral("\""); };
     for (const auto& [step, value] : measurements) {
+        const auto attribute = [value](const char* key) {
+            const auto found = value->attributes.find(key);
+            return found == value->attributes.end() ? QString() : raw(found->second);
+        };
         csvStream << field(raw(step->title)) << ';' << field(raw(step->tuRequirement)) << ';'
-                  << field(raw(value->title)) << ';' << QString::number(value->reference, 'g', 15) << ';'
-                  << QString::number(value->measured, 'g', 15) << ';' << QString::number(value->lowerLimit, 'g', 15) << ';'
-                  << QString::number(value->upperLimit, 'g', 15) << ';' << field(raw(value->unit)) << ';'
+                  << field(raw(value->title)) << ';' << field(attribute("ulk_address")) << ';'
+                  << field(attribute("isd_code")) << ';' << field(attribute("raw")) << ';'
+                  << field(attribute("analog_code")) << ';' << field(attribute("signal")) << ';'
+                  << field(attribute("v7_v")) << ';' << field(attribute("yalk_v")) << ';'
+                  << field(attribute("absolute_error_v")) << ';'
+                  << field(attribute("reduced_error_percent")) << ';'
+                  << field(attribute("relative_error_percent")) << ';'
+                  << QString::number(value->lowerLimit, 'g', 15) << ';'
+                  << QString::number(value->upperLimit, 'g', 15) << ';'
                   << field(localVerdict(value->verdict)) << ';' << field(raw(value->message)) << '\n';
     }
     csvStream.flush();
     commit(csv);
+    if (run.scenarioId.find("yalk") != std::string::npos) {
+        const QString channelsPath = directory.filePath(QStringLiteral("channels.csv"));
+        QFile::remove(channelsPath);
+        if (!QFile::copy(csvPath, channelsPath)) throw std::runtime_error("Cannot create channels.csv");
+    }
 
     QSaveFile html(htmlPath);
     if (!html.open(QIODevice::WriteOnly | QIODevice::Text)) throw std::runtime_error(html.errorString().toUtf8().toStdString());
@@ -133,14 +149,21 @@ ReportPaths writeHtmlCsvReport(const ScenarioRunResult& run, const std::string& 
                << measuredPoints << QStringLiteral("\"/><text x=\"40\" y=\"260\" fill=\"#1f6feb\">— эталон</text><text x=\"150\" y=\"260\" fill=\"#238636\">— измерено</text></svg></div>");
     }
 
-    output << QStringLiteral("<table><thead><tr><th>Этап</th><th>ТУ</th><th>Параметр</th><th>Эталон</th><th>Измерено</th><th>Допуск</th><th>Итог</th></tr></thead><tbody>");
+    output << QStringLiteral("<table><thead><tr><th>Адрес</th><th>Точка</th><th>Raw / код</th><th>Сигнал</th><th>В7, В</th><th>ЯЛК, В</th><th>γ, %</th><th>Допуск</th><th>Итог</th></tr></thead><tbody>");
     for (const auto& [step, value] : measurements) {
+        Q_UNUSED(step);
+        const auto attribute = [value](const char* key) {
+            const auto found = value->attributes.find(key);
+            return found == value->attributes.end() ? QString() : escape(found->second);
+        };
         output << QStringLiteral("<tr class=\"") << QString::fromLatin1(toString(value->verdict)) << QStringLiteral("\"><td>")
-               << escape(step->title) << QStringLiteral("</td><td>") << escape(step->tuRequirement)
-               << QStringLiteral("</td><td>") << escape(value->title) << QStringLiteral("</td><td class=\"num\">")
-               << QString::number(value->reference, 'g', 10) << QStringLiteral(" ") << escape(value->unit)
-               << QStringLiteral("</td><td class=\"num\">") << QString::number(value->measured, 'g', 10)
-               << QStringLiteral(" ") << escape(value->unit) << QStringLiteral("</td><td class=\"num\">")
+               << attribute("ulk_address") << QStringLiteral("</td><td>") << escape(value->title)
+               << QStringLiteral("</td><td>") << attribute("raw") << QStringLiteral(" / ") << attribute("analog_code")
+               << QStringLiteral("</td><td>") << attribute("signal")
+               << QStringLiteral("</td><td>") << attribute("v7_v")
+               << QStringLiteral("</td><td>") << attribute("yalk_v")
+               << QStringLiteral("</td><td>") << attribute("reduced_error_percent")
+               << QStringLiteral("</td><td class=\"num\">")
                << QString::number(value->lowerLimit, 'g', 10) << QStringLiteral(" … ")
                << QString::number(value->upperLimit, 'g', 10) << QStringLiteral("</td><td>")
                << localVerdict(value->verdict) << QStringLiteral("</td></tr>");

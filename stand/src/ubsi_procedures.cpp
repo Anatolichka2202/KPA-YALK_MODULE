@@ -65,6 +65,19 @@ double responseNumber(const std::string& response, const std::string& key)
     return std::stod(iterator->second);
 }
 
+unsigned responseUnsigned(const std::string& response, const std::string& key)
+{
+    const auto values = responseValues(response);
+    const auto iterator = values.find(key);
+    if (iterator == values.end()) throw std::runtime_error("Адаптер не вернул поле " + key);
+    return static_cast<unsigned>(std::stoul(iterator->second));
+}
+
+bool responseBool(const std::string& response, const std::string& key)
+{
+    return responseUnsigned(response, key) != 0;
+}
+
 RunVerdict limit(double value, double lower, double upper)
 {
     return std::isfinite(value) && value >= lower && value <= upper
@@ -125,8 +138,12 @@ struct LogicalBinding {
     std::string source;
     std::string locatorType;
     std::string locator;
+    std::string streamId;
+    unsigned wordIndex = 0;
     unsigned mask = 0xFFFF;
+    unsigned shift = 0;
     unsigned mode = 0;
+    std::string conversionId;
     std::string stimulusRoute;
     unsigned stimulusOffset = 0;
     bool confirmed = false;
@@ -152,8 +169,12 @@ LogicalBinding resolveLogicalBinding(
     result.source = required("source");
     result.locatorType = required("locator_type");
     result.locator = required("locator");
+    result.streamId = required("stream_id");
+    result.wordIndex = static_cast<unsigned>(std::stoul(required("word_index")));
     result.mask = static_cast<unsigned>(std::stoul(required("mask")));
+    result.shift = static_cast<unsigned>(std::stoul(required("shift")));
     result.mode = static_cast<unsigned>(std::stoul(required("mode")));
+    result.conversionId = required("conversion_id");
     result.stimulusRoute = required("stimulus_route");
     result.stimulusOffset = static_cast<unsigned>(std::stoul(required("stimulus_offset")));
     result.confirmed = required("confirmed") == "true";
@@ -179,15 +200,17 @@ double readLogicalParameter(
     if (!context.equipment.hasCapability(binding.source)) {
         throw std::runtime_error("Для " + parameterKey + " недоступен источник " + binding.source);
     }
-    if (binding.source == "ubsi.parameter_source") {
-        context.equipment.invoke(binding.source, "select_mode", {
-            {"mode", std::to_string(binding.mode)}, {"single", "false"}});
-        return responseNumber(context.equipment.invoke(binding.source, "read", {
+    if (binding.source == "ulk.parameter_source") {
+        const double raw = responseNumber(context.equipment.invoke(binding.source, "read_channel", {
             {binding.locatorType == "ulk_address" ? "ulk_address" : "word_index", binding.locator},
             {"locator_type", binding.locatorType},
             {"parameter_group", parameterKey},
             {"sample_count", std::to_string(samples)},
-            {"mask", std::to_string(binding.mask)}}), "raw");
+            {"mask", std::to_string(binding.mask)}}), "raw_mean");
+        return static_cast<unsigned>(std::llround(raw)) & binding.mask
+            ? static_cast<double>((static_cast<unsigned>(std::llround(raw)) & binding.mask)
+                                  >> binding.shift)
+            : 0.0;
     }
     if (binding.source == "orbita.parameter_source") {
         return responseNumber(context.equipment.invoke(binding.source, "read", {
@@ -234,7 +257,7 @@ ProcedureResult readiness(const ScenarioNode& node, ProcedureContext& context)
                std::chrono::steady_clock::now() - started).count() <= timeoutMs) {
         if (context.stopRequested.load()) throw std::runtime_error("Остановлено оператором");
         const auto status = responseValues(context.equipment.invoke(
-            "ubsi.parameter_source", "alive", {}));
+            "ulk.parameter_source", "alive", {}));
         if (status.count("status") && status.at("status") == "ready") {
             const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
             append(result, measurement("ubsi.ready_time", "Время готовности", 0.0, seconds,
@@ -265,7 +288,7 @@ ProcedureResult supplyRange(const ScenarioNode& node, ProcedureContext& context)
             "power.dc_supply", "read_state", {}), "amperes");
         append(result, measurement("ubsi.supply_current", "Ток при " + std::to_string(voltage) + " В",
                                    0.0, current, 0.0, currentLimit, "А"));
-        const auto alive = responseValues(context.equipment.invoke("ubsi.parameter_source", "alive", {}));
+        const auto alive = responseValues(context.equipment.invoke("ulk.parameter_source", "alive", {}));
         if (!alive.count("status") || alive.at("status") != "ready") {
             MeasurementResult data = measurement("ubsi.data_alive", "Передача данных", 1, 0, 1, 1, "лог.");
             append(result, std::move(data));
@@ -277,7 +300,7 @@ ProcedureResult supplyRange(const ScenarioNode& node, ProcedureContext& context)
     for (std::size_t index = 0; index < survival.size(); ++index) {
         context.equipment.invoke("power.dc_supply", "set_voltage", {{"volts", std::to_string(survival[index])}});
         wait(context, static_cast<unsigned>(durations[index] * 1000.0));
-        const auto alive = responseValues(context.equipment.invoke("ubsi.parameter_source", "alive", {}));
+        const auto alive = responseValues(context.equipment.invoke("ulk.parameter_source", "alive", {}));
         append(result, measurement("ubsi.survival", "Работа при " + std::to_string(survival[index]) + " В",
             1, alive.count("status") && alive.at("status") == "ready" ? 1 : 0, 1, 1, "лог."));
     }
@@ -414,13 +437,255 @@ ProcedureResult yalkFaults(const ScenarioNode& node, ProcedureContext& context)
         context.equipment.invoke("stand.switch_matrix", "switch", {
             {"route", item.first}, {"enabled", "true"}});
         wait(context, natural(node, "settle_ms", 150));
-        const auto status = responseValues(context.equipment.invoke("ubsi.parameter_source", "alive", {}));
+        const auto status = responseValues(context.equipment.invoke("ulk.parameter_source", "alive", {}));
         append(result, measurement("ubsi.yalk.fault", item.second + ": остальные каналы работают", 1,
             status.count("status") && status.at("status") == "ready" ? 1 : 0, 1, 1, "лог."));
         context.equipment.invoke("stand.switch_matrix", "switch", {
             {"route", item.first}, {"enabled", "false"}});
     }
     return result;
+}
+
+struct UlkChannelValue {
+    double raw = 0.0;
+    double code = 0.0;
+    bool signal = false;
+    unsigned firstSequence = 0;
+    unsigned lastSequence = 0;
+};
+
+unsigned ulkLastSequence(ProcedureContext& context)
+{
+    return responseUnsigned(context.equipment.invoke(
+        "ulk.parameter_source", "stats", {}), "last_sequence");
+}
+
+UlkChannelValue readUlkChannel(
+    ProcedureContext& context, unsigned address, unsigned samples, unsigned afterSequence)
+{
+    const auto response = context.equipment.invoke("ulk.parameter_source", "read_channel", {
+        {"ulk_address", std::to_string(address)},
+        {"sample_count", std::to_string(samples)},
+        {"after_sequence", std::to_string(afterSequence)},
+        {"timeout_ms", "3000"}});
+    return {
+        responseNumber(response, "raw_mean"),
+        responseNumber(response, "analog_code_mean"),
+        responseBool(response, "signal"),
+        responseUnsigned(response, "first_sequence"),
+        responseUnsigned(response, "last_sequence")};
+}
+
+double stateNumber(const ProcedureContext& context, const std::string& key)
+{
+    const auto found = context.state.find(key);
+    if (found == context.state.end()) throw std::runtime_error("Нет состояния сценария ЯЛК: " + key);
+    return std::stod(found->second);
+}
+
+void setYalkAnalog(ProcedureContext& context, const LogicalBinding& binding,
+                   unsigned code, bool enabled)
+{
+    context.equipment.invoke("stand.switch_matrix", "set_analog", {
+        {"route", binding.stimulusRoute},
+        {"ulk_address", binding.locator},
+        {"code", std::to_string(code)},
+        {"enabled", enabled ? "true" : "false"}});
+}
+
+bool yalkBindingsConfirmed(ProcedureContext& context, unsigned count)
+{
+    for (unsigned channel = 0; channel < count; ++channel) {
+        const auto voltage = resolveLogicalBinding(context, "yalk_voltage", channel);
+        const auto signal = resolveLogicalBinding(context, "yalk_signal", channel);
+        if (!voltage.confirmed || !signal.confirmed || voltage.locator.empty()
+            || voltage.stimulusRoute.empty() || voltage.locator != signal.locator) return false;
+    }
+    return resolveLogicalBinding(context, "yalk_calibration_zero", 0).confirmed
+        && resolveLogicalBinding(context, "yalk_calibration_full", 0).confirmed;
+}
+
+void markCommissioning(ProcedureResult& result, bool confirmed)
+{
+    if (!confirmed && result.verdict == RunVerdict::Ok) {
+        result.verdict = RunVerdict::Incomplete;
+        result.message += "; измерения выполнены в режиме наладки, адреса ещё не подтверждены";
+    }
+}
+
+ProcedureResult yalkStartStream(const ScenarioNode& node, ProcedureContext& context)
+{
+    context.equipment.invoke("ulk.parameter_source", "start_record", {{"run_id", context.runId}});
+    const auto response = responseValues(context.equipment.invoke(
+        "ulk.parameter_source", "start_stream", {
+            {"mode", std::to_string(natural(node, "mode", 6))},
+            {"timeout_ms", std::to_string(natural(node, "timeout_ms", 3000))}}));
+    if (!response.count("status") || response.at("status") != "ready") {
+        throw std::runtime_error("Адаптер не выдал медленный кадр ЯЛК");
+    }
+    if (response.count("first_sequence")) context.state["yalk.first_sequence"] = response.at("first_sequence");
+    return {RunVerdict::Ok, "Адаптер переведён в режим ЯЛК 8 кГц; получен кадр 200 байт", {}};
+}
+
+ProcedureResult yalkReadCalibration(const ScenarioNode& node, ProcedureContext& context)
+{
+    const bool confirmed = yalkBindingsConfirmed(context, natural(node, "channel_count", 80));
+    if (!confirmed && argument(node, "commissioning", "false") != "true") {
+        return {RunVerdict::Incomplete, "Калибровочные адреса ЯЛК не подтверждены", {}};
+    }
+    const auto first = resolveLogicalBinding(context, "yalk_voltage", 0);
+    const auto zero = resolveLogicalBinding(context, "yalk_calibration_zero", 0);
+    const auto full = resolveLogicalBinding(context, "yalk_calibration_full", 0);
+    setYalkAnalog(context, first, natural(node, "full_code", 4095), true);
+    wait(context, natural(node, "settle_ms", 150));
+    const double v7 = readReferenceVoltage(context);
+    unsigned sequence = ulkLastSequence(context);
+    const auto zeroValue = readUlkChannel(context, static_cast<unsigned>(std::stoul(zero.locator)),
+                                          natural(node, "sample_count", 16), sequence);
+    const auto fullValue = readUlkChannel(context, static_cast<unsigned>(std::stoul(full.locator)),
+                                          natural(node, "sample_count", 16), zeroValue.lastSequence);
+    setYalkAnalog(context, first, 0, false);
+    if (!(fullValue.code > zeroValue.code) || !std::isfinite(v7) || v7 < 5.5 || v7 > 6.8) {
+        throw std::runtime_error("Недостоверная калибровка ЯЛК 97/99 или напряжение В7");
+    }
+    context.state["yalk.zero_code"] = std::to_string(zeroValue.code);
+    context.state["yalk.full_code"] = std::to_string(fullValue.code);
+    context.state["yalk.full_voltage"] = std::to_string(v7);
+    ProcedureResult result{RunVerdict::Ok, "Снята калибровка ЯЛК по адресам 97/99", {}};
+    auto value = measurement("ubsi.yalk.calibration", "Калибровочная шкала ЯЛК",
+                             6.2, v7, 5.5, 6.8, "В");
+    value.attributes = {{"zero_code", std::to_string(zeroValue.code)},
+                        {"full_code", std::to_string(fullValue.code)},
+                        {"zero_address", zero.locator}, {"full_address", full.locator}};
+    append(result, std::move(value));
+    markCommissioning(result, confirmed);
+    return result;
+}
+
+double yalkCodeToVolts(double code, const ProcedureContext& context)
+{
+    const double zero = stateNumber(context, "yalk.zero_code");
+    const double full = stateNumber(context, "yalk.full_code");
+    const double voltage = stateNumber(context, "yalk.full_voltage");
+    if (!(full > zero)) throw std::runtime_error("Неверная калибровка ЯЛК");
+    return (code - zero) * voltage / (full - zero);
+}
+
+ProcedureResult yalkCheckInitial(const ScenarioNode& node, ProcedureContext& context)
+{
+    const unsigned count = natural(node, "channel_count", 80);
+    const bool confirmed = yalkBindingsConfirmed(context, count);
+    if (!confirmed && argument(node, "commissioning", "false") != "true") {
+        return {RunVerdict::Incomplete, "Адреса ЯЛК не подтверждены", {}};
+    }
+    ProcedureResult result{RunVerdict::Ok, "Проверено исходное отключённое состояние ЯЛК", {}};
+    context.equipment.invoke("stand.switch_matrix", "full_reset", {});
+    unsigned sequence = ulkLastSequence(context);
+    const double tolerance = number(node, "full_scale_v", 6.2)
+        * number(node, "tolerance_percent_fs", 0.5) / 100.0;
+    for (unsigned channel = 0; channel < count; ++channel) {
+        const auto binding = resolveLogicalBinding(context, "yalk_voltage", channel);
+        const unsigned address = static_cast<unsigned>(std::stoul(binding.locator));
+        const auto reading = readUlkChannel(context, address,
+                                            natural(node, "sample_count", 4), sequence);
+        sequence = reading.lastSequence;
+        const double volts = yalkCodeToVolts(reading.code, context);
+        auto analog = measurement("ubsi.yalk.initial." + binding.locator,
+            "ЯЛК адрес " + binding.locator + ": исходное напряжение",
+            0.0, volts, -tolerance, tolerance, "В");
+        analog.attributes = {{"ulk_address", binding.locator},
+                             {"raw", std::to_string(reading.raw)},
+                             {"analog_code", std::to_string(reading.code)},
+                             {"signal", reading.signal ? "1" : "0"}};
+        append(result, std::move(analog));
+        append(result, measurement("ubsi.yalk.initial.signal." + binding.locator,
+            "ЯЛК адрес " + binding.locator + ": исходный сигнал",
+            1, reading.signal ? 1 : 0, 1, 1, "лог."));
+    }
+    markCommissioning(result, confirmed);
+    return result;
+}
+
+ProcedureResult yalkCheckChannels(const ScenarioNode& node, ProcedureContext& context)
+{
+    const unsigned count = natural(node, "channel_count", 80);
+    const bool confirmed = yalkBindingsConfirmed(context, count);
+    if (!confirmed && argument(node, "commissioning", "false") != "true") {
+        return {RunVerdict::Incomplete, "Адреса/маршруты ЯЛК не подтверждены", {}};
+    }
+    const auto pointVolts = numbers(node, "point_volts");
+    const auto pointCodes = numbers(node, "isd_codes");
+    if (pointVolts.size() != 3 || pointCodes.size() != pointVolts.size()) {
+        throw std::invalid_argument("Для ЯЛК требуются три точки и три кода ИСД");
+    }
+    const double fullScale = number(node, "full_scale_v", 6.2);
+    const double tolerance = fullScale * number(node, "tolerance_percent_fs", 0.5) / 100.0;
+    ProcedureResult result{RunVerdict::Ok, "Проверены 80 адресов ЯЛК", {}};
+    for (unsigned channel = 0; channel < count; ++channel) {
+        const auto binding = resolveLogicalBinding(context, "yalk_voltage", channel);
+        const unsigned address = static_cast<unsigned>(std::stoul(binding.locator));
+        for (std::size_t point = 0; point < pointVolts.size(); ++point) {
+            const unsigned code = static_cast<unsigned>(pointCodes[point]);
+            setYalkAnalog(context, binding, code, true);
+            wait(context, natural(node, "settle_ms", 150));
+            const double v7 = readReferenceVoltage(context);
+            const unsigned sequence = ulkLastSequence(context);
+            const auto reading = readUlkChannel(context, address,
+                                                natural(node, "sample_count", 16), sequence);
+            const double volts = yalkCodeToVolts(reading.code, context);
+            const double absolute = std::abs(volts - v7);
+            const double reduced = absolute / fullScale * 100.0;
+            auto analog = measurement("ubsi.yalk." + binding.locator + "." + std::to_string(point),
+                "ЯЛК адрес " + binding.locator + ", " + std::to_string(pointVolts[point]) + " В",
+                v7, volts, v7 - tolerance, v7 + tolerance, "В");
+            analog.attributes = {
+                {"ulk_address", binding.locator}, {"isd_channel", binding.locator},
+                {"command_v", std::to_string(pointVolts[point])},
+                {"isd_code", std::to_string(code)}, {"raw", std::to_string(reading.raw)},
+                {"analog_code", std::to_string(reading.code)},
+                {"signal", reading.signal ? "1" : "0"}, {"v7_v", std::to_string(v7)},
+                {"yalk_v", std::to_string(volts)}, {"absolute_error_v", std::to_string(absolute)},
+                {"reduced_error_percent", std::to_string(reduced)},
+                {"relative_error_percent", std::abs(v7) > 0.01
+                    ? std::to_string(absolute / std::abs(v7) * 100.0) : ""}};
+            const auto verdict = analog.verdict;
+            context.eventSink({std::chrono::system_clock::now(), node.id, "MEASUREMENT",
+                analog.title, verdict, analog.attributes});
+            append(result, std::move(analog));
+            if (point == 0 || point == 2) {
+                const bool expected = point == 2;
+                auto signal = measurement("ubsi.yalk.signal." + binding.locator + "." + std::to_string(point),
+                    "ЯЛК адрес " + binding.locator + ": сигнальный признак",
+                    expected ? 1 : 0, reading.signal ? 1 : 0,
+                    expected ? 1 : 0, expected ? 1 : 0, "лог.");
+                signal.attributes = {{"ulk_address", binding.locator},
+                                     {"command_v", std::to_string(pointVolts[point])},
+                                     {"signal", reading.signal ? "1" : "0"}};
+                append(result, std::move(signal));
+            }
+        }
+        setYalkAnalog(context, binding, 0, false);
+    }
+    markCommissioning(result, confirmed);
+    return result;
+}
+
+ProcedureResult yalkCheckOverload(const ScenarioNode& node, ProcedureContext&)
+{
+    if (argument(node, "mapping_confirmed", "false") != "true") {
+        return {RunVerdict::Incomplete,
+            "Маршруты обрыва и ±12 В ещё не подтверждены на УБСИ; опасное воздействие не выполнялось", {}};
+    }
+    return {RunVerdict::Incomplete,
+        "Алгоритм перегрузки разрешён профилем, но аппаратная карта поканальной коммутации ещё не зафиксирована", {}};
+}
+
+ProcedureResult yalkSafeCleanup(const ScenarioNode&, ProcedureContext& context)
+{
+    context.equipment.invoke("stand.switch_matrix", "full_reset", {});
+    context.equipment.invoke("ulk.parameter_source", "stop_stream", {});
+    context.equipment.invoke("ulk.parameter_source", "stop_record", {});
+    return {RunVerdict::Ok, "ИСД сброшен, поток и запись адаптера остановлены", {}};
 }
 
 ProcedureResult referenceVoltage(const ScenarioNode& node, ProcedureContext& context)
@@ -607,6 +872,12 @@ void registerUbsiProcedures(ScenarioEngine& engine)
     engine.registerProcedure("ubsi.yalk_analog", yalkAnalog);
     engine.registerProcedure("ubsi.yalk_contacts", yalkContacts);
     engine.registerProcedure("ubsi.yalk_faults", yalkFaults);
+    engine.registerProcedure("yalk.start_stream", yalkStartStream);
+    engine.registerProcedure("yalk.read_calibration", yalkReadCalibration);
+    engine.registerProcedure("yalk.check_initial_state", yalkCheckInitial);
+    engine.registerProcedure("yalk.check_channels", yalkCheckChannels);
+    engine.registerProcedure("yalk.check_overload", yalkCheckOverload);
+    engine.registerProcedure("yalk.safe_cleanup", yalkSafeCleanup);
     engine.registerProcedure("ubsi.reference_voltage", referenceVoltage);
     engine.registerProcedure("ubsi.ytp", ytp);
     engine.registerProcedure("ubsi.yvp", yvp);
