@@ -79,17 +79,28 @@ struct UlkUdpTransport::Impl {
     void openSocket()
     {
         socket = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-        if (socket == InvalidSocket) throw std::runtime_error("Не удалось открыть UDP-сокет адаптера УЛК");
+        if (socket == InvalidSocket)
+            throw std::runtime_error("Cannot open ULK UDP socket");
 
         int reuse = 1;
-        setsockopt(socket, SOL_SOCKET, SO_REUSEADDR,
-                   reinterpret_cast<const char*>(&reuse), sizeof(reuse));
-        const auto local = endpoint(config.localHost, config.port);
-        if (::bind(socket, reinterpret_cast<const sockaddr*>(&local), sizeof(local)) != 0) {
+        setsockopt(socket,
+                   SOL_SOCKET,
+                   SO_REUSEADDR,
+                   reinterpret_cast<const char*>(&reuse),
+                   sizeof(reuse));
+
+        sockaddr_in local{};
+        local.sin_family = AF_INET;
+        local.sin_port = htons(config.port);
+        local.sin_addr.s_addr = htonl(INADDR_ANY);
+
+        if (::bind(socket,
+                   reinterpret_cast<const sockaddr*>(&local),
+                   sizeof(local)) != 0) {
             closeSocket(socket);
             socket = InvalidSocket;
-            throw std::runtime_error("Не удалось привязать UDP-сокет к "
-                                     + config.localHost + ":" + std::to_string(config.port));
+            throw std::runtime_error(
+                "Cannot bind ULK UDP receive socket");
         }
     }
 
@@ -111,12 +122,40 @@ struct UlkUdpTransport::Impl {
 
         const auto bytes = UlkUdpTransport::modeCommand(mode);
         const auto remote = endpoint(config.remoteHost, config.port);
-        const int sent = ::sendto(socket, reinterpret_cast<const char*>(bytes.data()),
-                                  static_cast<int>(bytes.size()), 0,
-                                  reinterpret_cast<const sockaddr*>(&remote), sizeof(remote));
+
+        Socket sender = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+
+        if(sender == InvalidSocket)
+        {
+            stop();
+            throw std::runtime_error("Cannot open ULK command socket");
+        }
+
+        const auto source = endpoint(config.localHost,0);
+
+        if(::bind(sender,
+                   reinterpret_cast<const sockaddr*>(&source),
+                   sizeof(source))!=0)
+        {
+            closeSocket(sender);
+            stop();
+            throw std::runtime_error("Cannot bind ULK command socket");
+        }
+
+        const int sent = ::sendto(
+            sender,
+            reinterpret_cast<const char*>(bytes.data()),
+            static_cast<int>(bytes.size()),
+            0,
+            reinterpret_cast<const sockaddr*>(&remote),
+            sizeof(remote));
+
+        closeSocket(sender);
+
         if (sent != static_cast<int>(bytes.size())) {
             stop();
-            throw std::runtime_error("Не удалось отправить команду режима адаптеру УЛК");
+            throw std::runtime_error(
+                "Cannot send ULK mode command");
         }
     }
 
