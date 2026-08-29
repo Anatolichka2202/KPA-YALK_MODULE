@@ -122,10 +122,33 @@ target_link_libraries(orbita_ubsi_udp_probe PRIVATE orbita_stand_adapters)
 
 if(MINGW)
     target_link_options(orbita_ubsi_udp_probe PRIVATE
-    -static
-    -static-libgcc
-    -static-libstdc++
+        -static
+        -static-libgcc
+        -static-libstdc++
     )
+endif()
+
+# Новый отдельный probe для ROKT-протокола
+if(WIN32)
+    add_executable(orbita_ubsi_rokt_probe
+        tools/ubsi_rokt_probe.cpp
+    )
+
+    target_link_libraries(
+        orbita_ubsi_rokt_probe
+        PRIVATE
+        ws2_32
+    )
+
+    if(MINGW)
+        target_link_options(
+            orbita_ubsi_rokt_probe
+            PRIVATE
+            -static
+            -static-libgcc
+            -static-libstdc++
+        )
+    endif()
 endif()
 
 add_executable(yalk_timing_probe tools/yalk_timing_probe.cpp)

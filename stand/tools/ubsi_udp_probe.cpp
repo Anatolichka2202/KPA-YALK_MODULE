@@ -73,6 +73,16 @@ int main(int argc, char** argv)
             std::cout << "ACTIVE_SELECT mode=" << static_cast<unsigned>(mode) << '\n';
             adapter.start(mode);
             std::cout << "STREAM mode=" << static_cast<unsigned>(mode) << '\n';
+
+            const auto beforeFast = adapter.stats().lastSequence;
+
+            const auto fast = adapter.waitFrame(
+                orbita::stand::UlkFrameKind::Fast120,
+                beforeFast,
+                std::chrono::milliseconds(800));
+
+            printPacket(0, fast.payload);
+
         } else {
             adapter.start(6);
             std::cout << "ACTIVE_SELECT mode=6\n";
