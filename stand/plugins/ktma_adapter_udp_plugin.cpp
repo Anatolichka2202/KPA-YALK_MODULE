@@ -1,3 +1,4 @@
+..
 #include "plugin_support.h"
 #include "orbita_stand/ulk_udp_transport.h"
 #include "orbita_stand/yalk_frame.h"
@@ -129,7 +130,19 @@ orbita_plugin_status_v1 invoke(void* value, const char* capability, const char* 
             instance.transport->stopRecord();
             return std::string("status=ok\n");
         }
-        if (command == "start_stream" || command == "probe" || command == "alive") {
+        if(command == "alive")
+            {
+            const auto before = instance.transport->stats().lastSequence;
+
+            const auto frame = waitSlow (
+                instance,
+                before,
+                timeout(instance,args));
+
+            return std::string("status=ready\n")
+                   + "sequnce=" + std::to_string(frame.sequence) + '\n';
+        }
+        if (command == "start_stream" || command == "probe") {
             plugin::requireActiveOutputs(instance.config);
             const unsigned mode = plugin::unsignedValue(args, "mode", 6);
             if (mode > 255) throw std::invalid_argument("Режим адаптера должен быть 0..255");

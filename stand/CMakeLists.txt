@@ -120,6 +120,14 @@ target_link_libraries(orbita_telemetry_probe PRIVATE orbita)
 add_executable(orbita_ubsi_udp_probe tools/ubsi_udp_probe.cpp)
 target_link_libraries(orbita_ubsi_udp_probe PRIVATE orbita_stand_adapters)
 
+if(MINGW)
+    target_link_options(orbita_ubsi_udp_probe PRIVATE
+    -static
+    -static-libgcc
+    -static-libstdc++
+    )
+endif()
+
 add_executable(yalk_timing_probe tools/yalk_timing_probe.cpp)
 target_link_libraries(yalk_timing_probe PRIVATE orbita_stand_adapters)
 

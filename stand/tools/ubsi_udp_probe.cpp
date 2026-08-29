@@ -92,6 +92,19 @@ int main(int argc, char** argv)
                 std::cout << "WAIT " << error.what() << '\n';
             }
         }
+
+        const auto stats = adapter.stats();
+
+        std::cout
+            << "STATS"
+            << " last_sequence=" << stats.lastSequence
+            << " service4=" << stats.service4
+            << " fast120=" << stats.fast120
+            << " slow200=" << stats.slow200
+            << " unknown=" << stats.unknown
+            << " dropped=" << stats.dropped
+            << '\n';
+
         std::cout << "RESULT packets=" << packets << " timeouts=" << timeouts << '\n';
         adapter.stop();
         return packets ? 0 : 3;
