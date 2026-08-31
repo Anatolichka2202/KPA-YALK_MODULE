@@ -282,6 +282,8 @@ int main(int argc, char** argv)
             isd.disableYalkOutput(activeChannel);
             outputEnabled = false;
             std::this_thread::sleep_for(ChannelOffSettleTime);
+            adapter.takeFrames();
+
             std::cout << "CHANNEL address=" << address
                       << " progress=" << completedChannels << "/80"
                       << " result=" << (channelOk ? "OK" : "FAIL") << '\n';
