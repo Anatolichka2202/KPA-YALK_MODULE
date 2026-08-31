@@ -35,6 +35,9 @@ struct ChannelReading {
     bool signal = false;
     std::uint64_t firstSequence = 0;
     std::uint64_t lastSequence = 0;
+    std::array<double, 100> allAnalogMean{};
+    std::array<bool, 100> allSignal{};
+    std::array<std::uint16_t, 100> allRawLast{};
 };
 
 ChannelReading readFresh(orbita::stand::UlkUdpTransport& adapter,
@@ -45,6 +48,8 @@ ChannelReading readFresh(orbita::stand::UlkUdpTransport& adapter,
     analog.reserve(count);
     std::uint64_t codeSum = 0;
     unsigned signalOnes = 0;
+    std::array<std::uint64_t, 100> allCodeSums{};
+    std::array<unsigned, 100> allSignalOnes{};
     ChannelReading result;
     for (unsigned index = 0; index < count; ++index) {
         const auto frame = adapter.waitFrame(
@@ -54,6 +59,11 @@ ChannelReading readFresh(orbita::stand::UlkUdpTransport& adapter,
         if (!result.firstSequence) result.firstSequence = frame.sequence;
         result.lastSequence = frame.sequence;
         const auto words = orbita::stand::decodeYalkReferenceFrame(frame.payload);
+        for (std::size_t word = 0; word < words.size(); ++word) {
+            allCodeSums[word] += words[word].analogCode;
+            if (words[word].contact) ++allSignalOnes[word];
+            result.allRawLast[word] = words[word].rawWord;
+        }
         const auto& sample = words.at(address - 1);
         result.raw = sample.rawWord;
         codeSum += sample.analogCode;
@@ -64,6 +74,10 @@ ChannelReading readFresh(orbita::stand::UlkUdpTransport& adapter,
     result.analogMean = static_cast<double>(codeSum) / count;
     result.analogMedian = analog[analog.size() / 2];
     result.signal = signalOnes * 2 >= count;
+    for (std::size_t word = 0; word < result.allAnalogMean.size(); ++word) {
+        result.allAnalogMean[word] = static_cast<double>(allCodeSums[word]) / count;
+        result.allSignal[word] = allSignalOnes[word] * 2 >= count;
+    }
     return result;
 }
 
@@ -80,7 +94,7 @@ int main(int argc, char** argv)
     }
 
     const unsigned isdChannel = number(argv[4], "ISD channel", 255);
-    orbita::stand::IsdHttpRouter isd({argv[1], 80, 1500, 2, {}});
+    orbita::stand::IsdHttpRouter isd({argv[1], 80, 3000, 2, {}});
     orbita::stand::UlkUdpTransport adapter({argv[2], argv[3], 1113, 800, 4096});
     bool isdPrepared = false;
 
@@ -92,7 +106,13 @@ int main(int argc, char** argv)
                   << " channel=" << isdChannel
                   << " v7=" << meter.resourceName() << '\n';
 
-        adapter.startYalkReference();
+        isd.prepareYalk();
+        isdPrepared = true;
+        adapter.prepareYalkReference();
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        isd.prepareYalk();
+        adapter.startPreparedYalkReference();
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
         const auto calibrationAfter = adapter.stats().lastSequence;
         const auto zero = readFresh(adapter, 97, 16, calibrationAfter);
         const auto full = readFresh(adapter, 99, 16, zero.lastSequence);
@@ -106,33 +126,67 @@ int main(int argc, char** argv)
                 "YALK calibration is outside verified addr97~125/addr99~922 ranges");
         }
 
-        isd.prepareYalk();
-        isdPrepared = true;
         constexpr std::array<double, 3> points{0.00, 3.10, 6.20};
-        for (const double commandVolts : points) {
+        std::array<ChannelReading, 3> readings;
+        std::array<double, 3> v7Readings{};
+        for (std::size_t point = 0; point < points.size(); ++point) {
+            const double commandVolts = points[point];
             isd.setYalkVoltage(isdChannel, commandVolts);
             std::this_thread::sleep_for(std::chrono::milliseconds(150));
             const auto afterSettling = adapter.stats().lastSequence;
-            const double v7 = meter.readVoltage();
-            const auto yalk = readFresh(adapter, 1, 16, afterSettling);
+            v7Readings[point] = meter.readVoltage();
+            readings[point] = readFresh(adapter, 1, 16, afterSettling);
+            const auto& yalk = readings[point];
             std::cout << std::fixed << std::setprecision(6)
                       << "POINT command_v=" << commandVolts
                       << " raw=" << yalk.raw
                       << " analog_mean=" << yalk.analogMean
                       << " analog_median=" << yalk.analogMedian
                       << " signal=" << (yalk.signal ? 1 : 0)
-                      << " v7=" << v7
+                      << " v7=" << v7Readings[point]
                       << " samples=16"
                       << " first_sequence=" << yalk.firstSequence
                       << " last_sequence=" << yalk.lastSequence << '\n';
         }
 
+        unsigned candidates = 0;
+        for (unsigned address = 1; address <= 100; ++address) {
+            const auto index = address - 1;
+            const auto [minimum, maximum] = std::minmax({
+                readings[0].allAnalogMean[index],
+                readings[1].allAnalogMean[index],
+                readings[2].allAnalogMean[index]});
+            const bool signalChanged = readings[0].allSignal[index] != readings[1].allSignal[index]
+                || readings[0].allSignal[index] != readings[2].allSignal[index];
+            if (maximum - minimum >= 10.0 || signalChanged) {
+                ++candidates;
+                std::cout << "CANDIDATE address=" << address
+                          << " analog_0=" << readings[0].allAnalogMean[index]
+                          << " analog_3_1=" << readings[1].allAnalogMean[index]
+                          << " analog_6_2=" << readings[2].allAnalogMean[index]
+                          << " signal_0=" << readings[0].allSignal[index]
+                          << " signal_3_1=" << readings[1].allSignal[index]
+                          << " signal_6_2=" << readings[2].allSignal[index]
+                          << " raw_6_2=" << readings[2].allRawLast[index] << '\n';
+            }
+        }
+
+        const double selectedMinimum = std::min({
+            readings[0].analogMean, readings[1].analogMean, readings[2].analogMean});
+        const double selectedMaximum = std::max({
+            readings[0].analogMean, readings[1].analogMean, readings[2].analogMean});
+        const bool selectedResponded = selectedMaximum - selectedMinimum >= 10.0
+            || readings[0].signal != readings[1].signal
+            || readings[0].signal != readings[2].signal;
+
         isd.disableYalkOutput(isdChannel);
         isd.reset();
         isdPrepared = false;
         adapter.stop();
-        std::cout << "RESULT OK cleanup=complete\n";
-        return 0;
+        std::cout << "RESULT " << (selectedResponded ? "DIAGNOSTIC_OK" : "DIAGNOSTIC_FAIL")
+                  << " selected_address=1 candidates=" << candidates
+                  << " cleanup=complete\n";
+        return selectedResponded ? 0 : 4;
     } catch (const std::exception& error) {
         if (isdPrepared) {
             try { isd.disableYalkOutput(isdChannel); } catch (...) {}

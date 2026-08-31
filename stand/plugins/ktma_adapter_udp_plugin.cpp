@@ -153,6 +153,25 @@ orbita_plugin_status_v1 invoke(void* value, const char* capability, const char* 
             return std::string("status=ready\n")
                    + "sequnce=" + std::to_string(frame.sequence) + '\n';
         }
+        if (command == "prepare_yalk_reference") {
+            plugin::requireActiveOutputs(instance.config);
+            instance.cancelled.store(false);
+            instance.yalkReference = true;
+            instance.transport->prepareYalkReference();
+            instance.selectedMode = -2;
+            return std::string("status=prepared\nprotocol=rokt_yalk\n");
+        }
+        if (command == "start_prepared_yalk_reference") {
+            plugin::requireActiveOutputs(instance.config);
+            if (!instance.yalkReference || instance.selectedMode != -2) {
+                throw std::runtime_error("ROKT YALK stream was not prepared");
+            }
+            instance.transport->startPreparedYalkReference();
+            const auto frame = waitYalk(instance, 0,
+                plugin::unsignedValue(args, "timeout_ms", 3000));
+            return std::string("status=ready\nprotocol=rokt_yalk\nmode=reference204\nfirst_sequence=")
+                + std::to_string(frame.sequence) + '\n';
+        }
         if (command == "start_stream" || command == "probe") {
             plugin::requireActiveOutputs(instance.config);
             instance.cancelled.store(false);

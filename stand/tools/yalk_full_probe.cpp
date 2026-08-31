@@ -168,7 +168,7 @@ int main(int argc, char** argv)
            "yalk_v;absolute_error_v;reduced_error_percent;relative_error_percent;"
            "analog_ok;signal_ok;point_ok;first_sequence;last_sequence\n";
 
-    orbita::stand::IsdHttpRouter isd({argv[1], 80, 1500, 2, {}});
+    orbita::stand::IsdHttpRouter isd({argv[1], 80, 3000, 2, {}});
     orbita::stand::UlkUdpTransport adapter({argv[2], argv[3], 1113, 800, 8192});
     bool isdPrepared = false;
     bool outputEnabled = false;
@@ -184,7 +184,13 @@ int main(int argc, char** argv)
                   << " output=" << runDirectory.string() << '\n';
 
         adapter.startRecord(rawPath.string());
-        adapter.startYalkReference();
+        isd.prepareYalk();
+        isdPrepared = true;
+        adapter.prepareYalkReference();
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        isd.prepareYalk();
+        adapter.startPreparedYalkReference();
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
         const auto calibrationStart = adapter.stats().lastSequence;
         const auto zero = readFresh(adapter, 97, calibrationStart);
         const auto full = readFresh(adapter, 99, zero.lastSequence);
@@ -198,8 +204,6 @@ int main(int argc, char** argv)
             throw std::runtime_error("Calibration 97/99 is outside verified ranges");
         }
 
-        isd.prepareYalk();
-        isdPrepared = true;
         unsigned failedPoints = 0;
         unsigned failedChannels = 0;
         unsigned completedChannels = 0;

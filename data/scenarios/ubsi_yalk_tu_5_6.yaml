@@ -13,8 +13,9 @@ steps:
     procedure: yalk.start_stream
     requires:
       - ulk.parameter_source
+      - stand.switch_matrix
     args:
-      mode: 6
+      configure_settle_ms: 500
       timeout_ms: 3000
 
   - id: yalk_calibration
@@ -30,7 +31,7 @@ steps:
       channel_count: 80
       sample_count: 16
       settle_ms: 150
-      full_code: 4095
+      full_voltage: 6.2
       commissioning: true
 
   - id: yalk_initial
@@ -60,7 +61,6 @@ steps:
     args:
       channel_count: 80
       point_volts: 0,3.1,6.2
-      isd_codes: 0,2048,4095
       sample_count: 16
       settle_ms: 150
       full_scale_v: 6.2

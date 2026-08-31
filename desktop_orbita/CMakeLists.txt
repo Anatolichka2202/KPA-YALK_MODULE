@@ -135,15 +135,29 @@ if(BUILD_TESTING)
         tests/test_page_smoke_test.cpp
         test_page.cpp
         test_page.h
+        equipment_control_widget.cpp
+        equipment_control_widget.h
     )
-    target_include_directories(test_page_smoke_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-    target_link_libraries(test_page_smoke_test PRIVATE orbita_stand_domain Qt6::Core Qt6::Widgets)
+
+    target_include_directories(test_page_smoke_test PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_SOURCE_DIR}/orbita/include
+    )
+
+    target_link_libraries(test_page_smoke_test PRIVATE
+        orbita_stand_domain
+        Qt6::Core
+        Qt6::Widgets
+    )
+
     if(WIN32)
         add_test(NAME desktop.test_page_smoke COMMAND test_page_smoke_test)
     else()
         add_test(NAME desktop.test_page_smoke COMMAND test_page_smoke_test -platform offscreen)
     endif()
+
     get_filename_component(QT_TEST_PLUGIN_DIR "${Qt6_DIR}/../../../plugins" ABSOLUTE)
     set_tests_properties(desktop.test_page_smoke PROPERTIES
-        ENVIRONMENT "QT_PLUGIN_PATH=${QT_TEST_PLUGIN_DIR}")
+        ENVIRONMENT "QT_PLUGIN_PATH=${QT_TEST_PLUGIN_DIR}"
+    )
 endif()

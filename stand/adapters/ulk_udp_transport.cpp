@@ -171,7 +171,7 @@ struct UlkUdpTransport::Impl {
         }
     }
 
-    void startYalkReference()
+    void prepareYalkReference()
     {
         stop();
 
@@ -194,10 +194,10 @@ struct UlkUdpTransport::Impl {
         const auto remote =
             endpoint(config.remoteHost, config.port);
 
-        Socket sender =
+        referenceSender =
             ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 
-        if (sender == InvalidSocket) {
+        if (referenceSender == InvalidSocket) {
             stop();
             throw std::runtime_error(
                 "Cannot open ULK ROKT command socket");
@@ -207,11 +207,12 @@ struct UlkUdpTransport::Impl {
             endpoint(config.localHost, 0);
 
         if (::bind(
-                sender,
+                referenceSender,
                 reinterpret_cast<const sockaddr*>(&source),
                 sizeof(source)) != 0) {
 
-            closeSocket(sender);
+            closeSocket(referenceSender);
+            referenceSender = InvalidSocket;
             stop();
 
             throw std::runtime_error(
@@ -247,22 +248,11 @@ struct UlkUdpTransport::Impl {
         addrYtp[7] = 0x01;
         addrYtp[8] = 0x00;
 
-        std::array<std::uint8_t, 128> startYalk{};
-        startYalk[0] = 'R';
-        startYalk[1] = 'O';
-        startYalk[2] = 'K';
-        startYalk[3] = 'T';
-        startYalk[4] = 0x0A;
-        startYalk[5] = 0x00;
-        startYalk[6] = 0x00;
-        startYalk[7] = 0x01;
-        startYalk[8] = 0x00;
-
         const auto sendCommand =
             [&](const std::array<std::uint8_t, 128>& command) {
 
                 const int sent = ::sendto(
-                    sender,
+                    referenceSender,
                     reinterpret_cast<const char*>(
                         command.data()),
                     static_cast<int>(command.size()),
@@ -271,7 +261,8 @@ struct UlkUdpTransport::Impl {
                     sizeof(remote));
 
                 if (sent != static_cast<int>(command.size())) {
-                    closeSocket(sender);
+                    closeSocket(referenceSender);
+                    referenceSender = InvalidSocket;
                     stop();
 
                     throw std::runtime_error(
@@ -288,17 +279,61 @@ struct UlkUdpTransport::Impl {
             std::chrono::milliseconds(50));
 
         sendCommand(addrYtp);
+    }
+
+    void startPreparedYalkReference()
+    {
+        if (referenceSender == InvalidSocket) {
+            throw std::runtime_error(
+                "ULK ROKT reference mode is not prepared");
+        }
+
+        const auto remote =
+            endpoint(config.remoteHost, config.port);
+
+        std::array<std::uint8_t, 128> startYalk{};
+        startYalk[0] = 'R';
+        startYalk[1] = 'O';
+        startYalk[2] = 'K';
+        startYalk[3] = 'T';
+        startYalk[4] = 0x0A;
+        startYalk[5] = 0x00;
+        startYalk[6] = 0x00;
+        startYalk[7] = 0x01;
+        startYalk[8] = 0x00;
+
+        const int sent = ::sendto(
+            referenceSender,
+            reinterpret_cast<const char*>(startYalk.data()),
+            static_cast<int>(startYalk.size()),
+            0,
+            reinterpret_cast<const sockaddr*>(&remote),
+            sizeof(remote));
+
+        closeSocket(referenceSender);
+        referenceSender = InvalidSocket;
+
+        if (sent != static_cast<int>(startYalk.size())) {
+            stop();
+            throw std::runtime_error(
+                "Cannot send ULK ROKT start command");
+        }
+    }
+
+    void startYalkReference()
+    {
+        prepareYalkReference();
         std::this_thread::sleep_for(
             std::chrono::milliseconds(50));
-
-        sendCommand(startYalk);
-
-        closeSocket(sender);
+        startPreparedYalkReference();
     }
 
     void stop() noexcept
     {
         stopping.store(true);
+        const Socket command = referenceSender;
+        referenceSender = InvalidSocket;
+        closeSocket(command);
         const Socket active = socket;
         socket = InvalidSocket;
         if (active != InvalidSocket) {
@@ -436,6 +471,7 @@ struct UlkUdpTransport::Impl {
 
     KtmaUlkUdpConfig config;
     Socket socket = InvalidSocket;
+    Socket referenceSender = InvalidSocket;
     std::thread receiver;
     std::atomic_bool stopping{true};
     mutable std::mutex mutex;
@@ -452,6 +488,14 @@ UlkUdpTransport::UlkUdpTransport(KtmaUlkUdpConfig config)
     : impl_(std::make_unique<Impl>(std::move(config))) {}
 UlkUdpTransport::~UlkUdpTransport() = default;
 void UlkUdpTransport::start(std::uint8_t mode) { impl_->start(mode); }
+void UlkUdpTransport::prepareYalkReference()
+{
+    impl_->prepareYalkReference();
+}
+void UlkUdpTransport::startPreparedYalkReference()
+{
+    impl_->startPreparedYalkReference();
+}
 void UlkUdpTransport::startYalkReference()
 {
     impl_->startYalkReference();

@@ -483,14 +483,21 @@ double stateNumber(const ProcedureContext& context, const std::string& key)
     return std::stod(found->second);
 }
 
-void setYalkAnalog(ProcedureContext& context, const LogicalBinding& binding,
-                   unsigned code, bool enabled)
+void setYalkVoltage(ProcedureContext& context, const LogicalBinding& binding,
+                    double volts, bool enabled)
 {
-    context.equipment.invoke("stand.switch_matrix", "set_analog", {
+    const std::map<std::string, std::string> arguments{
         {"route", binding.stimulusRoute},
-        {"ulk_address", binding.locator},
-        {"code", std::to_string(code)},
-        {"enabled", enabled ? "true" : "false"}});
+        {"ulk_address", binding.locator}};
+    if (enabled) {
+        auto voltageArguments = arguments;
+        voltageArguments["volts"] = std::to_string(volts);
+        context.equipment.invoke(
+            "stand.switch_matrix", "yalk_set_voltage", voltageArguments);
+    } else {
+        context.equipment.invoke(
+            "stand.switch_matrix", "yalk_output_off", arguments);
+    }
 }
 
 bool yalkBindingsConfirmed(ProcedureContext& context, unsigned count)
@@ -515,16 +522,20 @@ void markCommissioning(ProcedureResult& result, bool confirmed)
 
 ProcedureResult yalkStartStream(const ScenarioNode& node, ProcedureContext& context)
 {
+    context.equipment.invoke("stand.switch_matrix", "yalk_prepare", {});
     context.equipment.invoke("ulk.parameter_source", "start_record", {{"run_id", context.runId}});
+    context.equipment.invoke(
+        "ulk.parameter_source", "prepare_yalk_reference", {});
+    wait(context, natural(node, "configure_settle_ms", 500));
+    context.equipment.invoke("stand.switch_matrix", "yalk_prepare", {});
     const auto response = responseValues(context.equipment.invoke(
-        "ulk.parameter_source", "start_stream", {
-            {"mode", std::to_string(natural(node, "mode", 6))},
+        "ulk.parameter_source", "start_prepared_yalk_reference", {
             {"timeout_ms", std::to_string(natural(node, "timeout_ms", 3000))}}));
     if (!response.count("status") || response.at("status") != "ready") {
         throw std::runtime_error("Адаптер не выдал медленный кадр ЯЛК");
     }
     if (response.count("first_sequence")) context.state["yalk.first_sequence"] = response.at("first_sequence");
-    return {RunVerdict::Ok, "Адаптер переведён в режим ЯЛК 8 кГц; получен кадр 200 байт", {}};
+    return {RunVerdict::Ok, "Адаптер запущен в режиме ЯЛК; получен референсный кадр 204 байта", {}};
 }
 
 ProcedureResult yalkReadCalibration(const ScenarioNode& node, ProcedureContext& context)
@@ -536,7 +547,7 @@ ProcedureResult yalkReadCalibration(const ScenarioNode& node, ProcedureContext& 
     const auto first = resolveLogicalBinding(context, "yalk_voltage", 0);
     const auto zero = resolveLogicalBinding(context, "yalk_calibration_zero", 0);
     const auto full = resolveLogicalBinding(context, "yalk_calibration_full", 0);
-    setYalkAnalog(context, first, natural(node, "full_code", 4095), true);
+    setYalkVoltage(context, first, number(node, "full_voltage", 6.2), true);
     wait(context, natural(node, "settle_ms", 150));
     const double v7 = readReferenceVoltage(context);
     unsigned sequence = ulkLastSequence(context);
@@ -544,7 +555,7 @@ ProcedureResult yalkReadCalibration(const ScenarioNode& node, ProcedureContext& 
                                           natural(node, "sample_count", 16), sequence);
     const auto fullValue = readUlkChannel(context, static_cast<unsigned>(std::stoul(full.locator)),
                                           natural(node, "sample_count", 16), zeroValue.lastSequence);
-    setYalkAnalog(context, first, 0, false);
+    setYalkVoltage(context, first, 0.0, false);
     if (!(fullValue.code > zeroValue.code) || !std::isfinite(v7) || v7 < 5.5 || v7 > 6.8) {
         throw std::runtime_error("Недостоверная калибровка ЯЛК 97/99 или напряжение В7");
     }
@@ -614,9 +625,8 @@ ProcedureResult yalkCheckChannels(const ScenarioNode& node, ProcedureContext& co
         return {RunVerdict::Incomplete, "Адреса/маршруты ЯЛК не подтверждены", {}};
     }
     const auto pointVolts = numbers(node, "point_volts");
-    const auto pointCodes = numbers(node, "isd_codes");
-    if (pointVolts.size() != 3 || pointCodes.size() != pointVolts.size()) {
-        throw std::invalid_argument("Для ЯЛК требуются три точки и три кода ИСД");
+    if (pointVolts.size() != 3) {
+        throw std::invalid_argument("Для ЯЛК требуются три точки напряжения");
     }
     const double fullScale = number(node, "full_scale_v", 6.2);
     const double tolerance = fullScale * number(node, "tolerance_percent_fs", 0.5) / 100.0;
@@ -625,8 +635,7 @@ ProcedureResult yalkCheckChannels(const ScenarioNode& node, ProcedureContext& co
         const auto binding = resolveLogicalBinding(context, "yalk_voltage", channel);
         const unsigned address = static_cast<unsigned>(std::stoul(binding.locator));
         for (std::size_t point = 0; point < pointVolts.size(); ++point) {
-            const unsigned code = static_cast<unsigned>(pointCodes[point]);
-            setYalkAnalog(context, binding, code, true);
+            setYalkVoltage(context, binding, pointVolts[point], true);
             wait(context, natural(node, "settle_ms", 150));
             const double v7 = readReferenceVoltage(context);
             const unsigned sequence = ulkLastSequence(context);
@@ -641,7 +650,7 @@ ProcedureResult yalkCheckChannels(const ScenarioNode& node, ProcedureContext& co
             analog.attributes = {
                 {"ulk_address", binding.locator}, {"isd_channel", binding.locator},
                 {"command_v", std::to_string(pointVolts[point])},
-                {"isd_code", std::to_string(code)}, {"raw", std::to_string(reading.raw)},
+                {"raw", std::to_string(reading.raw)},
                 {"analog_code", std::to_string(reading.code)},
                 {"signal", reading.signal ? "1" : "0"}, {"v7_v", std::to_string(v7)},
                 {"yalk_v", std::to_string(volts)}, {"absolute_error_v", std::to_string(absolute)},
@@ -664,7 +673,7 @@ ProcedureResult yalkCheckChannels(const ScenarioNode& node, ProcedureContext& co
                 append(result, std::move(signal));
             }
         }
-        setYalkAnalog(context, binding, 0, false);
+        setYalkVoltage(context, binding, 0.0, false);
     }
     markCommissioning(result, confirmed);
     return result;

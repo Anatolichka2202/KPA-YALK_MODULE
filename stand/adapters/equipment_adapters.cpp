@@ -21,10 +21,12 @@
 
 #include <cmath>
 #include <algorithm>
+#include <chrono>
 #include <iomanip>
 #include <locale>
 #include <sstream>
 #include <stdexcept>
+#include <thread>
 #include <utility>
 
 namespace orbita::stand {
@@ -120,6 +122,9 @@ void IsdHttpRouter::setAnalog(unsigned channel, unsigned value, bool enabled)
 void IsdHttpRouter::prepareYalk()
 {
     reset();
+    // Рабочая KPA выдерживает около 400 мс между type=4 и type=7.
+    // ИСД не всегда принимает следующую HTTP-команду без этой паузы.
+    std::this_thread::sleep_for(std::chrono::milliseconds(400));
     requireIsdSuccess(httpGet(impl_->config, QString::fromStdString(yalkPreparePath())));
 }
 void IsdHttpRouter::setYalkVoltage(unsigned channel, double volts)
@@ -131,6 +136,7 @@ void IsdHttpRouter::disableYalkOutput(unsigned channel)
 {
     requireIsdSuccess(httpGet(impl_->config,
         QString::fromStdString(yalkOutputBusOffPath(channel))));
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
     requireIsdSuccess(httpGet(impl_->config,
         QString::fromStdString(yalkOutputOffPath(channel))));
 }

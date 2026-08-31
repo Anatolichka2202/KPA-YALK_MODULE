@@ -36,7 +36,9 @@ void executePrepared(QSqlQuery& query)
 
 QString attributesText(const std::map<std::string, std::string>& values)
 {
-    QString result;
+    // A default-constructed QString is SQL NULL. The column is NOT NULL,
+    // therefore an empty attribute set must be bound as an empty string.
+    QString result = QStringLiteral("");
     for (const auto& [key, value] : values) {
         result += QString::fromUtf8(key) + '=' + QString::fromUtf8(value).replace('\n', ' ') + '\n';
     }

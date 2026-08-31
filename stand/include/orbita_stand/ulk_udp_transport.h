@@ -52,6 +52,8 @@ public:
     UlkUdpTransport& operator=(const UlkUdpTransport&) = delete;
 
     void start(std::uint8_t mode);
+    void prepareYalkReference();
+    void startPreparedYalkReference();
     void startYalkReference();
     void stop() noexcept;
     UlkFrame waitFrame(UlkFrameKind kind, std::uint64_t afterSequence,
