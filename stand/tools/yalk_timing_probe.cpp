@@ -1,24 +1,22 @@
 #include "orbita_stand/equipment_adapters.h"
 #include "orbita_stand/ulk_udp_transport.h"
-#include "orbita_stand/yalk_frame.h"
 #include "orbita_stand/v7_visa_voltmeter.h"
+#include "orbita_stand/yalk_frame.h"
 
 #include <QCoreApplication>
 
+#include <algorithm>
 #include <array>
 #include <chrono>
-#include <cmath>
 #include <cstdint>
 #include <iomanip>
 #include <iostream>
-#include <optional>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace {
-
-using Clock = std::chrono::steady_clock;
 
 unsigned number(const char* value, const char* name, unsigned maximum)
 {
@@ -30,19 +28,43 @@ unsigned number(const char* value, const char* name, unsigned maximum)
     return static_cast<unsigned>(result);
 }
 
-long long millisecondsSince(const Clock::time_point& start)
-{
-    return std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - start).count();
-}
+struct ChannelReading {
+    std::uint16_t raw = 0;
+    double analogMean = 0.0;
+    unsigned analogMedian = 0;
+    bool signal = false;
+    std::uint64_t firstSequence = 0;
+    std::uint64_t lastSequence = 0;
+};
 
-std::optional<unsigned> firstChangedWord(const std::vector<std::uint16_t>& before,
-                                         const std::vector<std::uint16_t>& after)
+ChannelReading readFresh(orbita::stand::UlkUdpTransport& adapter,
+                         unsigned address, unsigned count,
+                         std::uint64_t afterSequence)
 {
-    if (before.size() != after.size()) return std::nullopt;
-    for (std::size_t index = 0; index < before.size(); ++index) {
-        if (before[index] != after[index]) return static_cast<unsigned>(index);
+    std::vector<unsigned> analog;
+    analog.reserve(count);
+    std::uint64_t codeSum = 0;
+    unsigned signalOnes = 0;
+    ChannelReading result;
+    for (unsigned index = 0; index < count; ++index) {
+        const auto frame = adapter.waitFrame(
+            orbita::stand::UlkFrameKind::Reference204, afterSequence,
+            std::chrono::milliseconds(3000));
+        afterSequence = frame.sequence;
+        if (!result.firstSequence) result.firstSequence = frame.sequence;
+        result.lastSequence = frame.sequence;
+        const auto words = orbita::stand::decodeYalkReferenceFrame(frame.payload);
+        const auto& sample = words.at(address - 1);
+        result.raw = sample.rawWord;
+        codeSum += sample.analogCode;
+        analog.push_back(sample.analogCode);
+        if (sample.contact) ++signalOnes;
     }
-    return std::nullopt;
+    std::sort(analog.begin(), analog.end());
+    result.analogMean = static_cast<double>(codeSum) / count;
+    result.analogMedian = analog[analog.size() / 2];
+    result.signal = signalOnes * 2 >= count;
+    return result;
 }
 
 } // namespace
@@ -50,104 +72,74 @@ std::optional<unsigned> firstChangedWord(const std::vector<std::uint16_t>& befor
 int main(int argc, char** argv)
 {
     QCoreApplication application(argc, argv);
-    if (argc != 6) {
-        std::cerr << "Usage: yalk_timing_probe <isd-ip> <isd-channel> <adapter-ip|passive> <local-ip> <seconds-per-point>\n"
-                     "Sets 0, 3 and 6 V through the ISD analog channel, reads V7-78/1 and YALK mode 6.\n";
+    if (argc != 5) {
+        std::cerr
+            << "Usage: yalk_timing_probe <isd-ip> <adapter-ip> <local-ip> <isd-channel>\n"
+               "Runs production ROKT YALK for 0.00/3.10/6.20 V, V7 and 16 fresh addr1 samples.\n";
         return 2;
     }
 
-    const auto isdChannel = number(argv[2], "ISD channel", 255);
-    const auto secondsPerPoint = number(argv[5], "duration", 60);
-    const bool passiveBroadcast = std::string(argv[3]) == "passive";
+    const unsigned isdChannel = number(argv[4], "ISD channel", 255);
     orbita::stand::IsdHttpRouter isd({argv[1], 80, 1500, 2, {}});
-    if (passiveBroadcast) throw std::invalid_argument("Для рабочего адаптера требуется IP, пассивный режим не поддерживается");
-    orbita::stand::UlkUdpTransport adapter({argv[3], argv[4], 1113, 100, 4096});
-    orbita::stand::V7VisaVoltmeter meter;
-
-    // Из Delphi: 4095 соответствует 10 В, поэтому 3 и 6 В представлены
-    // ближайшими целыми кодами. Фактическое значение подтверждается В7.
-    constexpr std::array<double, 3> points{0.0, 3.0, 6.0};
-    constexpr double codesPerVolt = 409.5;
+    orbita::stand::UlkUdpTransport adapter({argv[2], argv[3], 1113, 800, 4096});
+    bool isdPrepared = false;
 
     try {
-        std::cout << "TARGET isd=" << argv[1] << " channel=" << isdChannel
-                  << " adapter=" << argv[3] << " v7=" << meter.resourceName() << '\n';
-        std::cout << "SELECT adapter_mode=6(YALK) port=1113\n";
-        adapter.start(6);
+        orbita::stand::V7VisaVoltmeter meter;
+        std::cout << "TARGET isd=" << argv[1]
+                  << " adapter=" << argv[2]
+                  << " local=" << argv[3]
+                  << " channel=" << isdChannel
+                  << " v7=" << meter.resourceName() << '\n';
 
-        auto baselineFrame = adapter.waitFrame(orbita::stand::UlkFrameKind::Slow200, 0,
-            std::chrono::milliseconds(3000));
-        const auto& baselinePacket = baselineFrame.payload;
-        if (baselinePacket.size() != 200) {
-            throw std::runtime_error("Адаптер передал пакет не ЯЛК: ожидалось 200 байт, получено "
-                + std::to_string(baselinePacket.size()));
+        adapter.startYalkReference();
+        const auto calibrationAfter = adapter.stats().lastSequence;
+        const auto zero = readFresh(adapter, 97, 16, calibrationAfter);
+        const auto full = readFresh(adapter, 99, 16, zero.lastSequence);
+        std::cout << "CALIBRATION addr97=" << zero.analogMedian
+                  << " addr99=" << full.analogMedian
+                  << " addr97_raw=" << zero.raw
+                  << " addr99_raw=" << full.raw << '\n';
+        if (zero.analogMedian < 100 || zero.analogMedian > 150
+            || full.analogMedian < 890 || full.analogMedian > 950) {
+            throw std::runtime_error(
+                "YALK calibration is outside verified addr97~125/addr99~922 ranges");
         }
-        std::vector<std::uint16_t> previousWords =
-        {
-            const auto samples = orbita::stand::decodeYalkSlowFrame(baselinePacket);
-            for (const auto& sample : samples) previousWords.push_back(sample.rawWord);
-        }
-        std::cout << "BASELINE_ADAPTER bytes=200 words=100\n";
 
-        for (const double volts : points) {
-            const unsigned code = static_cast<unsigned>(std::lround(volts * codesPerVolt));
-            const double v7Before = meter.readVoltage();
-            const auto start = Clock::now();
-            isd.setAnalog(isdChannel, code, true);
+        isd.prepareYalk();
+        isdPrepared = true;
+        constexpr std::array<double, 3> points{0.00, 3.10, 6.20};
+        for (const double commandVolts : points) {
+            isd.setYalkVoltage(isdChannel, commandVolts);
+            std::this_thread::sleep_for(std::chrono::milliseconds(150));
+            const auto afterSettling = adapter.stats().lastSequence;
+            const double v7 = meter.readVoltage();
+            const auto yalk = readFresh(adapter, 1, 16, afterSettling);
             std::cout << std::fixed << std::setprecision(6)
-                      << "POINT volts=" << volts << " isd_code=" << code
-                      << " t0_ms=0 v7_before=" << v7Before << '\n';
-
-            std::optional<long long> v7First, v7Changed, adapterFirst, adapterChanged;
-            double lastV7 = v7Before;
-            const auto deadline = start + std::chrono::seconds(secondsPerPoint);
-            while (Clock::now() < deadline) {
-                try {
-                    const auto packetFrame = adapter.waitFrame(orbita::stand::UlkFrameKind::Slow200,
-                        baselineFrame.sequence, std::chrono::milliseconds(100));
-                    baselineFrame = packetFrame;
-                    const auto& packet = packetFrame.payload;
-                    const auto now = millisecondsSince(start);
-                    if (!adapterFirst) adapterFirst = now;
-                    std::vector<std::uint16_t> words;
-                    for (const auto& sample : orbita::stand::decodeYalkSlowFrame(packet)) words.push_back(sample.rawWord);
-                    if (!adapterChanged && !previousWords.empty()) {
-                        if (const auto word = firstChangedWord(previousWords, words)) {
-                            adapterChanged = now;
-                            std::cout << "ADAPTER_CHANGED t_ms=" << now
-                                      << " word=" << *word
-                                      << " before=" << previousWords[*word]
-                                      << " after=" << words[*word] << '\n';
-                        }
-                    }
-                    previousWords = words;
-                } catch (const std::exception&) {
-                    // No packet during this 100 ms poll; V7 is still sampled below.
-                }
-
-                const auto voltage = meter.readVoltage();
-                const auto now = millisecondsSince(start);
-                if (!v7First) v7First = now;
-                if (!v7Changed && std::abs(voltage - v7Before) >= 0.02) {
-                    v7Changed = now;
-                    std::cout << "V7_CHANGED t_ms=" << now << " volts=" << voltage << '\n';
-                }
-                lastV7 = voltage;
-            }
-            std::cout << "RESULT volts=" << volts
-                      << " v7_first_ms=" << (v7First ? std::to_string(*v7First) : "none")
-                      << " v7_changed_ms=" << (v7Changed ? std::to_string(*v7Changed) : "none")
-                      << " adapter_first_ms=" << (adapterFirst ? std::to_string(*adapterFirst) : "none")
-                      << " adapter_changed_ms=" << (adapterChanged ? std::to_string(*adapterChanged) : "none")
-                      << " v7_last=" << lastV7 << '\n';
+                      << "POINT command_v=" << commandVolts
+                      << " raw=" << yalk.raw
+                      << " analog_mean=" << yalk.analogMean
+                      << " analog_median=" << yalk.analogMedian
+                      << " signal=" << (yalk.signal ? 1 : 0)
+                      << " v7=" << v7
+                      << " samples=16"
+                      << " first_sequence=" << yalk.firstSequence
+                      << " last_sequence=" << yalk.lastSequence << '\n';
         }
-        isd.setAnalog(isdChannel, 0, false);
+
+        isd.disableYalkOutput(isdChannel);
+        isd.reset();
+        isdPrepared = false;
         adapter.stop();
-        std::cout << "SAFE_OFF isd_channel=" << isdChannel << '\n';
+        std::cout << "RESULT OK cleanup=complete\n";
         return 0;
     } catch (const std::exception& error) {
-        try { isd.setAnalog(isdChannel, 0, false); } catch (...) {}
-        std::cerr << "ERROR " << error.what() << "\nSAFE_OFF attempted=true\n";
+        if (isdPrepared) {
+            try { isd.disableYalkOutput(isdChannel); } catch (...) {}
+        }
+        try { isd.reset(); } catch (...) {}
+        adapter.stop();
+        std::cerr << "ERROR " << error.what() << "\nCLEANUP attempted=true\n";
         return 1;
     }
 }

@@ -1,6 +1,6 @@
 schema: 1
 id: ktma-main
-version: 2026.08.29-ubsi-4
+version: 2026.08.29-ubsi-5
 title: Основной стенд КТМА, Windows 11
 
 # Пока карта кабелей и активные команды не подтверждены на самом стенде,
@@ -80,27 +80,28 @@ devices:
     bind:
       - ulk.parameter_source
     config:
-      # RS-485 адаптера физически подключён к X1 ЯП-П. Живой адаптер слушает
-      # UDP 1113; команда easyweb 44 01 06 включает ЯЛК 8 кГц.
+      # Рабочая проверка ЯЛК: четыре подтверждённые ROKT-команды и кадры 204.
+      # Архивный legacy mode6 (44 01 06, кадры 120/200) сохранён в плагине.
       host: 192.168.0.115
       local_address: 192.168.0.50
       data_port: 1113
+      protocol: rokt_yalk
       timeout_ms: 800
       queue_capacity: 4096
-      # 29.08.2026: команда 44 01 06 дала 77 кадров за 3 секунды.
+      # 29.08.2026: ROKT дал 100 reference204 без unknown/drop/timeout.
       device.active_commands_confirmed: true
   - id: isd
     plugin: orbita.isd_http
     bind:
       - stand.switch_matrix
     config:
-      # Подтверждено безопасным HTTP GET 26.08.2026: ответ имеет формат
-      # референсной Delphi-программы type=1num=<N>val=<CODE>work=<0|1>.
+      # ЯЛК: подготовка type=4/type=7, напряжение type=5 в вольтах с bus=1.
+      # Старый type=1 с целым кодом остаётся только для иных маршрутов ИСД.
       host: 192.168.0.101
       port: 80
       timeout_ms: 1500
       switch_type: 2
-      # Форматы type=1/2/3/4 подтверждены Delphi и KPA. Ручная панель всё
+      # Форматы type=1/2/3/4/5/7 подтверждены Delphi и KPA. Ручная панель всё
       # равно запрашивает подтверждение перед каждой активной командой.
       device.active_commands_confirmed: true
   - id: v7-reference

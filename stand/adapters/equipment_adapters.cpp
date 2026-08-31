@@ -117,6 +117,23 @@ void IsdHttpRouter::setAnalog(unsigned channel, unsigned value, bool enabled)
 {
     requireIsdSuccess(httpGet(impl_->config, QString::fromStdString(analogPath(channel, value, enabled))));
 }
+void IsdHttpRouter::prepareYalk()
+{
+    reset();
+    requireIsdSuccess(httpGet(impl_->config, QString::fromStdString(yalkPreparePath())));
+}
+void IsdHttpRouter::setYalkVoltage(unsigned channel, double volts)
+{
+    requireIsdSuccess(httpGet(impl_->config,
+        QString::fromStdString(yalkVoltagePath(channel, volts))));
+}
+void IsdHttpRouter::disableYalkOutput(unsigned channel)
+{
+    requireIsdSuccess(httpGet(impl_->config,
+        QString::fromStdString(yalkOutputBusOffPath(channel))));
+    requireIsdSuccess(httpGet(impl_->config,
+        QString::fromStdString(yalkOutputOffPath(channel))));
+}
 std::string IsdHttpRouter::switchPath(unsigned type, unsigned channel, bool enabled)
 {
     if (!type || !channel) throw std::invalid_argument("ISD type and channel start at one");
@@ -132,6 +149,32 @@ std::string IsdHttpRouter::analogPath(unsigned channel, unsigned value, bool ena
 std::string IsdHttpRouter::fullResetPath()
 {
     return "/type=4num=1";
+}
+std::string IsdHttpRouter::yalkPreparePath()
+{
+    return "/type=7num=1";
+}
+std::string IsdHttpRouter::yalkVoltagePath(unsigned channel, double volts)
+{
+    if (!channel) throw std::invalid_argument("ISD channel starts at one");
+    if (!std::isfinite(volts) || volts < 0.0 || volts > 6.2) {
+        throw std::invalid_argument("YALK voltage must be in range 0.00..6.20 V");
+    }
+    std::ostringstream value;
+    value.imbue(std::locale::classic());
+    value << std::fixed << std::setprecision(2) << volts;
+    return "/type=5num=" + std::to_string(channel) + "val=" + value.str()
+        + "work=1bus=1";
+}
+std::string IsdHttpRouter::yalkOutputBusOffPath(unsigned channel)
+{
+    if (!channel) throw std::invalid_argument("ISD channel starts at one");
+    return "/type=1num=" + std::to_string(channel) + "val=0work=1bus=0";
+}
+std::string IsdHttpRouter::yalkOutputOffPath(unsigned channel)
+{
+    if (!channel) throw std::invalid_argument("ISD channel starts at one");
+    return "/type=1num=" + std::to_string(channel) + "val=0work=0";
 }
 
 struct RigolVisaGenerator::Impl {
@@ -257,4 +300,3 @@ std::string LegacyUdpPowerSupply::currentCommand(double amperes)
 }
 
 } // namespace orbita::stand
-

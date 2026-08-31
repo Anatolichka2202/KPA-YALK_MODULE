@@ -68,6 +68,14 @@ orbita_plugin_status_v1 invoke(void* value, const char* capability, const char* 
             return plugin::unsignedValue(args, "channel");
         };
         if (command == "reset" || command == "full_reset") instance.router->reset();
+        else if (command == "yalk_prepare") instance.router->prepareYalk();
+        else if (command == "yalk_set_voltage") {
+            instance.router->setYalkVoltage(
+                resolvedChannel(), plugin::doubleValue(args, "volts"));
+        }
+        else if (command == "yalk_output_off") {
+            instance.router->disableYalkOutput(resolvedChannel());
+        }
         else if (command == "switch") {
             unsigned type = plugin::unsignedValue(args, "type",
                 plugin::unsignedValue(instance.config, "switch_type", 2));

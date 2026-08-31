@@ -34,7 +34,22 @@ void printPacket(unsigned index, const std::vector<std::uint8_t>& bytes)
     }
     std::cout << std::dec << '\n';
 
-    if (bytes.size() != 200 && bytes.size() != 204) return;
+    if (bytes.size() == 204) {
+        const auto words =
+            orbita::stand::decodeYalkReferenceFrame(bytes);
+
+        for (const unsigned address : {1u, 97u, 98u, 99u}) {
+            const auto& sample = words[address - 1];
+            std::cout << "ADDR " << address
+                      << " raw=" << sample.rawWord
+                      << " analog=" << sample.analogCode
+                      << " signal=" << sample.contact << '\n';
+        }
+        return;
+    }
+
+    if (bytes.size() != 200) return;
+
     const auto words = orbita::stand::decodeYalkSlowFrame(bytes);
     unsigned nonzero = 0;
     for (const auto& word : words) if (word.rawWord) ++nonzero;
@@ -66,22 +81,34 @@ int main(int argc, char** argv)
         (void)ackPort;
         orbita::stand::UlkUdpTransport adapter({argv[1], argv[2], dataPort, 800, 4096});
 
+        const bool rokt =
+            argc == 7 && std::string(argv[6]) == "rokt";
+
         std::cout << "TARGET adapter=" << argv[1] << " local=" << argv[2]
                   << " data_port=" << dataPort << " ack_port=" << ackPort << '\n';
-        if (argc == 7) {
-            const auto mode = static_cast<std::uint8_t>(number(argv[6], "mode", 255));
-            std::cout << "ACTIVE_SELECT mode=" << static_cast<unsigned>(mode) << '\n';
+        if (rokt) {
+            std::cout << "ACTIVE_SELECT ROKT YALK\n";
+
+            adapter.startYalkReference();
+
+            std::cout << "STREAM reference204\n";
+
+        } else if (argc == 7) {
+            const auto mode =
+                static_cast<std::uint8_t>(
+                    number(argv[6], "mode", 255));
+
+            std::cout
+                << "ACTIVE_SELECT mode="
+                << static_cast<unsigned>(mode)
+                << '\n';
+
             adapter.start(mode);
-            std::cout << "STREAM mode=" << static_cast<unsigned>(mode) << '\n';
 
-            const auto beforeFast = adapter.stats().lastSequence;
-
-            const auto fast = adapter.waitFrame(
-                orbita::stand::UlkFrameKind::Fast120,
-                beforeFast,
-                std::chrono::milliseconds(800));
-
-            printPacket(0, fast.payload);
+            std::cout
+                << "STREAM mode="
+                << static_cast<unsigned>(mode)
+                << '\n';
 
         } else {
             adapter.start(6);
@@ -94,7 +121,14 @@ int main(int argc, char** argv)
         while (std::chrono::steady_clock::now() < deadline) {
             try {
                 const auto after = adapter.stats().lastSequence;
-                const auto frame = adapter.waitFrame(orbita::stand::UlkFrameKind::Slow200, after,
+                const auto kind =
+                    rokt
+                        ? orbita::stand::UlkFrameKind::Reference204
+                        : orbita::stand::UlkFrameKind::Slow200;
+
+                const auto frame = adapter.waitFrame(
+                    kind,
+                    after,
                     std::chrono::milliseconds(800));
                 printPacket(++packets, frame.payload);
             } catch (const std::runtime_error& error) {
@@ -111,6 +145,7 @@ int main(int argc, char** argv)
             << " service4=" << stats.service4
             << " fast120=" << stats.fast120
             << " slow200=" << stats.slow200
+            << " reference204=" << stats.reference204
             << " unknown=" << stats.unknown
             << " dropped=" << stats.dropped
             << '\n';

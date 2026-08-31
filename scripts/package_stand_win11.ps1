@@ -38,11 +38,6 @@ New-Item -ItemType Directory -Path $packageRoot -Force | Out-Null
 
 $runtimeFiles = @(
     'OrbitaDesktop.exe',
-    'orbita_equipment_probe.exe',
-    'orbita_telemetry_probe.exe',
-    'orbita_ubsi_udp_probe.exe',
-    'yalk_timing_probe.exe',
-    'visa_discover.exe',
     'Lusbapi64.dll',
     # windeployqt sees dependencies of OrbitaDesktop.exe, but not dependencies
     # imported only by equipment DLLs. SerialPort remains a low-level runtime
@@ -53,6 +48,22 @@ $runtimeFiles = @(
 )
 foreach ($name in $runtimeFiles) {
     $source = Join-Path $runtimeRoot $name
+    if (Test-Path -LiteralPath $source -PathType Leaf) {
+        Copy-Item -LiteralPath $source -Destination $packageRoot
+    }
+}
+
+$standRuntime = Join-Path $buildRoot 'stand'
+$diagnosticFiles = @(
+    'orbita_equipment_probe.exe',
+    'orbita_telemetry_probe.exe',
+    'orbita_ubsi_udp_probe.exe',
+    'yalk_timing_probe.exe',
+    'yalk_full_probe.exe',
+    'visa_discover.exe'
+)
+foreach ($name in $diagnosticFiles) {
+    $source = Join-Path $standRuntime $name
     if (Test-Path -LiteralPath $source -PathType Leaf) {
         Copy-Item -LiteralPath $source -Destination $packageRoot
     }

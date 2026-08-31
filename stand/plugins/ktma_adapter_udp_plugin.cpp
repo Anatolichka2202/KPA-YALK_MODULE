@@ -1,4 +1,3 @@
-..
 #include "plugin_support.h"
 #include "orbita_stand/ulk_udp_transport.h"
 #include "orbita_stand/yalk_frame.h"
@@ -19,6 +18,7 @@ struct Instance {
     std::unique_ptr<UlkUdpTransport> transport;
     std::atomic_bool cancelled{false};
     int selectedMode = -1;
+    bool yalkReference = false;
 };
 
 unsigned timeout(const Instance& instance, const std::map<std::string, std::string>& args)
@@ -37,16 +37,27 @@ std::string statsText(const UlkStreamStats& stats)
         << "\nservice4=" << stats.service4
         << "\nfast120=" << stats.fast120
         << "\nslow200=" << stats.slow200
+        << "\nreference204=" << stats.reference204
         << "\nunknown=" << stats.unknown
         << "\ndropped=" << stats.dropped << '\n';
     return out.str();
 }
 
-UlkFrame waitSlow(Instance& instance, std::uint64_t after, unsigned timeoutMs)
+UlkFrame waitYalk(Instance& instance, std::uint64_t after, unsigned timeoutMs)
 {
     if (instance.cancelled.load()) throw std::runtime_error("Operation cancelled");
-    return instance.transport->waitFrame(UlkFrameKind::Slow200, after,
+    return instance.transport->waitFrame(
+        instance.yalkReference ? UlkFrameKind::Reference204 : UlkFrameKind::Slow200,
+        after,
                                          std::chrono::milliseconds(timeoutMs));
+}
+
+std::vector<YalkSample> decodeYalk(const Instance& instance,
+                                   const std::vector<std::uint8_t>& payload)
+{
+    return instance.yalkReference
+        ? decodeYalkReferenceFrame(payload)
+        : decodeYalkSlowFrame(payload);
 }
 
 std::string readChannel(Instance& instance, const std::map<std::string, std::string>& args)
@@ -61,10 +72,10 @@ std::string readChannel(Instance& instance, const std::map<std::string, std::str
     double codeSum = 0.0;
     unsigned signalOnes = 0;
     for (unsigned sample = 0; sample < sampleCount; ++sample) {
-        const auto frame = waitSlow(instance, sequence, timeout(instance, args));
+        const auto frame = waitYalk(instance, sequence, timeout(instance, args));
         if (!firstSequence) firstSequence = frame.sequence;
         sequence = frame.sequence;
-        const auto words = decodeYalkSlowFrame(frame.payload);
+        const auto words = decodeYalk(instance, frame.payload);
         const auto& value = words[address - 1];
         rawSum += value.rawWord;
         codeSum += value.analogCode;
@@ -134,7 +145,7 @@ orbita_plugin_status_v1 invoke(void* value, const char* capability, const char* 
             {
             const auto before = instance.transport->stats().lastSequence;
 
-            const auto frame = waitSlow (
+            const auto frame = waitYalk(
                 instance,
                 before,
                 timeout(instance,args));
@@ -144,20 +155,36 @@ orbita_plugin_status_v1 invoke(void* value, const char* capability, const char* 
         }
         if (command == "start_stream" || command == "probe") {
             plugin::requireActiveOutputs(instance.config);
-            const unsigned mode = plugin::unsignedValue(args, "mode", 6);
-            if (mode > 255) throw std::invalid_argument("Режим адаптера должен быть 0..255");
             instance.cancelled.store(false);
-            instance.transport->start(static_cast<std::uint8_t>(mode));
-            instance.selectedMode = static_cast<int>(mode);
-            const auto frame = waitSlow(instance, 0,
+            const std::string protocol = args.count("protocol")
+                ? args.at("protocol")
+                : (instance.config.count("protocol") ? instance.config.at("protocol") : "legacy_mode6");
+            instance.yalkReference = protocol == "rokt_yalk" || protocol == "yalk_kpa";
+            if (!instance.yalkReference && protocol != "legacy_mode6") {
+                throw std::invalid_argument("Unsupported ULK adapter protocol: " + protocol);
+            }
+            unsigned mode = 6;
+            if (instance.yalkReference) {
+                instance.transport->startYalkReference();
+                instance.selectedMode = -2;
+            } else {
+                mode = plugin::unsignedValue(args, "mode", 6);
+                if (mode > 255) throw std::invalid_argument("Режим адаптера должен быть 0..255");
+                instance.transport->start(static_cast<std::uint8_t>(mode));
+                instance.selectedMode = static_cast<int>(mode);
+            }
+            const auto frame = waitYalk(instance, 0,
                 command == "probe" || command == "alive" ? timeout(instance, args)
                                                            : plugin::unsignedValue(args, "timeout_ms", 3000));
-            return std::string("status=ready\nmode=") + std::to_string(mode)
+            return std::string("status=ready\nprotocol=")
+                + (instance.yalkReference ? "rokt_yalk" : "legacy_mode")
+                + "\nmode=" + (instance.yalkReference ? "reference204" : std::to_string(mode))
                 + "\nfirst_sequence=" + std::to_string(frame.sequence) + '\n';
         }
         if (command == "stop_stream") {
             instance.transport->stop();
             instance.selectedMode = -1;
+            instance.yalkReference = false;
             return std::string("status=ok\n");
         }
         if (command == "stats") return statsText(instance.transport->stats());
@@ -165,8 +192,8 @@ orbita_plugin_status_v1 invoke(void* value, const char* capability, const char* 
         if (command == "read_snapshot" || command == "read_frame") {
             const std::uint64_t after = plugin::unsignedValue(args, "after_sequence",
                 static_cast<unsigned>(instance.transport->stats().lastSequence));
-            const auto frame = waitSlow(instance, after, timeout(instance, args));
-            const auto words = decodeYalkSlowFrame(frame.payload);
+            const auto frame = waitYalk(instance, after, timeout(instance, args));
+            const auto words = decodeYalk(instance, frame.payload);
             std::ostringstream out;
             out << "status=ready\nsequence=" << frame.sequence << "\nwords=";
             for (std::size_t index = 0; index < words.size(); ++index) {

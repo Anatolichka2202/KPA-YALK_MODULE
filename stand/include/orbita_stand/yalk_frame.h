@@ -12,6 +12,8 @@ struct YalkSample {
 };
 YalkSample decodeYalkSample (std::uint16_t rawWord);
 std::vector<YalkSample> decodeYalkSlowFrame(const std::vector<std::uint8_t>& frame);
+std::vector<YalkSample> decodeYalkReferenceFrame(
+    const std::vector<std::uint8_t>& frame);
 }
 
 #endif // YALK_FRAME_H

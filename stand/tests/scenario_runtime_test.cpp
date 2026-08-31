@@ -142,13 +142,12 @@ void configurationAndCatalog(const QString& root)
     bool liveAdapterProtocol = false;
     for (const auto& device : profile.devices) {
         if (device.pluginId == "orbita.ktma_adapter_udp") {
-            liveAdapterProtocol = device.configuration.at("protocol") == "ktma_firmware_udp_v1"
+            liveAdapterProtocol = device.configuration.at("protocol") == "rokt_yalk"
                 && device.configuration.at("host") == "192.168.0.115"
-                && device.configuration.at("data_port") == "1113"
-                && device.configuration.at("ack_port") == "1113";
+                && device.configuration.at("data_port") == "1113";
         }
     }
-    require(liveAdapterProtocol, "Default adapter profile must use the easyweb firmware protocol");
+    require(liveAdapterProtocol, "Default adapter profile must use the verified ROKT YALK protocol");
 
     std::set<std::string> scenarioCapabilities;
     std::function<void(const ScenarioNode&)> collectCapabilities = [&](const ScenarioNode& node) {
@@ -177,14 +176,14 @@ void configurationAndCatalog(const QString& root)
     require(loaded.version == scenario.catalogVersion, "Scenario and catalog versions must match");
 
     const auto yalk = resolveCatalogParameterBinding(
-        db.toUtf8().toStdString(), "UBSI_468157_002", "yalk_analog", 7);
+        db.toUtf8().toStdString(), "UBSI_468157_002", "yalk_voltage", 7);
     require(yalk.source == "ulk.parameter_source" && yalk.locatorType == "ulk_address"
                 && yalk.locator == "8" && yalk.mode == 6 && yalk.mask == 0x01FF,
             "YALK must resolve to the reference ULK address/mode from catalog");
     require(yalk.stimulusRoute == "yalk_analog" && yalk.stimulusOffset == 7,
             "YALK ISD stimulus route must resolve from catalog");
     const auto yalkAfterGap = resolveCatalogParameterBinding(
-        db.toUtf8().toStdString(), "UBSI_468157_002", "yalk_analog", 28);
+        db.toUtf8().toStdString(), "UBSI_468157_002", "yalk_voltage", 28);
     require(yalkAfterGap.locator == "32" && yalkAfterGap.stimulusOffset == 31,
             "ULK address gaps must be preserved in data and ISD offset mappings");
     const auto yalkCalibration = resolveCatalogParameterBinding(

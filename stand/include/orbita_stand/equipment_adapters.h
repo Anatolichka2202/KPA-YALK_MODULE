@@ -27,9 +27,16 @@ public:
     void disconnectChannel(unsigned channel) override;
     void setSwitch(unsigned type, unsigned channel, bool enabled);
     void setAnalog(unsigned channel, unsigned value, bool enabled);
+    void prepareYalk();
+    void setYalkVoltage(unsigned channel, double volts);
+    void disableYalkOutput(unsigned channel);
     static std::string switchPath(unsigned type, unsigned channel, bool enabled);
     static std::string analogPath(unsigned channel, unsigned value, bool enabled);
     static std::string fullResetPath();
+    static std::string yalkPreparePath();
+    static std::string yalkVoltagePath(unsigned channel, double volts);
+    static std::string yalkOutputBusOffPath(unsigned channel);
+    static std::string yalkOutputOffPath(unsigned channel);
 private:
     struct Impl;
     std::unique_ptr<Impl> impl_;

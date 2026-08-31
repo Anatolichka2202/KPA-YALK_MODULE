@@ -52,7 +52,7 @@ EquipmentControlWidget::EquipmentControlWidget(Invoke invoke, QWidget* parent)
     auto* adapter = new QGroupBox(QStringLiteral("Ethernet/RS-485 адаптер УЛК · 192.168.0.115:1113"));
     auto* adapterForm = new QFormLayout(adapter);
     adapterMode_ = new QComboBox;
-    adapterMode_->addItem(QStringLiteral("Запустить ЯЛК / УЛК 8 кГц (режим 6)"),
+    adapterMode_->addItem(QStringLiteral("Запустить ЯЛК (рабочий ROKT / 204 байта)"),
                           QStringLiteral("start_stream"));
     adapterChannel_ = new QSpinBox;
     adapterChannel_->setRange(1, 16);
@@ -82,8 +82,8 @@ EquipmentControlWidget::EquipmentControlWidget(Invoke invoke, QWidget* parent)
     adapterAddress_ = new QSpinBox;
     adapterAddress_->setRange(1, 100);
     adapterMask_ = new QComboBox;
-    adapterMask_->addItem(QStringLiteral("аналог 9 бит (0x01FF)"), QStringLiteral("0x01FF"));
-    adapterMask_->addItem(QStringLiteral("контакт (0x0200)"), QStringLiteral("0x0200"));
+    adapterMask_->addItem(QStringLiteral("аналог 10 бит (0x03FF)"), QStringLiteral("0x03FF"));
+    adapterMask_->addItem(QStringLiteral("сигнал (0x0400)"), QStringLiteral("0x0400"));
     adapterMask_->addItem(QStringLiteral("сырое слово (0xFFFF)"), QStringLiteral("0xFFFF"));
     auto* readWord = new QPushButton(QStringLiteral("Считать"));
     auto* readCalibration = new QPushButton(QStringLiteral("Считать 97/99"));
@@ -208,7 +208,7 @@ void EquipmentControlWidget::applyAdapterMode()
     if (!confirm(QStringLiteral("Запустить поток ЯЛК / УЛК через адаптер?")
             .arg(adapterMode_->currentText()))) return;
     run("ulk.parameter_source", operation, {
-        {"mode", "6"},
+        {"protocol", "rokt_yalk"},
         {"adapter_channel", std::to_string(adapterChannel_->value())},
         {"address_count", std::to_string(adapterAddressCount_->value())},
         {"yalk_number", "1"}, {"first_address", "1"},
@@ -240,12 +240,21 @@ void EquipmentControlWidget::applyIsdCommand()
             .arg(type).arg(channel).arg(isdEnabled_->isChecked() ? QStringLiteral("ВКЛ")
                                                                  : QStringLiteral("ВЫКЛ")))) return;
     if (type == 1) {
-        const int code = isdUseVolts_->isChecked()
-            ? qRound(isdVolts_->value() * 4095.0 / 6.2)
-            : isdCode_->value();
-        run("stand.switch_matrix", "set_analog", {{"channel", std::to_string(channel)},
-            {"code", std::to_string(code)},
-            {"enabled", isdEnabled_->isChecked() ? "true" : "false"}});
+        if (isdUseVolts_->isChecked()) {
+            if (isdEnabled_->isChecked()) {
+                run("stand.switch_matrix", "yalk_set_voltage", {
+                    {"channel", std::to_string(channel)},
+                    {"volts", QString::number(isdVolts_->value(), 'f', 2).toStdString()}});
+            } else {
+                run("stand.switch_matrix", "yalk_output_off", {
+                    {"channel", std::to_string(channel)}});
+            }
+        } else {
+            run("stand.switch_matrix", "set_analog", {
+                {"channel", std::to_string(channel)},
+                {"code", std::to_string(isdCode_->value())},
+                {"enabled", isdEnabled_->isChecked() ? "true" : "false"}});
+        }
     } else {
         run("stand.switch_matrix", "set_switch", {{"type", std::to_string(type)},
             {"channel", std::to_string(channel)},
