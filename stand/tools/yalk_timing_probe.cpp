@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <iomanip>
 #include <iostream>
@@ -89,7 +90,7 @@ int main(int argc, char** argv)
     if (argc != 5) {
         std::cerr
             << "Usage: yalk_timing_probe <isd-ip> <adapter-ip> <local-ip> <isd-channel>\n"
-               "Runs production ROKT YALK for 0.00/3.10/6.20 V, V7 and 16 fresh addr1 samples.\n";
+               "Runs production ROKT YALK for 0.00/3.10/6.20 V, V7 and selected ULK address samples.\n";
         return 2;
     }
 
@@ -129,14 +130,23 @@ int main(int argc, char** argv)
         constexpr std::array<double, 3> points{0.00, 3.10, 6.20};
         std::array<ChannelReading, 3> readings;
         std::array<double, 3> v7Readings{};
+        std::array<bool, 3> pointOk{};
         for (std::size_t point = 0; point < points.size(); ++point) {
             const double commandVolts = points[point];
             isd.setYalkVoltage(isdChannel, commandVolts);
             std::this_thread::sleep_for(std::chrono::milliseconds(150));
             const auto afterSettling = adapter.stats().lastSequence;
             v7Readings[point] = meter.readVoltage();
-            readings[point] = readFresh(adapter, 1, 16, afterSettling);
+            readings[point] = readFresh(adapter, isdChannel, 16, afterSettling);
             const auto& yalk = readings[point];
+            const double yalkVolts =
+                (yalk.analogMean - zero.analogMean) * 6.2
+                / (full.analogMean - zero.analogMean);
+            const double absoluteError = std::abs(yalkVolts - v7Readings[point]);
+            const double reducedError = absoluteError / 6.2 * 100.0;
+            const bool signalOk = point == 0 ? !yalk.signal
+                : point == 2 ? yalk.signal : true;
+            pointOk[point] = reducedError <= 0.5 && signalOk;
             std::cout << std::fixed << std::setprecision(6)
                       << "POINT command_v=" << commandVolts
                       << " raw=" << yalk.raw
@@ -144,6 +154,11 @@ int main(int argc, char** argv)
                       << " analog_median=" << yalk.analogMedian
                       << " signal=" << (yalk.signal ? 1 : 0)
                       << " v7=" << v7Readings[point]
+                      << " yalk_v=" << yalkVolts
+                      << " absolute_error_v=" << absoluteError
+                      << " reduced_error_percent=" << reducedError
+                      << " tolerance_percent=0.500000"
+                      << " point_ok=" << (pointOk[point] ? 1 : 0)
                       << " samples=16"
                       << " first_sequence=" << yalk.firstSequence
                       << " last_sequence=" << yalk.lastSequence << '\n';
@@ -178,15 +193,18 @@ int main(int argc, char** argv)
         const bool selectedResponded = selectedMaximum - selectedMinimum >= 10.0
             || readings[0].signal != readings[1].signal
             || readings[0].signal != readings[2].signal;
+        const bool verdictOk = selectedResponded
+            && std::all_of(pointOk.begin(), pointOk.end(), [](bool value) { return value; });
 
         isd.disableYalkOutput(isdChannel);
         isd.reset();
         isdPrepared = false;
         adapter.stop();
-        std::cout << "RESULT " << (selectedResponded ? "DIAGNOSTIC_OK" : "DIAGNOSTIC_FAIL")
-                  << " selected_address=1 candidates=" << candidates
+        std::cout << "RESULT " << (verdictOk ? "DIAGNOSTIC_OK" : "DIAGNOSTIC_FAIL")
+                  << " selected_address=" << isdChannel
+                  << " candidates=" << candidates
                   << " cleanup=complete\n";
-        return selectedResponded ? 0 : 4;
+        return verdictOk ? 0 : 4;
     } catch (const std::exception& error) {
         if (isdPrepared) {
             try { isd.disableYalkOutput(isdChannel); } catch (...) {}

@@ -25,6 +25,7 @@ namespace {
 
 constexpr unsigned SampleCount = 16;
 constexpr auto SettleTime = std::chrono::milliseconds(150);
+constexpr auto ChannelOffSettleTime = std::chrono::milliseconds(1000);
 constexpr double FullScaleVolts = 6.2;
 constexpr double ReducedTolerancePercent = 0.5;
 
@@ -222,9 +223,9 @@ int main(int argc, char** argv)
                 readings[point].adapter = readFresh(adapter, address, afterSettling);
             }
 
-            const double calibrationVoltage = readings.back().v7Volts;
-            if (!std::isfinite(calibrationVoltage) || calibrationVoltage < 5.5
-                || calibrationVoltage > 6.5) {
+            const double measuredFullScale = readings.back().v7Volts;
+            if (!std::isfinite(measuredFullScale) || measuredFullScale < 5.5
+                || measuredFullScale > 6.5) {
                 throw std::runtime_error("V7 full-scale point is outside safe 5.5..6.5 V range");
             }
 
@@ -233,11 +234,11 @@ int main(int argc, char** argv)
                 const auto& reading = readings[point];
                 const double yalkVolts =
                     (reading.adapter.analogMean - zero.analogMean)
-                    * calibrationVoltage / (full.analogMean - zero.analogMean);
+                    * FullScaleVolts / (full.analogMean - zero.analogMean);
                 const double absoluteError = std::abs(yalkVolts - reading.v7Volts);
                 const double reducedError = absoluteError / FullScaleVolts * 100.0;
                 const std::optional<double> relativeError =
-                    std::abs(reading.v7Volts) > 0.01
+                    point != 0 && std::abs(reading.v7Volts) > 0.01
                     ? std::optional<double>{absoluteError / std::abs(reading.v7Volts) * 100.0}
                     : std::nullopt;
                 const bool analogOk = reducedError <= ReducedTolerancePercent;
@@ -280,6 +281,7 @@ int main(int argc, char** argv)
             ++completedChannels;
             isd.disableYalkOutput(activeChannel);
             outputEnabled = false;
+            std::this_thread::sleep_for(ChannelOffSettleTime);
             std::cout << "CHANNEL address=" << address
                       << " progress=" << completedChannels << "/80"
                       << " result=" << (channelOk ? "OK" : "FAIL") << '\n';

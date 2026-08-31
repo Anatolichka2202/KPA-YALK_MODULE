@@ -63,6 +63,7 @@ steps:
       point_volts: 0,3.1,6.2
       sample_count: 16
       settle_ms: 150
+      channel_off_settle_ms: 1000
       full_scale_v: 6.2
       tolerance_percent_fs: 0.5
       commissioning: true

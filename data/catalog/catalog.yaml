@@ -144,10 +144,7 @@ bindings:
     address_file: address_sets/ulk_yalk_reference.txt
     address_offset: 0
     count: 80
-    stream: yalk_mode6
-    mask: 0x01FF
-    mode: 6
-    shift: 0
+    mask: 0x03FF
     conversion: yalk_two_point_6v2
     stimulus_route: yalk_analog
     stimulus_offset_base: 0
@@ -164,10 +161,8 @@ bindings:
     address_file: address_sets/ulk_yalk_reference.txt
     address_offset: 0
     count: 80
-    stream: yalk_mode6
-    mask: 0x0200
-    shift: 9
-    mode: 6
+    mask: 0x0400
+    shift: 10
     confirmed: false
   - block_type: UBSI_468157_002
     slot: yalk_96
@@ -178,9 +173,7 @@ bindings:
     address_file: address_sets/ulk_yalk_calibration_reference.txt
     address_offset: 0
     count: 1
-    mask: 0x01FF
-    stream: yalk_mode6
-    mode: 6
+    mask: 0x03FF
     confirmed: false
   - block_type: UBSI_468157_002
     slot: yalk_96
@@ -191,10 +184,8 @@ bindings:
     address_file: address_sets/ulk_yalk_calibration_reference.txt
     address_offset: 2
     count: 1
-    mask: 0x01FF
-    stream: yalk_mode6
+    mask: 0x03FF
     conversion: yalk_two_point_6v2
-    mode: 6
     confirmed: false
   - block_type: UBSI_468157_002
     slot: yalk_96
@@ -207,8 +198,7 @@ bindings:
     address_file: address_sets/ulk_yalk_calibration_reference.txt
     address_offset: 1
     count: 1
-    mask: 0x01FF
-    mode: 6
+    mask: 0x03FF
     confirmed: false
   - block_type: UBSI_468157_002
     slot: ytp

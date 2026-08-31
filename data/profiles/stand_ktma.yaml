@@ -25,19 +25,19 @@ routes:
     type: 2
     bus: 0
     safe: off
+
   sensor_load_450ma:
     base: TODO_CONFIRM
     type: 2
     bus: 0
     safe: off
+
   yalk_analog:
-    # KPA: «ИСД <id> а <номер канала ЯЛК> вольты ...» — номера совпадают.
+    # ЯЛК: номер канала ИСД = адресу УЛК.
+    # Напряжение задаётся отдельной командой type=5 в вольтах, bus=1.
     base: 1
-    type: 1
-    bus: 0
-    min: 0
-    max: 4095
     safe: off
+
   yalk_contacts:
     base: TODO_CONFIRM
     type: 2

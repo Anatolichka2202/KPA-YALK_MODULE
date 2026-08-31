@@ -674,6 +674,7 @@ ProcedureResult yalkCheckChannels(const ScenarioNode& node, ProcedureContext& co
             }
         }
         setYalkVoltage(context, binding, 0.0, false);
+        wait(context, natural(node, "channel_off_settle_ms", 1000));
     }
     markCommissioning(result, confirmed);
     return result;
