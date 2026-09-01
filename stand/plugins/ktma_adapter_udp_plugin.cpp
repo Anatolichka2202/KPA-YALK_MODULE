@@ -10,6 +10,7 @@
 #include <memory>
 #include <numeric>
 #include <sstream>
+#include <thread>
 
 namespace {
 using namespace orbita::stand;
@@ -289,7 +290,10 @@ orbita_plugin_status_v1 invoke(void* value, const char* capability, const char* 
                 instance.ytpRokt68 = true;
                 instance.transport->startYtpRokt(static_cast<std::uint8_t>(endpoint));
                 instance.selectedMode = -4;
-                const auto frame = waitYtpRokt(instance, 0,
+                std::this_thread::sleep_for(std::chrono::milliseconds(
+                    plugin::unsignedValue(args, "stream_settle_ms", 1000)));
+                const auto afterSettle = instance.transport->stats().lastSequence;
+                const auto frame = waitYtpRokt(instance, afterSettle,
                     plugin::unsignedValue(args, "timeout_ms", 3000));
                 const auto decoded = decodeYtpRokt68Frame(frame.payload);
                 unsigned validWords = 0;

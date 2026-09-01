@@ -20,6 +20,7 @@ steps:
     args:
       protocol: rokt_ytp68
       ytp_endpoint: 1
+      stream_settle_ms: 1000
       timeout_ms: 3000
 
   - id: ytp_calibration

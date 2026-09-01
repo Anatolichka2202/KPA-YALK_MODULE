@@ -802,6 +802,9 @@ ProcedureResult ytpStartStream(const ScenarioNode& node, ProcedureContext& conte
                 {"protocol", argument(node, "protocol", "passive_capture")},
                 {"archive_protocol_confirmed_for_device",
                     argument(node, "archive_protocol_confirmed_for_device", "false")},
+                {"ytp_endpoint", argument(node, "ytp_endpoint", "1")},
+                {"stream_settle_ms",
+                    std::to_string(natural(node, "stream_settle_ms", 1000))},
                 {"timeout_ms", std::to_string(natural(node, "timeout_ms", 3000))}}));
         context.state["ytp.protocol"] = response.count("protocol")
             ? response.at("protocol") : std::string("unknown");

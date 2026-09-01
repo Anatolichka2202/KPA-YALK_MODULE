@@ -58,6 +58,7 @@ $diagnosticFiles = @(
     'orbita_equipment_probe.exe',
     'orbita_telemetry_probe.exe',
     'orbita_ubsi_udp_probe.exe',
+    'orbita_ytp_rokt_probe.exe',
     'yalk_timing_probe.exe',
     'yalk_full_probe.exe',
     'visa_discover.exe'
