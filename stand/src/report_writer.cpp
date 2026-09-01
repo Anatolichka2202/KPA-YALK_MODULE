@@ -65,30 +65,50 @@ ReportPaths writeHtmlCsvReport(const ScenarioRunResult& run, const std::string& 
         for (const auto& child : step.children) collect(child);
     };
     for (const auto& step : run.steps) collect(step);
+    const bool ytpReport = run.scenarioId.find("ytp") != std::string::npos;
 
     QSaveFile csv(csvPath);
     if (!csv.open(QIODevice::WriteOnly | QIODevice::Text)) throw std::runtime_error(csv.errorString().toUtf8().toStdString());
     csv.write("\xEF\xBB\xBF");
     QTextStream csvStream(&csv);
     csvStream.setEncoding(QStringConverter::Utf8);
-    csvStream << QStringLiteral("Этап;Пункт ТУ;Параметр;Адрес УЛК;Код ИСД;Raw;Код ЯЛК;Сигнал;В7, В;ЯЛК, В;Абсолютная погрешность, В;Приведённая погрешность, %;Относительная погрешность, %;Нижний допуск;Верхний допуск;Итог;Сообщение\n");
+    if (ytpReport) {
+        csvStream << QStringLiteral("Этап;Пункт ТУ;Канал ЯТП;Параметр;Задано, Ом;Эталон, Ом;Raw;Калибровка ноль;Калибровка шкала;ЯТП, Ом;Абсолютная погрешность, Ом;Приведённая погрешность, %;Оператор;Время подтверждения;Итог;Сообщение\n");
+    } else {
+        csvStream << QStringLiteral("Этап;Пункт ТУ;Параметр;Адрес УЛК;Код ИСД;Raw;Код ЯЛК;Сигнал;В7, В;ЯЛК, В;Абсолютная погрешность, В;Приведённая погрешность, %;Относительная погрешность, %;Нижний допуск;Верхний допуск;Итог;Сообщение\n");
+    }
     const auto field = [](QString value) { return QStringLiteral("\"") + value.replace('"', QStringLiteral("\"\"")) + QStringLiteral("\""); };
     for (const auto& [step, value] : measurements) {
         const auto attribute = [value](const char* key) {
             const auto found = value->attributes.find(key);
             return found == value->attributes.end() ? QString() : raw(found->second);
         };
-        csvStream << field(raw(step->title)) << ';' << field(raw(step->tuRequirement)) << ';'
-                  << field(raw(value->title)) << ';' << field(attribute("ulk_address")) << ';'
-                  << field(attribute("isd_code")) << ';' << field(attribute("raw")) << ';'
-                  << field(attribute("analog_code")) << ';' << field(attribute("signal")) << ';'
-                  << field(attribute("v7_v")) << ';' << field(attribute("yalk_v")) << ';'
-                  << field(attribute("absolute_error_v")) << ';'
-                  << field(attribute("reduced_error_percent")) << ';'
-                  << field(attribute("relative_error_percent")) << ';'
-                  << QString::number(value->lowerLimit, 'g', 15) << ';'
-                  << QString::number(value->upperLimit, 'g', 15) << ';'
-                  << field(localVerdict(value->verdict)) << ';' << field(raw(value->message)) << '\n';
+        if (ytpReport) {
+            csvStream << field(raw(step->title)) << ';' << field(raw(step->tuRequirement)) << ';'
+                      << field(attribute("ytp_channel")) << ';' << field(raw(value->title)) << ';'
+                      << field(attribute("target_resistance_ohm")) << ';'
+                      << field(attribute("actual_reference_ohm")) << ';'
+                      << field(attribute("raw")) << ';'
+                      << field(attribute("calibration_zero_raw")) << ';'
+                      << field(attribute("calibration_full_raw")) << ';'
+                      << field(attribute("measured_resistance_ohm")) << ';'
+                      << field(attribute("absolute_error_ohm")) << ';'
+                      << field(attribute("reduced_error_percent")) << ';'
+                      << field(attribute("operator")) << ';' << field(attribute("timestamp")) << ';'
+                      << field(localVerdict(value->verdict)) << ';' << field(raw(value->message)) << '\n';
+        } else {
+            csvStream << field(raw(step->title)) << ';' << field(raw(step->tuRequirement)) << ';'
+                      << field(raw(value->title)) << ';' << field(attribute("ulk_address")) << ';'
+                      << field(attribute("isd_code")) << ';' << field(attribute("raw")) << ';'
+                      << field(attribute("analog_code")) << ';' << field(attribute("signal")) << ';'
+                      << field(attribute("v7_v")) << ';' << field(attribute("yalk_v")) << ';'
+                      << field(attribute("absolute_error_v")) << ';'
+                      << field(attribute("reduced_error_percent")) << ';'
+                      << field(attribute("relative_error_percent")) << ';'
+                      << QString::number(value->lowerLimit, 'g', 15) << ';'
+                      << QString::number(value->upperLimit, 'g', 15) << ';'
+                      << field(localVerdict(value->verdict)) << ';' << field(raw(value->message)) << '\n';
+        }
     }
     csvStream.flush();
     commit(csv);
@@ -149,24 +169,40 @@ ReportPaths writeHtmlCsvReport(const ScenarioRunResult& run, const std::string& 
                << measuredPoints << QStringLiteral("\"/><text x=\"40\" y=\"260\" fill=\"#1f6feb\">— эталон</text><text x=\"150\" y=\"260\" fill=\"#238636\">— измерено</text></svg></div>");
     }
 
-    output << QStringLiteral("<table><thead><tr><th>Адрес</th><th>Точка</th><th>Raw / код</th><th>Сигнал</th><th>В7, В</th><th>ЯЛК, В</th><th>γ, %</th><th>Допуск</th><th>Итог</th></tr></thead><tbody>");
+    output << (ytpReport
+        ? QStringLiteral("<table><thead><tr><th>Канал</th><th>Точка</th><th>Эталон, Ом</th><th>Raw</th><th>Калибровка 0 / шкала</th><th>ЯТП, Ом</th><th>Ошибка, Ом</th><th>γ, %</th><th>Итог</th></tr></thead><tbody>")
+        : QStringLiteral("<table><thead><tr><th>Адрес</th><th>Точка</th><th>Raw / код</th><th>Сигнал</th><th>В7, В</th><th>ЯЛК, В</th><th>γ, %</th><th>Допуск</th><th>Итог</th></tr></thead><tbody>"));
     for (const auto& [step, value] : measurements) {
         Q_UNUSED(step);
         const auto attribute = [value](const char* key) {
             const auto found = value->attributes.find(key);
             return found == value->attributes.end() ? QString() : escape(found->second);
         };
-        output << QStringLiteral("<tr class=\"") << QString::fromLatin1(toString(value->verdict)) << QStringLiteral("\"><td>")
-               << attribute("ulk_address") << QStringLiteral("</td><td>") << escape(value->title)
-               << QStringLiteral("</td><td>") << attribute("raw") << QStringLiteral(" / ") << attribute("analog_code")
-               << QStringLiteral("</td><td>") << attribute("signal")
-               << QStringLiteral("</td><td>") << attribute("v7_v")
-               << QStringLiteral("</td><td>") << attribute("yalk_v")
-               << QStringLiteral("</td><td>") << attribute("reduced_error_percent")
-               << QStringLiteral("</td><td class=\"num\">")
-               << QString::number(value->lowerLimit, 'g', 10) << QStringLiteral(" … ")
-               << QString::number(value->upperLimit, 'g', 10) << QStringLiteral("</td><td>")
-               << localVerdict(value->verdict) << QStringLiteral("</td></tr>");
+        output << QStringLiteral("<tr class=\"") << QString::fromLatin1(toString(value->verdict))
+               << QStringLiteral("\"><td>");
+        if (ytpReport) {
+            output << attribute("ytp_channel") << QStringLiteral("</td><td>") << escape(value->title)
+                   << QStringLiteral("</td><td>") << attribute("actual_reference_ohm")
+                   << QStringLiteral("</td><td>") << attribute("raw")
+                   << QStringLiteral("</td><td>") << attribute("calibration_zero_raw")
+                   << QStringLiteral(" / ") << attribute("calibration_full_raw")
+                   << QStringLiteral("</td><td>") << attribute("measured_resistance_ohm")
+                   << QStringLiteral("</td><td>") << attribute("absolute_error_ohm")
+                   << QStringLiteral("</td><td>") << attribute("reduced_error_percent")
+                   << QStringLiteral("</td><td>") << localVerdict(value->verdict)
+                   << QStringLiteral("</td></tr>");
+        } else {
+            output << attribute("ulk_address") << QStringLiteral("</td><td>") << escape(value->title)
+                   << QStringLiteral("</td><td>") << attribute("raw") << QStringLiteral(" / ") << attribute("analog_code")
+                   << QStringLiteral("</td><td>") << attribute("signal")
+                   << QStringLiteral("</td><td>") << attribute("v7_v")
+                   << QStringLiteral("</td><td>") << attribute("yalk_v")
+                   << QStringLiteral("</td><td>") << attribute("reduced_error_percent")
+                   << QStringLiteral("</td><td class=\"num\">")
+                   << QString::number(value->lowerLimit, 'g', 10) << QStringLiteral(" … ")
+                   << QString::number(value->upperLimit, 'g', 10) << QStringLiteral("</td><td>")
+                   << localVerdict(value->verdict) << QStringLiteral("</td></tr>");
+        }
     }
     output << QStringLiteral("</tbody></table><h2>Журнал этапов</h2><table><thead><tr><th>Время</th><th>Этап</th><th>Событие</th><th>Сообщение</th></tr></thead><tbody>");
     for (const auto& event : run.events) {

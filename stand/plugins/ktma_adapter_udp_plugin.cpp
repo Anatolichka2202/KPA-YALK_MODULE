@@ -1,6 +1,7 @@
 #include "plugin_support.h"
 #include "orbita_stand/ulk_udp_transport.h"
 #include "orbita_stand/yalk_frame.h"
+#include "orbita_stand/ytp_frame.h"
 
 #include <atomic>
 #include <chrono>
@@ -19,6 +20,8 @@ struct Instance {
     std::atomic_bool cancelled{false};
     int selectedMode = -1;
     bool yalkReference = false;
+    bool ytpPassive = false;
+    bool ytpLegacyMode2 = false;
 };
 
 unsigned timeout(const Instance& instance, const std::map<std::string, std::string>& args)
@@ -38,6 +41,7 @@ std::string statsText(const UlkStreamStats& stats)
         << "\nfast120=" << stats.fast120
         << "\nslow200=" << stats.slow200
         << "\nreference204=" << stats.reference204
+        << "\nytp_legacy65=" << stats.ytpLegacy65
         << "\nunknown=" << stats.unknown
         << "\ndropped=" << stats.dropped << '\n';
     return out.str();
@@ -46,10 +50,24 @@ std::string statsText(const UlkStreamStats& stats)
 UlkFrame waitYalk(Instance& instance, std::uint64_t after, unsigned timeoutMs)
 {
     if (instance.cancelled.load()) throw std::runtime_error("Operation cancelled");
+    if (instance.ytpPassive || instance.ytpLegacyMode2) {
+        throw std::runtime_error("Активен отдельный поток ЯТП; декодер ЯЛК неприменим");
+    }
     return instance.transport->waitFrame(
         instance.yalkReference ? UlkFrameKind::Reference204 : UlkFrameKind::Slow200,
         after,
                                          std::chrono::milliseconds(timeoutMs));
+}
+
+UlkFrame waitYtpLegacy(Instance& instance, std::uint64_t after, unsigned timeoutMs)
+{
+    if (instance.cancelled.load()) throw std::runtime_error("Operation cancelled");
+    if (!instance.ytpLegacyMode2) {
+        throw std::runtime_error(
+            "Формат текущего потока ЯТП не подтверждён как legacy mode 2 / 65 байт");
+    }
+    return instance.transport->waitFrame(
+        UlkFrameKind::YtpLegacy65, after, std::chrono::milliseconds(timeoutMs));
 }
 
 std::vector<YalkSample> decodeYalk(const Instance& instance,
@@ -88,6 +106,48 @@ std::string readChannel(Instance& instance, const std::map<std::string, std::str
         << "\nanalog_code_mean=" << codeSum / sampleCount
         << "\nsignal=" << (signalOnes * 2 >= sampleCount ? 1 : 0)
         << "\nsignal_ones=" << signalOnes
+        << "\nsample_count=" << sampleCount
+        << "\nfirst_sequence=" << firstSequence
+        << "\nlast_sequence=" << sequence << '\n';
+    return out.str();
+}
+
+std::string readYtpChannel(Instance& instance,
+                           const std::map<std::string, std::string>& args)
+{
+    const unsigned address = plugin::unsignedValue(args, "ulk_address",
+        plugin::unsignedValue(args, "ytp_channel"));
+    if (address < 1 || address > 32) {
+        throw std::invalid_argument(
+            "ЯТП legacy mode 2 использует позиции 1..30 и калибровки 31..32");
+    }
+    const unsigned sampleCount = std::max(
+        1u, plugin::unsignedValue(args, "sample_count", 16));
+    std::uint64_t sequence = plugin::unsignedValue(args, "after_sequence",
+        static_cast<unsigned>(instance.transport->stats().lastSequence));
+    std::uint64_t firstSequence = 0;
+    double rawSum = 0.0;
+    std::uint8_t temperatureMode = 0;
+    for (unsigned sample = 0; sample < sampleCount; ++sample) {
+        const auto frame = waitYtpLegacy(instance, sequence, timeout(instance, args));
+        if (!firstSequence) firstSequence = frame.sequence;
+        sequence = frame.sequence;
+        const auto decoded = decodeYtpLegacyMode2Frame(frame.payload);
+        if (address <= decoded.channelRaw.size()) {
+            rawSum += decoded.channelRaw[address - 1];
+        } else if (address == 31) {
+            rawSum += decoded.calibrationMinimumRaw;
+        } else {
+            rawSum += decoded.calibrationMaximumRaw;
+        }
+        temperatureMode = decoded.temperatureMode;
+    }
+    std::ostringstream out;
+    out << std::setprecision(15)
+        << "status=ready\nprotocol=legacy_mode2_65"
+        << "\nulk_address=" << address
+        << "\nraw_mean=" << rawSum / sampleCount
+        << "\ntemperature_mode=" << static_cast<unsigned>(temperatureMode)
         << "\nsample_count=" << sampleCount
         << "\nfirst_sequence=" << firstSequence
         << "\nlast_sequence=" << sequence << '\n';
@@ -157,6 +217,8 @@ orbita_plugin_status_v1 invoke(void* value, const char* capability, const char* 
             plugin::requireActiveOutputs(instance.config);
             instance.cancelled.store(false);
             instance.yalkReference = true;
+            instance.ytpPassive = false;
+            instance.ytpLegacyMode2 = false;
             instance.transport->prepareYalkReference();
             instance.selectedMode = -2;
             return std::string("status=prepared\nprotocol=rokt_yalk\n");
@@ -172,9 +234,48 @@ orbita_plugin_status_v1 invoke(void* value, const char* capability, const char* 
             return std::string("status=ready\nprotocol=rokt_yalk\nmode=reference204\nfirst_sequence=")
                 + std::to_string(frame.sequence) + '\n';
         }
+        if (command == "start_ytp_stream" || command == "prepare_ytp") {
+            instance.cancelled.store(false);
+            instance.yalkReference = false;
+            instance.ytpPassive = false;
+            instance.ytpLegacyMode2 = false;
+            const std::string protocol = args.count("protocol")
+                ? args.at("protocol") : "passive_capture";
+            if (protocol == "passive_capture") {
+                instance.transport->startPassive();
+                instance.selectedMode = -3;
+                instance.ytpPassive = true;
+                return std::string(
+                    "status=capturing\nprotocol=passive_capture\n"
+                    "decoder=unconfirmed\nactive_command=none\n");
+            }
+            if (protocol != "legacy_mode2") {
+                throw std::invalid_argument("Unsupported YTP adapter protocol: " + protocol);
+            }
+            const bool confirmedForDevice = plugin::booleanValue(
+                args, "archive_protocol_confirmed_for_device",
+                plugin::booleanValue(instance.config,
+                    "ytp_legacy_mode2_confirmed", false));
+            if (!confirmedForDevice) {
+                throw std::runtime_error(
+                    "Команда 44 01 02 доказана архивной прошивкой, но не подтверждена "
+                    "для адаптера текущего стенда");
+            }
+            plugin::requireActiveOutputs(instance.config);
+            instance.transport->start(2);
+            instance.selectedMode = 2;
+            instance.ytpLegacyMode2 = true;
+            const auto frame = waitYtpLegacy(instance, 0,
+                plugin::unsignedValue(args, "timeout_ms", 3000));
+            return std::string(
+                "status=ready\nprotocol=legacy_mode2_65\nmode=2\nfirst_sequence=")
+                + std::to_string(frame.sequence) + '\n';
+        }
         if (command == "start_stream" || command == "probe") {
             plugin::requireActiveOutputs(instance.config);
             instance.cancelled.store(false);
+            instance.ytpPassive = false;
+            instance.ytpLegacyMode2 = false;
             const std::string protocol = args.count("protocol")
                 ? args.at("protocol")
                 : (instance.config.count("protocol") ? instance.config.at("protocol") : "legacy_mode6");
@@ -204,10 +305,31 @@ orbita_plugin_status_v1 invoke(void* value, const char* capability, const char* 
             instance.transport->stop();
             instance.selectedMode = -1;
             instance.yalkReference = false;
+            instance.ytpPassive = false;
+            instance.ytpLegacyMode2 = false;
             return std::string("status=ok\n");
         }
         if (command == "stats") return statsText(instance.transport->stats());
         if (command == "read_channel" || command == "read") return readChannel(instance, args);
+        if (command == "read_ytp_channel") return readYtpChannel(instance, args);
+        if (command == "read_ytp_snapshot") {
+            const std::uint64_t after = plugin::unsignedValue(args, "after_sequence",
+                static_cast<unsigned>(instance.transport->stats().lastSequence));
+            const auto frame = waitYtpLegacy(instance, after, timeout(instance, args));
+            const auto decoded = decodeYtpLegacyMode2Frame(frame.payload);
+            std::ostringstream out;
+            out << "status=ready\nprotocol=legacy_mode2_65\nsequence=" << frame.sequence
+                << "\ntemperature_mode=" << static_cast<unsigned>(decoded.temperatureMode)
+                << "\ncalibration_minimum_raw=" << decoded.calibrationMinimumRaw
+                << "\ncalibration_maximum_raw=" << decoded.calibrationMaximumRaw
+                << "\nchannels=";
+            for (std::size_t index = 0; index < decoded.channelRaw.size(); ++index) {
+                if (index) out << ',';
+                out << decoded.channelRaw[index];
+            }
+            out << '\n';
+            return out.str();
+        }
         if (command == "read_snapshot" || command == "read_frame") {
             const std::uint64_t after = plugin::unsignedValue(args, "after_sequence",
                 static_cast<unsigned>(instance.transport->stats().lastSequence));

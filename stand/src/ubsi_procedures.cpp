@@ -752,31 +752,141 @@ ProcedureResult referenceVoltage(const ScenarioNode& node, ProcedureContext& con
     return result;
 }
 
-ProcedureResult ytp(const ScenarioNode& node, ProcedureContext& context)
+struct YtpRawValue {
+    double raw = 0.0;
+    unsigned address = 0;
+    unsigned temperatureMode = 0;
+};
+
+YtpRawValue readYtpRaw(ProcedureContext& context, const std::string& parameterGroup,
+                       unsigned offset, unsigned samples)
 {
-    ProcedureResult result{RunVerdict::Ok, "Проверены температурные каналы ЯТП", {}};
+    const auto binding = resolveLogicalBinding(context, parameterGroup, offset);
+    if (binding.source != "ulk.parameter_source"
+        || binding.locatorType != "ulk_address") {
+        throw std::runtime_error(
+            "ЯТП должен разрешаться в каталоге как ulk.parameter_source / ulk_address");
+    }
+    const auto response = context.equipment.invoke(
+        binding.source, "read_ytp_channel", {
+            {"ulk_address", binding.locator},
+            {"parameter_group", parameterGroup},
+            {"sample_count", std::to_string(samples)}});
+    const unsigned raw = static_cast<unsigned>(
+        std::llround(responseNumber(response, "raw_mean")));
+    return {
+        static_cast<double>((raw & binding.mask) >> binding.shift),
+        static_cast<unsigned>(std::stoul(binding.locator)),
+        responseUnsigned(response, "temperature_mode")};
+}
+
+ProcedureResult ytpStartStream(const ScenarioNode& node, ProcedureContext& context)
+{
+    const auto record = responseValues(context.equipment.invoke(
+        "ulk.parameter_source", "start_record", {{"run_id", context.runId}}));
+    try {
+        const auto response = responseValues(context.equipment.invoke(
+            "ulk.parameter_source", "start_ytp_stream", {
+                {"protocol", argument(node, "protocol", "passive_capture")},
+                {"archive_protocol_confirmed_for_device",
+                    argument(node, "archive_protocol_confirmed_for_device", "false")},
+                {"timeout_ms", std::to_string(natural(node, "timeout_ms", 3000))}}));
+        context.state["ytp.protocol"] = response.count("protocol")
+            ? response.at("protocol") : std::string("unknown");
+        context.state["ytp.raw_path"] = record.count("path")
+            ? record.at("path") : std::string();
+        if (context.state.at("ytp.protocol") == "legacy_mode2_65") {
+            return {RunVerdict::Ok,
+                "Запущен подтверждённый для выбранного устройства legacy-поток ЯТП mode 2", {}};
+        }
+        return {RunVerdict::Incomplete,
+            "Запущен пассивный захват ЯТП без управляющей команды; формат текущего ROKT-потока "
+            "не подтверждён, raw сохраняется в " + context.state.at("ytp.raw_path"), {}};
+    } catch (...) {
+        context.equipment.invoke("ulk.parameter_source", "stop_record", {});
+        throw;
+    }
+}
+
+ProcedureResult ytpReadCalibration(const ScenarioNode& node, ProcedureContext& context)
+{
+    const std::string zeroGroup = argument(
+        node, "calibration_zero_parameter", "ytp_calibration_zero");
+    const std::string fullGroup = argument(
+        node, "calibration_full_parameter", "ytp_calibration_full");
+    const auto zeroBinding = resolveLogicalBinding(context, zeroGroup, 0);
+    const auto fullBinding = resolveLogicalBinding(context, fullGroup, 0);
+    context.state["ytp.calibration_zero_candidate"] = zeroBinding.locator;
+    context.state["ytp.calibration_full_candidate"] = fullBinding.locator;
+    if (argument(node, "calibration_mapping_confirmed", "false") != "true"
+        || !zeroBinding.confirmed || !fullBinding.confirmed) {
+        return {RunVerdict::Incomplete,
+            "Калибровки ЯТП не читались: каталог содержит commissioning-кандидаты "
+            + zeroBinding.locator + "/" + fullBinding.locator
+            + ", а архивный mode 2 описывает minimum/maximum в позициях 31/32; "
+              "нужно подтверждение живым кадром", {}};
+    }
+    if (context.state["ytp.protocol"] != "legacy_mode2_65") {
+        return {RunVerdict::Incomplete,
+            "Декодирование калибровок заблокировано: формат текущего потока ЯТП не подтверждён", {}};
+    }
+    const unsigned samples = natural(node, "sample_count", 16);
+    const auto zero = readYtpRaw(context, zeroGroup, 0, samples);
+    const auto full = readYtpRaw(context, fullGroup, 0, samples);
+    if (!(full.raw > zero.raw)) {
+        throw std::runtime_error("Верхняя калибровка ЯТП не больше нижней");
+    }
+    context.state["ytp.calibration_zero_raw"] = std::to_string(zero.raw);
+    context.state["ytp.calibration_full_raw"] = std::to_string(full.raw);
+    context.state["ytp.temperature_mode"] = std::to_string(full.temperatureMode);
+    return {RunVerdict::Ok,
+        "Калибровки ЯТП прочитаны отдельным legacy-декодером", {}};
+}
+
+ProcedureResult ytpCheckChannels(const ScenarioNode& node, ProcedureContext& context)
+{
     const unsigned count = natural(node, "channel_count", 30);
     const std::string parameterGroup = argument(node, "parameter_group", "ytp_temperature");
     const auto points = numbers(node, "resistance_points_ohm");
-    double zeroRaw = number(node, "calibration_zero_raw");
-    double fullRaw = number(node, "calibration_full_raw");
-    const double fullScale = number(node, "full_scale_ohm", 240.0);
-    const double tolerance = fullScale * number(node, "tolerance_percent_fs", 0.5) / 100.0;
-    const std::string zeroParameter = argument(node, "calibration_zero_parameter");
-    const std::string fullParameter = argument(node, "calibration_full_parameter");
-    if (!bindingsReady(context, parameterGroup, count, true)
-        || (!zeroParameter.empty() && !bindingsReady(context, zeroParameter, 1))
-        || (!fullParameter.empty() && !bindingsReady(context, fullParameter, 1))) {
+    bool allBindingsConfirmed = true;
+    for (unsigned channel = 0; channel < count; ++channel) {
+        const auto binding = resolveLogicalBinding(context, parameterGroup, channel);
+        if (binding.source != "ulk.parameter_source"
+            || binding.locatorType != "ulk_address" || binding.locator.empty()) {
+            throw std::runtime_error(
+                "Некорректная каталожная привязка ЯТП для канала "
+                + std::to_string(channel + 1));
+        }
+        allBindingsConfirmed = allBindingsConfirmed && binding.confirmed;
+    }
+    if (!allBindingsConfirmed) {
         return {RunVerdict::Incomplete,
-            "Адреса УЛК/маршруты ЯТП и калибровки 32/31 не подтверждены; ручные точки не запрашивались", {}};
+            "Каталог разрешил 30 логических каналов ЯТП, но их соответствие словам живого "
+            "кадра ещё не подтверждено; Р4831 не запрашивался", {}};
     }
-    if (!zeroParameter.empty() && !fullParameter.empty()) {
-        zeroRaw = readLogicalParameter(context, zeroParameter, 0,
-            natural(node, "sample_count", 16));
-        fullRaw = readLogicalParameter(context, fullParameter, 0,
-            natural(node, "sample_count", 16));
+    if (context.state.count("ytp.calibration_zero_raw") == 0
+        || context.state.count("ytp.calibration_full_raw") == 0
+        || context.state["ytp.protocol"] != "legacy_mode2_65") {
+        return {RunVerdict::Incomplete,
+            "Каналы ЯТП не измерялись: нет подтверждённого декодера и калибровки", {}};
     }
-    if (points.empty() || !(fullRaw > zeroRaw)) throw std::invalid_argument("Не заполнена карта/калибровка ЯТП");
+    if (argument(node, "conversion_confirmed", "false") != "true"
+        || argument(node, "criteria_confirmed", "false") != "true"
+        || points.empty()) {
+        return {RunVerdict::Incomplete,
+            "Raw ЯТП доступен, но raw→Ом, контрольные точки и критерий УБСИ не подтверждены; "
+            "приёмочный результат не формировался", {}};
+    }
+
+    const double zeroRaw = std::stod(context.state.at("ytp.calibration_zero_raw"));
+    const double fullRaw = std::stod(context.state.at("ytp.calibration_full_raw"));
+    const double fullScale = number(node, "full_scale_ohm");
+    const double tolerancePercent = number(node, "tolerance_percent_fs");
+    if (!(fullScale > 0.0) || !(tolerancePercent >= 0.0)) {
+        throw std::invalid_argument("Не заданы подтверждённые шкала/критерий ЯТП");
+    }
+    const double tolerance = fullScale * tolerancePercent / 100.0;
+    ProcedureResult result{RunVerdict::Ok, "Проверены 30 каналов ЯТП", {}};
     for (const double resistance : points) {
         const auto confirmation = responseValues(context.equipment.invoke(
             "operator.manual_input", "confirm_value", {
@@ -787,34 +897,68 @@ ProcedureResult ytp(const ScenarioNode& node, ProcedureContext& context)
             throw std::runtime_error("Ручной этап Р4831 не вернул фактическое сопротивление");
         }
         const double actualResistance = std::stod(actualValue->second);
-        MeasurementResult audit = measurement("ubsi.ytp.manual_reference",
-            "Р4831: подтверждённая ручная точка", resistance, actualResistance,
-            0.0, fullScale, "Ом");
-        audit.message = "Оператор=" + (confirmation.count("operator")
-            ? confirmation.at("operator") : std::string("не указан"))
-            + "; время=" + (confirmation.count("timestamp")
-                ? confirmation.at("timestamp") : std::string("не указано"));
-        append(result, std::move(audit));
         wait(context, natural(node, "settle_ms", 1500));
         for (unsigned channel = 0; channel < count; ++channel) {
-            const auto binding = resolveLogicalBinding(context, parameterGroup, channel);
-            if (binding.stimulusRoute.empty()) throw std::runtime_error(
-                "В БД не задан маршрут ЯТП для канала " + std::to_string(channel + 1));
-            context.equipment.invoke("stand.switch_matrix", "switch", {
-                {"route", binding.stimulusRoute}, {"offset", std::to_string(binding.stimulusOffset)},
-                {"enabled", "true"}});
-            const double raw = readLogicalParameter(
+            const auto value = readYtpRaw(
                 context, parameterGroup, channel, natural(node, "sample_count", 16));
+            const double raw = value.raw;
             const double measured = (raw - zeroRaw) * fullScale / (fullRaw - zeroRaw);
-            append(result, measurement("ubsi.ytp." + std::to_string(channel + 1),
+            MeasurementResult channelResult = measurement(
+                "ubsi.ytp." + std::to_string(channel + 1),
                 "ЯТП канал " + std::to_string(channel + 1), actualResistance, measured,
-                actualResistance - tolerance, actualResistance + tolerance, "Ом"));
-            context.equipment.invoke("stand.switch_matrix", "switch", {
-                {"route", binding.stimulusRoute}, {"offset", std::to_string(binding.stimulusOffset)},
-                {"enabled", "false"}});
+                actualResistance - tolerance, actualResistance + tolerance, "Ом");
+            const double error = measured - actualResistance;
+            channelResult.attributes = {
+                {"ytp_channel", std::to_string(channel + 1)},
+                {"ulk_address", std::to_string(value.address)},
+                {"target_resistance_ohm", std::to_string(resistance)},
+                {"actual_reference_ohm", std::to_string(actualResistance)},
+                {"raw", std::to_string(raw)},
+                {"calibration_zero_raw", std::to_string(zeroRaw)},
+                {"calibration_full_raw", std::to_string(fullRaw)},
+                {"measured_resistance_ohm", std::to_string(measured)},
+                {"absolute_error_ohm", std::to_string(std::abs(error))},
+                {"reduced_error_percent", std::to_string(error / fullScale * 100.0)},
+                {"operator", confirmation.count("operator")
+                    ? confirmation.at("operator") : std::string("не указан")},
+                {"timestamp", confirmation.count("timestamp")
+                    ? confirmation.at("timestamp") : std::string("не указан")},
+                {"temperature_mode", std::to_string(value.temperatureMode)}};
+            context.eventSink({std::chrono::system_clock::now(), node.id,
+                "MEASUREMENT", channelResult.title, channelResult.verdict,
+                channelResult.attributes});
+            append(result, std::move(channelResult));
         }
     }
     return result;
+}
+
+ProcedureResult ytpSafeCleanup(const ScenarioNode&, ProcedureContext& context)
+{
+    std::string failures;
+    try {
+        context.equipment.invoke("ulk.parameter_source", "stop_stream", {});
+    } catch (const std::exception& error) {
+        failures = error.what();
+    }
+    try {
+        context.equipment.invoke("ulk.parameter_source", "stop_record", {});
+    } catch (const std::exception& error) {
+        if (!failures.empty()) failures += "; ";
+        failures += error.what();
+    }
+    if (!failures.empty()) {
+        return {RunVerdict::Error,
+            "Не все операции безопасного завершения ЯТП выполнены: " + failures, {}};
+    }
+    return {RunVerdict::Ok, "Поток ЯТП и raw-запись остановлены", {}};
+}
+
+ProcedureResult ytpLegacyStub(const ScenarioNode&, ProcedureContext&)
+{
+    return {RunVerdict::Incomplete,
+        "Общий ubsi.ytp отключён от приёмочного измерения: используйте отдельный commissioning-"
+        "сценарий ЯТП с отдельным декодером и raw-захватом", {}};
 }
 
 ProcedureResult yvp(const ScenarioNode& node, ProcedureContext& context)
@@ -906,7 +1050,11 @@ void registerUbsiProcedures(ScenarioEngine& engine)
     engine.registerProcedure("yalk.check_overload", yalkCheckOverload);
     engine.registerProcedure("yalk.safe_cleanup", yalkSafeCleanup);
     engine.registerProcedure("ubsi.reference_voltage", referenceVoltage);
-    engine.registerProcedure("ubsi.ytp", ytp);
+    engine.registerProcedure("ytp.start_stream", ytpStartStream);
+    engine.registerProcedure("ytp.read_calibration", ytpReadCalibration);
+    engine.registerProcedure("ytp.check_channels", ytpCheckChannels);
+    engine.registerProcedure("ytp.safe_cleanup", ytpSafeCleanup);
+    engine.registerProcedure("ubsi.ytp", ytpLegacyStub);
     engine.registerProcedure("ubsi.yvp", yvp);
 }
 

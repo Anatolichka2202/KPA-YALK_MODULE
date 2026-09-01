@@ -1,0 +1,58 @@
+schema: 1
+id: ubsi.468157.002.ytp.tu5_6
+title: УБСИ · полная проверка ЯТП по ТУ 5.6 (commissioning)
+version: 0.1.0
+catalog_version: 2026.08.29-yalk-1
+object_type: UBSI_468157_002
+state: draft
+
+# Текущий ROKT-запуск и raw→Ом ещё не подтверждены на живом УБСИ.
+# Поэтому сценарий готовит production-цепочку, но пока выполняет только
+# пассивную запись raw и никогда не формирует приёмочный ОК.
+steps:
+  - id: ytp_stream
+    title: Пассивный захват и запись сырого потока ЯТП
+    tu: 5.6 / ЯТП · commissioning
+    procedure: ytp.start_stream
+    requires:
+      - ulk.parameter_source
+    args:
+      protocol: passive_capture
+      timeout_ms: 3000
+      archive_protocol_confirmed_for_device: false
+
+  - id: ytp_calibration
+    title: Проверка кандидатов калибровки ЯТП
+    tu: 5.6 / ЯТП · commissioning
+    procedure: ytp.read_calibration
+    requires:
+      - catalog.parameter_resolver
+      - ulk.parameter_source
+    args:
+      calibration_zero_parameter: ytp_calibration_zero
+      calibration_full_parameter: ytp_calibration_full
+      calibration_mapping_confirmed: false
+      sample_count: 16
+
+  - id: ytp_channels
+    title: Привязка 30 каналов и подготовка ручного эталона Р4831
+    tu: 5.6 / ЯТП · commissioning
+    procedure: ytp.check_channels
+    requires:
+      - catalog.parameter_resolver
+      - ulk.parameter_source
+      - operator.manual_input
+    args:
+      channel_count: 30
+      parameter_group: ytp_temperature
+      sample_count: 16
+      settle_ms: 1500
+      conversion_confirmed: false
+      criteria_confirmed: false
+
+  - id: ytp_cleanup
+    title: Безопасная остановка потока и raw-записи ЯТП
+    tu: 5.6 / завершение проверки
+    procedure: ytp.safe_cleanup
+    requires:
+      - ulk.parameter_source

@@ -471,6 +471,10 @@ void TestPage::rebuildTests()
             && selectedObjectCode() != QStringLiteral("BSI")) {
             testCombo_->addItem(QStringLiteral("Полная проверка ЯЛК · 80 адресов · ТУ 5.6"),
                                 QStringLiteral("YALK_FULL_5_6"));
+        } else if (selectedScopeCode() == QStringLiteral("ЯТП")
+                   && selectedObjectCode() != QStringLiteral("BSI")) {
+            testCombo_->addItem(QStringLiteral("Полная проверка ЯТП · 30 каналов · ТУ 5.6"),
+                                QStringLiteral("YTP_FULL_5_6"));
         }
     }
     const int oldIndex = testCombo_->findData(previous);
@@ -494,11 +498,29 @@ void TestPage::updateSelectionSummary()
         scopeLabel_->setText(object == QStringLiteral("BSI")
             ? QStringLiteral("Полный сценарий ЯЛК в этом релизе предназначен для УБСИ, а не для БСИ.")
             : QStringLiteral("ЯЛК-96 УБСИ: ИСД задаёт 0 / 3,1 / 6,2 В, В7 измеряет эталон, адаптер УЛК читает 16 свежих кадров. Орбита и E20 не участвуют."));
+    } else if (test == QStringLiteral("YTP_FULL_5_6")) {
+        scopeLabel_->setText(QStringLiteral(
+            "ЯТП УБСИ: подготовлен отдельный путь адаптера, каталог 30 каналов, ручной эталон Р4831 и raw-отчёт. Текущий ROKT-формат и raw→Ом ещё требуют живого подтверждения, поэтому итог commissioning-прогона — НЕПОЛНАЯ. Орбита и E20 не запускаются."));
     } else {
         scopeLabel_->setText(QStringLiteral("%1 · %2: диагностический прогон проверяет наличие источника данных, адресной привязки и стабильной выборки. Он не выдаётся за приёмочное испытание по ТУ.")
             .arg(object == QStringLiteral("BSI") ? QStringLiteral("БСИ") : QStringLiteral("УБСИ № 7"), scope));
     }
     plot_->setVisible(test == QStringLiteral("YALK_FULL_5_6") || test.endsWith(QStringLiteral("NORMAL_5_6")));
+    if (test == QStringLiteral("YTP_FULL_5_6")) {
+        resultTable_->setHorizontalHeaderLabels({
+            QStringLiteral("Канал"), QStringLiteral("Точка"),
+            QStringLiteral("Задано, Ом"), QStringLiteral("Raw"),
+            QStringLiteral("Калибр. ноль"), QStringLiteral("Калибр. шкала"),
+            QStringLiteral("Эталон, Ом"), QStringLiteral("ЯТП, Ом"),
+            QStringLiteral("Ошибка, Ом"), QStringLiteral("γ, %"),
+            QStringLiteral("Режим"), QStringLiteral("Итог")});
+    } else {
+        resultTable_->setHorizontalHeaderLabels({
+            QStringLiteral("Адрес"), QStringLiteral("Точка"), QStringLiteral("Код ИСД"),
+            QStringLiteral("Raw"), QStringLiteral("Код ЯЛК"), QStringLiteral("Сигнал"),
+            QStringLiteral("В7, В"), QStringLiteral("ЯЛК, В"), QStringLiteral("ΔU, В"),
+            QStringLiteral("γ, % шкалы"), QStringLiteral("δ, %"), QStringLiteral("Итог")});
+    }
     const QStringList required = requiredEquipment();
     for (auto it = equipmentRows_.cbegin(); it != equipmentRows_.cend(); ++it) {
         equipmentTable_->setRowHidden(it->row, !required.contains(it.key()));
@@ -604,6 +626,9 @@ QStringList TestPage::requiredEquipment() const
         return object == QStringLiteral("BSI")
             ? QStringList{"RS485", "ISD", "V7", "SCHEME"}
             : QStringList{"RS485", "ISD", "V7", "SCHEME"};
+    }
+    if (test == QStringLiteral("YTP_FULL_5_6")) {
+        return {"RS485", "R4831"};
     }
     const auto scenario = scenarios_.constFind(test);
     if (scenario != scenarios_.cend()) {
@@ -830,11 +855,18 @@ void TestPage::setRunEvent(const orbita::stand::RunEvent& event)
             const auto found = event.data.find(key);
             return found == event.data.end() ? QString() : QString::fromStdString(found->second);
         };
-        const double reference = value("v7_v").toDouble();
-        const double measured = value("yalk_v").toDouble();
-        plot_->addPoint(reference, measured);
-        progress_->setFormat(QStringLiteral("ЯЛК: адрес %1 · %2 В · В7 %3 В · ЯЛК %4 В")
-            .arg(value("ulk_address"), value("command_v"), value("v7_v"), value("yalk_v")));
+        if (!value("ytp_channel").isEmpty()) {
+            progress_->setFormat(QStringLiteral(
+                "ЯТП: канал %1 · эталон %2 Ом · raw %3 · ЯТП %4 Ом")
+                .arg(value("ytp_channel"), value("actual_reference_ohm"),
+                     value("raw"), value("measured_resistance_ohm")));
+        } else {
+            const double reference = value("v7_v").toDouble();
+            const double measured = value("yalk_v").toDouble();
+            plot_->addPoint(reference, measured);
+            progress_->setFormat(QStringLiteral("ЯЛК: адрес %1 · %2 В · В7 %3 В · ЯЛК %4 В")
+                .arg(value("ulk_address"), value("command_v"), value("v7_v"), value("yalk_v")));
+        }
     }
 }
 
@@ -856,8 +888,19 @@ void TestPage::setRunResult(const orbita::stand::ScenarioRunResult& result,
                 return found == measurement.attributes.end()
                     ? QString() : QString::fromStdString(found->second);
             };
-            const bool yalk = !attribute("ulk_address").isEmpty();
-            const QStringList values = {
+            const bool ytp = !attribute("ytp_channel").isEmpty();
+            const bool yalk = !ytp && !attribute("ulk_address").isEmpty();
+            const QStringList values = ytp ? QStringList{
+                attribute("ytp_channel"),
+                QString::fromStdString(measurement.title.empty()
+                    ? measurement.parameterKey : measurement.title),
+                attribute("target_resistance_ohm"), attribute("raw"),
+                attribute("calibration_zero_raw"), attribute("calibration_full_raw"),
+                attribute("actual_reference_ohm"), attribute("measured_resistance_ohm"),
+                attribute("absolute_error_ohm"), attribute("reduced_error_percent"),
+                attribute("temperature_mode"),
+                QString::fromLatin1(orbita::stand::toString(measurement.verdict))
+            } : QStringList{
                 yalk ? attribute("ulk_address") : QString::fromStdString(step.title),
                 QString::fromStdString(measurement.title.empty() ? measurement.parameterKey : measurement.title),
                 attribute("isd_code"), attribute("raw"), attribute("analog_code"),

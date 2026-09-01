@@ -1,6 +1,7 @@
 #include "orbita_stand/equipment_adapters.h"
 #include "orbita_stand/ulk_udp_transport.h"
 #include "orbita_stand/yalk_frame.h"
+#include "orbita_stand/ytp_frame.h"
 
 #include <cstdlib>
 #include <iostream>
@@ -55,8 +56,12 @@ int main()
         require(UlkUdpTransport::classify(4) == UlkFrameKind::Service4
                     && UlkUdpTransport::classify(120) == UlkFrameKind::Fast120
                     && UlkUdpTransport::classify(200) == UlkFrameKind::Slow200
-                    && UlkUdpTransport::classify(204) == UlkFrameKind::Reference204,
+                    && UlkUdpTransport::classify(204) == UlkFrameKind::Reference204
+                    && UlkUdpTransport::classify(65) == UlkFrameKind::YtpLegacy65,
                 "ULK frame classifier is wrong");
+        require(static_cast<unsigned>(UlkFrameKind::Unknown) == 4
+                    && static_cast<unsigned>(UlkFrameKind::YtpLegacy65) == 5,
+                "ULK raw-record kind ids must remain backward compatible");
         std::vector<std::uint8_t> yalkPacket(200, 0);
         yalkPacket[0] = 0x34;
         yalkPacket[1] = 0xA2;
@@ -123,6 +128,25 @@ int main()
             badFrameRejected,
             "YALK decoder accepted invalid 120-byte frame"
             );
+
+        std::vector<std::uint8_t> ytpPacket(65, 0);
+        for (unsigned index = 0; index < 32; ++index) {
+            const std::uint16_t value = static_cast<std::uint16_t>(1000 + index);
+            ytpPacket[index * 2] = static_cast<std::uint8_t>(value & 0xFF);
+            ytpPacket[index * 2 + 1] = static_cast<std::uint8_t>(value >> 8);
+        }
+        ytpPacket[64] = 252;
+        const auto ytp = decodeYtpLegacyMode2Frame(ytpPacket);
+        require(ytp.channelRaw.front() == 1000 && ytp.channelRaw.back() == 1029,
+                "YTP legacy mode 2 channel positions 1..30 are wrong");
+        require(ytp.calibrationMinimumRaw == 1030
+                    && ytp.calibrationMaximumRaw == 1031
+                    && ytp.temperatureMode == 252,
+                "YTP legacy mode 2 calibration/mode fields are wrong");
+        bool badYtpRejected = false;
+        try { decodeYtpLegacyMode2Frame(std::vector<std::uint8_t>(64, 0)); }
+        catch (const std::invalid_argument&) { badYtpRejected = true; }
+        require(badYtpRejected, "YTP legacy decoder accepted a non-65-byte frame");
         std::cout << "Equipment protocol tests passed\n";
         return EXIT_SUCCESS;
     } catch (const std::exception& error) {

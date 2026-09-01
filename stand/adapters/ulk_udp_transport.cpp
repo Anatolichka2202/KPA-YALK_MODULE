@@ -104,7 +104,7 @@ struct UlkUdpTransport::Impl {
         }
     }
 
-    void start(std::uint8_t mode)
+    void startReceiver()
     {
         stop();
 
@@ -123,6 +123,16 @@ struct UlkUdpTransport::Impl {
         }
 
         receiver = std::thread([this] { receiveLoop(); });
+    }
+
+    void startPassive()
+    {
+        startReceiver();
+    }
+
+    void start(std::uint8_t mode)
+    {
+        startReceiver();
 
         const auto bytes =
             UlkUdpTransport::modeCommand(mode);
@@ -173,23 +183,7 @@ struct UlkUdpTransport::Impl {
 
     void prepareYalkReference()
     {
-        stop();
-
-        {
-            std::lock_guard<std::mutex> lock(mutex);
-            queue.clear();
-            counters = {};
-        }
-
-        openSocket();
-        stopping.store(false);
-
-        {
-            std::lock_guard<std::mutex> lock(mutex);
-            counters.running = true;
-        }
-
-        receiver = std::thread([this] { receiveLoop(); });
+        startReceiver();
 
         const auto remote =
             endpoint(config.remoteHost, config.port);
@@ -422,13 +416,18 @@ struct UlkUdpTransport::Impl {
                     ++counters.reference204;
                     break;
 
+                case UlkFrameKind::YtpLegacy65:
+                    ++counters.ytpLegacy65;
+                    break;
+
                 case UlkFrameKind::Unknown:
                     ++counters.unknown;
                     break;
                 }
                 if (frame.kind == UlkFrameKind::Fast120
                     || frame.kind == UlkFrameKind::Slow200
-                    || frame.kind == UlkFrameKind::Reference204)
+                    || frame.kind == UlkFrameKind::Reference204
+                    || frame.kind == UlkFrameKind::YtpLegacy65)
                     counters.streaming = true;
                 if (queue.size() == config.queueCapacity) {
                     queue.pop_front();
@@ -488,6 +487,7 @@ UlkUdpTransport::UlkUdpTransport(KtmaUlkUdpConfig config)
     : impl_(std::make_unique<Impl>(std::move(config))) {}
 UlkUdpTransport::~UlkUdpTransport() = default;
 void UlkUdpTransport::start(std::uint8_t mode) { impl_->start(mode); }
+void UlkUdpTransport::startPassive() { impl_->startPassive(); }
 void UlkUdpTransport::prepareYalkReference()
 {
     impl_->prepareYalkReference();
@@ -540,6 +540,7 @@ UlkFrameKind UlkUdpTransport::classify(std::size_t size) noexcept
     if (size == 120) return UlkFrameKind::Fast120;
     if (size == 200) return UlkFrameKind::Slow200;
     if (size == 204) return UlkFrameKind::Reference204;
+    if (size == 65) return UlkFrameKind::YtpLegacy65;
     return UlkFrameKind::Unknown;
 }
 
@@ -550,6 +551,7 @@ const char* toString(UlkFrameKind kind) noexcept
     case UlkFrameKind::Fast120: return "fast120";
     case UlkFrameKind::Slow200: return "slow200";
     case UlkFrameKind::Reference204: return "reference204";
+    case UlkFrameKind::YtpLegacy65: return "ytp_legacy65";
     case UlkFrameKind::Unknown: return "unknown";
     }
     return "unknown";

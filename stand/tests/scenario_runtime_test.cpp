@@ -15,6 +15,7 @@
 #include <QTemporaryDir>
 
 #include <cstdlib>
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <stdexcept>
@@ -35,16 +36,36 @@ public:
         return capabilities.count(capability) != 0;
     }
     std::string invoke(const std::string& capability, const std::string& operation,
-                       const std::map<std::string, std::string>&) override
+                       const std::map<std::string, std::string>& arguments) override
     {
+        operations.push_back(capability + ":" + operation);
         if (capability == "orbita.parameter_source" && operation == "health") {
             return "status=ready\nframes_processed=12\nphrase_error_percent=0\n"
                    "group_error_percent=0\nchannel_count=8\n";
+        }
+        if (capability == "ulk.parameter_source" && operation == "start_record") {
+            return "status=ok\npath=fake/frames.ulkbin\n";
+        }
+        if (capability == "ulk.parameter_source" && operation == "start_ytp_stream") {
+            return "status=capturing\nprotocol=passive_capture\ndecoder=unconfirmed\n";
+        }
+        if (capability == "catalog.parameter_resolver" && operation == "resolve") {
+            const std::string group = arguments.at("parameter_group");
+            const unsigned index = static_cast<unsigned>(std::stoul(arguments.at("channel_index")));
+            const unsigned locator = group == "ytp_temperature" ? index + 1
+                : (group == "ytp_calibration_zero" ? 32 : 31);
+            return "source=ulk.parameter_source\nlocator_type=ulk_address\nlocator="
+                + std::to_string(locator)
+                + "\nstream_id=\nword_index=" + std::to_string(locator - 1)
+                + "\nmask=65535\nshift=0\nmode=2\nconversion_id=\n"
+                  "stimulus_route=ytp_channel\nstimulus_offset=" + std::to_string(index)
+                + "\nconfirmed=false\n";
         }
         return "status=ready\n";
     }
     void safeStopAll() noexcept override { stopped = true; }
     std::set<std::string> capabilities;
+    std::vector<std::string> operations;
     bool stopped = false;
 };
 
@@ -116,10 +137,12 @@ void configurationAndCatalog(const QString& root)
 {
     const auto scenarioPath = QDir(root).filePath(QStringLiteral("data/scenarios/ubsi_tu_5_6.yaml"));
     const auto bsiDiagnosticPath = QDir(root).filePath(QStringLiteral("data/scenarios/bsi_diagnostic.yaml"));
+    const auto ytpScenarioPath = QDir(root).filePath(QStringLiteral("data/scenarios/ubsi_ytp_tu_5_6.yaml"));
     const auto profilePath = QDir(root).filePath(QStringLiteral("data/profiles/stand_ktma.yaml"));
     const auto catalogPath = QDir(root).filePath(QStringLiteral("data/catalog/catalog.yaml"));
     auto scenario = loadScenarioYaml(scenarioPath.toUtf8().toStdString());
     auto bsiDiagnostic = loadScenarioYaml(bsiDiagnosticPath.toUtf8().toStdString());
+    auto ytpScenario = loadScenarioYaml(ytpScenarioPath.toUtf8().toStdString());
     auto profile = loadStandProfile(profilePath.toUtf8().toStdString());
     ScenarioEngine engine;
     registerUbsiProcedures(engine);
@@ -130,11 +153,15 @@ void configurationAndCatalog(const QString& root)
     require(engine.validate(bsiDiagnostic).empty(), "BSI diagnostic scenario must validate");
     require(bsiDiagnostic.publicationState == PublicationState::Published,
             "BSI diagnostic scenario must be published as a non-acceptance procedure");
+    require(engine.validate(ytpScenario).empty(), "Standalone YTP scenario must validate");
+    require(ytpScenario.publicationState == PublicationState::Draft
+                && ytpScenario.steps.size() == 4,
+            "YTP must remain a four-stage commissioning scenario until live proof");
     require(profile.id == "ktma-main" && !profile.activeOutputsConfirmed,
             "Default stand profile must keep active outputs locked");
-    require(profile.routes.at("yalk_analog.type") == "1"
-                && profile.routes.at("yalk_analog.max") == "4095"
-                && profile.routes.at("yvp_input.safe") == "off",
+    require(profile.routes.at("yalk_analog.base") == "1"
+                && profile.routes.at("yalk_analog.safe") == "off"
+                && profile.routes.at("ytp_channel.base") == "TODO_CONFIRM",
             "Structured ISD route fields were not loaded from the profile");
     require(profile.connections.at("adapter_rs485") == "Адаптер RS-485 → X1 ЯП-П"
                 && profile.connections.at("isd_to_yalk") == "ИСД → X1, X2, X3 ЯЛК",
@@ -178,7 +205,7 @@ void configurationAndCatalog(const QString& root)
     const auto yalk = resolveCatalogParameterBinding(
         db.toUtf8().toStdString(), "UBSI_468157_002", "yalk_voltage", 7);
     require(yalk.source == "ulk.parameter_source" && yalk.locatorType == "ulk_address"
-                && yalk.locator == "8" && yalk.mode == 6 && yalk.mask == 0x01FF,
+                && yalk.locator == "8" && yalk.mode == 0 && yalk.mask == 0x03FF,
             "YALK must resolve to the reference ULK address/mode from catalog");
     require(yalk.stimulusRoute == "yalk_analog" && yalk.stimulusOffset == 7,
             "YALK ISD stimulus route must resolve from catalog");
@@ -196,6 +223,12 @@ void configurationAndCatalog(const QString& root)
                 && ytp.locator == "4"
                 && ytp.mode == 2,
             "YTP must resolve to ULK address and adapter mode 2 from catalog");
+    for (unsigned channel = 0; channel < 30; ++channel) {
+        const auto mapped = resolveCatalogParameterBinding(
+            db.toUtf8().toStdString(), "UBSI_468157_002", "ytp_temperature", channel);
+        require(mapped.locator == std::to_string(channel + 1) && !mapped.confirmed,
+                "YTP catalog must resolve all 30 logical channels without confirming them");
+    }
     const auto ytpCalibration = resolveCatalogParameterBinding(
         db.toUtf8().toStdString(), "UBSI_468157_002", "ytp_calibration_zero", 0);
     require(ytpCalibration.locator == "32",
@@ -214,6 +247,22 @@ void configurationAndCatalog(const QString& root)
         bsiDiagnostic, diagnosticEquipment, profile.version, "", true);
     require(diagnosticRun.verdict == RunVerdict::Incomplete,
             "BSI stand diagnostic must never produce acceptance OK");
+
+    FakeEquipment ytpEquipment;
+    ytpEquipment.capabilities = {
+        "ulk.parameter_source", "catalog.parameter_resolver", "operator.manual_input"};
+    const auto ytpRun = engine.run(
+        ytpScenario, ytpEquipment, profile.version, "", true);
+    require(ytpRun.verdict == RunVerdict::Incomplete,
+            "Unconfirmed YTP commissioning run must never produce acceptance OK");
+    require(std::find(ytpEquipment.operations.begin(), ytpEquipment.operations.end(),
+                "ulk.parameter_source:stop_stream") != ytpEquipment.operations.end()
+            && std::find(ytpEquipment.operations.begin(), ytpEquipment.operations.end(),
+                "ulk.parameter_source:stop_record") != ytpEquipment.operations.end(),
+            "YTP scenario must stop both stream and raw recording");
+    require(std::find(ytpEquipment.operations.begin(), ytpEquipment.operations.end(),
+                "operator.manual_input:confirm_value") == ytpEquipment.operations.end(),
+            "YTP commissioning must not request an unconfirmed resistance point");
 }
 
 void builtinCapabilityBinding()
@@ -286,6 +335,31 @@ void persistenceAndReport()
     const auto report = writeHtmlCsvReport(run, temporary.path().toUtf8().toStdString());
     require(QFile::exists(QString::fromUtf8(report.html)) && QFile::exists(QString::fromUtf8(report.csv)),
             "HTML/CSV report was not created");
+
+    ScenarioRunResult ytpRun = run;
+    ytpRun.runId = "ytp-run-1";
+    ytpRun.scenarioId = "ubsi.468157.002.ytp.tu5_6";
+    ytpRun.scenarioTitle = "ЯТП commissioning";
+    MeasurementResult ytpValue{
+        "ubsi.ytp.1", "ЯТП канал 1", 100.0, 100.2, 98.8, 101.2,
+        "Ом", RunVerdict::Ok, {}};
+    ytpValue.attributes = {
+        {"ytp_channel", "1"}, {"target_resistance_ohm", "100"},
+        {"actual_reference_ohm", "100.0"}, {"raw", "1234"},
+        {"calibration_zero_raw", "10"}, {"calibration_full_raw", "3000"},
+        {"measured_resistance_ohm", "100.2"}, {"absolute_error_ohm", "0.2"},
+        {"reduced_error_percent", "0.0833"}, {"operator", "tester"},
+        {"timestamp", "2026-09-01T12:00:00"}};
+    ytpRun.steps = {{"ytp", "Каналы ЯТП", "5.6", RunVerdict::Ok,
+                     "ok", {ytpValue}, {}}};
+    const auto ytpReport = writeHtmlCsvReport(
+        ytpRun, temporary.path().toUtf8().toStdString());
+    QFile ytpCsv(QString::fromUtf8(ytpReport.csv));
+    require(ytpCsv.open(QIODevice::ReadOnly), "Cannot open YTP CSV report");
+    const auto ytpCsvText = ytpCsv.readAll();
+    require(ytpCsvText.contains("Канал ЯТП") && ytpCsvText.contains("Эталон, Ом")
+                && ytpCsvText.contains("100.2"),
+            "YTP CSV report must expose channel/reference/raw/ohm fields");
 }
 
 } // namespace

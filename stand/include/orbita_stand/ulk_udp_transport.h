@@ -23,6 +23,7 @@ enum class UlkFrameKind : std::uint8_t {
     Slow200,
     Reference204,
     Unknown,
+    YtpLegacy65,
 };
 
 struct UlkFrame {
@@ -40,6 +41,7 @@ struct UlkStreamStats {
     std::uint64_t fast120 = 0;
     std::uint64_t slow200 = 0;
     std::uint64_t reference204 = 0;
+    std::uint64_t ytpLegacy65 = 0;
     std::uint64_t unknown = 0;
     std::uint64_t dropped = 0;
 };
@@ -52,6 +54,7 @@ public:
     UlkUdpTransport& operator=(const UlkUdpTransport&) = delete;
 
     void start(std::uint8_t mode);
+    void startPassive();
     void prepareYalkReference();
     void startPreparedYalkReference();
     void startYalkReference();

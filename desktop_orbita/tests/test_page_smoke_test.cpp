@@ -73,9 +73,9 @@ int main(int argc, char** argv)
             "BSI diagnostic must require Orbita/E20");
 
     scope->setCurrentIndex(scope->findData(QStringLiteral("ЯЛК-96")));
-    require(test->findData(QStringLiteral("YALK_ANALOG")) >= 0,
-            "BSI YALK analog procedure missing");
-    test->setCurrentIndex(test->findData(QStringLiteral("YALK_ANALOG")));
+    require(test->findData(QStringLiteral("CELL_DIAGNOSTIC")) >= 0,
+            "BSI cell diagnostic procedure missing");
+    test->setCurrentIndex(test->findData(QStringLiteral("CELL_DIAGNOSTIC")));
     require(!equipment->isRowHidden(rowByName(equipment, QStringLiteral("E20-10"))),
             "BSI YALK must require Orbita/E20");
     require(equipment->isRowHidden(rowByName(equipment, QStringLiteral("Адаптер RS-485"))),
@@ -84,11 +84,23 @@ int main(int argc, char** argv)
     object->setCurrentIndex(object->findData(QStringLiteral("UBSI-7")));
     require(scope->count() == 5, "UBSI must contain whole block plus four cell types");
     scope->setCurrentIndex(scope->findData(QStringLiteral("ЯЛК-96")));
-    test->setCurrentIndex(test->findData(QStringLiteral("YALK_ANALOG")));
+    test->setCurrentIndex(test->findData(QStringLiteral("YALK_FULL_5_6")));
     require(!equipment->isRowHidden(rowByName(equipment, QStringLiteral("Адаптер RS-485"))),
             "UBSI YALK must require the direct adapter");
     require(equipment->isRowHidden(rowByName(equipment, QStringLiteral("E20-10"))),
             "direct UBSI YALK procedure must not require E20");
+
+    page.setScenarioInfo(QStringLiteral("YTP_FULL_5_6"), true, true,
+        {QStringLiteral("RS485"), QStringLiteral("R4831")}, QStringLiteral("ready"));
+    scope->setCurrentIndex(scope->findData(QStringLiteral("ЯТП")));
+    require(test->findData(QStringLiteral("YTP_FULL_5_6")) >= 0,
+            "UBSI must expose the standalone 30-channel YTP scenario");
+    test->setCurrentIndex(test->findData(QStringLiteral("YTP_FULL_5_6")));
+    require(!equipment->isRowHidden(rowByName(equipment, QStringLiteral("Адаптер RS-485")))
+                && !equipment->isRowHidden(rowByName(equipment, QStringLiteral("Р4831"))),
+            "YTP must show the adapter and manual resistance reference");
+    require(equipment->isRowHidden(rowByName(equipment, QStringLiteral("E20-10"))),
+            "YTP must not require Orbita/E20");
 
     scope->setCurrentIndex(scope->findData(QStringLiteral("BLOCK")));
     require(test->currentData() == QStringLiteral("UBSI_NORMAL_5_6"),

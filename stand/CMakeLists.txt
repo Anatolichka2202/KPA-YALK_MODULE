@@ -35,6 +35,7 @@ add_library(orbita_stand_adapters STATIC
     adapters/visa_instrument.cpp
     adapters/dho_waveform.cpp
     adapters/yalk_frame.cpp
+    adapters/ytp_frame.cpp
     adapters/ulk_udp_transport.cpp
 )
 target_include_directories(orbita_stand_adapters
