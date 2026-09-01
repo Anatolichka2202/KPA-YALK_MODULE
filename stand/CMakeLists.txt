@@ -152,6 +152,28 @@ if(WIN32)
     endif()
 endif()
 
+if(WIN32)
+    add_executable(orbita_ytp_rokt_probe
+        tools/ytp_rokt_probe.cpp
+    )
+
+    target_link_libraries(
+        orbita_ytp_rokt_probe
+        PRIVATE
+        ws2_32
+    )
+
+    if(MINGW)
+        target_link_options(
+            orbita_ytp_rokt_probe
+            PRIVATE
+            -static
+            -static-libgcc
+            -static-libstdc++
+        )
+    endif()
+endif()
+
 add_executable(yalk_timing_probe tools/yalk_timing_probe.cpp)
 target_link_libraries(yalk_timing_probe PRIVATE orbita_stand_adapters)
 

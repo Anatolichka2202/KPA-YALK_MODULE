@@ -21,6 +21,7 @@
 
 #include <cmath>
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <iomanip>
 #include <locale>
@@ -233,6 +234,129 @@ void RigolVisaGenerator::output(unsigned channel, bool enabled)
     impl_->instrument.write(command + (enabled ? "ON" : "OFF"));
 }
 const std::string& RigolVisaGenerator::resourceName() const { return impl_->instrument.resourceName(); }
+
+struct Akip1160Serial::Impl {
+    explicit Impl(Akip1160SerialConfig value) : config(std::move(value))
+    {
+        if (config.portName.empty()) throw std::invalid_argument("AKIP-1160/6 COM port is empty");
+        if (config.baudRate <= 0) throw std::invalid_argument("AKIP-1160/6 baud rate is invalid");
+        if (!config.timeoutMilliseconds) throw std::invalid_argument("AKIP-1160/6 timeout is zero");
+    }
+
+    Akip1160SerialConfig config;
+
+    std::string exchange(const std::string& command, bool expectReply) const
+    {
+        QSerialPort port(QString::fromStdString(config.portName));
+        port.setBaudRate(config.baudRate);
+        port.setDataBits(QSerialPort::Data8);
+        port.setParity(QSerialPort::NoParity);
+        port.setStopBits(QSerialPort::OneStop);
+        port.setFlowControl(QSerialPort::NoFlowControl);
+        if (!port.open(QIODevice::ReadWrite)) {
+            throw qtError("AKIP-1160/6 COM open failed", port.errorString());
+        }
+
+        // CH340 may need a short interval after opening before the first byte.
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        port.clear(QSerialPort::AllDirections);
+        QByteArray wire = QByteArray::fromStdString(command);
+        if (!wire.endsWith('\n')) wire.append('\n');
+        if (port.write(wire) != wire.size()) {
+            throw qtError("AKIP-1160/6 COM write failed", port.errorString());
+        }
+        if (port.bytesToWrite() > 0
+            && !port.waitForBytesWritten(static_cast<int>(config.timeoutMilliseconds))) {
+            throw qtError("AKIP-1160/6 COM write timeout", port.errorString());
+        }
+        if (!expectReply) return {};
+
+        QElapsedTimer timer;
+        timer.start();
+        QByteArray reply;
+        while (!reply.contains('\n')) {
+            const auto remaining = static_cast<int>(config.timeoutMilliseconds)
+                - static_cast<int>(timer.elapsed());
+            if (remaining <= 0 || !port.waitForReadyRead(remaining)) break;
+            reply += port.readAll();
+        }
+        if (reply.isEmpty()) throw std::runtime_error("AKIP-1160/6 did not answer on " + config.portName);
+        const auto newline = reply.indexOf('\n');
+        if (newline >= 0) reply.truncate(newline);
+        return reply.trimmed().toStdString();
+    }
+
+    double number(const std::string& command, const char* valueName) const
+    {
+        const auto reply = exchange(command, true);
+        std::size_t parsed = 0;
+        const double value = std::stod(reply, &parsed);
+        if (parsed != reply.size() || !std::isfinite(value)) {
+            throw std::runtime_error(std::string("AKIP-1160/6 returned invalid ")
+                + valueName + ": " + reply);
+        }
+        return value;
+    }
+};
+
+namespace {
+std::string akipFixed(double value)
+{
+    std::ostringstream text;
+    text.imbue(std::locale::classic());
+    text << std::fixed << std::setprecision(3) << value;
+    return text.str();
+}
+}
+
+Akip1160Serial::Akip1160Serial(Akip1160SerialConfig config)
+    : impl_(std::make_unique<Impl>(std::move(config))) {}
+Akip1160Serial::~Akip1160Serial() = default;
+std::string Akip1160Serial::identity() const { return impl_->exchange("*IDN?", true); }
+double Akip1160Serial::voltageSetpoint() const { return impl_->number("VOLT?", "voltage setpoint"); }
+double Akip1160Serial::currentSetpoint() const { return impl_->number("CURR?", "current setpoint"); }
+double Akip1160Serial::measuredVoltage() const { return impl_->number("MEAS:VOLT?", "measured voltage"); }
+double Akip1160Serial::measuredCurrent() const { return impl_->number("MEAS:CURR?", "measured current"); }
+bool Akip1160Serial::outputEnabled() const
+{
+    auto reply = impl_->exchange("OUTP?", true);
+    std::transform(reply.begin(), reply.end(), reply.begin(),
+        [](unsigned char value) { return static_cast<char>(std::toupper(value)); });
+    if (reply == "ON" || reply == "1") return true;
+    if (reply == "OFF" || reply == "0") return false;
+    throw std::runtime_error("AKIP-1160/6 returned invalid output state: " + reply);
+}
+void Akip1160Serial::setVoltage(double volts) const
+{
+    impl_->exchange(voltageCommand(volts), false);
+}
+void Akip1160Serial::setCurrentLimit(double amperes) const
+{
+    impl_->exchange(currentCommand(amperes), false);
+}
+void Akip1160Serial::setOutput(bool enabled) const
+{
+    impl_->exchange(outputCommand(enabled), false);
+}
+const std::string& Akip1160Serial::portName() const { return impl_->config.portName; }
+std::string Akip1160Serial::voltageCommand(double volts)
+{
+    if (!std::isfinite(volts) || volts < 0.0 || volts > 60.0) {
+        throw std::invalid_argument("AKIP-1160/6 voltage must be within 0..60 V");
+    }
+    return "VOLT " + akipFixed(volts) + "\n";
+}
+std::string Akip1160Serial::currentCommand(double amperes)
+{
+    if (!std::isfinite(amperes) || amperes < 0.005 || amperes > 10.0) {
+        throw std::invalid_argument("AKIP-1160/6 current must be within 0.005..10 A");
+    }
+    return "CURR " + akipFixed(amperes) + "\n";
+}
+std::string Akip1160Serial::outputCommand(bool enabled)
+{
+    return std::string("OUTP ") + (enabled ? "ON\n" : "OFF\n");
+}
 
 struct R4831SerialAdapter::Impl { explicit Impl(R4831SerialConfig value) : config(std::move(value)) {} R4831SerialConfig config; };
 R4831SerialAdapter::R4831SerialAdapter(R4831SerialConfig config)

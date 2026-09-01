@@ -19,6 +19,7 @@ steps:
           - ulk.parameter_source
         args:
           voltage_v: 27
+          current_limit_a: 0.6
           timeout_ms: 30000
       - id: supply_range
         title: Диапазон питания, предельные уровни и ток потребления

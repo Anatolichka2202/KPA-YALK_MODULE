@@ -50,6 +50,17 @@ int main()
                 "legacy power-supply voltage command differs from Delphi reference");
         require(LegacyUdpPowerSupply::currentCommand(1.25) == "CURR 00125\r",
                 "legacy power-supply current command differs from Delphi reference");
+        require(Akip1160Serial::voltageCommand(27.0) == "VOLT 27.000\n",
+                "AKIP-1160/6 voltage SCPI command is wrong");
+        require(Akip1160Serial::currentCommand(0.6) == "CURR 0.600\n",
+                "AKIP-1160/6 current SCPI command is wrong");
+        require(Akip1160Serial::outputCommand(true) == "OUTP ON\n"
+                    && Akip1160Serial::outputCommand(false) == "OUTP OFF\n",
+                "AKIP-1160/6 output SCPI command is wrong");
+        bool akipLimitRejected = false;
+        try { (void)Akip1160Serial::voltageCommand(60.01); }
+        catch (const std::invalid_argument&) { akipLimitRejected = true; }
+        require(akipLimitRejected, "AKIP-1160/6 accepted voltage above 60 V");
         require(UlkUdpTransport::modeCommand(8)
                     == std::vector<std::uint8_t>({0x44, 0x01, 0x08}),
                 "ULK mode frame differs from adapter firmware");

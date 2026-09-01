@@ -64,6 +64,37 @@ private:
     std::unique_ptr<Impl> impl_;
 };
 
+struct Akip1160SerialConfig {
+    std::string portName;
+    int baudRate = 115200;
+    unsigned timeoutMilliseconds = 1200;
+};
+
+class Akip1160Serial final {
+public:
+    explicit Akip1160Serial(Akip1160SerialConfig config);
+    ~Akip1160Serial();
+
+    std::string identity() const;
+    double voltageSetpoint() const;
+    double currentSetpoint() const;
+    double measuredVoltage() const;
+    double measuredCurrent() const;
+    bool outputEnabled() const;
+    void setVoltage(double volts) const;
+    void setCurrentLimit(double amperes) const;
+    void setOutput(bool enabled) const;
+    const std::string& portName() const;
+
+    static std::string voltageCommand(double volts);
+    static std::string currentCommand(double amperes);
+    static std::string outputCommand(bool enabled);
+
+private:
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
+};
+
 struct R4831SerialConfig {
     std::string portName;
     int baudRate = 9600;

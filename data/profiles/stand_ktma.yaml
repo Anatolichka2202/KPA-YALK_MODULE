@@ -1,6 +1,6 @@
 schema: 1
 id: ktma-main
-version: 2026.08.29-ubsi-5
+version: 2026.09.01-akip-1
 title: Основной стенд КТМА, Windows 11
 
 # Пока карта кабелей и активные команды не подтверждены на самом стенде,
@@ -123,15 +123,19 @@ devices:
     plugin: orbita.akip_1160_pair
     bind:
       - power.dc_supply
-    # Исторически это две АКИП-1160/6 (ипНИ и ипБИ). Ресурсы назначаются
-    # только после безопасного *IDN?; COM7 пока не идентифицирован.
-    enabled: false
+    # 01.09.2026 один АКИП-1160/6 аппаратно идентифицирован на COM15.
+    # Назначение второго источника ипБИ добавляется через port_bi после *IDN?.
+    # Активное включение остаётся заблокированным до проверки силовой схемы.
     config:
-      disabled_reason: Не назначены оба VISA-ресурса АКИП для ролей ипНИ и ипБИ
-      resource_ni: TODO_ASSIGN_VISA_RESOURCE
-      resource_bi: TODO_ASSIGN_VISA_RESOURCE
+      port: COM15
+      baud: 115200
       expected_idn: AKIP-1160/6
-      timeout_ms: 2000
+      timeout_ms: 1200
+      require_both: false
+      current_limit_is_total: true
+      max_voltage_v: 60
+      max_current_a: 10
+      device.active_commands_confirmed: false
   - id: generator
     plugin: orbita.rigol_generator
     bind:

@@ -249,7 +249,12 @@ ProcedureResult readiness(const ScenarioNode& node, ProcedureContext& context)
 {
     ProcedureResult result{RunVerdict::Fail, "УБСИ не выдал данные за нормативное время", {}};
     const double voltage = number(node, "voltage_v", 27.0);
+    const double currentLimit = number(node, "current_limit_a", 0.6);
     const unsigned timeoutMs = natural(node, "timeout_ms", 30000);
+    // АКИП запоминает прежнюю уставку тока. Ограничение обязательно задаётся
+    // текущим сценарием до включения выхода, а не наследуется от ручной работы.
+    context.equipment.invoke("power.dc_supply", "set_current_limit", {
+        {"amperes", std::to_string(currentLimit)}});
     context.equipment.invoke("power.dc_supply", "set_voltage", {{"volts", std::to_string(voltage)}});
     context.equipment.invoke("power.dc_supply", "output", {{"enabled", "true"}});
     const auto started = std::chrono::steady_clock::now();
