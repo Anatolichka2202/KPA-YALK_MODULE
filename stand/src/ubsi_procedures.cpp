@@ -803,7 +803,12 @@ ProcedureResult ytpStartStream(const ScenarioNode& node, ProcedureContext& conte
             "Запущен пассивный захват ЯТП без управляющей команды; формат текущего ROKT-потока "
             "не подтверждён, raw сохраняется в " + context.state.at("ytp.raw_path"), {}};
     } catch (...) {
-        context.equipment.invoke("ulk.parameter_source", "stop_record", {});
+        try {
+            context.equipment.invoke("ulk.parameter_source", "stop_record", {});
+        } catch (...) {
+            // Исходная ошибка запуска важнее ошибки аварийного закрытия файла;
+            // ScenarioEngine дополнительно вызовет safeStopAll.
+        }
         throw;
     }
 }
