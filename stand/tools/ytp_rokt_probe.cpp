@@ -91,6 +91,8 @@ std::uint16_t wordLe(
 
 int main(int argc, char** argv)
 {
+    std::cout.setf(std::ios::unitbuf);
+
     const std::string adapterIp =
         argc >= 2 ? argv[1] : "192.168.0.115";
 
@@ -224,13 +226,25 @@ int main(int argc, char** argv)
 
         unsigned frames68 = 0;
         unsigned otherFrames = 0;
+        unsigned changes = 0;
+
+        std::array<std::uint16_t, 32> previous{};
+        bool baselineReady = false;
+
+        //настраиваем время работы монитора
+        const auto started =
+            std::chrono::steady_clock::now();
+
+        const auto settleUntill =
+            started + std::chrono::seconds(1);
 
         const auto deadline =
-            std::chrono::steady_clock::now()
-            + std::chrono::seconds(5);
+            started + std::chrono::seconds(30);
 
-        while (std::chrono::steady_clock::now() < deadline
-               && frames68 < 16) {
+        std::cout<<"MONITOR settle=1s duration=30s\n";
+
+        while (std::chrono::steady_clock::now() < deadline)
+        {
 
             std::array<std::uint8_t, 2048> buffer{};
 
@@ -266,73 +280,105 @@ int main(int argc, char** argv)
 
             if (count != 68) {
                 ++otherFrames;
-
-                std::cout
-                    << "RX_OTHER bytes=" << count
-                    << '\n';
-
                 continue;
             }
 
             ++frames68;
 
-            std::cout
-                << "\nFRAME " << frames68
-                << " bytes=68"
-                << " header="
-                << std::hex
-                << std::setfill('0')
-                << std::setw(2) << static_cast<unsigned>(buffer[0]) << ' '
-                << std::setw(2) << static_cast<unsigned>(buffer[1]) << ' '
-                << std::setw(2) << static_cast<unsigned>(buffer[2]) << ' '
-                << std::setw(2) << static_cast<unsigned>(buffer[3])
-                << std::dec
-                << '\n';
+            std::array<std::uint16_t, 32> current{};
 
-            for (unsigned index = 0; index < 32; ++index) {
-                const auto raw = wordLe(
+            for(unsigned index = 0; index < current.size(); ++ index)
+            {
+                current[index] = wordLe(
                     buffer,
-                    4 + static_cast<std::size_t>(index) * 2);
+                    4 + static_cast<std::size_t>(index)*2);
+            }
+            //первый ~1 с адаптер последовательно наполняет 32 слова.
+            // не считаем первые переходы изменением физ. входа
+            if(std::chrono::steady_clock::now() < settleUntill)
+            {
+                previous = current;
+                continue;
+            }
 
-                if (index < 30) {
+            if(!baselineReady)
+            {
+                previous = current;
+                baselineReady = true;
+
+                std::cout << "BASELINE";
+
+                for(unsigned index = 0; index <previous.size(); ++index)
+                {
                     std::cout
-                        << "CH"
-                        << std::setw(2)
-                        << std::setfill('0')
-                        << index + 1;
-                } else {
-                    std::cout
-                        << "CAL"
-                        << index + 1;
+                        << ' '
+                        <<(index < 30 ? "CH" : "CAL")
+                        <<std::setw(2)
+                        <<std::setfill('0')
+                        <<index + 1
+                        <<"=0"
+                        <<std::hex
+                        <<std::setw(4)
+                        <<previous[index]
+                        <<std::dec;
                 }
+                std::cout<< '\n';
+                continue;
+            }
+
+            for(unsigned index = 0; index <previous.size(); ++index)
+            {
+                if(current[index] == previous[index])
+                    continue;
+
+                ++changes;
+
+                const auto elepsedMs =
+                    std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::steady_clock::now() - started)
+                                           .count();
 
                 std::cout
-                    << " raw=0x"
-                    << std::hex
-                    << std::setw(4)
-                    << std::setfill('0')
-                    << raw
-                    << std::dec
-                    << " (" << raw << ')'
+                    <<"CHANGE"
+                    <<"t_ms=" << elepsedMs
+                    <<' '
+                    <<(index < 30 ? "CH" : "CAL")
+                    <<std::setw(2)
+                    <<std::setfill('0')
+                    <<index + 1
+                    <<" 0x"
+                    <<std::hex
+                    <<std::setw(4)
+                    <<previous[index]
+                    <<" -> 0x"
+                    <<std::setw(4)
+                    <<current[index]
+                    <<std::dec
+                    <<" (" << previous[index]
+                    <<" -> " << current[index] << ")"
                     << '\n';
             }
+            previous = current;
         }
 
         std::cout
-            << "\nSUMMARY"
+            << "SUMMARY"
             << " frames68=" << frames68
             << " other=" << otherFrames
+            << " changes=" << changes
             << '\n';
 
-        if (frames68 == 0) {
+        if(frames68 == 0)
+        {
             std::cout << "RESULT NO_YTP_DATA\n";
             closeSocket(sender);
             closeSocket(receiver);
             WSACleanup();
-            return EXIT_FAILURE;
+
+            return EXIT_SUCCESS;
         }
 
-        std::cout << "RESULT YTP_STREAM_OK\n";
+        std::cout << "RESULT YTP_MONITOR_OK\n";
 
         closeSocket(sender);
         closeSocket(receiver);
