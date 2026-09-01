@@ -633,8 +633,12 @@ ProcedureResult yalkCheckChannels(const ScenarioNode& node, ProcedureContext& co
     for (unsigned channel = 0; channel < count; ++channel) {
         const auto binding = resolveLogicalBinding(context, "yalk_voltage", channel);
         const unsigned address = static_cast<unsigned>(std::stoul(binding.locator));
+
+        bool outputEnabled = false;
+        try{
         for (std::size_t point = 0; point < pointVolts.size(); ++point) {
             setYalkVoltage(context, binding, pointVolts[point], true);
+            outputEnabled = true;
             wait(context, natural(node, "settle_ms", 150));
             const double v7 = readReferenceVoltage(context);
             const unsigned sequence = ulkLastSequence(context);
@@ -673,7 +677,21 @@ ProcedureResult yalkCheckChannels(const ScenarioNode& node, ProcedureContext& co
             }
         }
         setYalkVoltage(context, binding, 0.0, false);
+        outputEnabled = false;
         wait(context, natural(node, "channel_off_settle_ms", 1000));
+        }catch(...)
+        {
+            if(outputEnabled)
+            {
+                try {
+                    setYalkVoltage(context, binding, 0.0, false);
+                } catch(...)
+                {
+                    //final safeStopAll() going to reset ISD yet
+                }
+            }
+            throw;
+        }
     }
     markCommissioning(result, confirmed);
     return result;
