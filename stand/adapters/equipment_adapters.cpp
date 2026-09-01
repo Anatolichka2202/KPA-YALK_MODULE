@@ -49,6 +49,13 @@ QHostAddress requiredAddress(const std::string& value, const char* name)
 QByteArray httpGet(const IsdHttpConfig& config, const QString& path)
 {
     if (config.host.empty()) throw std::invalid_argument("ISD host is empty");
+
+    constexpr unsigned maxAttempts = 3;
+    constexpr auto retryDelay = std::chrono::milliseconds(250);
+
+    for(unsigned attempt = 1; attempt <=maxAttempts; ++attempt)
+    {
+
     QUrl url;
     url.setScheme(QStringLiteral("http"));
     url.setHost(QString::fromStdString(config.host));
@@ -68,11 +75,25 @@ QByteArray httpGet(const IsdHttpConfig& config, const QString& path)
     const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
     const QByteArray body = reply->readAll();
     reply->deleteLater();
-    if (error != QNetworkReply::NoError) throw qtError("ISD HTTP request failed", errorText);
+
+    if (error != QNetworkReply::NoError) {
     if (status < 200 || status >= 300) {
         throw std::runtime_error("ISD HTTP status " + std::to_string(status));
+            }
+        return body;
     }
-    return body;
+    const bool transient =
+        error == QNetworkReply::OperationCanceledError
+          ||error == QNetworkReply::TimeoutError
+          ||error == QNetworkReply::TemporaryNetworkFailureError
+          ||error == QNetworkReply::RemoteHostClosedError;
+    if (!transient || attempt == maxAttempts)
+        {
+        throw qtError("ISD HTTP request failed", errorText);
+        }
+    std::this_thread::sleep_for(retryDelay);
+    }
+    throw std::runtime_error("ISD HTTP request failed");
 }
 
 void requireIsdSuccess(const QByteArray& body)

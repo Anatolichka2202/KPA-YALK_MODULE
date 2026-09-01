@@ -94,7 +94,7 @@ int main(int argc, char** argv)
         return 2;
     }
 
-    const unsigned isdChannel = number(argv[4], "ISD channel", 255);
+    const unsigned isdChannel = number(argv[4], "ISD channel", 100);
     orbita::stand::IsdHttpRouter isd({argv[1], 80, 3000, 2, {}});
     orbita::stand::UlkUdpTransport adapter({argv[2], argv[3], 1113, 800, 4096});
     bool isdPrepared = false;

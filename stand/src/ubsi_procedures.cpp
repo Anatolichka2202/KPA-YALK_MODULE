@@ -592,8 +592,7 @@ ProcedureResult yalkCheckInitial(const ScenarioNode& node, ProcedureContext& con
     ProcedureResult result{RunVerdict::Ok, "Проверено исходное отключённое состояние ЯЛК", {}};
     context.equipment.invoke("stand.switch_matrix", "full_reset", {});
     unsigned sequence = ulkLastSequence(context);
-    const double tolerance = number(node, "full_scale_v", 6.2)
-        * number(node, "tolerance_percent_fs", 0.5) / 100.0;
+    \
     for (unsigned channel = 0; channel < count; ++channel) {
         const auto binding = resolveLogicalBinding(context, "yalk_voltage", channel);
         const unsigned address = static_cast<unsigned>(std::stoul(binding.locator));
@@ -602,8 +601,8 @@ ProcedureResult yalkCheckInitial(const ScenarioNode& node, ProcedureContext& con
         sequence = reading.lastSequence;
         const double volts = yalkCodeToVolts(reading.code, context);
         auto analog = measurement("ubsi.yalk.initial." + binding.locator,
-            "ЯЛК адрес " + binding.locator + ": исходное напряжение",
-            0.0, volts, -tolerance, tolerance, "В");
+            "ЯЛК адрес " + binding.locator + ": исходный аналоговый код",
+            0.0, reading.code, 0.0, 0.0, "код");
         analog.attributes = {{"ulk_address", binding.locator},
                              {"raw", std::to_string(reading.raw)},
                              {"analog_code", std::to_string(reading.code)},
