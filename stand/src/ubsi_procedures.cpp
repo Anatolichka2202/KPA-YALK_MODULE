@@ -761,6 +761,8 @@ struct YtpRawValue {
     double raw = 0.0;
     unsigned address = 0;
     unsigned temperatureMode = 0;
+    unsigned validSamples = 0;
+    unsigned invalidSamples = 0;
 };
 
 YtpRawValue readYtpRaw(ProcedureContext& context, const std::string& parameterGroup,
@@ -777,12 +779,17 @@ YtpRawValue readYtpRaw(ProcedureContext& context, const std::string& parameterGr
             {"ulk_address", binding.locator},
             {"parameter_group", parameterGroup},
             {"sample_count", std::to_string(samples)}});
+    const auto values = responseValues(response);
     const unsigned raw = static_cast<unsigned>(
         std::llround(responseNumber(response, "raw_mean")));
     return {
         static_cast<double>((raw & binding.mask) >> binding.shift),
         static_cast<unsigned>(std::stoul(binding.locator)),
-        responseUnsigned(response, "temperature_mode")};
+        responseUnsigned(response, "temperature_mode"),
+        values.count("valid_sample_count")
+            ? static_cast<unsigned>(std::stoul(values.at("valid_sample_count"))) : samples,
+        values.count("invalid_sample_count")
+            ? static_cast<unsigned>(std::stoul(values.at("invalid_sample_count"))) : 0};
 }
 
 ProcedureResult ytpStartStream(const ScenarioNode& node, ProcedureContext& context)
@@ -800,6 +807,14 @@ ProcedureResult ytpStartStream(const ScenarioNode& node, ProcedureContext& conte
             ? response.at("protocol") : std::string("unknown");
         context.state["ytp.raw_path"] = record.count("path")
             ? record.at("path") : std::string();
+        context.state["ytp.valid_word_count"] = response.count("valid_word_count")
+            ? response.at("valid_word_count") : std::string("unknown");
+        if (context.state.at("ytp.protocol") == "rokt_ytp68") {
+            return {RunVerdict::Ok,
+                "Запущен активный ЯТП: ROKT 17 01, принимаются кадры 68 байт; "
+                "валидных слов в первом кадре " + context.state.at("ytp.valid_word_count")
+                + "/32, raw сохраняется в " + context.state.at("ytp.raw_path"), {}};
+        }
         if (context.state.at("ytp.protocol") == "legacy_mode2_65") {
             return {RunVerdict::Ok,
                 "Запущен подтверждённый для выбранного устройства legacy-поток ЯТП mode 2", {}};
@@ -828,19 +843,32 @@ ProcedureResult ytpReadCalibration(const ScenarioNode& node, ProcedureContext& c
     const auto fullBinding = resolveLogicalBinding(context, fullGroup, 0);
     context.state["ytp.calibration_zero_candidate"] = zeroBinding.locator;
     context.state["ytp.calibration_full_candidate"] = fullBinding.locator;
+    const unsigned samples = natural(node, "sample_count", 16);
+    if (context.state["ytp.protocol"] == "rokt_ytp68") {
+        const auto zeroCandidate = readYtpRaw(context, zeroGroup, 0, samples);
+        const auto fullCandidate = readYtpRaw(context, fullGroup, 0, samples);
+        context.state["ytp.calibration_zero_candidate_raw"] =
+            std::to_string(zeroCandidate.raw);
+        context.state["ytp.calibration_full_candidate_raw"] =
+            std::to_string(fullCandidate.raw);
+        if (zeroCandidate.validSamples == 0 || fullCandidate.validSamples == 0) {
+            return {RunVerdict::Incomplete,
+                "Активный поток ЯТП работает, но слова-кандидаты "
+                + zeroBinding.locator + "/" + fullBinding.locator
+                + " содержат 0x8000 (нет измерения); raw→Ом не выполнялся", {}};
+        }
+    }
     if (argument(node, "calibration_mapping_confirmed", "false") != "true"
         || !zeroBinding.confirmed || !fullBinding.confirmed) {
         return {RunVerdict::Incomplete,
-            "Калибровки ЯТП не читались: каталог содержит commissioning-кандидаты "
+            "Калибровки ЯТП прочитаны как raw commissioning-кандидаты "
             + zeroBinding.locator + "/" + fullBinding.locator
-            + ", а архивный mode 2 описывает minimum/maximum в позициях 31/32; "
-              "нужно подтверждение живым кадром", {}};
+            + ", но их назначение и raw→Ом ещё не подтверждены", {}};
     }
     if (context.state["ytp.protocol"] != "legacy_mode2_65") {
         return {RunVerdict::Incomplete,
             "Декодирование калибровок заблокировано: формат текущего потока ЯТП не подтверждён", {}};
     }
-    const unsigned samples = natural(node, "sample_count", 16);
     const auto zero = readYtpRaw(context, zeroGroup, 0, samples);
     const auto full = readYtpRaw(context, fullGroup, 0, samples);
     if (!(full.raw > zero.raw)) {

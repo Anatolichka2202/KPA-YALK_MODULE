@@ -3,6 +3,8 @@
 #include "orbita_stand/yalk_frame.h"
 #include "orbita_stand/ytp_frame.h"
 
+#include <algorithm>
+#include <array>
 #include <cstdlib>
 #include <iostream>
 #include <stdexcept>
@@ -68,11 +70,21 @@ int main()
                     && UlkUdpTransport::classify(120) == UlkFrameKind::Fast120
                     && UlkUdpTransport::classify(200) == UlkFrameKind::Slow200
                     && UlkUdpTransport::classify(204) == UlkFrameKind::Reference204
-                    && UlkUdpTransport::classify(65) == UlkFrameKind::YtpLegacy65,
+                    && UlkUdpTransport::classify(65) == UlkFrameKind::YtpLegacy65
+                    && UlkUdpTransport::classify(68) == UlkFrameKind::YtpRokt68,
                 "ULK frame classifier is wrong");
         require(static_cast<unsigned>(UlkFrameKind::Unknown) == 4
-                    && static_cast<unsigned>(UlkFrameKind::YtpLegacy65) == 5,
+                    && static_cast<unsigned>(UlkFrameKind::YtpLegacy65) == 5
+                    && static_cast<unsigned>(UlkFrameKind::YtpRokt68) == 6,
                 "ULK raw-record kind ids must remain backward compatible");
+        const auto ytpStart = UlkUdpTransport::ytpRoktStartCommand(1);
+        require(ytpStart.size() == 128
+                    && ytpStart[0] == 'R' && ytpStart[1] == 'O'
+                    && ytpStart[2] == 'K' && ytpStart[3] == 'T'
+                    && ytpStart[4] == 0x17 && ytpStart[5] == 0x01
+                    && std::all_of(ytpStart.begin() + 6, ytpStart.end(),
+                        [](std::uint8_t byte) { return byte == 0; }),
+                "YTP ROKT 17 start command is wrong");
         std::vector<std::uint8_t> yalkPacket(200, 0);
         yalkPacket[0] = 0x34;
         yalkPacket[1] = 0xA2;
@@ -158,6 +170,33 @@ int main()
         try { decodeYtpLegacyMode2Frame(std::vector<std::uint8_t>(64, 0)); }
         catch (const std::invalid_argument&) { badYtpRejected = true; }
         require(badYtpRejected, "YTP legacy decoder accepted a non-65-byte frame");
+
+        std::vector<std::uint8_t> ytpRoktPacket(68, 0);
+        ytpRoktPacket[0] = 0x01;
+        ytpRoktPacket[2] = 0x34;
+        for (unsigned index = 0; index < 32; ++index) {
+            const std::uint16_t value = index == 7
+                ? static_cast<std::uint16_t>(0x8000)
+                : static_cast<std::uint16_t>(2000 + index);
+            ytpRoktPacket[4 + index * 2] = static_cast<std::uint8_t>(value & 0xFF);
+            ytpRoktPacket[5 + index * 2] = static_cast<std::uint8_t>(value >> 8);
+        }
+        const auto ytpRokt = decodeYtpRokt68Frame(ytpRoktPacket);
+        require(ytpRokt.header == std::array<std::uint8_t, 4>{0x01, 0x00, 0x34, 0x00}
+                    && ytpRokt.channelRaw.front() == 2000
+                    && ytpRokt.channelRaw[7] == 0x8000
+                    && ytpRokt.channelRaw.back() == 2029
+                    && ytpRokt.calibrationCandidate31Raw == 2030
+                    && ytpRokt.calibrationCandidate32Raw == 2031,
+                "YTP ROKT 68-byte frame decode is wrong");
+        require(isYtpNoMeasurementRaw(0x8000)
+                    && !isYtpNoMeasurementRaw(0)
+                    && !isYtpNoMeasurementRaw(0x7FFF),
+                "YTP no-measurement sentinel handling is wrong");
+        bool badYtpRoktRejected = false;
+        try { decodeYtpRokt68Frame(std::vector<std::uint8_t>(65, 0)); }
+        catch (const std::invalid_argument&) { badYtpRoktRejected = true; }
+        require(badYtpRoktRejected, "YTP ROKT decoder accepted a non-68-byte frame");
         std::cout << "Equipment protocol tests passed\n";
         return EXIT_SUCCESS;
     } catch (const std::exception& error) {

@@ -47,7 +47,13 @@ public:
             return "status=ok\npath=fake/frames.ulkbin\n";
         }
         if (capability == "ulk.parameter_source" && operation == "start_ytp_stream") {
-            return "status=capturing\nprotocol=passive_capture\ndecoder=unconfirmed\n";
+            return "status=ready\nprotocol=rokt_ytp68\nvalid_word_count=0\n"
+                   "invalid_word_count=32\nfirst_sequence=1\n";
+        }
+        if (capability == "ulk.parameter_source" && operation == "read_ytp_channel") {
+            return "status=no_measurement\nprotocol=rokt_ytp68\nraw_mean=32768\n"
+                   "temperature_mode=0\nsample_count=16\nvalid_sample_count=0\n"
+                   "invalid_sample_count=16\nfirst_sequence=2\nlast_sequence=17\n";
         }
         if (capability == "catalog.parameter_resolver" && operation == "resolve") {
             const std::string group = arguments.at("parameter_group");

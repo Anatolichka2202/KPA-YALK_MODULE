@@ -1,6 +1,6 @@
 schema: 1
 id: ktma-main
-version: 2026.09.01-akip-1
+version: 2026.09.01-ubsi-ytp-1
 title: Основной стенд КТМА, Windows 11
 
 # Пока карта кабелей и активные команды не подтверждены на самом стенде,
@@ -80,7 +80,8 @@ devices:
     bind:
       - ulk.parameter_source
     config:
-      # Рабочая проверка ЯЛК: четыре подтверждённые ROKT-команды и кадры 204.
+      # ЯЛК: четыре подтверждённые ROKT-команды и кадры 204.
+      # ЯТП: общий reset/адресация, затем ROKT 17 01 и кадры 68 байт.
       # Архивный legacy mode6 (44 01 06, кадры 120/200) сохранён в плагине.
       host: 192.168.0.115
       local_address: 192.168.0.50
@@ -88,6 +89,8 @@ devices:
       protocol: rokt_yalk
       timeout_ms: 800
       queue_capacity: 4096
+      ytp_protocol: rokt_ytp68
+      ytp_endpoint: 1
       # 29.08.2026: ROKT дал 100 reference204 без unknown/drop/timeout.
       device.active_commands_confirmed: true
   - id: isd

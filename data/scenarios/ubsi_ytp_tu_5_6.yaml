@@ -1,25 +1,26 @@
 schema: 1
 id: ubsi.468157.002.ytp.tu5_6
 title: УБСИ · полная проверка ЯТП по ТУ 5.6 (commissioning)
-version: 0.1.0
+version: 0.2.0
 catalog_version: 2026.08.29-yalk-1
 object_type: UBSI_468157_002
 state: draft
 
-# Текущий ROKT-запуск и raw→Ом ещё не подтверждены на живом УБСИ.
-# Поэтому сценарий готовит production-цепочку, но пока выполняет только
-# пассивную запись raw и никогда не формирует приёмочный ОК.
+# ROKT-запуск и кадр 68 байт подтверждены на живом стенде 01.09.2026.
+# Интерпретация raw→Ом и соответствие слов каналам/калибровкам пока не
+# подтверждены, поэтому сценарий выполняет обмен и raw-диагностику, но
+# не формирует приёмочный ОК.
 steps:
   - id: ytp_stream
-    title: Пассивный захват и запись сырого потока ЯТП
+    title: Активный запуск ROKT и запись сырого потока ЯТП
     tu: 5.6 / ЯТП · commissioning
     procedure: ytp.start_stream
     requires:
       - ulk.parameter_source
     args:
-      protocol: passive_capture
+      protocol: rokt_ytp68
+      ytp_endpoint: 1
       timeout_ms: 3000
-      archive_protocol_confirmed_for_device: false
 
   - id: ytp_calibration
     title: Проверка кандидатов калибровки ЯТП
