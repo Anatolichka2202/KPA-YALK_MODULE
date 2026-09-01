@@ -24,6 +24,7 @@ enum class UlkFrameKind : std::uint8_t {
     Reference204,
     Unknown,
     YtpLegacy65,
+    YtpRokt68,
 };
 
 struct UlkFrame {
@@ -42,6 +43,7 @@ struct UlkStreamStats {
     std::uint64_t slow200 = 0;
     std::uint64_t reference204 = 0;
     std::uint64_t ytpLegacy65 = 0;
+    std::uint64_t ytpRokt68 = 0;
     std::uint64_t unknown = 0;
     std::uint64_t dropped = 0;
 };
@@ -58,6 +60,9 @@ public:
     void prepareYalkReference();
     void startPreparedYalkReference();
     void startYalkReference();
+    void prepareYtpRokt();
+    void startPreparedYtpRokt(std::uint8_t endpointNumber = 1);
+    void startYtpRokt(std::uint8_t endpointNumber = 1);
     void stop() noexcept;
     UlkFrame waitFrame(UlkFrameKind kind, std::uint64_t afterSequence,
                        std::chrono::milliseconds timeout);
@@ -67,6 +72,8 @@ public:
     void stopRecord() noexcept;
 
     static std::vector<std::uint8_t> modeCommand(std::uint8_t mode);
+    static std::vector<std::uint8_t> ytpRoktStartCommand(
+        std::uint8_t endpointNumber);
     static UlkFrameKind classify(std::size_t payloadSize) noexcept;
 
 private:

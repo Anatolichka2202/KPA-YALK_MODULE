@@ -1,0 +1,4793 @@
+EPEpE
+sbcf
+-:()0 
+1/*-+
+1248
+]%><=
+68421
+g1d.
+)><=
+68421
+f0fEf`f
+PW1248
+PortName
+\HARDWARE\DEVICEMAP\SERIALCOMM
+PortNumber
+DEV_
+PID_
+VEN_
+VID_
+COM%1
+FILE:
+document1
+trueType
+hFont
+logFont
+hFont
+qt.io
+qt.io/licensing
+2016
+file
+file
+file
+file
+#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})
+select-all
+edit-delete
+edit-delete
+edit-paste
+edit-paste
+link-copy
+edit-copy
+edit-copy
+edit-cut
+edit-cut
+edit-redo
+edit-redo
+edit-undo
+edit-undo
+vpwPw
+XXXX
+edit-delete
+edit-paste
+edit-copy
+edit-cut
+edit-redo
+edit-undo
+:/qt-project.org/styles/commonstyle/images/cleartext-32.png
+edit-clear
+edit-clear-locationbar-rtl
+edit-clear-locationbar-ltr
+:/qt-project.org/styles/commonstyle/images/cleartext-16.png
+justify
+center
+right
+left
+single
+wave
+wave
+dot-dot-dash
+dot-dash
+dash
+dash
+solid
+explorer
+Luna.msstyles
+Metallic
+$qt_xp_
+QTreeViewThemeHelperWindow
+QTreeViewThemeHelperWindowClass
+BUTTON
+COMBOBOX
+EDIT
+HEADER
+LISTVIEW
+MENU
+PROGRESS
+REBAR
+SCROLLBAR
+SPIN
+TASKDIALOG
+TOOLBAR
+TOOLTIP
+TRACKBAR
+TREEVIEW
+WINDOW
+STATUS
+Edit
+Button
+TOOLTIP
+'IDI_ICON1
+None
+SHCore
+SystemAsterisk
+\.Current
+AppEvents\Schemes\Apps\.Default\
+SystemHand
+SystemExclamation
+SystemAsterisk
+TabletDummyWindow
+TabletDummyWindow
+wintab32
+Performed DropEffect
+QWindowsDragCursorWindow
+.Qt5ClipboardView
+NULL
+Qt5ClipboardView
+OpenGLDummyWindow
+QtOpenGLDummyWindow
+Progid
+Software\Microsoft\Windows\Shell\Associations\UrlAssociations\mailto\UserChoice
+.exe 
+shell32
+dummy
+qt_/directory/
+Courier New
+Windows
+WindowsXP
+WindowsVista
+MSIMEMouseOperation
+:/qt-project.org/windows/cursors/images/
+<data>
+tPNG
+application/x-color
+application/x-qt-image
+text/uri-list
+text/plain
+text/html
+UniformResourceLocator
+HTML Format
+video/
+text/
+multipart/
+model/
+message/
+image/
+example/
+audio/
+application/
+application/x-color
+application/x-color
+application/x-color
+application/x-color
+application/x-qt-image
+text/html
+HTML Format
+text/uri-list
+UniformResourceLocator
+UniformResourceLocatorW
+text/plain
+sPerformed DropEffect
+qtopengltest
+qtopenglproxytest
+disable_rotation
+disable_d3d9
+disable_d3d11
+disable_angle
+disable_desktopgl
+:/qt-project.org/windows/openglblacklists/default.json
+printable
+description
+driverVersionString
+driverBuild
+driverSubVersion
+driverVersion
+driverProduct
+driver
+revision
+subSysId
+deviceId
+vendorId
+d3d9
+Comdlg32
+[;\s]+
+QWindowsGuiEventDispatcher
+WST_
+MS Shell Dlg 2
+MS Shell Dlg 2
+Arial
+Old English
+Impact
+Comic Sans MS
+Courier New
+Courier New
+Times New Roman
+Segoe UI Symbol
+Segoe UI Emoji
+Courier New
+Arial
+MS Sans Serif
+dwrite
+(CFKVXY[fr|
+trueType
+hFont
+logFont
+gdi32
+dWST_
+\s(\d+,)+\d+
+(TrueType)
+HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts
+Software\Microsoft\Windows NT\CurrentVersion\FontSubstitutes
+ !"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_
+`abcdefghijklmn
+opqr
+stuvwxyz
+@LV^a
+tABCDEFGHIJKLMNOPQRSTUVWXYZ
+tabcdefghijklmnopqrstuvwxyz
+ !"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_
+`abcdefghijklmn
+opqr
+stuvwxyz
+ !"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~
+mask
+depth
+group
+^(?<junk>[a-z|A-Z]{0,4})(?<group>[a-z|A-Z]{1})(?<depth>[\d]{0,2})(?<mask>[#mk]{0,2})$
+..\..\..\3rdparty\libtiff\libtiff\tif_write.c
+td->td_nstrips > 0
+td->td_planarconfig == PLANARCONFIG_CONTIG
+..\..\..\3rdparty\libtiff\libtiff\tif_read.c
+(tif->tif_flags&TIFF_NOREADRAW)==0
+u(tif->tif_flags&TIFF_BUFFERMMAP)==0
+(cc & 1) == 0
+(cc % 3) == 0
+(cc & 3) == 0
+(cc & 7) == 0
+..\..\..\3rdparty\libtiff\libtiff\tif_open.c
+n.a16==1
+)(toff_t)tif->tif_size==n
+..\..\..\3rdparty\libtiff\libtiff\tif_getimage.c
+img->UaToAa==NULL
+yimg->Bitdepth16To8==NULL
+..\..\..\3rdparty\libtiff\libtiff\tif_dirwrite.c
+dir[m].tdir_tag!=tag
+adatalength<0x80000000UL
+value>=0.0
+count<0x20000000
+tif->tif_flags&TIFF_BIGTIFF
+count<0x40000000
+ycount<0x80000000
+epa != 0
+*pa <= 0xFFFFFFFFUL
+o->field_type==TIFF_ASCII
+o->field_readcount==TIFF_VARIABLE
+o->field_passcount==0
+o->field_type==TIFF_SHORT
+o->field_readcount==1
+o->field_type==TIFF_LONG
+o->field_type==TIFF_UNDEFINED
+o->field_readcount==TIFF_VARIABLE2
+o->field_passcount==1
+Fna<ndir
+"..\..\..\3rdparty\libtiff\libtiff\tif_dirread.c
+size>0
+(tmsize_t)datasize>0
+gfip != NULL
+fip->set_field_type!=TIFF_SETGET_OTHER
+fip->set_field_type!=TIFF_SETGET_INT
+fip->field_passcount==0
+efip->field_readcount==1
+fip->field_readcount==2
+fip->field_readcount>=1
+dfip->field_readcount==TIFF_VARIABLE
+fip->field_passcount==1
+lfip->field_readcount==TIFF_VARIABLE2
+pdir
+dfii != FAILED_FII
+..\..\..\3rdparty\libtiff\libtiff\tif_dir.c
+tv->count == 1
+fip->field_writecount==TIFF_VARIABLE2
+t(uint64)nextdir32==nextdir
+..\..\..\3rdparty\libtiff\libtiff\tif_zip.c
+sp != 0
+sp != NULL
+sp->state == ZSTATE_INIT_ENCODE
+ssp->state == ZSTATE_INIT_DECODE
+)(scheme == COMPRESSION_DEFLATE) || (scheme == COMPRESSION_ADOBE_DEFLATE)
+..\..\..\3rdparty\libtiff\libtiff\tif_predict.c
+sp != NULL
+sp->encodepfunc != NULL
+sp->encoderow != NULL
+sp->decoderow != NULL
+sp->decodepfunc != NULL
+sp->vsetparent != NULL
+sp->vgetparent != NULL
+sp->decodetile != NULL
+rowsize > 0
+sp->encodetile != NULL
+sp != 0
+..\..\..\3rdparty\libtiff\libtiff\tif_pixarlog.c
+sp != 0
+sp != NULL
+)scheme == COMPRESSION_PIXARLOG
+..\..\..\3rdparty\libtiff\libtiff\tif_lzw.c
+tif->tif_data != 0
+sp != NULL
+sp->enc_hashtab != NULL
+nbits <= BITS_MAX
+esp->dec_codetab != NULL
+dscheme == COMPRESSION_LZW
+..\..\..\3rdparty\libtiff\libtiff\tif_luv.c
+s == 0
+sp != NULL
+td->td_photometric == PHOTOMETRIC_LOGLUV
+td->td_photometric == PHOTOMETRIC_LOGL
+cc%rowlen == 0
+sp != 0
+scheme == COMPRESSION_SGILOG24 || scheme == COMPRESSION_SGILOG
+..\..\..\3rdparty\libtiff\libtiff\tif_fax3.c
+x == lastx
+sp != 0
+)length < 9
+te->runlen == 64*(span>>6)
+tparm < 9
+sp != NULL
+sp->vsetparent != 0
+..\..\..\3rdparty\libtiff\libtiff\tif_dumpmode.c
+n > 0
+..\..\..\3rdparty\libwebp\src\enc\../utils/random.h
+num_bits + VP8_RANDOM_DITHER_FIX <= 31
+..\..\..\3rdparty\libwebp\src\enc\picture_csp.c
+tab_pos + 1 < kGammaTabSize + 1
+total_a > 0 && total_a <= 4 * 0xff
+(uint64_t)sum * kInvAlpha[total_a] < ((uint64_t)1 << 32)
+step == 4
+picture->width >= kMinDimensionIterativeConversion
+picture->height >= kMinDimensionIterativeConversion
+step >= 3
+..\..\..\3rdparty\libwebp\src\enc\webpenc.c
+(int)error < VP8_ENC_ERROR_LAST
+(int)error >= VP8_ENC_OK
+mem <= (uint8_t*)enc + size
+..\..\..\3rdparty\libwebp\src\enc\vp8l.c
+a != b
+..\..\..\3rdparty\libwebp\src\enc\./backward_references.h
+p->mode == kLiteral
+p->argb_or_distance < (1U << MAX_COLOR_CACHE_BITS)
+p->mode == kCopy
+VP8LRefsCursorOk(c)
+histogram_image->size == 1
+palette_size >= 1 && palette_size <= MAX_PALETTE_SIZE
+pic != NULL && pic->argb != NULL
+enc->current_width_ == width
+pred_bits >= 2
+ccolor_transform_bits >= 2
+histogram_bits >= MIN_HUFFMAN_BITS
+histogram_bits <= MAX_HUFFMAN_BITS
+width < WEBP_MAX_DIMENSION && height < WEBP_MAX_DIMENSION
+..\..\..\3rdparty\libwebp\src\enc\token.c
+proba < 256
+bit <= 1
+proba_idx < FIXED_PROBA_BIT
+!b->error_
+..\..\..\3rdparty\libwebp\src\enc\../utils/utils.h
+val < (1 << 16)
+val < (1 << 24)
+..\..\..\3rdparty\libwebp\src\enc\syntax.c
+pic->width >= 1 && pic->height >= 1
+pic->width <= MAX_CANVAS_SIZE && pic->height <= MAX_CANVAS_SIZE
+..\..\..\3rdparty\libwebp\src\enc\picture.c
+picture != NULL
+..\..\..\3rdparty\libwebp\src\enc\near_lossless.c
+bits > 0
+argb != NULL
+limit_bits >= 0
+limit_bits <= MAX_LIMIT_BITS
+..\..\..\3rdparty\libwebp\src\enc\./backward_references.h
+p->mode == kLiteral
+c != NULL
+VP8LRefsCursorOk(c)
+..\..\..\3rdparty\libwebp\src\enc\histogram.c
+a->palette_code_bits_ == b->palette_code_bits_
+histo_queue->size <= histo_queue->max_size
+total_size <= (size_t)0x7fffffff
+p->argb_or_distance < (1U << MAX_COLOR_CACHE_BITS)
+p->mode == kCopy
+histo_bits > 0
+src->palette_code_bits_ == dst_cache_bits
+bin_id < NUM_PARTITIONS
+bin_id < BIN_SIZE
+bin_offset + num_histos < bin_depth * BIN_SIZE
+out_size == 1
+..\..\..\3rdparty\libwebp\src\enc\frame.c
+nb <= total
+enc->num_parts_ == 1
+enc->use_tokens_
+proba->use_skip_proba_ == 0
+rd_opt >= RD_OPT_BASIC
+num_pass_left > 0
+..\..\..\3rdparty\libwebp\src\enc\filter.c
+sharpness >= 0 && sharpness <= 7
+3#3#3#3#
+..\..\..\3rdparty\libwebp\src\enc\backward_references.c
+refs != NULL
+..\..\..\3rdparty\libwebp\src\enc\./backward_references.h
+idx >= 0
+idx < (1 << MAX_COLOR_CACHE_BITS)
+k >= 0 && k < MAX_LENGTH
+..\..\..\3rdparty\libwebp\src\enc\../utils/color_cache.h
+(key >> cc->hash_bits_) == 0u
+i + len < pix_count
+len > 0
+manager->count_ >= 0
+current != NULL
+c != NULL
+VP8LRefsCursorOk(c)
+p->mode == kCopy
+src->block_size_ == dst->block_size_
+p->size_ == 0
+p->offset_length_ == NULL
+size > 0
+p != NULL
+xsize > 0
+p->size_ != 0
+p->offset_length_ != NULL
+base_position > (uint32_t)pos
+best_length <= MAX_LENGTH
+best_distance <= WINDOW_SIZE
+cache_bits_high <= MAX_COLOR_CACHE_BITS
+PixOrCopyIsCopy(v)
+interval_ends_index < cost_manager->interval_ends_size_
+..\..\..\3rdparty\libwebp\src\enc\analysis.c
+nb >= 1
+n < 2 * nb
+(uint64_t)(w * h) == (uint64_t)w * h
+mid <= max && mid >= min
+..\..\..\3rdparty\libwebp\src\enc\alpha.c
+config.quality >= 0 && config.quality <= 100.f
+(uint64_t)data_size == (uint64_t)width * height
+filter >= 0 && filter < WEBP_FILTER_LAST
+method >= ALPHA_NO_COMPRESSION
+method <= ALPHA_LOSSLESS_COMPRESSION
+enc != NULL && pic != NULL && pic->a != NULL
+width > 0 && height > 0
+pic->a_stride >= width
+..\..\..\3rdparty\libwebp\src\dsp\alpha_processing.c
+v <= 255
+..\..\..\3rdparty\libwebp\src\dsp\upsampling.c
+top_y != NULL
+..\..\..\3rdparty\libwebp\src\dsp\lossless_enc.c
+a->palette_code_bits_ == b->palette_code_bits_
+v >= LOG_LOOKUP_IDX_MAX
+..\..\..\3rdparty\libwebp\src\dsp\lossless.c
+row_start < row_end
+row_end <= transform->ysize_
+..\..\..\3rdparty\libwebp\src\dsp\filters.c
+in != NULL
+out != NULL
+width > 0
+height > 0
+row >= 0 && num_rows > 0 && row + num_rows <= height
+stride >= width
+..\..\..\3rdparty\libwebp\src\dsp\enc.c
+mtx->sharpen_[j] == 0
+..\..\..\3rdparty\libwebp\src\dsp\cost.c
+res->first == 0 || coeffs[0] == 0
+v != 0
+}{ywusqonkigfdb`^\[YVVSRPMLJIGECB@?=;976431/.,+)(&$#! 
+P..\..\..\3rdparty\libwebp\src\demux\demux.c
+IsValidSimpleFormat(dmux)
+..\..\..\3rdparty\libwebp\src\dec\webp.c
+features != NULL
+L(uint64_t)(data - headers->data) < MAX_CHUNK_PAYLOAD
+headers->offset == headers->data_size - data_size
+headers != NULL
+params != NULL
+buf->u_stride == buf->v_stride
+..\..\..\3rdparty\libwebp\src\dec\vp8l.c
+meta_index < hdr->num_htree_groups_
+WebPUnfilters[alph_dec->filter_] != NULL
+hdr != NULL
+dec->width_ <= final_width
+last_row <= dec->io_->crop_bottom
+cur_row == last_row
+dec->next_transform_ == 1
+transform->type_ == COLOR_INDEXING_TRANSFORM
+..\..\..\3rdparty\libwebp\src\dec\./../utils/bit_reader.h
+br->pos_ <= br->len_
+huff->bits <= HUFFMAN_TABLE_BITS
+row <= dec->io_->crop_bottom
+num_rows <= NUM_ARGB_CACHE_ROWS
+y_start < y_end
+io->crop_left < io->crop_right
+needed_lines > 0 && needed_lines <= lines_left
+dec->last_out_row_ <= output->height
+dec->last_row_ <= dec->height_
+dec->last_row_ < last_row
+src_last <= src_end
+dec->incremental_
+htree_group != NULL
+code.value >= NUM_LITERAL_CODES
+0 == ((uintptr_t)dst & 7)
+src <= src_end
+color_cache != NULL
+..\..\..\3rdparty\libwebp\src\dec\./../utils/color_cache.h
+(key >> cc->hash_bits_) == 0u
+br->eos_ == VP8LIsEndOfStream(br)
+dec->next_transform_ <= NUM_TRANSFORMS
+data == NULL
+is_level0
+alph_dec != NULL
+dec != NULL
+last_row <= dec->height_
+pos <= end
+last_row <= height
+Is8bOptimizable(hdr)
+dec->status_ != VP8_STATUS_OK
+dec->hdr_.huffman_tables_ != NULL
+dec->hdr_.htree_groups_ != NULL
+dec->hdr_.num_htree_groups_ > 0
+io != NULL
+params != NULL
+dec->output_ != NULL
+dec->rescaler_memory == NULL
+..\..\..\3rdparty\libwebp\src\dec\../utils/bit_reader_inl.h
+br != NULL && br->buf_ != NULL
+...\..\..\3rdparty\libwebp\src\dec\vp8.c
+dec->ready_
+..\..\..\3rdparty\libwebp\src\dec\../utils/bit_reader_inl.h
+br != NULL && br->buf_ != NULL
+ !"#$%&'()*+,-./0123456789:<>@BDFHJLNPRTVXZ\^`bdfhjlnprtwz}
+..\..\..\3rdparty\libwebp\src\dec\io.c
+expected_num_lines_out == num_rows
+!(io->mb_y & 1)
+expected_num_lines_out == mb_h
+y_pos + num_lines_out < p->output->height
+u_lines_in == v_lines_in
+p->scaler_u.y_accum == p->scaler_v.y_accum
+expected_num_lines_out == num_lines_out
+p->last_y + expected_num_lines_out <= io->scaled_height
+..\..\..\3rdparty\libwebp\src\dec\frame.c
+limit >= 3
+!(delta_y & 1)
+dec != NULL
+worker->status_ == OK
+headers == NULL || !headers->is_lossless
+mem <= (uint8_t*)dec->mem_ + dec->mem_size_
+..\..\..\3rdparty\libwebp\src\dec\buffer.c
+src_buf != NULL && dst_buf != NULL
+src_buf->colorspace == dst_buf->colorspace
+output != NULL
+..\..\..\3rdparty\libwebp\src\dec\alpha.c
+dec != NULL
+dec != NULL && io != NULL
+dec->alpha_plane_mem_ == NULL
+data != NULL && output != NULL && src_io != NULL
+dec->width_ > 0 && dec->height_ > 0
+dec->method_ == ALPHA_LOSSLESS_COMPRESSION
+dec->alph_dec_ != NULL
+row + num_rows <= height
+deltas <= &dec->alpha_data_[dec->alpha_data_size_]
+WebPUnfilters[alph_dec->filter_] != NULL
+alph_dec->vp8l_dec_ != NULL
+..\..\..\3rdparty\libwebp\src\utils\utils.c
+nmemb * size > 0
+src != NULL && dst != NULL
+src_stride >= width && dst_stride >= width
+src->width == dst->width && src->height == dst->height
+src->use_argb && dst->use_argb
+pic->use_argb
+..\..\..\3rdparty\libwebp\src\utils\thread.c
+worker->status_ <= OK
+worker->impl_ == NULL
+worker->status_ == NOT_OK
+!ok || (worker->status_ == OK)
+..\..\..\3rdparty\libwebp\src\utils\rescaler.c
+scaled_width != NULL
+scaled_height != NULL
+..\..\..\3rdparty\libwebp\src\utils\quant_levels.c
+inv_q_level[0] == min_s
+inv_q_level[num_levels - 1] == max_s
+..\..\..\3rdparty\libwebp\src\utils\huffman_encode.c
+t1->value_ != t2->value_
+tokens != NULL
+value <= MAX_ALLOWED_CODE_LENGTH
+tokens <= ending_token
+tree_size_orig <= (1 << (tree_depth_limit - 1))
+code_length <= MAX_ALLOWED_CODE_LENGTH
+..\..\..\3rdparty\libwebp\src\utils\huffman.c
+end % step == 0
+num_htree_groups <= MAX_HTREE_GROUPS
+code_lengths_size != 0
+code_lengths != NULL
+root_table != NULL
+root_bits > 0
+..\..\..\3rdparty\libwebp\src\utils\color_cache.c
+cc != NULL
+hash_bits > 0
+src != NULL
+dst != NULL
+src->hash_bits_ == dst->hash_bits_
+..\..\..\3rdparty\libwebp\src\utils\bit_writer.c
+bw->buf_ != NULL
+bw->nb_bits_ >= 0
+nb_bits > 0 && nb_bits < 32
+data != NULL
+n_bits <= 32
+n_bits <= VP8L_WRITER_MAX_BITS
+..\..\..\3rdparty\libwebp\src\utils\././bit_reader.h
+br->pos_ <= br->len_
+..\..\..\3rdparty\libwebp\src\utils\bit_reader.c
+br != NULL && br->buf_ != NULL
+..\..\..\3rdparty\libwebp\src\utils\./bit_reader_inl.h
+br != NULL
+start != NULL
+size < (1u << 31)
+length < 0xfffffff8u
+buf != NULL
+len < 0xfffffff8u
+br->bit_pos_ >= VP8L_WBITS
+n_bits >= 0
+..\..\..\3rdparty\libwebp\src\enc\picture_tools.c
+pic != NULL && pic->use_argb
+..\..\..\3rdparty\libwebp\src\enc\quant.c
+rd->y_ac_levels[n + 0][0] == 0
+rd->y_ac_levels[n + 1][0] == 0
+expn > 0.
+ "#%&()+,.0134679:<>?ABDEGHJKMOPRSUVXY]`cfilorux|
+ !"#$%&'()*+,-./0123456789:<>@BDFHJLNPRTVXZ\^`bdfhjlnprtwz}
+..\..\..\3rdparty\libwebp\src\dsp\rescaler.c
+!WebPRescalerInputDone(wrk)
+wrk->x_expand
+x_in < wrk->src_width * x_stride
+wrk->x_sub == 0 || accum == 0
+!wrk->x_expand
+accum == 0
+!WebPRescalerOutputDone(wrk)
+wrk->y_accum <= 0
+wrk->y_expand
+wrk->y_sub != 0
+v >= 0 && v <= 255
+!wrk->y_expand
+wrk->src_width == 1 && wrk->dst_width <= 2
+wrk->src_height == 1 && wrk->dst_height == 1
+application/x-qstandarditemmodeldatalist
+vista
+Custom.%1x%2%3
+)0*16#
+ @!A7B"E
+./0123456789:;<=>?
+(CFKVXY]_fr|
+_q_icoOrigDepth
+/pictureformats
+qttestability
+Reinstalling the application may fix this problem.
+Available platform plugins are: %1.
+This application failed to start because it could not find or load the Qt platform plugin "%1"
+in "%2".
+#line %1
+1aAiI
+(<Pcw
+src\hb-ot-layout-gsubgpos-private.hh
+num_items > 0
+src\hb-ot-layout.cc
+!buffer->has_separate_output ()
+src\hb-open-type-private.hh
+this->start <= this->end
+src\hb-object-private.hh
+hb_object_is_valid (obj)
+src\hb-shape.cc
+len < ARRAY_LENGTH (s)
+src\hb-object-private.hh
+hb_object_is_valid (obj)
+src\hb-object-private.hh
+hb_object_is_valid (obj)
+src\hb-open-type-private.hh
+this->start <= this->end
+src\hb-object-private.hh
+hb_object_is_valid (obj)
+src\hb-buffer.cc
+have_output
+(uintptr_t) pos % sizeof (scratch_buffer_t) == 0
+i <= len
+i <= out_len + (len - idx)
+idx >= count
+content_type == HB_BUFFER_CONTENT_TYPE_UNICODE || (!len && content_type == HB_BUFFER_CONTENT_TYPE_INVALID)
+byte_i < 8 && byte_i + count <= 8
+!allocated_var_bytes[i]
+allocated_var_bytes[i]
+0 == strcmp (allocated_var_owner[i], owner)
+src\hb-object-private.hh
+hb_object_is_valid (obj)
+buffer->content_type == HB_BUFFER_CONTENT_TYPE_UNICODE || (!buffer->len && buffer->content_type == HB_BUFFER_CONTENT_TYPE_INVALID)
+buffer->have_positions
+buffer->content_type == HB_BUFFER_CONTENT_TYPE_GLYPHS
+!have_positions
+src\hb-object-private.hh
+hb_object_is_valid (obj)
+src\hb-shape-plan.cc
+props->direction != HB_DIRECTION_INVALID
+src\hb-object-private.hh
+hb_object_is_valid (obj)
+buffer->content_type == HB_BUFFER_CONTENT_TYPE_UNICODE
+shape_plan->face_unsafe == font->face
+hb_segment_properties_equal (&shape_plan->props, &buffer->props)
+!hb_object_is_inert (buffer)
+5545555555555555FFJJJJJJJJJJJJJJJJJJJLLL
+-/Pqs
+src\hb-ot-shape-complex-thai.cc
+false
+++++++++++
+++++++++++3
+ =W\v
+src\hb-ot-shape-complex-indic.cc
+reph_pos != REPH_POS_DONT_CARE
+nsrc\hb-ot-map-private.hh
+stage <= stages[table_index].len
+false
+indic_plan->config->reph_mode == REPH_MODE_VIS_REPHA
+!has_reph
+1 <= pref_len && pref_len <= 2
+(((((((((((((((((((((((((((((((((((((OOOOVVOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvO
+(')*''''''''''''')'(''''+',,-('..-'-'//0('110'0'223('443'3'556('776'6'8'''('9':';556('<'='>223('?'@'A//0('B'C'D,,-('''''D'D,,-(''''ED'F,,-('''''F'F,,-(''''GF'H,,-('''''H'H,,-(''''IH'J,,-('''''J'J,,-(''''KJ'L,,-('''''L'L,,-(''''ML'ONPQNNNNNNNNNNNNNPNONNNNRNSSTONVVTUTUWWXONYYXNXNZZ[ON\\[N[N]]^ON__^N^N`NNNONaNbNc]]^ONdNeNfZZ[ONgNhNiWWXONjNkNlSSTONNNNNlNlSSTONNNNmlNnSSTONNNNNnNnSSTONNNNonNpSSTONNNNNpNpSSTONNNNqpNrSSTONNNNNrNrSSTONNNNsrNtSSTONNNNNtNvuwxuuuuuuuuuuuuuwuvuuuuyuzz{vu||{u{u}}~vu
+~u~u
+uuuvu
+}}~vu
+zz{vuuuuu
+zz{vuuuu
+zz{vuuuuu
+zz{vuuuu
+zz{vuuuuu
+zz{vuuuu
+zz{vuuuuu
+zz{vuuuu
+zz{vuuuuu
+zz{vuuuu
+utSSTONNNN
+tNVVT
+rSST
+rSST
+L,,-(
+tSSTO
+tSSTO
+#%*.059;@DFLNPVXZ`bdjlnz
+src\hb-open-type-private.hh
+this->start <= (char *) &obj && (char *) &obj <= this->head && (char *) &obj + size >= this->head
+this->start < (char *) &obj && (char *) &obj <= this->head && (char *) &obj + size >= this->head
+!this->ran_out_of_room
+Qt bearer thread
+Unknown
+EVDO
+WiMAX
+Bluetooth
+HSPA
+WCDMA
+CDMA2000
+WLAN
+Ethernet
+QNetworkAccessManager thread
+data
+http
+iphlpapi
+SctpListen
+SctpTunnel
+NameLookup
+Caching
+Listen
+Tunnel
+Asecur32.dll
+NTLM
+ConnectInBackground
+Qt HTTP synchronous thread
+ConnectInBackground
+file
+>winhttp
+Qt System Proxy access/1.0
+Software\Policies\Microsoft\Windows\CurrentVersion\Internet Settings
+Software\Microsoft\Windows\CurrentVersion\Internet Settings
+Software\Microsoft\Windows\CurrentVersion\Internet Settings
+*7BMUYi
+/012345
+??3?
+FF?F
+FH7A
+7ASRSR
+SR6F
+SRB@SR
+SRSR67
+EPOSR
+ASRA
+!B@A
+^ut_haic]bkWjXYdm\eV`[
+^fZ_haic]bkWjXYdm\eV`[l
+^yx_haic]bkWjXYdm\eV`[
+^rq_haic]bkWjXYdm\eV`[
+_haic]bkWjXYdm\eV`[
+_haic]bkWjXYdm\eV`[
+_haic]bkWjXYdm\eV`[
+_haic]bkWjXYdm\eV`[
+5/{CB
+=;39
++%4/)
+QU~*.
+-$wp
+}uwx
+osqy|~knpvt
+0./34
+<@-2B
+YEJIFGH
+99;;;;;;;;CD@HHHKBBBBONPPPPPPPQQQQQQQWSXXXX[\]]]]^^```aabbccddYY_ZeegggggggggghiiiiklmmTTnnppUUUAALr?stVVVuuuuuuuuuuuuuuuuuuuuuuuvvwwwwwwwwzFFFF{|{|{|{|~~~~~~~~~~~~~~~~~~~~~~}Iqqqq
+jjjj
+::::::::::JEEMofffff
+e#[]()|=%/,-+*.?!
+QEventDispatcherWin32_Internal_Widget
+Keyboard layout changed
+GHIJy
+false
+true
+application/x-qt-image
+application/x-color
+text/plain
+text/html
+text/uri-list
+application/x-qabstractitemmodeldatalist
+Rules
+qtlogging.ini
+Rules
+http
+http
+Relative URL's path component contains ':' before any '/'
+Path component is relative and authority is present
+Invalid fragment (character '%1' not permitted)
+Invalid query (character '%1' not permitted)
+Invalid path (character '%1' not permitted)
+Port field was empty
+Invalid port or port number out of range
+Expected ']' to match '[' in hostname
+Invalid IPvFuture address (character '%1' not permitted)
+Invalid IPv6 address (character '%1' not permitted)
+Invalid IPv6 address
+Invalid hostname (contains invalid characters)
+Invalid hostname (character '%1' not permitted)
+Invalid password (character '%1' not permitted)
+Invalid user name (character '%1' not permitted)
+Invalid scheme (character '%1' not permitted)
+/?#"<>^\|{}
+@][/?#"<>^\|{}
+:@][/?#"<>^\|{}
+@SSL
+webdavs
+file
+\\.\NUL
+..\3rdparty\harfbuzz\src\harfbuzz-tibetan.c
+i == boundary
+..\3rdparty\harfbuzz\src\harfbuzz-thai.c
+script == HB_Script_Thai
+..\3rdparty\harfbuzz\src\harfbuzz-khmer.c
+..\3rdparty\harfbuzz\src\harfbuzz-myanmar.c
+..\3rdparty\harfbuzz\src\harfbuzz-arabic.c
+FALSE
+..\3rdparty\harfbuzz\src\harfbuzz-indic.cpp
+..\3rdparty\harfbuzz\src\harfbuzz-shaper.cpp
+nmarks > 0
+item->num_glyphs <= length
+glyph_pos == item->num_glyphs
+script < HB_ScriptCount
+script >= HB_Script_Devanagari && script <= HB_Script_Sinhala
+*split == matra_uc
+item->item.script >= HB_Script_Devanagari && item->item.script <= HB_Script_Sinhala
+..\3rdparty\harfbuzz\src\harfbuzz-greek.c
+shaper_item->item.script == HB_Script_Greek
+item->item.script == HB_Script_Tibetan
+item->item.script == HB_Script_Khmer
+item->item.length < 13
+..\3rdparty\harfbuzz\src\harfbuzz-hebrew.c
+shaper_item->item.script == HB_Script_Hebrew
+item->item.script == HB_Script_Arabic || item->item.script == HB_Script_Syriac || item->item.script == HB_Script_Nko
+stringLength >= from + len
+..\3rdparty\harfbuzz\src\harfbuzz-hangul.c
+item->item.script == HB_Script_Hangul
+item->item.script == HB_Script_Myanmar
+item->item.length < 32
+shaper_item->item.script < HB_ScriptCount
+GC1'
+VIII
+viii
+(10)
+(11)
+(12)
+(13)
+(14)
+(15)
+(16)
+(17)
+(18)
+(19)
+(20)
+kcal
+a.m.
+p.m.
+&),/25
+8;>ADGJMP
+SVY\_b
+ehknq
+twz}
+ !"#$%	
+&&&&&&&&&&&&&&&&&&&&&&&&&&'()*+*,,,,,,,,,,,,,,,,,,,,,,,,,,'-.$
+4356$73489:;<=
+>4?5@AAA1BBBBBB&BBBBBBBBB&BBBBBB$&BBBBB&CDDDDDD,DDDDDDDDD,DDDDDD$,DDDDD,EFGFGFGFGFGFGFGFGHIFGFGFGFGFGFGFGFGFGFGHIFGFGFGFGJKLMFGFGNFGFGFGLMHIFGFGFGOHIFGFGFGHIFGFGFGFGFGFGFGFGFGHIFGFGFGFGFGFGFGFGPFGFGFGQRSHIHITHIUUHINVWXHIUYZ[\HI]N[^_`FGHIHIaHIaNNHIaFGbbHIHIcHINdHINeddddfghfghfghFGFGFGFGFGFGFGFGiFGFGFGHIFGFGFGFGFGjfghFGklmnFGFGFGFGFGFGFGFGFGFGFGFGFGFGFGmnmnopmnqropopmnmnmnmnmnmnmnrrrssstuvwxyzu{|}~
+NNNNNNN
+NNNNN
+NdNNNNNNNN
+NNNNNNNNNN
+****
+*****
+444444*
+*****
+rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr
+rssssssssssss
+sssssssssssssssssssssssssssss
+FGFGFGFGFGFGFGFGFGFGFGFGFGFGFGFGFGFGFGFGFGFGFGFGFGFGFG
+FGFGFGFGFGFGFGFGFGFGFGFGFG
+AAAAAAAAAAAAA
+$$$$$33333
+3333$33$33$3333333
+333333333333333333333333333333
+33$3$3333333333333333333333
+$$$$
+$$$$
+$$$$$$$$$$$$$$
+$$$$$
+$$$$$$$$$$$
+$$$$$$$$
+$$$$$$$$$$
+$$$$$
+$$$$$$$$$
+$$$$$$$$$$$$$$$$$
+$$$$
+333333
+33333333333333
+3333$$3333333
+33333333333
+3333333333333333333333333333333333333
+33333333333
+AAAAAAAAAAA
+AAAAAAAAAAA?:;
+3333333333333333333333
+33333333333333333333333$333333333$3333333333333333333333333333333333333333333333
+3333333333333333
+3333333333333333333333333
+333333333333
+333333$
+33333333333333333333333333
+33333333333333333333333333333333333
+3333
+3333
+333333333333333333333333
+33333333333333
+????????
+_-.@
+$2:AJUgqy
+ )8HNXajr{
+)2:AJSZfnu}
+OromooItoophiyaaKeeniyaaAfrikaansSuid-AfrikaNamibi
+shqipShqip
+riMaqedoniKosov
+rbaycan diliAz
+rbaycan
+euskaraEspainia
+brezhonegFra
+catal
+EspanyaAndorraFran
+hrvatskiHrvatskaBosna i Hercegovina
+tina
+ republikadanskDanmarkGr
+nlandNederlandsNederlandArubaVlaamsBelgi
+Cura
+aoSurinameCaribisch NederlandSint-MaartenAmerican EnglishUnited StatesEnglishAmerican SamoaAnguillaAntigua & BarbudaAustralian EnglishAustraliaAustriaBahamasBarbadosBelgiumBelizeBermudaBotswanaBritish Indian Ocean TerritoryBurundiCameroonCanadian EnglishCanadaCayman IslandsChristmas IslandCocos (Keeling) IslandsCook IslandsCyprusDenmarkDominicaEritreaFalkland IslandsFijiFinlandGuernseyGambiaGermanyGhanaGibraltarGrenadaGuamGuyanaHong Kong SAR ChinaIndiaIrelandIsraelJamaicaKenyaKiribatiLesothoLiberiaMacau SAR ChinaMadagascarMalawiMalaysiaMaltaMarshall IslandsMauritiusMicronesiaMontserratNamibiaNauruNetherlandsNew ZealandNigeriaNiueNorfolk IslandNorthern Mariana IslandsPakistanPalauPapua New GuineaPhilippinesPitcairn IslandsPuerto RicoRwandaSt. Kitts & NevisSt. LuciaSt. Vincent & GrenadinesSamoaSeychellesSierra LeoneSingaporeSloveniaSolomon IslandsSouth AfricaSt. HelenaSudanSwazilandSwedenSwitzerlandTanzaniaTokelauTongaTrinidad & TobagoTurks & Caicos IslandsTuvaluUgandaBritish EnglishUnited KingdomU.S. Outlying IslandsVanuatuBritish Virgin IslandsU.S. Virgin IslandsZambiaZimbabweDiego GarciaIsle of ManJerseySouth SudanSint MaarteneestiEestif
+roysktF
+royarsuomiSuomifran
+aisFranceAlg
+rieBelgiqueB
+ninBurkina FasoCamerounfran
+ais canadienR
+publique centrafricaineTchadComoresCongo-KinshasaCongo-BrazzavilleC
+te d
+IvoireDjiboutiGuin
+quatorialeGuyane fran
+aisePolyn
+sie fran
+aiseGabonGuadeloupeGuin
+tiLuxembourgMaliMartiniqueMauritanieMauriceMayotteMonacoMarocNouvelle-Cal
+donieNigerLa R
+unionS
+galSaint-Pierre-et-Miquelonfran
+ais suisseSuisseSyrieTogoTunisieWallis-et-FutunaSaint-Barth
+lemySaint-MartinWest-FryskNederl
+idhligAn R
+oghachd AonaichtegalegoEspa
+DeutschDeutschland
+sterreichisches Deutsch
+sterreichBelgienLiechtensteinLuxemburgSchweizer HochdeutschSchweiz
+kalaallisutKalaallit Nunaat
+HausaNajeriyaGanaNijar
+magyarMagyarorsz
+slenska
+slandIndonesiaGaeilge
+ireitalianoItaliaSan MarinoSvizzera
+Kinyarwanda
+IkirundiUburundi
+latvie
+uLatvijaling
+laRepibiki demokratiki ya Kong
+laRepibiki ya Afr
+ka ya K
+tiKongolietuvi
+Lietuva
+MalagasyMadagasikaraBahasa MelayuBruneiSingapura
+Malti
+norsk bokm
+lNorgeSvalbard og Jan Mayen
+polskiPolskaportugu
+s do BrasilBrasilportugu
+sAngolaCabo VerdeTimor-LesteGuin
+ EquatorialGuin
+-BissauLuxemburgoMacau, RAE da ChinaMo
+ambiqueportugu
+s europeuPortugalS
+o Tom
+ e Pr
+ncipeSu
+RunasimiPer
+BoliviaEcuadorrumantschSvizrarom
+niamoldoveneasc
+Republica Moldova
+se t
+srpskiCrna GoraSrbija
+Kosovo
+chiShona
+sloven
+inaSlovenskosloven
+inaSlovenijaSoomaaliSoomaaliyaJabuutiItoobiyaKiiniyaespa
+ol de Espa
+aespa
+olArgentinaChileColombiaCosta RicaCubaRep
+blica DominicanaEl SalvadorGuinea EcuatorialGuatemalaHondurasespa
+ol de M
+xicoM
+xicoNicaraguaPanam
+ParaguayFilipinasEstados UnidosUruguayVenezuelaCanariasespa
+ol latinoamericanoLatinoam
+ricaCeuta y MelillaKiswahiliKiswahili ya KongoJamhuri ya Kidemokrasia ya KongosvenskaSverige
+land
+lea fakatongaT
+rkiyeK
+rkmen
+rkmenistan
+zbekO
+zbekiston
+ng Vi
+t NamCymraegY Deyrnas Unedig
+ Yor
+de N
+de B
+isiZului-South AfricanynorskNoregbosanski
+GaelgEllan VanninkernewekRywvaneth UnysAkanGaana
+IgboKikambafurlanItalieE
+egbeGhana nutomeTogo nutome
+lelo Hawai
+Amelika Hui P
+IaFilipinoPilipinasSchwiizert
+tschSchwiizFrankriichLi
+chtescht
+davvis
+megiellaNorgaSuopmaRuo
+aEkegusiiKitaitaPulaarSenegaalKameruunGineMuritaniGikuyuKisampursenaisiNdebeleKihorombo
+Tashel
+iytlm
+ribTaqbaylitLezzayerRunyankoreHibenaHutanzaniaKyivunjobamanakanK
+embu
+kreol morisienMorisChimakondeK
+laangiTaansan
+aLugandaYugandaIchibembakabuverdianuKabu VerdiK
+KalenjinEmetab KenyaKhoekhoegowabNamibiabKimachameK
+lschDo
+tschlandMaaTansaniaOlusogaLuluhiaKipareTadhaniaKitesoKeniaKoyra ciiniMaaliKiruwaDholuoRukigaTamazi
+t n la
+ukKoyraboro senniKishambaa
+TshilubaDitunga wa KonguL
+tzebuergeschL
+tzebuergAghemK
+nZarmaciineNi
+erdu
+joolaSenegalewondoKam
+nrikpakam
+nMakuaUmozambikiMUNDA
+kameru
+KwasioKamerunThok Nath
+IshisanguTansaniyaTasawaq senni
+VaiLaibhiyaWalserSchwiznuasueKemel
+nasturianuNda
+aKam
+nkak
+runmeta
+KamalunShw
+ ngiemb
+mLak
+iyapiM
+laha
+ska T
+dolnoserb
+inaNimskahornjoserb
+inaN
+mskaanar
+kiel
+Suom
+%1%2%2%1%2
+%1%1
+%2%2%1K%2
+-%1(%1
+%2)%2-%1%1
+%2%2
+%1-%2
+%2%1(%2%1)%2-
+;;;;;;;Itoophiyaa Birrii;;;;;;;Suid-Afrikaanse rand;;Suid-Afrikaanse rand;;;;Suid-Afrikaanse rand;Namibiese dollar;;Namibiese dollar;;;;Namibiese dollar;Leku shqiptar;;lek shqiptar;;;;lek
+ shqiptar;Denari maqedonas;;denar maqedonas;;;;denar
+ maqedonas;Euroja;;euro;;;;euro;
+;;;;
+;;;;
+rbaycan Manat
+;;Az
+rbaycan manat
+;;;;Az
+rbaycan manat
+;;;;;;;Euroa;;euro;;;;euro;
+;;;;
+;;;;
+;;;;;;;euro;;euro;euro;euro;a euroio
+;euro;
+;;;;
+;;;;;;
+;;;;;;
+;euro;;euro;;;;euros;
+;;;;;;
+;;;;;;
+;;;;;;
+;;;;;;
+;;;;;;
+;;;;;;
+;hrvatska kuna;;hrvatska kuna;;hrvatske kune;;hrvatskih kuna;konvertibilna marka;;konvertibilna marka;;konvertibilne marke;;konvertibilnih maraka;
+ koruna;;
+ koruna;;
+ koruny;
+ koruny;
+ch korun;Dansk krone;;Dansk krone;;;;Danske kroner;Euro;;euro;;;;euro;Arubaanse gulden;;Arubaanse gulden;;;;Arubaanse gulden;Nederlands-Antilliaanse gulden;;Nederlands-Antilliaanse gulden;;;;Nederlands-Antilliaanse gulden;Surinaamse dollar;;Surinaamse dollar;;;;Surinaamse dollar;Amerikaanse dollar;;Amerikaanse dollar;;;;Amerikaanse dollar;US Dollar;;US dollar;;;;US dollars;East Caribbean Dollar;;East Caribbean dollar;;;;East Caribbean dollars;Australian Dollar;;Australian dollar;;;;Australian dollars;Euro;;euro;;;;euros;Bahamian Dollar;;Bahamian dollar;;;;Bahamian dollars;Barbadian Dollar;;Barbadian dollar;;;;Barbadian dollars;Belize Dollar;;Belize dollar;;;;Belize dollars;Bermudan Dollar;;Bermudan dollar;;;;Bermudan dollars;Botswanan Pula;;Botswanan pula;;;;Botswanan pulas;Burundian Franc;;Burundian franc;;;;Burundian francs;Central African CFA Franc;;Central African CFA franc;;;;Central African CFA francs;Canadian Dollar;;Canadian dollar;;;;Canadian dollars;Cayman Islands Dollar;;Cayman Islands dollar;;;;Cayman Islands dollars;New Zealand Dollar;;New Zealand dollar;;;;New Zealand dollars;Danish Krone;;Danish krone;;;;Danish kroner;Eritrean Nakfa;;Eritrean nakfa;;;;Eritrean nakfas;Falkland Islands Pound;;Falkland Islands pound;;;;Falkland Islands pounds;Fijian Dollar;;Fijian dollar;;;;Fijian dollars;UK Pound;;UK pound;;;;UK pounds;Gambian Dalasi;;Gambian dalasi;;;;Gambian dalasis;Ghanaian Cedi;;Ghanaian cedi;;;;Ghanaian cedis;Gibraltar Pound;;Gibraltar pound;;;;Gibraltar pounds;Guyanaese Dollar;;Guyanaese dollar;;;;Guyanaese dollars;Hong Kong Dollar;;Hong Kong dollar;;;;Hong Kong dollars;Indian Rupee;;Indian rupee;;;;Indian rupees;Israeli New Sheqel;;Israeli new sheqel;;;;Israeli new sheqels;Jamaican Dollar;;Jamaican dollar;;;;Jamaican dollars;Kenyan Shilling;;Kenyan shilling;;;;Kenyan shillings;South African Rand;;South African rand;;;;South African rand;Liberian Dollar;;Liberian dollar;;;;Liberian dollars;Macanese Pataca;;Macanese pataca;;;;Macanese patacas;Malagasy Ariary;;Malagasy ariary;;;;Malagasy ariaries;Malawian Kwacha;;Malawian kwacha;;;;Malawian kwachas;Malaysian Ringgit;;Malaysian ringgit;;;;Malaysian ringgits;Mauritian Rupee;;Mauritian rupee;;;;Mauritian rupees;Namibian Dollar;;Namibian dollar;;;;Namibian dollars;Nigerian Naira;;Nigerian naira;;;;Nigerian nairas;Pakistani Rupee;;Pakistani rupee;;;;Pakistani rupees;Papua New Guinean Kina;;Papua New Guinean kina;;;;Papua New Guinean kina;Philippine Peso;;Philippine peso;;;;Philippine pesos;Rwandan Franc;;Rwandan franc;;;;Rwandan francs;Samoan Tala;;Samoan tala;;;;Samoan tala;Seychellois Rupee;;Seychellois rupee;;;;Seychellois rupees;Sierra Leonean Leone;;Sierra Leonean leone;;;;Sierra Leonean leones;Singapore Dollar;;Singapore dollar;;;;Singapore dollars;Solomon Islands Dollar;;Solomon Islands dollar;;;;Solomon Islands dollars;St. Helena Pound;;St. Helena pound;;;;St. Helena pounds;Sudanese Pound;;Sudanese pound;;;;Sudanese pounds;Swazi Lilangeni;;Swazi lilangeni;;;;Swazi emalangeni;Swedish Krona;;Swedish krona;;;;Swedish kronor;Swiss Franc;;Swiss franc;;;;Swiss francs;Tanzanian Shilling;;Tanzanian shilling;;;;Tanzanian shillings;Tongan Pa
+anga;;Tongan pa
+anga;;;;Tongan pa
+anga;Trinidad & Tobago Dollar;;Trinidad & Tobago dollar;;;;Trinidad & Tobago dollars;Ugandan Shilling;;Ugandan shilling;;;;Ugandan shillings;British Pound;;British pound;;;;British pounds;Vanuatu Vatu;;Vanuatu vatu;;;;Vanuatu vatus;Zambian Kwacha;;Zambian kwacha;;;;Zambian kwachas;South Sudanese Pound;;South Sudanese pound;;;;South Sudanese pounds;Netherlands Antillean Guilder;;Netherlands Antillean guilder;;;;Netherlands Antillean guilders;euro;;euro;;;;eurot;donsk kr
+na;;donsk kr
+na;;;;danskar kr
+nur;euro;;euro;;;;euroa;dinar alg
+rien;;dinar alg
+rien;;;;dinars alg
+riens;franc CFA (BCEAO);;franc CFA (BCEAO);;;;francs CFA (BCEAO);franc burundais;;franc burundais;;;;francs burundais;franc CFA (BEAC);;franc CFA (BEAC);;;;francs CFA (BEAC);dollar canadien;;dollar canadien;;;;dollars canadiens;franc comorien;;franc comorien;;;;francs comoriens;franc congolais;;franc congolais;;;;francs congolais;franc djiboutien;;franc djiboutien;;;;francs djiboutiens;franc CFP;;franc CFP;;;;francs CFP;franc guin
+en;;franc guin
+en;;;;francs guin
+ens;gourde ha
+tienne;;gourde ha
+tienne;;;;gourdes ha
+tiennes;ariary malgache;;ariary malgache;;;;ariarys malgaches;ouguiya mauritanien;;ouguiya mauritanien;;;;ouguiyas mauritaniens;roupie mauricienne;;roupie mauricienne;;;;roupies mauriciennes;dirham marocain;;dirham marocain;;;;dirhams marocains;franc rwandais;;franc rwandais;;;;francs rwandais;roupie des Seychelles;;roupie des Seychelles;;;;roupies des Seychelles;franc suisse;;franc suisse;;;;francs suisses;livre syrienne;;livre syrienne;;;;livres syriennes;dinar tunisien;;dinar tunisien;;;;dinars tunisiens;vatu vanuatuan;;vatu vanuatuan;;;;vatus vanuatuans;Punnd Sasannach;;phunnd Sasannach;phunnd Sasannach;puinnd Shasannach;;punnd Sasannach;
+;;;;
+;Euro;;Euro;;;;Euro;Schweizer Franken;;Schweizer Franken;;;;Schweizer Franken;
+;;;;
+;danmarkimut koruuni;;danskinut koruuni;;;;danmarkimut koruuni;
+;;;;
+;Naira;;;;;;;Ku
+in Sefa na Afirka Ta Yamma;;;;;;;
+;;;;
+;magyar forint;;magyar forint;;;;magyar forint;
+slensk kr
+na;;
+slensk kr
+na;;;;
+slenskar kr
+nur;Rupiah Indonesia;;;;;;Rupiah Indonesia;Euro;;euro;euro;euro;euro;euro;euro;;euro;;;;euro;franco svizzero;;franco svizzero;;;;franchi svizzeri;
+;;;;;;
+;;;;
+;;;;;;;
+;;;;
+;;;;
+;;;;;;
+;;;;;;
+;Ifaranga ry
+Uburundi;;;;;;;
+;;;;;;
+;eiro;eiro;eiro;;;;eiro;Fal
+nga ya Kong
+;;;;;;;Kwanza ya Ang
+la;;;;;;;Fal
+nga CFA BEAC;;;;;;;Euras;;euras;;eurai;euro;eur
+;;;;
+;Ariary;;;;;;;Ringgit Malaysia;;;;;;Ringgit Malaysia;Dolar Brunei;;;;;;Dolar Brunei;Dolar Singapura;;;;;;Dolar Singapura;
+;;;;
+;ewro;;ewro;;ewro;ewro;ewro;
+;;;;
+;;;;
+;;;;
+;;;;
+;norske kroner;;norsk krone;;;;norske kroner;
+;;;;;;;
+;;;;;;;
+;;;;
+;;;;
+oty polski;;z
+oty polski;;z
+ote polskie;z
+otych polskich;z
+otego polskiego;Real brasileiro;;Real brasileiro;;;;Reais brasileiros;Kwanza angolano;;Kwanza angolano;;;;Kwanzas angolanos;Escudo cabo-verdiano;;Escudo cabo-verdiano;;;;Escudos cabo-verdianos;D
+lar dos Estados Unidos;;D
+lar dos Estados Unidos;;;;D
+lares dos Estados Unidos;Franco CFA (BEAC);;Franco CFA (BEAC);;;;Francos CFA (BEAC);Franco CFA (BCEAO);;Franco CFA (BCEAO);;;;Francos CFA (BCEAO);Euro;;Euro;;;;Euros;Pataca de Macau;;Pataca de Macau;;;;Patacas de Macau;Metical de Mo
+ambique;;Metical de Mo
+ambique;;;;Meticales de Mo
+ambique;Dobra de S
+o Tom
+ e Pr
+ncipe;;Dobra de S
+o Tom
+ e Pr
+ncipe;;;;Dobras de S
+o Tom
+ e Pr
+ncipe;Franco su
+o;;Franco su
+o;;;;Francos su
+;;;;
+;;;;;;;franc svizzer;;franc svizzer;;;;franc svizzer;leu rom
+nesc;;leu rom
+nesc;;lei rom
+ti;;lei rom
+ti;leu moldovenesc;;leu moldovenesc;;lei moldovene
+ti;;lei moldovene
+;far
+nga CFA (BEAC);;;;;;;
+;Bosansko-hercegova
+ka konvertibilna marka;;bosansko-hercegova
+ka konvertibilna marka;;bosansko-hercegova
+ke konvertibilne marke;;bosansko-hercegova
+kih konvertibilnih maraka;Evro;;evro;;evra;;evra;Srpski dinar;;srpski dinar;;srpska dinara;;srpskih dinara;
+;;;;
+;;;;
+;Dora re Amerika;;;;;;;
+;;;;
+;euro;;euro;;eur
+;eura;eur;evro;;evro;evra;evri;;evrov;Shilin soomaali;;;;;;;Faran Jabbuuti;;;;;;;Birta Itoobbiya;;;;;;;peso argentino;;peso argentino;;;;pesos argentinos;boliviano;;boliviano;;;;bolivianos;real brasile
+o;;real brasile
+o;;;;reales brasile
+os;Peso chileno;;peso chileno;;;;pesos chilenos;peso colombiano;;peso colombiano;;;;pesos colombianos;col
+n costarricense;;col
+n costarricense;;;;colones costarricenses;peso cubano;;peso cubano;;;;pesos cubanos;peso dominicano;;peso dominicano;;;;pesos dominicanos;d
+lar estadounidense;;d
+lar estadounidense;;;;d
+lares estadounidenses;franco CFA BEAC;;franco CFA BEAC;;;;francos CFA BEAC;quetzal;;quetzal;;;;quetzales;lempira hondure
+o;;lempira hondure
+o;;;;lempiras hondure
+os;peso mexicano;;peso mexicano;;;;pesos mexicanos;c
+rdoba nicarag
+ense;;c
+rdoba nicarag
+ense;;;;c
+rdobas nicarag
+enses;balboa paname
+o;;balboa paname
+o;;;;balboas paname
+os;guaran
+ paraguayo;;guaran
+ paraguayo;;;;guaran
+es paraguayos;nuevo sol peruano;;nuevo sol peruano;;;;nuevos soles peruanos;peso filipino;;peso filipino;;;;pesos filipinos;peso uruguayo;;peso uruguayo;;;;pesos uruguayos;bol
+var venezolano;;bol
+var venezolano;;;;bol
+vares venezolanos;Shilingi ya Tanzania;;shilingi ya Tanzania;;;;shilingi za Tanzania;Faranga ya Kongo;;faranga ya Kongo;;;;faranga za Kongo;Shilingi ya Kenya;;shilingi ya Kenya;;;;shilingi za Kenya;Shilingi ya Uganda;;shilingi ya Uganda;;;;shilingi za Uganda;svensk krona;;svensk krona;;;;svenska kronor;
+;;;;
+;;;;
+;;;;
+;;;;
+;;;;
+;;;;;;
+;;;;;;;
+;;;;;;;
+;;;;;;;Pa
+anga fakatonga;;;;;;Pa
+anga fakatonga;T
+rk Liras
+rk liras
+;;;;T
+rk liras
+rkmen manaty;;t
+rkmen manaty;;;;t
+rkmen manaty;
+;;;;
+;;;;
+;;;;
+zbekiston so
+mi;;O
+zbekiston so
+mi;;;;O
+zbekiston so
+;;;;;;;
+;;;;
+ng Vi
+t Nam;;;;;;
+ng Vi
+t Nam;Punt Prydain;punt Prydain;bunt Prydain;bunt Prydain;punt Prydain;phunt Prydain;punt Prydain;Naira ti Or
+de N
+;;;;;;;Faransi ti Or
+de BIKEAO;;;;;;;i-South African Rand;;i-South African Rand;;;;i-South African Rand;norsk krone;;norsk krone;;;;norske kroner;Bosansko-Hercegova
+ka konvertibilna marka;;bosansko-hercegova
+ka konvertibilna marka;;bosansko-hercegova
+ke konvertibilne marke;;bosansko-hercegova
+kih konvertibilnih maraka;
+;Ghana Sidi;;;;;;;Na
+ra;;;;;;;Silingi ya Kenya;;;;;;;ghana si
+i;;ghana si
+i;;;;ghana si
+ofe afrikaga CFA franc BCEAO;;
+ofe afrikaga CFA franc BCEAO;;;;
+ofe afrikaga CFA franc BCEAO;Piso ng Pilipinas;;piso ng Pilipinas;;;;piso ng Pilipinas;Schwiizer Franke;;Schwiizer Franke;;;;Schwiizer Franke;norgga kruvdno;;norgga kruvdno;norgga kruvdno;;;norgga kruvdno;euro;;euro;euro;;;euro;ruo
+a kruvdno;;ruo
+a kruvdno;ruo
+a kruvdno;;;ruo
+a kruvdno;Shilingi ya Kenya;;;;;;;Mbuu
+u Seefaa BCEAO;;;;;;;Mbuu
+i Seefaa BEAC;;;;;;;Ugiyya Muritani;;;;;;;Ciringi ya Kenya;;;;;;;Njilingi eel Kenya;;;;;;;Metical de Mo
+ambique;;;;;;;Dola yase Amelika;;;;;;;heleri sa Tanzania;;;;;;;
+;;;;;;;adrim n lm
+rib;;;;;;;Adinar Azzayri;;;;;;;Eshiringi ya Uganda;;;;;;;Shilingi ya Hutanzania;;;;;;;Shilingi ya Tanzania;;;;;;;sefa Fra
+ (BCEAO);;;;;;;
+;;;;
+;roupi morisien;;;;;;;Shil
+ingi ya Taansan
+a;;;;;;;Silingi eya Yuganda;;;;;;;Skudu Kabuverdianu;;;;;;Skudu Kabuverdianu;Silingitab ya Kenya;;;;;;;Namibia Dollari;;;;;;;Euro;;;;;;;Iropiyian
+ e Kenya;;;;;;;Iropiyian
+ e Tanzania;;;;;;;Sirinji ya Kenya;;;;;;;shilingi ya Tandhania;;;;;;;Ango
+otol lok
+ Uganda;;;;;;;Ango
+otol lok
+ Kenya;;;;;;;CFA Fra
+ (BCEAO);;;;;;;Siling mar Kenya;;;;;;;Derhem Ume
+uki;;;;;;;shilingi ya Tanzania;;;;;;;
+;;;;;;;
+;;;;
+;;;;;;
+;Nfalanga wa Kongu;;;;;;;CFA F
+ BEAC;;;;;;;Fr
+ CFA (BEAC);;;;;;;seefa yati BCEAO;;;;;;;F
+ CFA (BEAC);;;;;;;fr
+;;;;;;;solai BEAC;;;;;;;Fra
+ CFA BEAC;;;;;;;Ihela ya Tansaniya;;;;;;;
+;;;;;;;Laibhiya Dala;;;;;;;F
+;;;;;;;Franc CFA;;;;;;;shir
+;;;;;;;fel
+ CFA;;;;;;;
+;;;;;;;
+;;;;;;;euro;;euro;euro;euro;;euro;euro;;euro;euraj;eura;;eurow;euro;;;;;;;
+;;;;;;
+;;;;;;
+BrKshR$Lek
+FCFA
+FdjNfk
+HK$MOP$HRKKMK
+kr.Afl.NAf.US$PFBuDGH
+ArMKRMRs
+RFWS$SRLeEkrTShT$UShVTDACFACFFCFCFPFGGUMMADCHFLSDT
+FtISKRpCA$
+MTnDb
+S/.BsRONL
+RD$QC$B/.Gs.Bs.Rs.THB
+TMTso
+NT$A$IRRPMWBnm.e pasdites
+G.M.
+p. m.
+odp.p.m.pmip.fnachm.
+du.e.h.
+Z.MW.
+cpusdien
+kwapopiet
+da tarde
+po podne
+.pop.gn.ya muchanaem
+[PM]
+TKCH
+nettermiddagpopodne
+.P.M.
+oop.
+nam.
+eahketbeaivetMogluma lwa pkikii
+eHwa
+Teipakingoto
+tadgg
+atn tmedditpamunyikyiukonyiUT
+ChiloMUUakasuba
+Gkooskoliny
+uiasUhr nommendaachs
+EiguloichamthiEbongiAluulaOT
+effir azanyiaghuo
+Dilolonom
+ttesa.kI 
+ugaj
+pZaarikay beby
+mung
+nkomchochil
+llillikug
+Pashamihekis
+de la tardi
+ka mb
+t njincw
+dnjapopo
+dnju
+AMWDvm.e paradites
+A.M.
+a. m.
+dop.a.m.amap.mvorm.
+de.f.h.
+Z.MU.
+priek
+pusdien
+prie
+piet
+da manh
+pre podne
+.sn.ya asubuyifm
+[AM]
+TOSA
+formiddagprije podneAN
+yakwakyaa.
+itbeaivetMambiaLuma lwa KsubakaKirokoTesirankang
+tifawtn tufatpamilauutukoKI
+MuhiTOOulucheloR
+karoon
+goagasUhr v
+rmiddaachs
+nkak
+MunkyoicheheavoTaparachuAdduhaODZdat azalmakeo
+Dindamoiesa.gI bik
+Subbaahiidi
+wichishucommeman
+Lwamilawuki
+mde la ma
+anamba
+dopo
+dnja
+Sun;Mon;Tue;Wed;Thu;Fri;Sat;Sunday;Monday;Tuesday;Wednesday;Thursday;Friday;Saturday;S;M;T;W;T;F;S;7;1;2;3;4;5;6;Dil;Wix;Qib;Rob;Kam;Jim;San;Dilbata;Wiixata;Qibxata;Roobii;Kamiisa;Jimaata;Sanbata;So.;Ma.;Di.;Wo.;Do.;Vr.;Sa.;Sondag;Maandag;Dinsdag;Woensdag;Donderdag;Vrydag;Saterdag;S;M;D;W;D;V;S;Die;H
+n;Mar;M
+r;Enj;Pre;Sht;E diel;E h
+;E mart
+;E m
+rkur
+;E enjte;E premte;E shtun
+;D;H;M;M;E;P;S;e diel;e h
+;e mart
+;e m
+rkur
+;e enjte;e premte;e shtun
+;B.;B.E.;
+.A.;
+.;C.A.;C.;
+.;bazar;bazar ert
+;Ig.;Al.;Ar.;Az.;Og.;Or.;Lr.;Igandea;Astelehena;Asteartea;Asteazkena;Osteguna;Ostirala;Larunbata;I;A;A;A;O;O;L;ig.;al.;ar.;az.;og.;or.;lr.;igandea;astelehena;asteartea;asteazkena;osteguna;ostirala;larunbata;
+;Sul;Lun;Meu.;Mer.;Yaou;Gwe.;Sad.;Sul;Lun;Meurzh;Merc
+her;Yaou;Gwener;Sadorn;Su;L;Mz;Mc;Y;G;Sa;
+;dg.;dl.;dt.;dc.;dj.;dv.;ds.;diumenge;dilluns;dimarts;dimecres;dijous;divendres;dissabte;dg;dl;dt;dc;dj;dv;ds;
+;ned;pon;uto;sri;
+et;pet;sub;nedjelja;ponedjeljak;utorak;srijeda;
+etvrtak;petak;subota;n;p;u;s;
+;p;s;N;P;U;S;
+;P;S;ne;po;
+t;st;
+;so;ned
+le;pond
+eda;
+tvrtek;p
+tek;sobota;N;P;
+;P;S;s
+n;man;tir;ons;tor;fre;l
+ndag;mandag;tirsdag;onsdag;torsdag;fredag;l
+rdag;S;M;T;O;T;F;L;s
+n.;man.;tir.;ons.;tor.;fre.;l
+r.;zo;ma;di;wo;do;vr;za;zondag;maandag;dinsdag;woensdag;donderdag;vrijdag;zaterdag;Z;M;D;W;D;V;Z;Sun.;Mon.;Tue.;Wed.;Thu.;Fri.;Sat.;Su.;M.;Tu.;W.;Th.;F.;Sa.;P;E;T;K;N;R;L;p
+ev;esmasp
+ev;teisip
+ev;kolmap
+ev;neljap
+ev;reede;laup
+ev;sun;m
+s;mik;h
+s;fr
+;ley;sunnudagur;m
+nadagur;t
+sdagur;mikudagur;h
+sdagur;fr
+ggjadagur;leygardagur;S;M;T;M;H;F;L;sun.;m
+n.;t
+s.;mik.;h
+s.;fr
+.;ley.;su;ma;ti;ke;to;pe;la;sunnuntai;maanantai;tiistai;keskiviikko;torstai;perjantai;lauantai;S;M;T;K;T;P;L;sunnuntaina;maanantaina;tiistaina;keskiviikkona;torstaina;perjantaina;lauantaina;dim.;lun.;mar.;mer.;jeu.;ven.;sam.;dimanche;lundi;mardi;mercredi;jeudi;vendredi;samedi;D;L;M;M;J;V;S;si;mo;ti;wo;to;fr;so;snein;moandei;tiisdei;woansdei;tongersdei;freed;sneon;DiD;DiL;DiM;DiC;Dia;Dih;DiS;DiD
+mhnaich;DiLuain;DiM
+irt;DiCiadain;DiarDaoin;DihAoine;DiSathairne;D;L;M;C;A;H;S;Dom;Lun;Mar;M
+r;Xov;Ven;S
+b;Domingo;Luns;Martes;M
+rcores;Xoves;Venres;S
+bado;D;L;M;M;X;V;S;dom;luns;mar;m
+r;xov;ven;s
+b;domingo;luns;martes;m
+rcores;xoves;venres;s
+bado;
+;So;Mo;Di;Mi;Do;Fr;Sa;Sonntag;Montag;Dienstag;Mittwoch;Donnerstag;Freitag;Samstag;S;M;D;M;D;F;S;So.;Mo.;Di.;Mi.;Do.;Fr.;Sa.;
+;sab;ata;mar;pin;sis;tal;arf;sabaat;ataasinngorneq;marlunngorneq;pingasunngorneq;sisamanngorneq;tallimanngorneq;arfininngorneq;S;A;M;P;S;T;A;
+;Lh;Li;Ta;Lr;Al;Ju;As;Lahadi;Litinin;Talata;Laraba;Alhamis;Jumma
+a;Asabar;L;L;T;L;A;J;A;
+;V;H;K;Sze;Cs;P;Szo;vas
+rnap;h
+;kedd;szerda;cs
+ntek;szombat;V;H;K;Sz;Cs;P;Sz;sun.;m
+ri.;mi
+.;fim.;f
+s.;lau.;sunnudagur;m
+nudagur;
+judagur;mi
+vikudagur;fimmtudagur;f
+studagur;laugardagur;S;M;
+;M;F;F;L;Min;Sen;Sel;Rab;Kam;Jum;Sab;Minggu;Senin;Selasa;Rabu;Kamis;Jumat;Sabtu;M;S;S;R;K;J;S;Domh;Luan;M
+irt;C
+ad;D
+ar;Aoine;Sath;D
+ Domhnaigh;D
+ Luain;D
+irt;D
+adaoin;D
+ardaoin;D
+ hAoine;D
+ Sathairn;D;L;M;C;D;A;S;dom;lun;mar;mer;gio;ven;sab;Domenica;Luned
+;Marted
+;Mercoled
+;Gioved
+;Venerd
+;Sabato;D;L;M;M;G;V;S;domenica;luned
+;marted
+;mercoled
+;gioved
+;venerd
+;sabato;
+;cyu.;mbe.;kab.;gtu.;kan.;gnu.;gnd.;Ku cyumweru;Kuwa mbere;Kuwa kabiri;Kuwa gatatu;Kuwa kane;Kuwa gatanu;Kuwa gatandatu;
+;cu.;mbe.;kab.;gtu.;kan.;gnu.;gnd.;Ku w
+indwi;Ku wa mbere;Ku wa kabiri;Ku wa gatatu;Ku wa kane;Ku wa gatanu;Ku wa gatandatu;
+;1;2;3;4;5;6;7;Sv;Pr;Ot;Tr;Ce;Pk;Se;Sv
+tdiena;Pirmdiena;Otrdiena;Tre
+diena;Ceturtdiena;Piektdiena;Sestdiena;S;P;O;T;C;P;S;sv
+tdiena;pirmdiena;otrdiena;tre
+diena;ceturtdiena;piektdiena;sestdiena;eye;ybo;mbl;mst;min;mtn;mps;eyenga;mok
+ mwa yambo;mok
+ mwa m
+;mok
+ mwa m
+to;mok
+ ya m
+i;mok
+ ya m
+no;mp
+;e;y;m;m;m;m;p;sk;pr;an;tr;kt;pn;
+t;sekmadienis;pirmadienis;antradienis;tre
+iadienis;ketvirtadienis;penktadienis;
+tadienis;S;P;A;T;K;P;
+;Alah;Alats;Tal;Alar;Alak;Zom;Asab;Alahady;Alatsinainy;Talata;Alarobia;Alakamisy;Zoma;Asabotsy;A;A;T;A;A;Z;A;Ahd;Isn;Sel;Rab;Kha;Jum;Sab;Ahad;Isnin;Selasa;Rabu;Khamis;Jumaat;Sabtu;A;I;S;R;K;J;S;
+ad;Tne;Tli;Erb;
+im;Sib;Il-
+add;It-Tnejn;It-Tlieta;L-Erbg
+a;Il-
+amis;Il-
+a;Is-Sibt;
+d;Tn;Tl;Er;
+m;Sb;
+;T;T;E;
+;niedz.;pon.;wt.;
+r.;czw.;pt.;sob.;niedziela;poniedzia
+ek;wtorek;
+roda;czwartek;pi
+tek;sobota;N;P;W;
+;C;P;S;dom;seg;ter;qua;qui;sex;s
+b;domingo;segunda-feira;ter
+a-feira;quarta-feira;quinta-feira;sexta-feira;s
+bado;D;S;T;Q;Q;S;S;domingo;segunda;ter
+a;quarta;quinta;sexta;s
+bado;
+;Dom;Lun;Mar;Mi
+;Jue;Vie;Sab;Domingo;Lunes;Martes;Mi
+rcoles;Jueves;Viernes;S
+bado;D;L;M;X;J;V;S;du;gli;ma;me;gie;ve;so;dumengia;glindesdi;mardi;mesemna;gievgia;venderdi;sonda;D;G;M;M;G;V;S;dum.;lun.;mar.;mie.;joi;vin.;s
+m.;duminic
+;luni;mar
+i;miercuri;joi;vineri;s
+;Dum;Lun;Mar;Mie;Joi;Vin;S
+m;D;L;Ma;Mi;J;V;S;
+;Bk1;Bk2;Bk3;Bk4;Bk5;L
+y;Bikua-
+ko;B
+kua-
+se;B
+kua-pt
+kua-us
+kua-ok
+yenga;K;S;T;S;K;P;Y;
+;ned;pon;uto;sre;
+et;pet;sub;nedelja;ponedeljak;utorak;sreda;
+etvrtak;petak;subota;
+;Svo;Muv;Chip;Chit;Chin;Chis;Mug;Svondo;Muvhuro;Chipiri;Chitatu;China;Chishanu;Mugovera;S;M;C;C;C;C;M;
+;ne;po;ut;st;
+t;pi;so;nede
+a;pondelok;utorok;streda;
+tvrtok;piatok;sobota;n;p;u;s;
+;p;s;ned;pon;tor;sre;
+et;pet;sob;nedelja;ponedeljek;torek;sreda;
+etrtek;petek;sobota;n;p;t;s;
+;p;s;ned.;pon.;tor.;sre.;
+et.;pet.;sob.;Axd;Isn;Tal;Arb;Kha;Jim;Sab;Axad;Isniin;Talaado;Arbaco;Khamiis;Jimco;Sabti;A;I;T;A;K;J;S;dom.;lun.;mar.;mi
+.;jue.;vie.;s
+b.;domingo;lunes;martes;mi
+rcoles;jueves;viernes;s
+bado;d;l;m;m;j;v;s;Jumapili;Jumatatu;Jumanne;Jumatano;Alhamisi;Ijumaa;Jumamosi;y;k;p;t;i;t;s;yen;kwa;pil;tat;ine;tan;sit;siku ya yenga;siku ya kwanza;siku ya pili;siku ya tatu;siku ya ine;siku ya tanu;siku ya sita;s
+n;tis;ons;tors;fre;l
+ndag;m
+ndag;tisdag;onsdag;torsdag;fredag;l
+rdag;
+s;Pul;Tu
+a;Fal;Tok;S
+pate;M
+nite;T
+site;Pulelulu;Tu
+apulelulu;Falaite;Tokonaki;S;M;T;P;T;F;T;Paz;Pzt;Sal;
+ar;Per;Cum;Cmt;Pazar;Pazartesi;Sal
+amba;Per
+embe;Cuma;Cumartesi;P;P;S;
+;P;C;C;
+b;db;sb;
+b;pb;an;
+enbe;du
+enbe;si
+enbe;
+enbe;pen
+enbe;anna;
+enbe;
+;D;S;
+;P;A;
+;Ya;Du;Se;Ch;Pa;Ju;Sh;yakshanba;dushanba;seshanba;chorshanba;payshanba;juma;shanba;Y;D;S;C;P;J;S;
+;CN;Th 2;Th 3;Th 4;Th 5;Th 6;Th 7;Ch
+t;Th
+ Hai;Th
+ Ba;Th
+m;Th
+u;Th
+y;CN;T2;T3;T4;T5;T6;T7;Sul;Llun;Maw;Mer;Iau;Gwe;Sad;Dydd Sul;Dydd Llun;Dydd Mawrth;Dydd Mercher;Dydd Iau;Dydd Gwener;Dydd Sadwrn;S;Ll;M;M;I;G;S;Sul;Llun;Maw;Mer;Iau;Gwen;Sad;
+gun;
+gun;
+gun;
+gun;
+ta;Son;Mso;Bil;Tha;Sin;Hla;Mgq;ISonto;UMsombuluko;ULwesibili;ULwesithathu;ULwesine;ULwesihlanu;UMgqibelo;S;M;B;T;S;H;M;s
+n;tys;ons;tor;fre;lau;s
+ndag;m
+ndag;tysdag;onsdag;torsdag;fredag;laurdag;s
+.;ty.;on.;to.;fr.;la.;
+;Jed;Jel;Jem;Jerc;Jerd;Jeh;Jes;Jedoonee;Jelhein;Jemayrt;Jercean;Jerdein;Jeheiney;Jesarn;Sul;Lun;Mth;Mhr;Yow;Gwe;Sad;dy Sul;dy Lun;dy Meurth;dy Merher;dy Yow;dy Gwener;dy Sadorn;Kwe;Dwo;Ben;Wuk;Yaw;Fia;Mem;Kwesida;Dwowda;Benada;Wukuda;Yawda;Fida;Memeneda;K;D;B;W;Y;F;M;
+ka;M
+n;Tiu;Wen;T
+;Fra
+;Sat;Mb
+ka;M
+nde;Tiuzdee;Wenezdee;T
+zdee;Fra
+dee;Sat
+dee;Wky;Wkw;Wkl;Wt
+;Wkn;Wtn;Wth;Wa kyumwa;Wa kwamb
+lya;Wa kel
+;Wa katat
+;Wa kana;Wa katano;Wa thanthat
+;Y;W;E;A;A;A;A;dom;lun;mar;mie;joi;vin;sab;domenie;lunis;martars;miercus;joibe;vinars;sabide;k
+s;dzo;bla;ku
+;yaw;fi
+;mem;k
+a;dzo
+a;bla
+a;ku
+a;yawo
+a;fi
+a;memle
+a;k;d;b;k;y;f;m;LP;P1;P2;P3;P4;P5;P6;L
+pule;Po
+akahi;Po
+alua;Po
+akolu;Po
+alima;Po
+aono;Lin;Lun;Mar;Miy;Huw;Biy;Sab;Linggo;Lunes;Martes;Miyerkules;Huwebes;Biyernes;Sabado;Su.;M
+.;Zi.;Mi.;Du.;Fr.;Sa.;Sunntig;M
+ntig;Ziischtig;Mittwuch;Dunschtig;Friitig;Samschtig;
+;sotn;vuos;ma
+;gask;duor;bear;l
+v;sotnabeaivi;vuoss
+rga;ma
+rga;gaskavahkku;duorasdat;bearjadat;l
+vvardat;S;V;M;G;D;B;L;aejlege;m
+anta;d
+jsta;gaskevahkoe;d
+arsta;bearjadahke;laavadahke;S;M;D;G;D;B;L;Cpr;Ctt;Cmn;Cmt;Ars;Icm;Est;Chumapiri;Chumatato;Chumaine;Chumatano;Aramisi;Ichuma;Esabato;C;C;C;C;A;I;E;Jum;Jim;Kaw;Kad;Kan;Kas;Ngu;Ituku ja jumwa;Kuramuka jimweri;Kuramuka kawi;Kuramuka kadadu;Kuramuka kana;Kuramuka kasanu;Kifula nguwo;J;J;K;K;K;K;N;dew;aa
+;maw;nje;naa;mwd;hbi;dewo;aa
+nde;mawbaare;njeslaare;naasaande;mawnde;hoore-biir;d;a;m;n;n;m;h;KMA;NTT;NMN;NMT;ART;NMA;NMM;Kiumia;Njumatat
+;Njumaine;Njumatana;Aramithi;Njumaa;Njumamothi;K;N;N;N;A;N;N;Are;Kun;Ong;Ine;Ile;Sap;Kwe;Mderot ee are;Mderot ee kuni;Mderot ee ong
+wan;Mderot ee inet;Mderot ee ile;Mderot ee sapa;Mderot ee kwe;A;K;O;I;I;S;K;Dim;Pos;Pir;Tat;Nai;Sha;Sab;Dimingu;Chiposi;Chipiri;Chitatu;Chinai;Chishanu;Sabudu;D;P;C;T;N;S;S;Son;Mvu;Sib;Sit;Sin;Sih;Mgq;Sonto;Mvulo;Sibili;Sithathu;Sine;Sihlanu;Mgqibelo;S;M;S;S;S;S;M;Ijp;Ijt;Ijn;Ijtn;Alh;Iju;Ijm;Ijumapili;Ijumatatu;Ijumanne;Ijumatano;Alhamisi;Ijumaa;Ijumamosi;2;3;4;5;6;7;1;
+;asa;ayn;asi;ak
+;akw;asim;asi
+;asamas;aynas;asinas;ak
+as;akwas;asimwas;asi
+yas;Yan;San;Kra
+;Sam;S
+is;Say;Yanass;Sanass;Kra
+ass;Ku
+ass;Samass;S
+isass;Sayass;Y;S;K;K;S;S;S;SAN;ORK;OKB;OKS;OKN;OKT;OMK;Sande;Orwokubanza;Orwakabiri;Orwakashatu;Orwakana;Orwakataano;Orwamukaaga;S;K;R;S;N;T;M;Mul;Vil;Hiv;Hid;Hit;Hih;Lem;pa mulungu;pa shahuviluha;pa hivili;pa hidatu;pa hitayi;pa hihanu;pa shahulembela;M;J;H;H;H;W;J;Jpi;Jtt;Jnn;Jtn;Alh;Iju;Jmo;Jumapilyi;Jumatatuu;Jumanne;Jumatanu;Alhamisi;Ijumaa;Jumamosi;J;J;J;J;A;I;J;kar;nt
+;tar;ara;ala;jum;sib;kari;nt
+;tarata;araba;alamisa;juma;sibiri;K;N;T;A;A;J;S;Kma;Tat;Ine;Tan;Arm;Maa;NMM;Kiumia;Njumatatu;Njumaine;Njumatano;Aramithi;Njumaa;NJumamothii;K;N;N;N;A;M;N;
+;dim;lin;mar;mer;ze;van;sam;dimans;lindi;mardi;merkredi;zedi;vandredi;samdi;d;l;m;m;z;v;s;Ll2;Ll3;Ll4;Ll5;Ll6;Ll7;Ll1;Liduva lyapili;Liduva lyatatu;Liduva lyanchechi;Liduva lyannyano;Liduva lyannyano na linji;Liduva lyannyano na mavili;Liduva litandi;P
+ili;T
+atu;
+ne;T
+ano;Alh;Ijm;M
+osi;Jumap
+iri;Jumat
+tu;Juma
+ne;Jumat
+ano;Alam
+isi;Ijum
+a;Jumam
+osi;P;T;E;O;A;I;M;Sab;Bal;Lw2;Lw3;Lw4;Lw5;Lw6;Sabbiiti;Balaza;Lwakubiri;Lwakusatu;Lwakuna;Lwakutaano;Lwamukaaga;S;B;L;L;L;L;L;Pa Mulungu;Palichimo;Palichibuli;Palichitatu;Palichine;Palichisano;Pachibelushi;dum;sig;ter;kua;kin;ses;sab;dumingu;sigunda-fera;tersa-fera;kuarta-fera;kinta-fera;sesta-fera;sabadu;d;s;t;k;k;s;s;D;S;T;K;K;S;S;KIU;MRA;WAI;WET;WEN;WTN;JUM;Kiumia;Muramuko;Wairi;Wethatu;Wena;Wetano;Jumamosi;K;M;W;W;W;W;J;Kts;Kot;Koo;Kos;Koa;Kom;Kol;Kotisap;Kotaai;Koaeng
+;Kosomok;Koang
+wan;Komuut;Kolo;T;T;O;S;A;M;L;Son;Ma;De;Wu;Do;Fr;Sat;Sontaxtsees;Mantaxtsees;Denstaxtsees;Wunstaxtsees;Dondertaxtsees;Fraitaxtsees;Satertaxtsees;S;M;E;W;D;F;A;Su.;Mo.;Di.;Me.;Du.;Fr.;Sa.;Sunndaach;Moondaach;Dinnsdaach;Metwoch;Dunnersdaach;Friidaach;Samsdaach;Jumap
+;Jumat
+tu;Jumane;Jumat
+;Ala
+misi;Jum
+a;Jumam
+si;Sabi;Bala;Kubi;Kusa;Kuna;Kuta;Muka;Sabiiti;Balaza;Owokubili;Owokusatu;Olokuna;Olokutaanu;Olomukaaga;S;B;B;S;K;K;M;J2;J3;J4;J5;Al;Ij;J1;Jumapiri;Jumatatu;Jumanne;Jumatano;Murwa wa Kanne;Murwa wa Katano;Jumamosi;Jpi;Jtt;Jnn;Jtn;Alh;Ijm;Jmo;Jum;Bar;Aar;Uni;Ung;Kan;Sab;Nakaejuma;Nakaebarasa;Nakaare;Nakauni;Nakaung
+on;Nakakany;Nakasabiti;J;B;A;U;U;K;S;Alh;Ati;Ata;Ala;Alm;Alj;Ass;Alhadi;Atini;Atalata;Alarba;Alhamiisa;Aljuma;Assabdu;H;T;T;L;L;L;S;JMP;WUT;TAR;TAD;TAN;TAB;NGS;Jumapil;Wuok Tich;Tich Ariyo;Tich Adek;Tich Ang
+wen;Tich Abich;Ngeso;J;W;T;T;T;T;N;Asa;Ayn;Asn;Akr;Akw;Asm;As
+;Asamas;Aynas;Asinas;Akras;Akwas;Asimwas;Asi
+yas;A;A;A;A;A;A;A;Alh;Ati;Ata;Ala;Alm;Alz;Asi;Alhadi;Atinni;Atalaata;Alarba;Alhamiisa;Alzuma;Asibti;Jpi;Jtt;Jmn;Jtn;Alh;Iju;Jmo;Jumaapii;Jumaatatu;Jumaane;Jumaatano;Alhamisi;Ijumaa;Jumaamosi;2;3;4;5;A;I;1;
+;Lum;Nko;Ndy;Ndg;Njw;Ngv;Lub;Lumingu;Nkodya;Nd
+;Ndang
+wa;Ng
+vya;Lubingu;L;N;N;N;N;N;L;Son;M
+t;Don;Fre;Sam;Sonndeg;M
+indeg;D
+nschdeg;M
+ttwoch;Donneschdeg;Freideg;Samschdeg;Son.;M
+i.;D
+n.;M
+t.;Don.;Fre.;Sam.;nts;kpa;gh
+m;ume;gh
+;dzk;tsu
+;tsu
+;tsu
+e;tsu
+;tsu
+;tsu
+m;tsu
+;n;k;g;t;u;g;d;n
+y;nja;uum;
+ge;mb
+;jon;
+ nja
+gumba;
+n;n;n;u;
+;m;k;j;Alhadi;Atinni;Atalaata;Alarba;Alhamisi;Alzuma;Asibti;H;T;T;L;M;Z;S;
+s;kwa;muk;
+n;esa;
+ti;m
+;kwas
+;muk
+;esa
+;e;m;k;m;
+;e;Dim;Ten;Tal;Ala;Ara;Arj;Sib;Dimas;Tene
+;Talata;Alarbay;Aramisay;Arjuma;Sibiti;D;T;T;A;A;A;S;s
+n;smb;sml;smn;f
+ndi;s
+nyi;f
+;s;m;s;s;s;f;s;s
+n;maa;m
+m;sam;s
+;maad
+;samd
+;s;l;m;m;j;j;s;Sab;Jtt;Jnn;Jtn;Ara;Iju;Jmo;Sabato;Jumatatu;Jumanne;Jumatano;Arahamisi;Ijumaa;Jumamosi;S;J;J;J;A;I;J;Cya;Cla;Czi;Cko;Cka;Cga;Cze;Com
+yakke;Comlaa
+ii;Comzyii
+ii;Comkolle;Comkald
+lii;Comgaisuu;Comzye
+suu;Y;L;Z;O;A;G;E;s
+n;smb;sml;smn;mbs;sas;s
+ maf
+ba;s
+ maf
+lal;s
+ maf
+na;mab
+ sukul;s
+sadi;s;m;s;s;s;m;s;C
+;Jiec;R
+w;Di
+uaan;Dhieec;B
+th;Jiec la
+tni;Di
+tni;
+uaan l
+tni;Dhieec l
+tni;B
+tni;C;J;R;D;
+;D;B;
+;Mul;Jtt;Jnn;Jtn;Alh;Iju;Jmo;Mulungu;Jumatatu;Jumanne;Jumatano;Alahamisi;Ijumaa;Jumamosi;M;J;J;J;A;I;J;
+;lahadi;t
+;talata;alaba;aimisa;aijima;si
+iti;Sun;M
+n;Zi
+;Mit;Fr
+;Fri;Sam;Sunntag;M
+ntag;Zi
+tag;Mittwu
+ntag;Fritag;Sam
+tag;S;M;Z;M;F;F;S;sd;md;mw;et;kl;fl;ss;s
+ndie;mu
+ndie;met
+limet
+kpiap
+;fel
+te;s
+;s;m;m;e;k;f;s;dom;llu;mar;mi
+;xue;vie;s
+b;domingu;llunes;martes;mi
+rcoles;xueves;vienres;s
+badu;S
+ndi;M
+ndi;
+pta M
+ndi;W
+ndi;lundi;mardi;m
+di;yedi;va
+di;m
+ndi;so;lu;ma;m
+;ye;va;ms;Aneg 1;Aneg 2;Aneg 3;Aneg 4;Aneg 5;Aneg 6;Aneg 7;A1;A2;A3;A4;A5;A6;A7;ly
+;mvf
+ mvf
+ tsets
+;mvf
+ga ly
+ga ly
+tuwak
+tuwa
+tunu
+pa;A
+tuyamni;A
+tutopa;A
+tuzapta
+api;A;W;N;Y;T;Z;O;
+;nje;p
+n;wa
+;srj;stw;p
+t;sob;nje
+ela;p
+ele;wa
+tora;srjoda;stw
+rtk;p
+tk;sobota;n;p;w;s;s;p;s;nje;p
+n;wut;srj;
+tw;pja;sob;njed
+ela;p
+ela;wutora;srjeda;
+rtk;pjatk;sobota;n;p;w;s;
+;p;s;pa;vu;ma;ko;tu;v
+;pasepeivi;vuossarg
+;majebarg
+;koskokko;tuor
+stuppeivi;l
+vurd
+h;pasepeeivi;vuossaarg
+;majebaarg
+;koskoho;tuor
+stuv;v
+stuppeeivi;l
+vurduv;P;V;M;K;T;V;L;
+Jan;Feb;Mar;Apr;May;Jun;Jul;Aug;Sep;Oct;Nov;Dec;January;February;March;April;May;June;July;August;September;October;November;December;J;F;M;A;M;J;J;A;S;O;N;D;1;2;3;4;5;6;7;8;9;10;11;12;Ama;Gur;Bit;Elb;Cam;Wax;Ado;Hag;Ful;Onk;Sad;Mud;Amajjii;Guraandhala;Bitooteessa;Elba;Caamsa;Waxabajjii;Adooleessa;Hagayya;Fuulbana;Onkololeessa;Sadaasa;Muddee;M01;M02;M03;M04;M05;M06;M07;M08;M09;M10;M11;M12;Jan.;Feb.;Mrt.;Apr.;Mei;Jun.;Jul.;Aug.;Sep.;Okt.;Nov.;Des.;Januarie;Februarie;Maart;April;Mei;Junie;Julie;Augustus;September;Oktober;November;Desember;Jan;Shk;Mar;Pri;Maj;Qer;Kor;Gsh;Sht;Tet;N
+n;Dhj;Janar;Shkurt;Mars;Prill;Maj;Qershor;Korrik;Gusht;Shtator;Tetor;N
+ntor;Dhjetor;J;S;M;P;M;Q;K;G;S;T;N;D;janar;shkurt;mars;prill;maj;qershor;korrik;gusht;shtator;tetor;n
+ntor;dhjetor;
+;yan;fev;mar;apr;may;iyn;iyl;avq;sen;okt;noy;dek;Yanvar;Fevral;Mart;Aprel;May;
+yun;
+yul;Avqust;Sentyabr;Oktyabr;Noyabr;Dekabr;yanvar;fevral;mart;aprel;may;iyun;iyul;avqust;sentyabr;oktyabr;noyabr;dekabr;
+;Urt.;Ots.;Mar.;Api.;Mai.;Eka.;Uzt.;Abu.;Ira.;Urr.;Aza.;Abe.;Urtarrila;Otsaila;Martxoa;Apirila;Maiatza;Ekaina;Uztaila;Abuztua;Iraila;Urria;Azaroa;Abendua;U;O;M;A;M;E;U;A;I;U;A;A;urt.;ots.;mar.;api.;mai.;eka.;uzt.;abu.;ira.;urr.;aza.;abe.;urtarrilak;otsailak;martxoak;apirilak;maiatzak;ekainak;uztailak;abuztuak;irailak;urriak;azaroak;abenduak;
+;12;
+;Gen.;C
+hwe.;Meur.;Ebr.;Mae;Mezh.;Goue.;Eost;Gwen.;Here;Du;Ker.;Genver;C
+hwevrer;Meurzh;Ebrel;Mae;Mezheven;Gouere;Eost;Gwengolo;Here;Du;Kerzu;01;02;03;04;05;06;07;08;09;10;11;12;Gen.;C
+hwe.;Meur.;Ebr.;Mae;Mezh.;Goue.;Eost;Gwen.;Here;Du;Kzu.;
+;gen.;febr.;mar
+;abr.;maig;juny;jul.;ag.;set.;oct.;nov.;des.;gener;febrer;mar
+;abril;maig;juny;juliol;agost;setembre;octubre;novembre;desembre;GN;FB;M
+;AB;MG;JN;JL;AG;ST;OC;NV;DS;de gener;de febrer;de mar
+abril;de maig;de juny;de juliol;d
+agost;de setembre;d
+octubre;de novembre;de desembre;1
+;sij;velj;o
+u;tra;svi;lip;srp;kol;ruj;lis;stu;pro;sije
+anj;velja
+ujak;travanj;svibanj;lipanj;srpanj;kolovoz;rujan;listopad;studeni;prosinac;1.;2.;3.;4.;5.;6.;7.;8.;9.;10.;11.;12.;sije
+nja;velja
+ujka;travnja;svibnja;lipnja;srpnja;kolovoza;rujna;listopada;studenoga;prosinca;led;
+no;b
+e;dub;kv
+vc;srp;z
+j;lis;pro;leden;
+nor;b
+ezen;duben;kv
+ten;
+erven;
+ervenec;srpen;z
+jen;listopad;prosinec;ledna;
+nora;b
+ezna;dubna;kv
+tna;
+ervna;
+ervence;srpna;z
+jna;listopadu;prosince;jan;feb;mar;apr;maj;jun;jul;aug;sep;okt;nov;dec;januar;februar;marts;april;maj;juni;juli;august;september;oktober;november;december;jan.;feb.;mar.;apr.;maj;jun.;jul.;aug.;sep.;okt.;nov.;dec.;jan.;feb.;mrt.;apr.;mei;jun.;jul.;aug.;sep.;okt.;nov.;dec.;januari;februari;maart;april;mei;juni;juli;augustus;september;oktober;november;december;Jan.;Feb.;Mar.;Apr.;May;Jun.;Jul.;Aug.;Sep.;Oct.;Nov.;Dec.;jaan;veebr;m
+rts;apr;mai;juuni;juuli;aug;sept;okt;nov;dets;jaanuar;veebruar;m
+rts;aprill;mai;juuni;juuli;august;september;oktoober;november;detsember;J;V;M;A;M;J;J;A;S;O;N;D;jan;feb;mar;apr;mai;jun;jul;aug;sep;okt;nov;des;januar;februar;mars;apr
+l;mai;juni;juli;august;september;oktober;november;desember;jan.;feb.;mar.;apr.;mai;jun.;jul.;aug.;sep.;okt.;nov.;des.;tammi;helmi;maalis;huhti;touko;kes
+;hein
+;elo;syys;loka;marras;joulu;tammikuu;helmikuu;maaliskuu;huhtikuu;toukokuu;kes
+kuu;hein
+kuu;elokuu;syyskuu;lokakuu;marraskuu;joulukuu;T;H;M;H;T;K;H;E;S;L;M;J;tammikuuta;helmikuuta;maaliskuuta;huhtikuuta;toukokuuta;kes
+kuuta;hein
+kuuta;elokuuta;syyskuuta;lokakuuta;marraskuuta;joulukuuta;janv.;f
+vr.;mars;avr.;mai;juin;juil.;ao
+t;sept.;oct.;nov.;d
+c.;janvier;f
+vrier;mars;avril;mai;juin;juillet;ao
+t;septembre;octobre;novembre;d
+cembre;jan.;f
+v.;mar.;avr.;mai;jui.;juil.;ao
+t;sept.;oct.;nov.;d
+c.;jan;feb;mrt;apr;mai;jun;jul;aug;sep;okt;nov;des;jannewaris;febrewaris;maart;april;maaie;juny;july;augustus;septimber;oktober;novimber;desimber;jan.;feb.;mrt.;apr.;mai.;jun.;jul.;aug.;sep.;okt.;nov.;des.;Faoi;Gearr;M
+rt;Gibl;C
+gmh;Iuch;L
+na;Sult;D
+mh;Samh;D
+bh;Am Faoilleach;An Gearran;Am M
+rt;An Giblean;An C
+itean;An t-
+gmhios;An t-Iuchar;An L
+nastal;An t-Sultain;An D
+mhair;An t-Samhain;An D
+bhlachd;F;G;M;G;C;
+;I;L;S;D;S;D;dhen Fhaoilleach;dhen Ghearran;dhen Mh
+rt;dhen Ghiblean;dhen Ch
+itean;dhen 
+gmhios;dhen Iuchar;dhen L
+nastal;dhen t-Sultain;dhen D
+mhair;dhen t-Samhain;dhen D
+bhlachd;Xan;Feb;Mar;Abr;Mai;Xu
+;Xul;Ago;Set;Out;Nov;Dec;Xaneiro;Febreiro;Marzo;Abril;Maio;Xu
+o;Xullo;Agosto;Setembro;Outubro;Novembro;Decembro;X;F;M;A;M;X;X;A;S;O;N;D;xan;feb;mar;abr;mai;xu
+;xul;ago;set;out;nov;dec;xaneiro;febreiro;marzo;abril;maio;xu
+o;xullo;agosto;setembro;outubro;novembro;decembro;
+;Jan;Feb;M
+r;Apr;Mai;Jun;Jul;Aug;Sep;Okt;Nov;Dez;Januar;Februar;M
+rz;April;Mai;Juni;Juli;August;September;Oktober;November;Dezember;Jan.;Feb.;M
+rz;Apr.;Mai;Juni;Juli;Aug.;Sep.;Okt.;Nov.;Dez.;J
+n;Feb;M
+r;Apr;Mai;Jun;Jul;Aug;Sep;Okt;Nov;Dez;J
+nner;Februar;M
+rz;April;Mai;Juni;Juli;August;September;Oktober;November;Dezember;J
+n.;Feb.;M
+rz;Apr.;Mai;Juni;Juli;Aug.;Sep.;Okt.;Nov.;Dez.;
+;januari;februari;martsi;aprili;maji;juni;juli;augustusi;septemberi;oktoberi;novemberi;decemberi;
+;Jan;Fab;Mar;Afi;May;Yun;Yul;Agu;Sat;Okt;Nuw;Dis;Janairu;Faburairu;Maris;Afirilu;Mayu;Yuni;Yuli;Agusta;Satumba;Oktoba;Nuwamba;Disamba;J;F;M;A;M;Y;Y;A;S;O;N;D;
+;jan.;febr.;m
+rc.;
+pr.;m
+j.;j
+n.;j
+l.;aug.;szept.;okt.;nov.;dec.;janu
+r;febru
+rcius;
+prilis;m
+jus;j
+nius;j
+lius;augusztus;szeptember;okt
+ber;november;december;J;F;M;
+;M;J;J;A;Sz;O;N;D;jan.;feb.;mar.;apr.;ma
+n.;j
+.;sep.;okt.;n
+v.;des.;jan
+ar;febr
+ar;mars;apr
+l;ma
+st;september;okt
+ber;n
+vember;desember;J;F;M;A;M;J;J;
+;S;O;N;D;Jan;Feb;Mar;Apr;Mei;Jun;Jul;Agt;Sep;Okt;Nov;Des;Januari;Februari;Maret;April;Mei;Juni;Juli;Agustus;September;Oktober;November;Desember;Ean;Feabh;M
+rta;Aib;Beal;Meith;I
+il;L
+n;MF
+mh;DF
+mh;Samh;Noll;Ean
+ir;Feabhra;M
+rta;Aibre
+n;Bealtaine;Meitheamh;I
+il;L
+nasa;Me
+mhair;Deireadh F
+mhair;Samhain;Nollaig;E;F;M;A;B;M;I;L;M;D;S;N;gen;feb;mar;apr;mag;giu;lug;ago;set;ott;nov;dic;Gennaio;Febbraio;Marzo;Aprile;Maggio;Giugno;Luglio;Agosto;Settembre;Ottobre;Novembre;Dicembre;G;F;M;A;M;G;L;A;S;O;N;D;gennaio;febbraio;marzo;aprile;maggio;giugno;luglio;agosto;settembre;ottobre;novembre;dicembre;
+;mut.;gas.;wer.;mat.;gic.;kam.;nya.;kan.;nze.;ukw.;ugu.;uku.;Mutarama;Gashyantare;Werurwe;Mata;Gicuransi;Kamena;Nyakanga;Kanama;Nzeli;Ukwakira;Ugushyingo;Ukuboza;
+;Mut.;Gas.;Wer.;Mat.;Gic.;Kam.;Nya.;Kan.;Nze.;Ukw.;Ugu.;Uku.;Nzero;Ruhuhuma;Ntwarante;Ndamukiza;Rusama;Ruheshi;Mukakaro;Nyandagaro;Nyakanga;Gitugutu;Munyonyo;Kigarama;
+;Janv.;Febr.;Marts;Apr.;Maijs;J
+n.;J
+l.;Aug.;Sept.;Okt.;Nov.;Dec.;Janv
+ris;Febru
+ris;Marts;Apr
+lis;Maijs;J
+nijs;J
+lijs;Augusts;Septembris;Oktobris;Novembris;Decembris;janv.;febr.;marts;apr.;maijs;j
+n.;j
+l.;aug.;sept.;okt.;nov.;dec.;janv
+ris;febru
+ris;marts;apr
+lis;maijs;j
+nijs;j
+lijs;augusts;septembris;oktobris;novembris;decembris;yan;fbl;msi;apl;mai;yun;yul;agt;stb;
+tb;nvb;dsb;s
+ ya yambo;s
+ ya m
+ ya m
+to;s
+ ya m
+nei;s
+ ya m
+no;s
+ ya mot
+ ya nsambo;s
+ ya mwambe;s
+ ya libwa;s
+ ya z
+mi;s
+ ya z
+mi na m
+ ya z
+mi na m
+;y;f;m;a;m;y;y;a;s;
+;n;d;saus.;vas.;kov.;bal.;geg.;bir
+.;liep.;rugp.;rugs.;spal.;lapkr.;gruod.;sausis;vasaris;kovas;balandis;gegu
+;bir
+elis;liepa;rugpj
+tis;rugs
+jis;spalis;lapkritis;gruodis;S;V;K;B;G;B;L;R;R;S;L;G;sausio;vasario;kovo;baland
+io;gegu
+s;bir
+elio;liepos;rugpj
+io;rugs
+jo;spalio;lapkri
+io;gruod
+;Jan;Feb;Mar;Apr;Mey;Jon;Jol;Aog;Sep;Okt;Nov;Des;Janoary;Febroary;Martsa;Aprily;Mey;Jona;Jolay;Aogositra;Septambra;Oktobra;Novambra;Desambra;Jan;Feb;Mac;Apr;Mei;Jun;Jul;Ogo;Sep;Okt;Nov;Dis;Januari;Februari;Mac;April;Mei;Jun;Julai;Ogos;September;Oktober;November;Disember;J;F;M;A;M;J;J;O;S;O;N;D;
+;Jan;Fra;Mar;Apr;Mej;
+un;Lul;Aww;Set;Ott;Nov;Di
+;Jannar;Frar;Marzu;April;Mejju;
+unju;Lulju;Awwissu;Settembru;Ottubru;Novembru;Di
+embru;Jn;Fr;Mz;Ap;Mj;
+n;Lj;Aw;St;Ob;Nv;D
+;J;F;M;A;M;
+;L;A;S;O;N;D;
+;10-
+;11-
+;12-
+;januar;februar;mars;april;mai;juni;juli;august;september;oktober;november;desember;
+;sty;lut;mar;kwi;maj;cze;lip;sie;wrz;pa
+;lis;gru;stycze
+;luty;marzec;kwiecie
+;maj;czerwiec;lipiec;sierpie
+;wrzesie
+dziernik;listopad;grudzie
+;s;l;m;k;m;c;l;s;w;p;l;g;stycznia;lutego;marca;kwietnia;maja;czerwca;lipca;sierpnia;wrze
+nia;pa
+dziernika;listopada;grudnia;jan;fev;mar;abr;mai;jun;jul;ago;set;out;nov;dez;janeiro;fevereiro;mar
+o;abril;maio;junho;julho;agosto;setembro;outubro;novembro;dezembro;
+;Qul;Hat;Pau;Ayr;Aym;Int;Ant;Qha;Uma;Kan;Aya;Kap;Qulla puquy;Hatun puquy;Pauqar waray;Ayriwa;Aymuray;Inti raymi;Anta Sitwa;Qhapaq Sitwa;Uma raymi;Kantaray;Ayamarq
+a;Kapaq Raymi;schan.;favr.;mars;avr.;matg;zercl.;fan.;avust;sett.;oct.;nov.;dec.;schaner;favrer;mars;avrigl;matg;zercladur;fanadur;avust;settember;october;november;december;S;F;M;A;M;Z;F;A;S;O;N;D;ian.;feb.;mar.;apr.;mai;iun.;iul.;aug.;sept.;oct.;nov.;dec.;ianuarie;februarie;martie;aprilie;mai;iunie;iulie;august;septembrie;octombrie;noiembrie;decembrie;I;F;M;A;M;I;I;A;S;O;N;D;
+;Nye;Ful;Mb
+;Ngu;B
+n;Len;K
+k;Mvu;Ngb;Nab;Kak;Nyenye;Fulund
+gi;Mb
+;Ngub
+ndo;Lengua;K
+;Mvuka;Ngberere;Nab
+ru;Kakauka;N;F;M;N;B;F;L;K;M;N;N;K;
+;jan;feb;mar;apr;maj;jun;jul;avg;sep;okt;nov;dec;januar;februar;mart;april;maj;jun;jul;avgust;septembar;oktobar;novembar;decembar;j;f;m;a;m;j;j;a;s;o;n;d;
+;Ndi;Kuk;Kur;Kub;Chv;Chk;Chg;Nya;Gun;Gum;Mb;Zvi;Ndira;Kukadzi;Kurume;Kubvumbi;Chivabvu;Chikumi;Chikunguru;Nyamavhuvhu;Gunyana;Gumiguru;Mbudzi;Zvita;N;K;K;K;C;C;C;N;G;G;M;Z;
+;jan;feb;mar;apr;m
+l;aug;sep;okt;nov;dec;janu
+r;febru
+r;marec;apr
+l;august;september;okt
+ber;november;december;janu
+ra;febru
+ra;marca;apr
+la;m
+ja;j
+na;j
+la;augusta;septembra;okt
+bra;novembra;decembra;januar;februar;marec;april;maj;junij;julij;avgust;september;oktober;november;december;jan.;feb.;mar.;apr.;maj;jun.;jul.;avg.;sep.;okt.;nov.;dec.;Kob;Lab;Sad;Afr;Sha;Lix;Tod;Sid;Sag;Tob;KIT;LIT;Bisha Koobaad;Bisha Labaad;Bisha Saddexaad;Bisha Afraad;Bisha Shanaad;Bisha Lixaad;Bisha Todobaad;Bisha Sideedaad;Bisha Sagaalaad;Bisha Tobnaad;Bisha Kow iyo Tobnaad;Bisha Laba iyo Tobnaad;K;L;S;A;S;L;T;S;S;T;K;L;ene.;feb.;mar.;abr.;may.;jun.;jul.;ago.;sept.;oct.;nov.;dic.;enero;febrero;marzo;abril;mayo;junio;julio;agosto;septiembre;octubre;noviembre;diciembre;E;F;M;A;M;J;J;A;S;O;N;D;ene.;feb.;mar.;abr.;may.;jun.;jul.;ago.;sep.;oct.;nov.;dic.;e;f;m;a;m;j;j;a;s;o;n;d;ene;feb;mar;abr;may;jun;jul;ago;sep;oct;nov;dic;Ene.;Feb.;Mar.;Abr.;May.;Jun.;Jul.;Ago.;Set.;Oct.;Nov.;Dic.;Enero;Febrero;Marzo;Abril;Mayo;Junio;Julio;Agosto;Setiembre;Octubre;Noviembre;Diciembre;ene.;feb.;mar.;abr.;may.;jun.;jul.;ago.;set.;oct.;nov.;dic.;enero;febrero;marzo;abril;mayo;junio;julio;agosto;setiembre;octubre;noviembre;diciembre;Jan;Feb;Mac;Apr;Mei;Jun;Jul;Ago;Sep;Okt;Nov;Des;Januari;Februari;Machi;Aprili;Mei;Juni;Julai;Agosti;Septemba;Oktoba;Novemba;Desemba;k;p;t;i;t;s;s;m;t;k;m;m;mkw;mpi;mtu;min;mtn;mst;msb;mun;mts;mku;mkm;mkb;mwezi ya kwanja;mwezi ya pili;mwezi ya tatu;mwezi ya ine;mwezi ya tanu;mwezi ya sita;mwezi ya saba;mwezi ya munane;mwezi ya tisa;mwezi ya kumi;mwezi ya kumi na moya;mwezi ya kumi ya mbili;jan.;feb.;mars;apr.;maj;juni;juli;aug.;sep.;okt.;nov.;dec.;januari;februari;mars;april;maj;juni;juli;augusti;september;oktober;november;december;
+p;Ma
+Epe;M
+;Sun;Siu;
+Aok;Sep;
+Oka;N
+nuali;F
+pueli;Ma
+asi;
+Epeleli;M
+;Sune;Siulai;
+Aokosi;Sepitema;
+Okatopa;N
+vema;T
+sema;S;F;M;E;M;S;S;A;S;O;N;T;Oca;
+ub;Mar;Nis;May;Haz;Tem;A
+u;Eyl;Eki;Kas;Ara;Ocak;
+ubat;Mart;Nisan;May
+s;Haziran;Temmuz;A
+ustos;Eyl
+l;Ekim;Kas
+m;Aral
+k;O;
+;M;N;M;H;T;A;E;E;K;A;
+an;few;mart;apr;ma
+un;i
+ul;awg;sen;okt;no
+;dek;
+anwar;fewral;mart;aprel;ma
+un;i
+ul;awgust;sent
+abr;okt
+abr;no
+abr;dekabr;
+;F;M;A;M;I;I;A;S;O;N;D;
+;Yanv;Fev;Mar;Apr;May;Iyun;Iyul;Avg;Sen;Okt;Noya;Dek;Yanvar;Fevral;Mart;Aprel;May;Iyun;Iyul;Avgust;Sentabr;Oktabr;Noyabr;Dekabr;Y;F;M;A;M;I;I;A;S;O;N;D;yan;fev;mar;apr;may;iyn;iyl;avg;sen;okt;noy;dek;yanvar;fevral;mart;aprel;may;iyun;iyul;avgust;Sentabr;Oktabr;noyabr;dekabr;
+;Thg 1;Thg 2;Thg 3;Thg 4;Thg 5;Thg 6;Thg 7;Thg 8;Thg 9;Thg 10;Thg 11;Thg 12;Th
+ng 1;Th
+ng 2;Th
+ng 3;Th
+ng 4;Th
+ng 5;Th
+ng 6;Th
+ng 7;Th
+ng 8;Th
+ng 9;Th
+ng 10;Th
+ng 11;Th
+ng 12;thg 1;thg 2;thg 3;thg 4;thg 5;thg 6;thg 7;thg 8;thg 9;thg 10;thg 11;thg 12;th
+ng 1;th
+ng 2;th
+ng 3;th
+ng 4;th
+ng 5;th
+ng 6;th
+ng 7;th
+ng 8;th
+ng 9;th
+ng 10;th
+ng 11;th
+ng 12;Ion;Chw;Maw;Ebr;Mai;Meh;Gor;Awst;Medi;Hyd;Tach;Rhag;Ionawr;Chwefror;Mawrth;Ebrill;Mai;Mehefin;Gorffennaf;Awst;Medi;Hydref;Tachwedd;Rhagfyr;I;Ch;M;E;M;M;G;A;M;H;T;Rh;Ion;Chwef;Maw;Ebrill;Mai;Meh;Gorff;Awst;Medi;Hyd;Tach;Rhag;
+bibi;
+du;Ag
+n;Owewe;
+bibi;O
+du;O
+ Owewe;O
+bibi;
+du;Ag
+n;Owewe;
+;Osh
+;Osh
+;Osh
+;Osh
+;Osh
+bibi;Osh
+du;Osh
+;Osh
+n;Osh
+ Owewe;Osh
+;Osh
+;Osh
+;Jan;Feb;Mas;Eph;Mey;Jun;Jul;Aga;Sep;Okt;Nov;Dis;Januwari;Februwari;Mashi;Ephreli;Meyi;Juni;Julayi;Agasti;Septhemba;Okthoba;Novemba;Disemba;J;F;M;E;M;J;J;A;S;O;N;D;jan.;feb.;mars;apr.;mai;juni;juli;aug.;sep.;okt.;nov.;des.;januar;februar;mart;april;maj;juni;juli;august;septembar;oktobar;novembar;decembar;
+;J-guer;T-arree;Mayrnt;Avrril;Boaldyn;M-souree;J-souree;Luanistyn;M-fouyir;J-fouyir;M-Houney;M-Nollick;Jerrey-geuree;Toshiaght-arree;Mayrnt;Averil;Boaldyn;Mean-souree;Jerrey-souree;Luanistyn;Mean-fouyir;Jerrey-fouyir;Mee Houney;Mee ny Nollick;Gen;Hwe;Meu;Ebr;Me;Met;Gor;Est;Gwn;Hed;Du;Kev;mis Genver;mis Hwevrer;mis Meurth;mis Ebrel;mis Me;mis Metheven;mis Gortheren;mis Est;mis Gwynngala;mis Hedra;mis Du;mis Kevardhu;S-
+;E-O;E-K;O-A;A-K;D-
+-O;M-
+;Sanda-
+n;Kwakwar-
+gyefuo;Eb
+benem;Eb
+bira-Oforisuo;Esusow Aketseaba-K
+nimba;Obirade-Ay
+wohomumu;Ay
+woho-Kitawonsa;Difuu-
+sandaa;Fankwa-
+-Ahinime;
+w-Obubuo;Mumu-
+nimba;
+;Jen;Feb;Maa;Epr;Mee;Juu;Jul;
+;Sep;
+kt;Nov;Dis;Jen
+;Febr
+;Maach
+;Eprel;Mee;Juun;Jula
+st;Septemba;
+ktoba;Novemba;Disemba;Mbe;Kel;Kt
+;Kan;Ktn;Tha;Moo;Nya;Knd;
+kl;Mwai wa mbee;Mwai wa kel
+;Mwai wa katat
+;Mwai wa kana;Mwai wa katano;Mwai wa thanthat
+;Mwai wa muonza;Mwai wa nyaanya;Mwai wa kenda;Mwai wa 
+kumi;Mwai wa 
+kumi na 
+mwe;Mwai wa 
+kumi na il
+;M;K;K;K;K;T;M;N;K;
+;Zen;Fev;Mar;Avr;Mai;Jug;Lui;Avo;Set;Otu;Nov;Dic;Zen
+r;Fevr
+r;Mar
+;Avr
+l;Mai;Jugn;Lui;Avost;Setembar;Otubar;Novembar;Dicembar;Z;F;M;A;M;J;L;A;S;O;N;D;dzv;dzd;ted;af
+;dam;mas;sia;dea;any;kel;ade;dzm;dzove;dzodze;tedoxe;af
+e;dama;masa;siaml
+m;deasiamime;any
+;kele;ade
+mekp
+xe;dzome;d;d;t;a;d;m;s;d;a;k;a;d;Ian.;Pep.;Mal.;
+Ap.;Mei;Iun.;Iul.;
+Au.;Kep.;
+Ok.;Now.;Kek.;Ianuali;Pepeluali;Malaki;
+Apelila;Mei;Iune;Iulai;
+Aukake;Kepakemapa;
+Okakopa;Nowemapa;Kekemapa;Ene;Peb;Mar;Abr;May;Hun;Hul;Ago;Set;Okt;Nob;Dis;Enero;Pebrero;Marso;Abril;Mayo;Hunyo;Hulyo;Agosto;Setyembre;Oktubre;Nobyembre;Disyembre;E;P;M;A;M;Hun;Hul;Ago;Set;Okt;Nob;Dis;Januar;Februar;M
+rz;April;Mai;Juni;Juli;Auguscht;Sept
+mber;Oktoober;Nov
+mber;Dez
+mber;
+j;guov;njuk;cuo;mies;geas;suoi;borg;
+;golg;sk
+b;juov;o
+ajagem
+nnu;guovvam
+nnu;njuk
+nnu;cuo
+nnu;miessem
+nnu;geassem
+nnu;suoidnem
+nnu;borgem
+nnu;
+nnu;golggotm
+nnu;sk
+bmam
+nnu;juovlam
+nnu;O;G;N;C;M;G;S;B;
+;G;S;J;o
+ajage;guovva;njuk
+a;cuo
+o;miesse;geasse;suoidne;borge;
+a;golggot;sk
+bma;juovla;Can;Feb;Mac;Apr;Mei;Jun;Cul;Agt;Sep;Okt;Nob;Dis;Chanuari;Feburari;Machi;Apiriri;Mei;Juni;Chulai;Agosti;Septemba;Okitoba;Nobemba;Disemba;C;F;M;A;M;J;C;A;S;O;N;D;Imb;Kaw;Kad;Kan;Kas;Kar;Mfu;Wun;Ike;Iku;Imw;Iwi;Mori ghwa imbiri;Mori ghwa kawi;Mori ghwa kadadu;Mori ghwa kana;Mori ghwa kasanu;Mori ghwa karandadu;Mori ghwa mfungade;Mori ghwa wunyanya;Mori ghwa ikenda;Mori ghwa ikumi;Mori ghwa ikumi na imweri;Mori ghwa ikumi na iwi;I;K;K;K;K;K;M;W;I;I;I;I;sii;col;mbo;see;duu;kor;mor;juk;slt;yar;jol;bow;siilo;colte;mbooy;see
+to;duujal;korse;morso;juko;siilto;yarkomaa;jolal;bowte;s;c;m;s;d;k;m;j;s;y;j;b;JEN;WKR;WGT;WKN;WTN;WTD;WMJ;WNN;WKD;WIK;WMW;DIT;Njenuar
+;Mwere wa ker
+;Mwere wa gatat
+;Mwere wa kana;Mwere wa gatano;Mwere wa gatandat
+;Mwere wa m
+gwanja;Mwere wa kanana;Mwere wa kenda;Mwere wa ik
+mi;Mwere wa ik
+mi na 
+mwe;Ndithemba;J;K;G;K;G;G;M;K;K;I;I;D;Obo;Waa;Oku;Ong;Ime;Ile;Sap;Isi;Saa;Tom;Tob;Tow;Lapa le obo;Lapa le waare;Lapa le okuni;Lapa le ong
+wan;Lapa le imet;Lapa le ile;Lapa le sapa;Lapa le isiet;Lapa le saal;Lapa le tomon;Lapa le tomon obo;Lapa le tomon waare;O;W;O;O;I;I;S;I;S;T;T;T;Jan;Fev;Mar;Abr;Mai;Jun;Jul;Aug;Set;Otu;Nov;Dec;Janeiro;Fevreiro;Marco;Abril;Maio;Junho;Julho;Augusto;Setembro;Otubro;Novembro;Decembro;Zib;Nhlo;Mbi;Mab;Nkw;Nhla;Ntu;Ncw;Mpan;Mfu;Lwe;Mpal;Zibandlela;Nhlolanja;Mbimbitho;Mabasa;Nkwenkwezi;Nhlangula;Ntulikazi;Ncwabakazi;Mpandula;Mfumfu;Lwezi;Mpalakazi;Z;N;M;M;N;N;N;N;M;M;L;M;M1;M2;M3;M4;M5;M6;M7;M8;M9;M10;M11;M12;Mweri wa kwanza;Mweri wa kaili;Mweri wa katatu;Mweri wa kaana;Mweri wa tanu;Mweri wa sita;Mweri wa saba;Mweri wa nane;Mweri wa tisa;Mweri wa ikumi;Mweri wa ikumi na moja;Mweri wa ikumi na mbili;K;K;K;K;T;S;S;N;T;I;I;I;
+;inn;b
+a;ma
+;ibr;may;yun;yul;
+uc;cut;ktu;nuw;duj;innayr;b
+;ibrir;mayyu;yunyu;yulyuz;
+uct;cutanbir;ktubr;nuwanbir;dujanbir;i;b;m;i;m;y;y;
+;c;k;n;d;Yen;Fur;Me
+;Yeb;May;Yun;Yul;
+uc;Cte;Tub;Nun;Du
+;Yennayer;Fu
+ar;Me
+res;Yebrir;Mayyu;Yunyu;Yulyu;
+uct;Ctembe
+;Tube
+;Nunembe
+embe
+;Y;F;M;Y;M;Y;Y;
+;C;T;N;D;KBZ;KBR;KST;KKN;KTN;KMK;KMS;KMN;KMW;KKM;KNK;KNB;Okwokubanza;Okwakabiri;Okwakashatu;Okwakana;Okwakataana;Okwamukaaga;Okwamushanju;Okwamunaana;Okwamwenda;Okwaikumi;Okwaikumi na kumwe;Okwaikumi na ibiri;Hut;Vil;Dat;Tai;Han;Sit;Sab;Nan;Tis;Kum;Kmj;Kmb;pa mwedzi gwa hutala;pa mwedzi gwa wuvili;pa mwedzi gwa wudatu;pa mwedzi gwa wutai;pa mwedzi gwa wuhanu;pa mwedzi gwa sita;pa mwedzi gwa saba;pa mwedzi gwa nane;pa mwedzi gwa tisa;pa mwedzi gwa kumi;pa mwedzi gwa kumi na moja;pa mwedzi gwa kumi na mbili;H;V;D;T;H;S;S;N;T;K;K;K;Januari;Februari;Machi;Aprilyi;Mei;Junyi;Julyai;Agusti;Septemba;Oktoba;Novemba;Desemba;zan;feb;mar;awi;m
+;zuw;zul;uti;s
+ku;now;des;zanwuye;feburuye;marisi;awirili;m
+;zuw
+n;zuluye;uti;s
+tanburu;
+buru;nowanburu;desanburu;Z;F;M;A;M;Z;Z;U;S;
+;N;D;Mbe;Kai;Kat;Kan;Gat;Gan;Mug;Knn;Ken;Iku;Imw;Igi;Mweri wa mbere;Mweri wa ka
+ri;Mweri wa kathat
+;Mweri wa kana;Mweri wa gatano;Mweri wa gatantat
+;Mweri wa m
+gwanja;Mweri wa kanana;Mweri wa kenda;Mweri wa ik
+mi;Mweri wa ik
+mi na 
+mwe;Mweri wa ik
+mi na Ka
+;M;K;K;K;G;G;M;K;K;I;I;I;
+;zan;fev;mar;avr;me;zin;zil;out;sep;okt;nov;des;zanvie;fevriye;mars;avril;me;zin;zilye;out;septam;oktob;novam;desam;z;f;m;a;m;z;z;o;s;o;n;d;Mwedi Ntandi;Mwedi wa Pili;Mwedi wa Tatu;Mwedi wa Nchechi;Mwedi wa Nnyano;Mwedi wa Nnyano na Umo;Mwedi wa Nnyano na Mivili;Mwedi wa Nnyano na Mitatu;Mwedi wa Nnyano na Nchechi;Mwedi wa Nnyano na Nnyano;Mwedi wa Nnyano na Nnyano na U;Mwedi wa Nnyano na Nnyano na M;F
+ngat
+;Naan
+;Keenda;Ik
+mi;Inyambala;Idwaata;M
+;Saat
+;Inyi;Saano;Sasat
+ngat
+naan
+keenda;Kwiikumi;Kwiinyamb
+la;Kwiidwaata;K
+saat
+;Kwiinyi;K
+saano;K
+sasat
+;F;N;K;I;I;I;M;V;S;I;S;S;Jan;Feb;Mar;Apu;Maa;Juu;Jul;Agu;Seb;Oki;Nov;Des;Janwaliyo;Febwaliyo;Marisi;Apuli;Maayi;Juuni;Julaayi;Agusito;Sebuttemba;Okitobba;Novemba;Desemba;Jan;Feb;Mac;Epr;Mei;Jun;Jul;Oga;Sep;Okt;Nov;Dis;Januari;Februari;Machi;Epreo;Mei;Juni;Julai;Ogasti;Septemba;Oktoba;Novemba;Disemba;J;F;M;E;M;J;J;O;S;O;N;D;Jan;Feb;Mar;Abr;Mai;Jun;Jul;Ago;Set;Otu;Nuv;Diz;Janeru;Febreru;Marsu;Abril;Maiu;Junhu;Julhu;Agostu;Setenbru;Otubru;Nuvenbru;Dizenbru;JAN;FEB;MAC;
+PU;M
+;NJU;NJR;AGA;SPT;OKT;NOV;DEC;Januar
+;Feburuar
+;Machi;
+;Njuni;Njura
+;Agasti;Septemba;Okt
+ba;Novemba;Dicemba;J;F;M;
+;M;N;N;A;S;O;N;D;Mul;Ngat;Taa;Iwo;Mam;Paa;Nge;Roo;Bur;Epe;Kpt;Kpa;Mulgul;Ng
+atyaato;Kiptaamo;Iwootkuut;Mamuut;Paagi;Ng
+eiyeet;Rooptui;Bureet;Epeeso;Kipsuunde ne taai;Kipsuunde nebo aeng
+;M;N;T;I;M;P;N;R;B;E;K;K;
+Khanni;
+Khan
+Khuu
+khaib;
+Khaits
+b;Gama
+aeb;
+Khoesaob;Ao
+khuum
+b;Tara
+khuum
+iseb;
+gaeb;H
+asore
+b;Jan.;F
+b.;M
+z.;Apr.;M
+i;Jun.;Jul.;Ouj.;S
+p.;Okt.;Nov.;Dez.;Jannewa;F
+browa;M
+z;Aprell;M
+i;Juuni;Juuli;Oujo
+;Sept
+mber;Oktoober;Nov
+mber;Dez
+mber;Jan;F
+z;Apr;M
+i;Jun;Jul;Ouj;S
+p;Okt;Nov;Dez;Dal;Ar
+n;Doy;L
+p;Rok;S
+s;Sh
+;Oladal
+k;Olodoy
+ ink
+;Oloil
+ ink
+sin;
+n;Olg
+san;P
+ka;Nt
+s;Jan;Feb;Mar;Apr;Mei;Jun;Jul;Ago;Sep;Okt;Nov;Des;Jan;Feb;Mac;Apr;Mei;Jun;Jul;Ago;Sep;Okt;Nov;Dec;Rar;Muk;Kwa;Dun;Mar;Mod;Jol;Ped;Sok;Tib;Lab;Poo;Orara;Omuk;Okwamg
+;Odung
+el;Omaruk;Omodok
+king
+ol;Ojola;Opedel;Osokosokoma;Otibar;Olabor;Opoo;R;M;K;D;M;M;J;P;S;T;L;P;
+an;Fee;Mar;Awi;Me;
+uy;Ut;Sek;Okt;Noo;Dee;
+anwiye;Feewiriye;Marsi;Awiril;Me;
+uyye;Ut;Sektanbur;Oktoobur;Noowanbur;Deesanbur;
+;F;M;A;M;
+;U;S;O;N;D;DAC;DAR;DAD;DAN;DAH;DAU;DAO;DAB;DOC;DAP;DGI;DAG;Dwe mar Achiel;Dwe mar Ariyo;Dwe mar Adek;Dwe mar Ang
+wen;Dwe mar Abich;Dwe mar Auchiel;Dwe mar Abiriyo;Dwe mar Aboro;Dwe mar Ochiko;Dwe mar Apar;Dwe mar gi achiel;Dwe mar Apar gi ariyo;C;R;D;N;B;U;B;B;C;P;C;P;Yen;Yeb;Mar;Ibr;May;Yun;Yul;
+uc;Cut;K
+u;Nwa;Duj;Yennayer;Yebrayer;Mars;Ibrir;Mayyu;Yunyu;Yulyuz;
+uct;Cutanbir;K
+uber;Nwanbir;Dujanbir;Y;Y;M;I;M;Y;Y;
+;C;K;N;D;Januali;Febluali;Machi;Aplili;Mei;Juni;Julai;Agosti;Septemba;Oktoba;Novemba;Desemba;
+;Cio;Lui;Lus;Muu;Lum;Luf;Kab;Lush;Lut;Lun;Kas;Cis;Ciongo;L
+ishi;Lus
+lo;M
+;Lum
+;Lufuimi;Kab
+;Lutongolo;Lung
+di;Kasw
+;Cisw
+;C;L;L;M;L;L;K;L;L;L;K;C;Jan;Feb;M
+e;Abr;Mee;Jun;Jul;Aug;Sep;Okt;Nov;Dez;Januar;Februar;M
+erz;Abr
+ll;Mee;Juni;Juli;August;September;Oktober;November;Dezember;Jan.;Feb.;M
+e.;Abr.;Mee;Juni;Juli;Aug.;Sep.;Okt.;Nov.;Dez.;n
+d;taa;see;nzu;dum;f
+e;dzu;l
+m;kaa;fwo;ndz
+m;ndz
+;ndz
+;ndz
+;ndz
+e;ndz
+;ndz
+mlo;ndz
+e;ndz
+dzugh
+;ndz
+uwel
+m;ndz
+chwa
+kaa wo;ndz
+o;n;k;t;t;s;z;k;f;d;l;c;f;k
+n;mac;mat;mto;mpu;hil;nje;hik;dip;bio;may;li
+mb;M
+top;M
+buy li 
+e;k;m;m;m;m;h;n;h;d;b;m;l;di;
+;emi;es
+;mad;di
+t;may;tin;el
+;dim
+;emiasele;es
+;madi
+gindi;ny
+ki;may
+;tin
+;s;d;e;e;m;d;n;m;t;e;Sa;Fe;Ma;Ab;Me;Su;S
+;Ut;Se;Ok;No;De;Sanvie;F
+birie;Mars;Aburil;Mee;Sue
+uyee;Ut;Settembar;Oktobar;Novembar;Disambar;S;F;M;A;M;S;S;U;S;O;N;D;ngo;ngb;ngl;ngn;ngt;ngs;ngz;ngm;nge;nga;ngad;ngab;ng
+n os
+la;ng
+n nyina;ng
+na;ng
+n sam
+na;ng
+n zamgb
+la;ng
+n mwom;ng
+n ebul
+n aw
+m;ng
+n aw
+m ai dzi
+n aw
+m ai b
+;o;b;l;n;t;s;z;m;e;a;d;b;
+ a nt
+ nin;
+araa;
+anin;
+k di b
+k di b
+;Kwa;Una;Rar;Che;Tha;Moc;Sab;Nan;Tis;Kum;Moj;Yel;Mweri wo kwanza;Mweri wo unayeli;Mweri wo uneraru;Mweri wo unecheshe;Mweri wo unethanu;Mweri wo thanu na mocha;Mweri wo saba;Mweri wo nane;Mweri wo tisa;Mweri wo kumi;Mweri wo kumi na moja;Mweri wo kumi na yel
+li;K;U;R;C;T;M;S;N;T;K;M;Y;FLO;CLA;CKI;FMF;MAD;MBI;MLI;MAM;FDE;FMU;FGW;FYU;F
+i Loo;Cokcwakla
+ne;Cokcwaklii;F
+i Marfoo;Mad
+bija
+;Mam
+afahbii;Mam
+alii;Mad
+mbii;F
+lii;F
+i Munda
+i Gwahlle;F
+i Yuru;O;A;I;F;D;B;L;M;E;U;W;Y;ng1;ng2;ng3;ng4;ng5;ng6;ng7;ng8;ng9;ng10;ng11;kris;ngw
+n mat
+hra;ngw
+mba;ngw
+lal;ngw
+na;ngw
+tan;ngw
+;ngw
+;ngw
+mbi;ngw
+;ngw
+n wum;ngw
+n wum nav
+r;kr
+simin;Tiop;P
+t;Du
+;Guak;Du
+;Kor;Pay;Thoo;T
+;Laa;Kur;Tid;Tiop thar p
+t;Du
+;Guak;Du
+t;Kornyoot;Pay yie
+tni;Tho
+r;Laath;Kur;Tio
+p in di
+t;T;P;D;G;D;K;P;T;T;L;K;T;
+;Mup;Mwi;Msh;Mun;Mag;Muj;Msp;Mpg;Mye;Mok;Mus;Muh;Mupalangulwa;Mwitope;Mushende;Munyi;Mushende Magali;Mujimbi;Mushipepo;Mupuguto;Munyense;Mokhu;Musongandembwe;Muhaano;
+;6;7;
+;luukao kem
+anda
+;fulu;goo;6;7;k
+nde;saah;galo;kenpkato 
+olol
+;luukao l
+ma;Jen;Hor;M
+r;Abr;Mei;Br
+;Hei;
+ig;Her;W
+m;Win;Chr;Jenner;Hornig;M
+rze;Abrille;Meije;Br
+et;Heiwet;
+te;Herb
+net;W
+net;Winterm
+net;Chri
+net;J;H;M;A;M;B;H;
+;H;W;W;C;o.1;o.2;o.3;o.4;o.5;o.6;o.7;o.8;o.9;o.10;o.11;o.12;pik
+tie, o
+ kut
+an;si
+l, o
+;mesi
+nie;ensil, o
+n;efute;pisuy
+ i pu
+s;im
+ i put
+;makandik
+;pil
+;Xin;Feb;Mar;Abr;May;Xun;Xnt;Ago;Set;Och;Pay;Avi;xineru;febreru;marzu;abril;mayu;xunu;xunetu;agostu;setiembre;ochobre;payares;avientu;X;F;M;A;M;X;X;A;S;O;P;A;xin;feb;mar;abr;may;xun;xnt;ago;set;och;pay;avi;de xineru;de febreru;de marzu;d
+abril;de mayu;de xunu;de xunetu;d
+agostu;de setiembre;d
+ochobre;de payares;d
+avientu;Ndu
+mbi Sa
+kwa;P
+ Pataa;P
+ Saamb
+ Nts
+ Nts
+;pamba;wanja;mbiy
+gbanja;Nya
+gbanja;ku
+;njapi;nyukul;11;
+;mbegtug;imeg 
+;imeg mb
+chubi;im
+g ngw
+t;im
+g fog;im
+g ichiib
+d;im
+g ichika;im
+g kud;im
+e;im
+g krizmed;im
+g mbegtug;imeg 
+;imeg mb
+chubi;im
+g ngw
+t;im
+g fog;im
+g ichiib
+d;im
+g ichika;im
+g kud;im
+e;im
+g krizmed;M1;A2;M3;N4;F5;I6;A7;I8;K9;10;11;12;sa
+ tsets
+m;sa
+g ngw
+ lepy
+m;sa
+b ty
+b mb
+ ngw
+a tsets
+ mejwo
+m;Wi
+ika W
+;Thiy
+ka W
+hayaza
+pazuk
+a-wa
+sapa W
+;Was
+pe-kasn
+;Wan
+yetu W
+;jan;feb;m
+r;apr;maj;jun;jul;awg;sep;okt;now;dec;januar;februar;m
+rc;apryl;maj;junij;julij;awgust;september;oktober;nowember;december;jan.;feb.;m
+r.;apr.;maj.;jun.;jul.;awg.;sep.;okt.;now.;dec.;januara;februara;m
+rca;apryla;maja;junija;julija;awgusta;septembra;oktobra;nowembra;decembra;jan;feb;m
+r;apr;mej;jun;jul;awg;sep;okt;now;dec;januar;februar;m
+rc;apryl;meja;junij;julij;awgust;september;oktober;nowember;december;jan.;feb.;m
+r.;apr.;mej.;jun.;jul.;awg.;sep.;okt.;now.;dec.;januara;februara;m
+rca;apryla;meje;junija;julija;awgusta;septembra;oktobra;nowembra;decembra;u
+ivem
+nu;kuov
+nu;njuh
+nu;cu
+nu;vyesim
+nu;kesim
+nu;syeinim
+nu;porgem
+nu;roovv
+nu;skamm
+nu;juovl
+HH:mm:ssHH:mm:ss th:mm APh:mm:ss AP tHH:mmh:mm:ss AP, tH:mmH:mm:ss tH:mm:ss, th.mm. APh.mm.ss AP tHH:mm:ss (t)
+ mm AP
+ mm:ss AP tHH.mmHH.mm.ss tAPh:mmt APh:mm:ssAPh:mm:ss [t]h.mm APH.mmH.mm.ss tH:mm.ss tH 'h' mm 'min' ss 's' tHH.mm:ss 'h' thh:mm APhh:mm:ss AP tH
+ tAP h:mmAP h
+ tH 
+ ss 
+ tH:mm:ss (t)'kl'. HH:mm:ss tAP h:mm:ss tH 
+ mm 
+ ss 
+ t'kl'. HH.mm.ss tAP 'ga' h:mmAP 'ga' h:mm:ss tt h:mm:ss APH:mm 'hod
+d MMM yyyydddd, d MMMM yyyydd/MM/yydddd, MMMM d, yyyyyyyy-MM-ddyyyy MMMM d, dddddddd, dd MMMM yyyydddd d MMMM yyyyd.M.yydd/MM/yyyydddd 
+d MMMM yyyyd
+/yyyydddd
+ d MMMM
+ yyyydd.MM.yyyyyy
+. MMMM d, ddddd-M-yyyydddd, d MMMM, yyyyd MMMM yyyy, dddddddd, d, MMMM, yyyyyyyy/MM/ddyyyy('e')'ko' MMMM d, ddddd/M/yydddd, 
+yyyy MMMM 
+ddd.MM.yy '
+'.dddd, d MMMM yyyy '
+'.dd-MM-yydddd
+ dd MMMM yyyydddd, d MMMM 'de' yyyyyyyy/M/dyyyy
+ddddd/M/yyyyyyyy
+ dddddd.MM.yyyy.dddd, d. MMMM yyyy.dddd d. MMMM yyyydddd 'den' d. MMMM yyyyd/MM/yyM/d/yydddd, d. MMMM yyyyd.M.yyyyyy-MM-dddddd, d'mh' MMMM yyyydddd dd MMMM yyyydddd, dd MMMM, yyyydddd, d 
+MMMM yyyyyyyy. MM. dd.yyyy. MMMM d., ddddyyyy '
+'. d MMMM, ddddyy/MM/dddddd, yyyy MMMM dddddd, d-MMMM, yyyy-'
+'.yy. M. d.yyyy
+ dddddddd 
+ d MMMM yyyydddd, yyyy. 'gada' d. MMMMyyyy 'm'. MMMM d 'd'., dddddd.M.yydd MMMM yyyyyyyy, MMMM d, dddddddd, d 'ta'
+ MMMM yyyydddd, yyyy '
+' MM '
+' ddd.MM.yyyyd-M-yydddd 
+ yyyy 
+ MMMM ddddd, d 'de' MMMM 'de' yyyydddd, 'ils' d 'da' MMMM yyyyd.M.yy.dddd, dd. MMMM yyyy.dddd, d MMMM, yyyy '
+'d. MM. yydddd, dd. MMMM yyyydddd, MMMM dd, yyyydddd dd 'de' MMMM 'de' yyyyMM/dd/yydd-MM-yyyyd, MMMM yyyy, dddddddd
+ d MMMM yyyyyyyy MMMM
+d, dddddddd
+ dd MMMM 
+ yyyydddd
+ dd MMMM 
+ yyyyd.MM.yyyyd MMMM yyyy dddddddd
+ MMMM d
+ yyyydddd, d MMMM yyyy '
+'.yyyy 
+ MMMM dddd 
+dddd, 'ng
+y' dd MMMM 'n
+m' yyyydd.MM.yy.dddd d 'di' MMMM 'dal' yyyydddd, MMMM d 'lia' yyyydddd, d 'di' MMMM 'di' yyyyd. M. yyyydddd, 'd
+' d. MMMM yyyyyyyy.MM.dddddd, d MMMM '
+'. yyyy.d/MM/yyyyyy/M/dyyyy '
+' MMMM d '
+', dddddd/MM yyyydddd , 'ly
+ d 'na' MMMM, yyyy
+%1, %2%1 en %2%1 dhe %2%1
+ %2%1, 
+ %2%1 
+ %2%1
+ %2%1
+%2%1 
+%2%1 
+ %2%1 v
+ %2%1 eta %2%1, 
+ %2%1 
+ %2%1 
+ %2%1 
+ %2%1
+ %2%1
+%2%1
+%2%1 
+ %2%1 
+ %2%1 
+%2%1 i %2%1
+%2%1
+%2%1
+%2%1 a %2%1 og %2%1, and %2%1 and %2%1 ja %2%1 et %2%1 agus %2%1 e %2%1 
+ %2%1 und %2%1 
+ %2%1 aamma %2%1 
+ %2%1 
+%2%1, 
+ %2%1 
+ %2%1 
+s %2%1, dan %2%1 dan %2%1, agus %2%1, 
+ %2%1 
+ %2%1 
+ %2%1 
+ %2%1 
+ %2%1 
+ %2%1 un %2%1 mp
+ %2%1 ir %2%1, %2 
+ %2%1, u %2%1 u %2%1 
+ %2%1 
+ %2%1
+ %2%1
+ %2%1 
+ %2%1 
+ %2%1 
+i %2%1 
+ %2%1, 
+ %2%1 
+ %2%1 a
+%2%1 in %2%1 y %2%1 na %2%1 och %2%1 
+ %2%1 
+ %2%1 %2%1 
+%2%1
+%2%1 mo %2%1 ve %2%1 we %2%1
+ %2%1 
+ %2%2
+ %1%1 va %2%1 v
+ %2%1, ne-%2I-%1 ne-%2%1, kple %2%1 kple %2%1, at %2%1 at %2%1 
+ %2%1 a(n) %2%1, 
+ %2%1, 
+ %2%1 p
+p %2%1
+.,;%0-+e""''
+E.,;%0-+e
+o.,;%0-+e
+E.,;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+E.,;%0-+e
+0-+e
+z,.;
+0-+e
+0-+e
+0-+e
+0-+e
+,.;%0-+e
+d.,;%
+,.;%0-+e
+f.,;%0-+e
+,.;%0-+e
+.,;%0-+e
+,.;%0-+e
+P	P	
+.,;%
+d.,;%
+.,;%
+l	l	l	l	5
+;%0-+e
+;%0-+e
+;%0-+e
+$,.;%0-+e
+,.;%0-+e
+,.;%0-+e
+J,.;%0-+e
+j,.;%0-+e
+,.,;%0-+e
+a.,;%0-+e
+~.,;%0-+e
+.,;%0-+e
+a.,;%0-+e
+~.,;%0-+e
+.,;%0-+e
+J.,;%0-+e
+6,.;%0-+e
+,.;%0-+e
+;%0-+e
+:,.;%0-+e
+V,.;%0-+e
+,.;%0-+e
+,.;%0-+e
+,.;%0-+e
+,.;%0-+e
+,.;%0-+e
+,.;%0-+e
+,.;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+	.,;%0-+e
+.,;%0-+e
+,.;%0-+e
+.,;%0-+e
+.,;%0-+e
+,.;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+#.,;%0-+e
+%.,;%0-+e
+&.,;%0-+e
+(.,;%0-+e
+-.,;%0-+e
+..,;%0-+e
+3.,;%0-+e
+8.,;%0-+e
+:,.;%0-+e
+<.,;%0-+e
+C.,;%0-+e
+F.,;%0-+e
+H.,;%0-+e
+;%0-+e
+K.,;%0-+e
+P.,;%0-+e
+R,.;%0-+e
+S.,;%0-+e
+T.,;%0-+e
+W.,;%0-+e
+Y.,;%0-+e
+].,;%0-+e
+a.,;%0-+e
+d.,;%0-+e
+h.,;%0-+e
+i.,;%0-+e
+k.,;%0-+e
+o.,;%0-+e
+p.,;%0-+e
+x.,;%0-+e
+y.,;%0-+e
+~.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+,.;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+,.;%0-+e
+.,;%0-+e
+;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+;%0-+e
+,.;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+G,.;%0
+:,.;%0
+;%0-+e
+;%0-+e
+,.;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+},.;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+,.;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+,.;%0-+e
+.,;%0-+e
+,.;%0-+e
+;%0-+e
+R,.;%0-+e
+;%0-+e
+,.;%0-+e
+{.';%0-+e
+},.;%0-+e
+.';%0-+e
+U,.;%0-+e
+8,.;%0-+e
+V,.;%0-+e
+.,;%0-+e
+d.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+S.,;%0-+e
+.,;%0-+e
+i.,;%0-+e
+d.,;%0-+e
+;%0-+e
+c,.;%0-+e
+e,.;%0-+e
+J.,;%0-+e
+7,&.,;%0-+e
+&.,;%0-+e
+h.,;%0-+e
+j,.;%0-+e
+,.;%0-+e
+.';%0-+e
+l.,;%0-+e
+e.,;%0-+e
+d.,;%0-+e
+;%0-+e
+,.;%0-+e
+;%0-+e
+r.,;%0-+e
+q.,;%0-+e
+.,;%0-+e
+#,.;%0-+e
+u,.;%0-+e
+;%0-+e
+1,.;%0-+e
+,.;%0-+e
+),.;%0-+e
+2,.;%0-+e
+,.;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+ ,.;%0-+e
+.,;%0-+e
+d.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+d.,;%
+.,;%0-+e
+,.,;%0-+e
+.,;%
+d.,;%
+J.,;%0-+e
+d.,;%0-+e
+;%0-+e
+,.;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+d.,;%0-+e
+.,;%0-+e
+,.;%0-+e
+?.,;%0-+e
+,.;%0-+e
+,.;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+),.;%0-+e
+d.,;%0-+e
+,.;%0-+e
+,.;%0-+e
+,.;%0-+e
+,.;%0-+e
+,.;%0-+e
+,.;%0-+e
+,.;%0-+e
+,.;%0-+e
+;%0-+e
+;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+;%0-+e
+,.;%0-+e
+.,;%0-+e
+;.,;%0-+e
+E.,;%0-+e
+o.,;%0-+e
+,.;%0-+e
+,.;%0-+e
+,.;%0-+e
+.,;%0-+e
++,.;%0-+e
+/,.;%0-+e
+;%0-+e
+7.,;%0-+e
+=.,;%0-+e
+?,.;%0-+e
+A.,;%0-+e
+B,.;%0-+e
+Z.,;%0-+e
+`.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+,.;%0-+e
+.,;%0-+e
+,.;%0-+e
+.,;%0-+e
+.,;%0-+e
+,.;%0-+e
+,.;%0-+e
+,.;%0-+e
+.,;%0-+e
+,.;%0-+e
+.,;%0-+e
+1,.;%0-+e
+o.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+d.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+d.,;%0-+e
+.,;%0-+e
+,.,;%0-+e
+d.,;%0-+e
+E.,;%0-+e
+C.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+,.;%0-+e
+8,.;%0-+e
+;%0-+e
+,.,;%0-+e
+;%0-+
+.,;%0-+e
+d.,;%
+;%0-+e
+;%0-+e
+,.;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+,.;%0-+e
+,.;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+S.,;%0-+e
+d.,;%0-+e
+S.,;%0-+e
+.,;%0-+e
+o.,;%0-+e
+!g.,;%0-+e
+C.,;%0-+e
+E.,;%0-+e
+E.,;%0-+e
+.,;%0-+e
+C.,;%0-+e
+.,;%0-+e
+j,.;%0-+e
+.,;%0-+e
+S.,;%0-+e
+.,;%0-+e
+E.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+",.,;%0-+e
+y.,;%0-+e
+R.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+o.,;%0-+e
+o.,;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+o.,;%0-+e
+o.,;%0-+e
+,.;%0-+e
+.,;%0-+e
+.,;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+o.,;%0-+e
+.,;%0-+e
+;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+;%0-+e
+o.,;%0-+e
+o.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+o.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+o.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+o.,;%0-+e
+C.,;%0-+e
+;%0-+e
+.,;%0-+e
+o.,;%0-+e
+.,;%0-+e
+;%0-+e
+;%0-+e
+.,;%0-+e
+d.,;%0-+e
+.,;%0-+e
+;%0-+e
+.,;%0-+e
+1,.;%0-+e
+},.;%0-+e
+.,;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+;%0-+e
+,.;%0-+e
+%,.;%0-+e
+;%0-+e
+.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+;%0-+e
+#y.,;%0-+e
+y.,;%0-+e
+;%0-+e
+;%0-+e
+,.;%0-+e
+%,.;%0-+e
+%,.;%0-+e
+%.,;%0-+e
+%,.;%0-+e
+%.,;%0-+e
+.,;%0-+e
+;%0-+e
++.,;%0-+e
+R,.;%0-+e
+R,.;%0-+e
+%.,;%0-+e
+&.,;%0-+e
+K[.,;%0-+e
+Z.,;%0-+e
+.,;%0-+e
+.,;%0-+e
+I.,;%0-+e
+I.,;%0-+e
+.,;%0-+e
+a.,;%0-+e
+'*+,.
+/012348?@BCEL
+7,&;
+iodi}
+yyyy-MM-dd HH:mm:ss.zzz t
+HH:mm:ss.zzz
+dd MMM yyyy hh:mm:ss 
+dd MMM yyyy
+^[A-Z][a-z]+[ \t]+([A-Z][a-z]+)[ \t]+(\d\d)(?:[ \t]+(\d\d):(\d\d):(\d\d))?[ \t]+(\d\d\d\d)[ \t]*(?:([+-])(\d\d)(\d\d))?
+^(?:[A-Z][a-z]+,)?[ \t]*(\d{1,2})[ \t]+([A-Z][a-z]+)[ \t]+(\d\d\d\d)(?:[ \t]+(\d\d):(\d\d)(?::(\d\d))?)?[ \t]*(?:([+-])(\d\d)(\d\d))?
+QT_MESSAGE_PATTERN: Unknown placeholder %1
+:/qt/etc/qt.conf
+ (,.0=F
+ntdll.dll
+windows
+winnt
+unknown
+i386-little_endian-ilp32
+ia64
+x86_64
+i386
+ SP 
+AZaz
+Invalid empty magic rule value
+Missing 'type'-attribute
+ca-R
+AAAAAC
+EIIIIDN
+OUUUUYTs
+aaaaac
+iien
+ !"#$%&'()012345
+89@ABCD
+EFGHI
+PQRSTUVWXY`abcdefghipqrstuvwxy
+.dll
+\\.\pipe\qt-%X
+Wrunas
+advapi32
+userenv
+pNetapi32
+cxn--
+..\3rdparty\double-conversion\double-conversion.cc
+**current == *substring
+*current != end
+number < ((int64_t)1 << kSignificandSize)
+static_cast<int64_t>(static_cast<double>(number)) == number
+number != 0
+..\3rdparty\double-conversion\include\double-conversion/utils.h
+!is_finalized() && position_ < buffer_.length()
+0 <= index && index < length_
+!is_finalized() && position_ + n < buffer_.length()
+static_cast<size_t>(n) <= strlen(s)
+length != 0
+c != '\0'
+exponent < 1e4
+length <= digits_after_point - (-decimal_point)
+digits_after_point > 0
+length - decimal_point <= digits_after_point
+length == 0 || (length > 0 && data != __null)
+!Double(v).IsSpecial()
+mode == SHORTEST || mode == SHORTEST_SINGLE || requested_digits >= 0
+mode == SHORTEST || mode == SHORTEST_SINGLE
+decimal_rep_length <= requested_digits + 1
+decimal_rep_length <= precision
+buffer_pos < kBufferSize
+-max_exponent / 2 <= exponent && exponent <= max_exponent / 2
+!result_is_junk
+..\3rdparty\double-conversion\bignum-dtoa.cc
+count >= 0
+digit <= 9
+..\3rdparty\double-conversion\include\double-conversion/utils.h
+0 <= index && index < length_
+digit <= 10
+v > 0
+!Double(v).IsSpecial()
+f == v
+significand != 0
+estimated_power >= 0
+buffer[(*length) - 1] != '9'
+buffer[(*length) -1] != '9'
+*decimal_point == -requested_digits
+..\3rdparty\double-conversion\bignum.cc
+'A' <= c && c <= 'F'
+..\3rdparty\double-conversion\include\double-conversion/utils.h
+0 <= index && index < length_
+0 <= digit && digit <= 9
+length == 0 || (length > 0 && data != __null)
+IsClamped()
+accumulator == 0
+number > 0
+a.IsClamped()
+b.IsClamped()
+c.IsClamped()
+used_digits_ >= 0
+exponent_ >= 0
+other.IsClamped()
+bigit_pos >= 0
+LessEqual(other, *this)
+shift_amount < kBigitSize
+shift_amount >= 0
+exponent >= 0
+base != 0
+power_exponent >= 0
+exponent_ <= other.exponent_
+other.used_digits_ > 0
+other.bigits_[other.used_digits_ - 1] >= ((1 << kBigitSize) / 16)
+bigits_[used_digits_ - 1] < 0x10000
+BigitLength() == other.BigitLength()
+quotient < 0x10000
+division_estimate < 0x10000
+OffsetFromUtc
+32z?O&NS#cf
+!1Aa
+#+3;CScs
+..\3rdparty\double-conversion\strtod.cc
+0 <= digit && digit <= 9
+buffer.length() + exponent <= kMaxDecimalPower + 1
+buffer.length() + exponent > kMinDecimalPower
+buffer.length() <= kMaxSignificantDecimalDigits
+read_digits == trimmed.length()
+..\3rdparty\double-conversion\include\double-conversion/utils.h
+0 <= index && index < length_
+..\3rdparty\double-conversion\diy-fp.h
+f_ != 0
+exponent <= PowersOfTenCache::kMaxDecimalExponent
+0 < exponent
+exponent < PowersOfTenCache::kDecimalExponentDistance
+PowersOfTenCache::kDecimalExponentDistance == 8
+from < to
+length == 0 || (length > 0 && data != __null)
+to <= length_
+buffer[buffer.length() - 1] != '0'
+..\3rdparty\double-conversion\ieee.h
+Sign() > 0
+f1 <= f2 && f2 <= f3 && f3 <= f4
+(f1 != f2 && f2 == f3 && f3 == f4) || (f1 == f2 && f2 != f3 && f3 == f4) || (f1 == f2 && f2 == f3 && f3 != f4)
+..\3rdparty\double-conversion\include\double-conversion/utils.h
+0 <= index && index < length_
+..\3rdparty\double-conversion\fixed-dtoa.cc
+-128 <= exponent && exponent <= 0
+fractionals >> 56 == 0
+digit <= 9
+64 < -exponent && -exponent <= 128
+-64 <= shift_amount && shift_amount <= 64
+(accumulator >> 32) == 0
+..\3rdparty\double-conversion\fast-dtoa.cc
+number < (1u << (number_bits + 1))
+rest <= unsafe_interval
+..\3rdparty\double-conversion\include\double-conversion/utils.h
+0 <= index && index < length_
+rest < ten_kappa
+v > 0
+!Double(v).IsSpecial()
+..\3rdparty\double-conversion\ieee.h
+value() > 0.0
+!IsSpecial()
+boundary_plus.e() == w.e()
+(kMinimalTargetExponent <= w.e() + ten_mk.e() + DiyFp::kSignificandSize) && (kMaximalTargetExponent >= w.e() + ten_mk.e() + DiyFp::kSignificandSize)
+scaled_w.e() == boundary_plus.e() + ten_mk.e() + DiyFp::kSignificandSize
+low.e() == w.e() && w.e() == high.e()
+low.f() + 1 <= high.f() - 1
+kMinimalTargetExponent <= w.e() && w.e() <= kMaximalTargetExponent
+..\3rdparty\double-conversion\diy-fp.h
+e_ == other.e_
+f_ >= other.f_
+digit <= 9
+one.e() >= -60
+fractionals < one.f()
+(((static_cast<uint64_t>(0xFFFFFFFF) << 32) + 0xFFFFFFFFu)) / 10 >= one.f()
+Sign() > 0
+..\3rdparty\double-conversion\cached-powers.cc
+0 <= index && index < kCachedPowersLength
+min_exponent <= cached_power.binary_exponent
+cached_power.binary_exponent <= max_exponent
+kMinDecimalExponent <= requested_exponent
+requested_exponent < kMaxDecimalExponent + kDecimalExponentDistance
+*found_exponent <= requested_exponent
+requested_exponent < *found_exponent + kDecimalExponentDistance
+TimeZoneKeyName
+Display
+FirstEntry
+LastEntry
+789:
+QRST
+jklm
+\P{Xps}
+\P{Xan}
+\P{Lu}
+\P{Ll}
+\P{L}
+\p{Xps}
+\p{Xan}
+\p{Lu}
+\p{Ll}
+\p{L}
+\p{Xwd}
+\P{Xwd}
+\p{Xsp}
+\P{Xsp}
+\p{Nd}
+\P{Nd}
+t\b(?<=\w)
+\b(?=\w)
+:;<=>?@
+[\]^_`
+!()*
+'+,-.
+/!-012
+789:;<=>?
+!ABC
+!!!!!!G
+HIJJ
+NOPQR!SS!T!UV!!!SW!X!YZ![\!]^!!\!_`!!a!!!!!!!b!!c!!c!!!dceffg!!!!!h!
+!!!!!!!!!i!!!!!!!!!!!!!!!!!jjjjjjjjjkkkkkkkkk
+kkkkkkkkkkkk
+jjjjj
+mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmnmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmopopkqoprrsttt
+urrrrq
+wwwrxryyz{|{{}{{~
+opopopopop
+rrrrrrrr
+rrrrr
+rrrrrrrrrrr
+mmmmmmmmmmm
+rrrrrrrrrrrrrr
+rrrrr
+rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr
+rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr
+rrrrrrrr
+rrrr
+rrrrr
+rrrr
+rrrr
+rrrrrrr
+rrrrrrr
+rrrrrrrrrrr
+rrrrrrrrrrrrrrr
+rrrrrrrrrrrrrrr
+rrrrrrrr
+rrrr
+rrrrrrrrrr
+rrrr
+rrrrrr
+rrrrrrrrrrrrrr
+rrrrr
+rrrrrrr
+rrrrrr
+rrrrrrrr
+rrrrrrr
+rrrrrrr
+rrrrrrrrrrrrrr
+rrrrrrrr
+rrrrrrrr
+rrrr
+rrrrrr
+rrrrrrrrrrrr
+rrrr
+rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr
+rrrrrr
+rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr
+rrrr
+rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr
+rrrrr
+rrrrrr
+rrrrrrrrrrr
+rrrrrrr
+rrrrrrrrrrr
+rrrrrrrrr
+rrrrrrrrrrrr
+rrrrrrrrrrrr
+rrrrrr
+rrrrrr
+rrrrrr
+rrrrrrrr
+rrrrr
+rrrrrrrrrr
+rrrr
+rrrr
+rrrrrrrrrrr
+rrrr
+rrrrrr
+rrrrrr
+rrrrrr
+rrmmmmmmmmmmmmmm
+rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr
+rrrr
+rrrrrrrr
+rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr
+rrrrrrrrmmm
+mmmmmmmmmmmmm
+mmmmmmm
+rmmrrrrrr!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!zzzzz
+jjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjsssssjjjjsssss!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!jjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjsmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmrrrrrrmmmm
+!!!!!
+zrzz
+qqqz
+zrzz
+zzrrzz
+rqqq
+qqqrrz
+zrzz
+						
+rjjjjjjjjjjjjjrrr
+rrrrrrrrrrrrrrrrrrmmmmmmmmmmmmm
+mmmmmmmmmmmmrrrrrrrrrrrrrrr
+rrrrrr
+rrrrr
+rrrrrrrrrrrrrrrrrrrrrrrrr
+rrrrrrrrrrrrrrrrrrrrr
+rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr
+!!!!!jj
+rrrrr
+rrrrr
+rrrrrrr
+rrrrrrrrrrrrrr
+rrrrrrrrr
+rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr
+rrrrrrrrrrrr
+rrrrrrrrrrrrrrrrrrrrrrrrrr
+rrrr
+mmmm
+	kkkkk
+rrmm
+rrrrr
+rrrrr
+rrrrrrrrrrrr
+rrrrrrrrrr
+rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr
+rrrrrrrrr
+rrrrrrrrrrrrrrrrrrrr
+rrrrrrrr
+kkkkkkkkk
+j!!!!!!!!
+rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr
+rrrr
+rrrrrr
+rrrrrrrr
+rrrrrrrrr
+rrrrrr
+rrrr
+rrrrrrrrrrr
+rrrr
+rrrrrrrrr
+rrrrrrrrrrrrrrrrrrrrrrrr
+rrrrrrrrrr
+rrrrrrrrr
+r!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+jjjjrrrr!zrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr
+rrrrrr
+rrrrrrrrrrrr
+rrrr
+rrrr
+rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr!!!!!!!rrrrrrrrrrrr
+rrrrr
+rrrrrrrrrrrrrrrrr
+rrrrrrrrrrrrrrrr
+rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr
+rrmmmmmmmmmmmmmmmm
+rrrrrrmmmmmmmmmmmmmmrr
+rrrr
+rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr
+rrrrr
+rrrr
+rrrr
+rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr
+mrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr
+rrrrrrrrrrrrrrrm
+rrrr
+rrrrrrrrrrrr
+rrrrr
+rrrrr
+rrrr
+rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr
+rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr
+rrrrrrrr
+rrrrrrrrrrr
+rrrrrrrrrrrrrrrr
+rrrrrrrrr
+rrrrrrrrrr
+rrrrrrrrrrrrrrrrrrrrrrrr
+rrrrrrrr
+rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr
+rrrrr
+rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr
+rrrrrr
+rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr
+rrrrr
+rrrr
+rrrr
+rrrrrrrr
+rrrrrrr
+rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr
+rrrr
+rrrrrrrrr
+rrrrr
+rrrrrrr
+rrrrrrrrrrrr
+rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr
+rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr
+rrrr
+rrrrrrrrrrrrrrr
+rrrrrrrrrrrrrr
+rrrrrrr
+rrrrrr
+rrrrrrrrrrrr
+rrrrrrrrr
+rrrr
+rrrrrr
+rrrrrrrrrrr
+rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr
+rrrrr
+rrrrrrr
+rrrrrrrrr
+rrrrr
+rrrrrrrrrrr
+rrrrrrrr
+rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr
+rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr
+rrrrrrrrrrr
+rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr
+rrrrrrrr
+rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr
+rrrrrrrrrrrr
+rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr
+rrrrrrr
+rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr
+rrrrrrrrrrr
+rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr
+rrrrrrr
+rrrr
+rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr
+rrrrrrrrrr
+rrrrrrrrrr
+rrrrr
+rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr
+rrrrrrrrrrr
+rrrrrrrrrrrrrrrr
+rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr
+rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr
+rrrrr
+rrrrrrr
+rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr
+rrrrrrrrrr
+mmmmmmmm
+mmmmmmm
+mmmm
+rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr
+rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr
+rrrrrrrrr
+rrrrrrrrrrrrrr
+rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr
+rrrrrr
+rrrr
+rrrrr
+rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr
+rrrrrrrrrrrrrr
+rrrr
+rrrrrrrrrrrr
+rrrrrrrrrr
+rrrr
+rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr
+rrrrrrrrrrrrr
+rrrrr
+rrrrrrr
+rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr
+rrrrr
+rrrrrrrr
+rrrrr
+rrrrrrrrrrrrrrrr
+rrrrrrrrrrrr
+rrrrrrrrrrrr
+rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr
+rrrr
+rrrrrrrr
+rrrrrr
+rrrrrrrr
+rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr
+rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr
+rrrrrrrrrrr
+rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr
+mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+9GMT
+AKST
+etrue
+false
+etrue
+false
+c%m/%d/%y
+%H:%M:%S
+Sunday
+Monday
+Tuesday
+Wednesday
+Thursday
+Friday
+Saturday
+January
+February
+March
+April
+June
+July
+August
+September
+October
+November
+December
+<unknown>
+Assertion failed!
+Program: %ws
+File: %ws, Line %u
+Expression: %ws
+MinGW Runtime Assertion
+(null)
+msvcrt.dll
+tmsvcrt.dll
+msvcrt.dll
+XXXXXXXXXX
+UUUUUUEEEEEEEEEEEEEEEEEEEE
+VVVVVVFFFFFFFFFFFFFFFFFFFF
+verticalLayout
+horizontalLayout_2
+widget_5
+verticalLayout_3
+groupBox_2
+formLayout
+label_2
+l_cnt_in_ctrl
+label_24
+l_err_in_cnt
+label_23
+widget
+l_err_in_format
+groupBox
+formLayout_2
+label_25
+l_cnt_out_ctrl
+groupBox_3
+gridLayout_2
+chB_rx_on
+pB_apply
+label_19
+verticalLayout_2
+label_18
+cB_mode
+label_15
+dSB_freq
+label_16
+chB_tx_on
+cB_bitrate
+l_aru
+label_3
+label_4
+widget_3
+l_errMes
+horizontalLayout
+label
+l_id
+l_status
+pB_update
+widget_2
+wgt_UPV
+verticalLayout
+widget
+horizontalLayout
+chB_autoscroll
+hE_view
+f_logWgt
+verticalLayout
+pB_close
+:/Resource/Resources/button-cross.png
+pB_help
+:/Resource/Resources/question.png
+wgt_main
+verticalLayout_3
+frame_scn
+verticalLayout_2
+scnInfo
+l_scnName
+wgt_top
+widget
+horizontalLayout
+label
+lE_args0
+label_2
+lE_args1
+label_3
+lE_args2
+label_4
+lE_args3
+horizontalLayout_2
+label_5
+lE_args4
+pB_argsApply
+widget_2
+horizontalLayout_3
+label_6
+lE_args5
+label_8
+lE_args6
+label_9
+pB_new
+lE_args7
+label_7
+lE_args8
+label_10
+cTE_edit
+Consolas,Courier New,monospace
+font: 12pt "Consolas", "Courier New", monospace;
+:/Resource/Resources/document.png
+pB_open
+:/Resource/Resources/button-eject.png
+pB_save
+:/Resource/Resources/floppy-disk.png
+pB_saveAs
+f_wizard
+verticalLayout
+horizontalLayout_2
+pB_close
+pB_report
+pB_clearGr
+widget
+background-color:rgb(255, 255, 127);
+horizontalLayout
+label
+l_cmd
+label_3
+l_id
+wgt_out
+widget_2
+wgt_achh
+:/PraVectorQT/Images/satelliteNew16.png
+scrollArea
+scrollAreaWidgetContents
+horizontalLayout_3
+gB_Scn
+verticalLayout_3
+DownWidget
+hboxLayout
+pB_ok
+:/PraVectorQT/Images/buttons/button_ok.png
+pB_cancel
+horizontalLayout_2
+:/PraVectorQT/Images/buttons/button_cancel.png
+pB_lastScn
+:/PraVectorQT/Images/buttons/back.png
+verticalLayout
+UpWidget
+pB_Dir
+:/Resource/Resources/folder.png
+l_Dir
+cB_autoStartScn
+CenWidget
+horizontalLayout
+DialogScn
+verticalLayout
+cB_cmd
+wa_chB
+horizontalLayout_2
+chB_1
+chB_2
+chB_3
+chB_4
+wa_cb
+horizontalLayout_3
+widget
+wa_sb
+horizontalLayout_4
+sB_1
+wa_YATP
+horizontalLayout_5
+label_3
+sB_yCell
+label_4
+sB_yChnl
+cB_yType
+background-color: rgb(255, 255, 127);
+sB_yMin
+sB_yMax
+pB_send
+wgt_NOV
+horizontalLayout_7
+cB_fromNOV
+sB_fromNOV
+horizontalLayout
+label
+l_id
+label_2
+l_linkType
+widget_2
+horizontalLayout_6
+f_KPA_STI
+verticalLayout
+:/Resource/Resources/floppy-disk.png
+label
+font: 7pt "MS Shell Dlg 2";
+plot
+horizontalLayout_3
+l_info
+wgt_tool
+horizontalLayout_2
+chB_wheel
+label_3
+dSB_ymin
+labl
+dSB_ymax
+pB_apply
+pB_save
+f_barPlot
+verticalLayout
+widget
+horizontalLayout_2
+l_text
+widget_2
+horizontalLayout
+pB_stop
+f_cmdExec
+verticalLayout
+pB_stop
+widget
+horizontalLayout_2
+tB_html
+label
+widget_2
+horizontalLayout
+pB_norm
+pB_nenorm
+pB_continue
+f_cmdHtml
+verticalLayout
+pB_close
+widget
+horizontalLayout_2
+l_text
+lE_value
+label
+widget_2
+horizontalLayout
+dsSB_value
+pB_go
+f_cmdInput
+mainLayout
+widget_3
+horizontalLayout
+ce_detached
+pDetachedLayout
+pB_runDetached
+f_detached
+verticalLayout
+l_ymin
+dSB_ymin
+l_ymax
+dSB_ymax
+pB_apply
+pB_save
+:/Resource/Resources/floppy-disk.png
+label
+font: 7pt "MS Shell Dlg 2";
+plot
+wgt_tool
+horizontalLayout_3
+l_info
+horizontalLayout_2
+cB_follow
+wgt_startTime
+horizontalLayout
+label_2
+dSB_t0
+l_interval
+dSB_interval
+f_linePlot
+verticalLayout
+scnInfo
+widget
+horizontalLayout
+l_scnName
+l_progress
+nlw_scenario
+f_scenario
+gridLayout
+splitter
+sidebar
+frame
+vboxLayout
+stackedWidget
+page
+vboxLayout1
+listView
+page_2
+vboxLayout2
+lookInLabel
+treeView
+fileNameLabel
+fileNameEdit
+buttonBox
+fileTypeLabel
+fileTypeCombo
+hboxLayout
+lookInCombo
+backButton
+forwardButton
+toParentButton
+newFolderButton
+listModeButton
+detailModeButton
+QFileDialog
+verticalLayout
+l_np
+label
+l_bvNP
+widget
+horizontalLayout_2
+l_caption
+pB_dost
+widget_2
+horizontalLayout
+label_3
+l_orbMode
+label_2
+f_Orbitatop
+verticalLayout
+scrollArea
+scrollAreaWidgetContents
+verticalLayout_2
+wgt_out
+MS Shell Dlg 2
+f_fastTable
+verticalLayout
+tV_PTI
+pTE_comment
+widget
+horizontalLayout
+pB_clear
+:/NPOIT_Decoder_PiritPlugin/icons/player_clear.png
+pB_changePTI
+:/NPOIT_Decoder_PiritPlugin/icons/player_eject.png
+l_pti
+f_orbitaPTI
+background-color:rgb(255, 255, 127);
+label_6
+l_val2
+label_7
+l_cnt2
+label_9
+horizontalLayout
+label
+l_name1
+label_5
+l_val1
+label_2
+l_cnt1
+label_4
+l_name2
+f_powSrcTLM
+horizontalLayout
+:/Resource/Resources/button-end.png
+pB_loadScn
+:/Resource/Resources/button-eject.png
+pB_clearSuspended
+:/Resource/Resources/button-synchronize.png
+pB_edit
+:/Resource/Resources/pencil.png
+pB_help
+:/Resource/Resources/question.png
+layoutUntil
+pB_saveRep
+layoutAfter
+:/Resource/Resources/floppy-disk.png
+pB_run
+:/Resource/Resources/button-play.png
+pB_stop
+:/Resource/Resources/button-stop.png
+pB_finish
+:/Resource/Resources/flag.png
+pB_step
+kpaToolMenu
+MS Shell Dlg 2
+background-color: rgb(255, 255, 127);
+label_2
+l_sndCmd
+label_13
+label_3
+l_codeRcvd
+label_6
+l_lastCode
+widget_4
+horizontalLayout_2
+font: 12pt "MS Shell Dlg 2";
+label_5
+l_rcvCmd
+label_8
+tabWidget
+tab_3
+verticalLayout_7
+widget_6
+horizontalLayout_5
+widget_10
+horizontalLayout_6
+verticalLayout
+cB_set_mode
+rB_setA
+rB_setB
+pB_set_apply
+tab_4
+verticalLayout_8
+widget_13
+horizontalLayout_16
+label_11
+sB_send_chanel
+widget
+label_14
+sB_send_adr
+label_17
+sB_send_cmd
+rB_send_tx
+rB_send_rx
+sB_send_rxL
+pB_send
+label_18
+lE_send_seq
+verticalLayout_2
+widget_3
+horizontalLayout
+label
+background-color: rgb(255, 255, 127);
+l_id
+w_MB2620cns
+verticalLayout
+pB_clear
+l_id
+background-color: rgb(255, 255, 127);
+tE_out
+Courier
+font: 8pt "Courier";
+widget
+horizontalLayout
+pB_start
+pB_pause
+wgt_monitor
+verticalLayout
+wgt_out
+scrollArea
+scrollAreaWidgetContents
+horizontalLayout_4
+wgt_list
+verticalLayout_2
+widget_3
+horizontalLayout_2
+pB_close
+pB_saveCSV
+widget
+pB_test
+label_5
+l_klbMin
+label_6
+l_klbMax
+background-color:rgb(255, 255, 127);
+horizontalLayout
+label
+l_cmd
+label_3
+l_id
+widget_2
+horizontalLayout_3
+wgt_rokotGr
+:/TestPraQT/Images/test.png
+l_runTime
+l_curTime
+wgt_main
+verticalLayout_5
+spl_centre
+frame_scn
+verticalLayout_3
+spl_scn
+pScenario
+pScenarioLayout
+centralWidget
+wgt_detached
+verticalLayout_9
+widget_2
+verticalLayout_2
+label_2
+pLogFull
+pLogFullLayout
+frame_view
+verticalLayout_6
+label
+verticalLayout
+spl_view
+scrollArea
+scrollAreaWidgetContents
+verticalLayout_7
+wgt_cmdView
+font: 12pt "MS Shell Dlg 2";
+lo_view
+wgt_rp
+verticalLayout_8
+wgt_top
+widget_3
+horizontalLayout_5
+label_12
+pLogJournal
+pLogJournalLayout
+wgt_links
+Courier New
+font: 6pt "Courier New";
+pLinksLayout
+wgt_editor
+pLayoutToolMenu
+horizontalLayout_2
+pToolMenu
+horizontalLayout_3
+wgt_times
+horizontalLayout_4
+l_globalErrs
+KPAMainClass
+verticalLayout
+pB_stop
+widget_3
+horizontalLayout_3
+label_7
+l_wrtn
+label_9
+l_rdd
+label_11
+l_errCnt
+widget
+l_errAdr
+background-color: rgb(255, 255, 127);
+horizontalLayout
+label
+widget_2
+horizontalLayout_2
+label_4
+l_rcvd
+label_6
+f_cmdBZUtest
+verticalLayout
+pB_stop
+widget
+horizontalLayout_2
+l_text
+label
+widget_2
+horizontalLayout
+pB_norm
+pB_nenorm
+pB_continue
+f_cmdRequest
+MS Shell Dlg 2
+verticalLayout_10
+wgt_na1
+horizontalLayout_18
+wgt_na2
+horizontalLayout_19
+tab_4
+verticalLayout_8
+widget_13
+horizontalLayout_16
+label_11
+background-color: rgb(255, 255, 127);
+sB_send_chanel
+label_14
+sB_send_adr
+label_17
+sB_send_cmd
+rB_send_tx
+rB_send_rx
+sB_send_rxL
+pB_send
+label_18
+label_2
+lE_send_seq
+l_cntcts
+widget_2
+horizontalLayout_4
+label_10
+l_srvSend
+label_6
+l_srvRec
+label_3
+l_recErrs
+l_sndCmd
+label_13
+l_sndData
+label_4
+widget_4
+horizontalLayout_2
+label_5
+l_rcvCmd
+font: 12pt "MS Shell Dlg 2";
+label_8
+l_rcvData
+label_7
+tabWidget
+verticalLayout_4
+l_state_caption
+l_state_ch1
+l_state_ch2
+l_state_ch3
+verticalLayout
+tab_2
+verticalLayout_3
+widget_5
+horizontalLayout_3
+label_9
+rB_1
+rB_2
+rB_3
+tbl_view
+tab_3
+widget
+verticalLayout_7
+widget_6
+horizontalLayout_5
+cB_set_pinOut
+pB_set_update
+pB_set_apply
+widget_7
+horizontalLayout_9
+widget_9
+verticalLayout_2
+verticalLayout_5
+widget_10
+horizontalLayout_6
+label_12
+cB_set_mode1
+rB_setA1
+rB_setB1
+sB_set_OU1
+l_set_flbl1
+sB_setFreq1
+widget_3
+widget_11
+horizontalLayout_7
+label_15
+cB_set_mode2
+rB_setA2
+rB_setB2
+sB_set_OU2
+l_set_flbl2
+sB_setFreq2
+widget_12
+horizontalLayout
+horizontalLayout_8
+label_16
+cB_set_mode3
+rB_setA3
+rB_setB3
+sB_set_OU3
+l_set_flbl3
+sB_setFreq3
+widget_8
+font: 10pt "MS Shell Dlg 2";
+label
+verticalLayout_6
+label_20
+wgt_set_line1
+horizontalLayout_10
+wgt_set_line2
+horizontalLayout_11
+wgt_set_line3
+horizontalLayout_12
+wgt_set_line4
+horizontalLayout_13
+background-color: rgb(255, 255, 127);
+wgt_set_line5
+horizontalLayout_14
+wgt_set_line6
+horizontalLayout_15
+widget_14
+horizontalLayout_17
+widget_15
+verticalLayout_9
+label_19
+widget_16
+l_id
+wgt_mkoForm3
+verticalLayout
+wgt_out
+wgt_ctrl
+verticalLayout_2
+groupBox
+gridLayout
+label_2
+cB_addLK
+label_4
+cB_addParName
+label_5
+widget
+cB_addParScale
+pB_add
+groupBox_2
+verticalLayout_3
+cB_delPar
+pB_del
+wgt_table
+verticalLayout_4
+background-color:rgb(255, 255, 127);
+horizontalLayout
+label
+l_cmd
+label_3
+l_id
+widget_2
+horizontalLayout_3
+wgt_orbitaGr
+verticalLayout
+wgt_out
+wgt_table
+widget_3
+horizontalLayout_2
+pB_close
+pB_saveCSV
+label_5
+l_klbMin
+label_6
+l_klbMax
+widget
+background-color:rgb(255, 255, 127);
+horizontalLayout
+label
+l_cmd
+label_3
+l_id
+widget_2
+horizontalLayout_3
+wgt_rokotBar
+verticalLayout
+pB_continue
+widget
+horizontalLayout_2
+l_errCnt
+MS Shell Dlg 2
+l_result
+MS Shell Dlg 2
+label
+widget_2
+horizontalLayout
+f_cmdBigNorma
+verticalLayout
+widget
+horizontalLayout_2
+label_2
+l_rpts
+label
+widget_2
+horizontalLayout
+pB_stop
+f_cmdInfinite
+verticalLayout
+l_errs
+label_4
+l_errPrc
+label_5
+l_norma
+l_nenorma
+l_linkName
+l_shablon
+widget
+horizontalLayout
+label
+l_rcvByte
+label_2
+l_rcvKdr
+label_3
+f_linkShablon
+font: 12pt "MS Shell Dlg 2";
+label_5
+l_lost
+label_7
+l_err
+pB_abort
+horizontalLayout
+l_testName
+l_id
+rB_A
+rB_B
+label_3
+l_sndd
+label_2
+l_allCnt
+f_mkoSelfTest
+horizontalLayout
+label
+cB_tmpls
+pB_addTmpl
+f_rokotTmplts
+MS Shell Dlg 2
+l_cntcts
+widget_2
+horizontalLayout_4
+label_10
+l_srvSend
+label_6
+l_srvRec
+label_3
+l_recErrs
+background-color: rgb(255, 255, 127);
+l_connectionLost
+label_2
+l_sndCmd
+label_13
+l_sndData
+label_4
+widget_4
+horizontalLayout_2
+label_5
+font: 12pt "MS Shell Dlg 2";
+l_rcvCmd
+label_8
+l_rcvData
+label_7
+tabWidget
+verticalLayout_4
+l_state_caption
+l_state_ch1
+l_state_ch2
+verticalLayout
+l_state_ch3
+tab_2
+verticalLayout_3
+widget_5
+horizontalLayout_3
+label_9
+rB_1
+rB_2
+rB_3
+tbl_view
+widget
+tab_3
+verticalLayout_7
+widget_6
+horizontalLayout_5
+cB_set_pinOut
+pB_set_update
+pB_set_apply
+widget_7
+horizontalLayout_9
+verticalLayout_2
+widget_9
+verticalLayout_5
+widget_10
+horizontalLayout_6
+label_12
+cB_set_mode1
+rB_setA1
+rB_setB1
+sB_set_OU1
+widget_11
+widget_3
+horizontalLayout_7
+label_15
+cB_set_mode2
+rB_setA2
+rB_setB2
+sB_set_OU2
+widget_12
+horizontalLayout_8
+label_16
+cB_set_mode3
+horizontalLayout
+rB_setA3
+rB_setB3
+sB_set_OU3
+widget_14
+horizontalLayout_17
+widget_15
+verticalLayout_9
+label_19
+widget_16
+verticalLayout_10
+label
+wgt_na1
+horizontalLayout_18
+wgt_na2
+horizontalLayout_19
+tab_4
+verticalLayout_8
+widget_13
+horizontalLayout_16
+label_11
+sB_send_chanel
+background-color: rgb(255, 255, 127);
+label_14
+sB_send_adr
+label_17
+sB_send_cmd
+rB_send_tx
+rB_send_rx
+sB_send_rxL
+pB_send
+label_18
+lE_send_seq
+l_id
+wgt_mkoFormV2
+verticalLayout
+wgt_out
+wgt_ctrl
+verticalLayout_2
+wgt_table
+verticalLayout_4
+widget
+background-color:rgb(255, 255, 127);
+horizontalLayout
+label
+l_cmd
+label_3
+l_id
+widget_2
+horizontalLayout_3
+wgt_orbitaBar
+user32
+user32
+verticalLayout
+label_3
+sB_subAdr
+chB_suAll
+pB_add
+pB_del
+widget_3
+horizontalLayout_3
+chB_useFiltr
+chB_showTimes
+l_fltr
+l_id
+font: 8pt "MS Shell Dlg 2";
+tE_out
+Courier
+font: 8pt "Courier";
+widget
+horizontalLayout
+pB_start
+pB_pause
+pB_clear
+wgt_filtres
+verticalLayout_2
+widget_2
+horizontalLayout_2
+label_2
+sB_adr
+chB_adrAll
+label
+wgt_MKOmonitor
+verticalLayout
+pB_continue
+widget
+horizontalLayout_2
+l_errCnt
+MS Shell Dlg 2
+l_result
+MS Shell Dlg 2
+label
+widget_2
+horizontalLayout
+f_shellBigNorma
+verticalLayout_3
+rB_code
+groupBox_2
+horizontalLayout_4
+rB_pins
+rB_chanels
+pB_apply
+pB_update
+pB_reset
+cB_reset
+pB_hide
+wgt_tools
+sA_anlgs
+scrollAreaWidgetContents
+horizontalLayout
+wgt_cnt
+font: 9pt "Courier New";
+verticalLayout
+label
+Courier New
+font: 75 9pt "Courier New";
+wgt_anlgs
+background-color: rgb(255, 255, 127);
+font: 9pt "Courier New";
+label_2
+font: 75 9pt "Courier New";
+wgt_dig
+font: 9pt "Courier New";
+horizontalLayout_2
+l_isd
+l_id
+font: 75 12pt "MS Shell Dlg 2";
+groupBox
+horizontalLayout_3
+rB_volt
+wgt_ISDmonitor3
+QtProject
+Increase
+Next Page
+Decrease
+ShowMenu
+SetFocus
+Toggle
+Scroll Left
+Scroll Right
+Scroll Up
+Scroll Down
+Previous Page
+Press
+verticalLayout
+pB_ctrlOn
+pB_ctrlOff
+pB_saveReport
+l_state
+l_result
+tE_ctrl
+w_toolPanel
+horizontalLayout
+pB_zeroCnt
+tE_runtime
+QTextEdit{  background: #f4f4f4;}
+groupBox
+verticalLayout_2
+widget
+horizontalLayout_2
+f_NPOIT_orbita_runtime
+verticalLayout
+tB_help
+widget
+horizontalLayout
+cB_cmd
+pB_cmdHelp
+pB_close
+f_help
+horizontalLayout_2
+gB_volt
+horizontalLayout
+cB_target
+l_value
+pB_getValue
+cB_diap
+pB_diap
+f_volt
+QtProject
+	IDI_ICON1

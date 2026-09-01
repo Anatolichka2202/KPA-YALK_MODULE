@@ -322,6 +322,46 @@ struct UlkUdpTransport::Impl {
         startPreparedYalkReference();
     }
 
+    void prepareYtpRokt()
+    {
+        // Reset и адресация общие с подтверждённой последовательностью KPA.
+        prepareYalkReference();
+    }
+
+    void startPreparedYtpRokt(std::uint8_t endpointNumber)
+    {
+        if (referenceSender == InvalidSocket) {
+            throw std::runtime_error("ROKT YTP stream is not prepared");
+        }
+        if (endpointNumber == 0) {
+            throw std::invalid_argument("Номер интерфейса ЯТП должен быть 1..255");
+        }
+
+        const auto remote = endpoint(config.remoteHost, config.port);
+        const auto startYtp = UlkUdpTransport::ytpRoktStartCommand(endpointNumber);
+        const int sent = ::sendto(
+            referenceSender,
+            reinterpret_cast<const char*>(startYtp.data()),
+            static_cast<int>(startYtp.size()),
+            0,
+            reinterpret_cast<const sockaddr*>(&remote),
+            sizeof(remote));
+
+        closeSocket(referenceSender);
+        referenceSender = InvalidSocket;
+        if (sent != static_cast<int>(startYtp.size())) {
+            stop();
+            throw std::runtime_error("Cannot send ULK ROKT YTP start command");
+        }
+    }
+
+    void startYtpRokt(std::uint8_t endpointNumber)
+    {
+        prepareYtpRokt();
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        startPreparedYtpRokt(endpointNumber);
+    }
+
     void stop() noexcept
     {
         stopping.store(true);
@@ -420,6 +460,10 @@ struct UlkUdpTransport::Impl {
                     ++counters.ytpLegacy65;
                     break;
 
+                case UlkFrameKind::YtpRokt68:
+                    ++counters.ytpRokt68;
+                    break;
+
                 case UlkFrameKind::Unknown:
                     ++counters.unknown;
                     break;
@@ -427,7 +471,8 @@ struct UlkUdpTransport::Impl {
                 if (frame.kind == UlkFrameKind::Fast120
                     || frame.kind == UlkFrameKind::Slow200
                     || frame.kind == UlkFrameKind::Reference204
-                    || frame.kind == UlkFrameKind::YtpLegacy65)
+                    || frame.kind == UlkFrameKind::YtpLegacy65
+                    || frame.kind == UlkFrameKind::YtpRokt68)
                     counters.streaming = true;
                 if (queue.size() == config.queueCapacity) {
                     queue.pop_front();
@@ -500,6 +545,15 @@ void UlkUdpTransport::startYalkReference()
 {
     impl_->startYalkReference();
 }
+void UlkUdpTransport::prepareYtpRokt() { impl_->prepareYtpRokt(); }
+void UlkUdpTransport::startPreparedYtpRokt(std::uint8_t endpointNumber)
+{
+    impl_->startPreparedYtpRokt(endpointNumber);
+}
+void UlkUdpTransport::startYtpRokt(std::uint8_t endpointNumber)
+{
+    impl_->startYtpRokt(endpointNumber);
+}
 void UlkUdpTransport::stop() noexcept { impl_->stop(); }
 
 UlkFrame UlkUdpTransport::waitFrame(UlkFrameKind kind, std::uint64_t afterSequence,
@@ -534,6 +588,22 @@ std::vector<std::uint8_t> UlkUdpTransport::modeCommand(std::uint8_t mode)
     return {0x44, 0x01, mode};
 }
 
+std::vector<std::uint8_t> UlkUdpTransport::ytpRoktStartCommand(
+    std::uint8_t endpointNumber)
+{
+    if (endpointNumber == 0) {
+        throw std::invalid_argument("Номер интерфейса ЯТП должен быть 1..255");
+    }
+    std::vector<std::uint8_t> result(128, 0);
+    result[0] = 'R';
+    result[1] = 'O';
+    result[2] = 'K';
+    result[3] = 'T';
+    result[4] = 0x17;
+    result[5] = endpointNumber;
+    return result;
+}
+
 UlkFrameKind UlkUdpTransport::classify(std::size_t size) noexcept
 {
     if (size == 4) return UlkFrameKind::Service4;
@@ -541,6 +611,7 @@ UlkFrameKind UlkUdpTransport::classify(std::size_t size) noexcept
     if (size == 200) return UlkFrameKind::Slow200;
     if (size == 204) return UlkFrameKind::Reference204;
     if (size == 65) return UlkFrameKind::YtpLegacy65;
+    if (size == 68) return UlkFrameKind::YtpRokt68;
     return UlkFrameKind::Unknown;
 }
 
@@ -552,6 +623,7 @@ const char* toString(UlkFrameKind kind) noexcept
     case UlkFrameKind::Slow200: return "slow200";
     case UlkFrameKind::Reference204: return "reference204";
     case UlkFrameKind::YtpLegacy65: return "ytp_legacy65";
+    case UlkFrameKind::YtpRokt68: return "ytp_rokt68";
     case UlkFrameKind::Unknown: return "unknown";
     }
     return "unknown";

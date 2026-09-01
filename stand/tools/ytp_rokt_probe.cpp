@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <iomanip>
 #include <iostream>
+#include <map>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -104,6 +105,29 @@ int main(int argc, char** argv)
             ? static_cast<std::uint16_t>(std::stoul(argv[3]))
             : 1113;
 
+    const auto workMode =
+        argc >= 5
+            ? static_cast<std::uint8_t>(std::stoul(argv[4], nullptr, 0))
+            : static_cast<std::uint8_t>(0x0D);
+
+    const unsigned monitorSeconds =
+        argc >= 6
+            ? static_cast<unsigned>(std::stoul(argv[5]))
+            : 30U;
+
+    const int expectedFrameLength =
+        argc >= 7
+            ? static_cast<int>(std::stoul(argv[6]))
+            : 68;
+
+    // 0x0A starts the generic mode selected by workMode.  The reference KPA
+    // uses the separate 0x17 command for its three-part YTP stream; in that
+    // case workMode is the one-based YTP interface number.
+    const auto startOpcode =
+        argc >= 8
+            ? static_cast<std::uint8_t>(std::stoul(argv[7], nullptr, 0))
+            : static_cast<std::uint8_t>(0x0A);
+
     WSADATA wsa{};
 
     if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
@@ -119,6 +143,10 @@ int main(int argc, char** argv)
             << "TARGET adapter=" << adapterIp
             << " local=" << localIp
             << " port=" << port
+            << " start_opcode=0x" << std::hex
+            << static_cast<unsigned>(startOpcode) << std::dec
+            << " argument=" << static_cast<unsigned>(workMode)
+            << " expected_length=" << expectedFrameLength
             << '\n';
 
         // RX: адаптер шлёт broadcast на :1113.
@@ -198,16 +226,16 @@ int main(int argc, char** argv)
                 0x00
             });
 
-        // ЖИВОЙ ЯТП:
-        // 52 4F 4B 54 0A 02 00 01 00 ...
-        const auto startYtp =
-            roktCommand({
-                0x0A,
-                0x02,
-                0x00,
-                0x01,
-                0x00
-            });
+        const auto startMode =
+            startOpcode == 0x17
+                ? roktCommand({0x17, workMode})
+                : roktCommand({
+                      startOpcode,
+                      workMode,
+                      0x00,
+                      0x01,
+                      0x00
+                  });
 
         sendCommand(sender, remote, reset, "reset");
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
@@ -220,13 +248,14 @@ int main(int argc, char** argv)
         // Референсная KPA делает заметную паузу перед start YTP.
         std::this_thread::sleep_for(std::chrono::milliseconds(2500));
 
-        sendCommand(sender, remote, startYtp, "start_ytp");
+        sendCommand(sender, remote, startMode, "start_mode");
 
         const auto expectedSender = endpoint(adapterIp, port);
 
         unsigned frames68 = 0;
         unsigned otherFrames = 0;
         unsigned changes = 0;
+        std::map<int, unsigned> framesByLength;
 
         std::array<std::uint16_t, 32> previous{};
         bool baselineReady = false;
@@ -239,9 +268,12 @@ int main(int argc, char** argv)
             started + std::chrono::seconds(1);
 
         const auto deadline =
-            started + std::chrono::seconds(30);
+            started + std::chrono::seconds(monitorSeconds);
 
-        std::cout<<"MONITOR settle=1s duration=30s\n";
+        std::cout
+            << "MONITOR settle=1s duration="
+            << monitorSeconds
+            << "s\n";
 
         while (std::chrono::steady_clock::now() < deadline)
         {
@@ -278,7 +310,30 @@ int main(int argc, char** argv)
                 continue;
             }
 
-            if (count != 68) {
+            auto& lengthCount = framesByLength[count];
+            ++lengthCount;
+
+            if (lengthCount == 1) {
+                std::cout
+                    << "FIRST length=" << count
+                    << " hex=";
+
+                const int shown = count < 80 ? count : 80;
+                for (int index = 0; index < shown; ++index) {
+                    if (index != 0)
+                        std::cout << ' ';
+
+                    std::cout
+                        << std::hex
+                        << std::setw(2)
+                        << std::setfill('0')
+                        << static_cast<unsigned>(buffer[index]);
+                }
+
+                std::cout << std::dec << '\n';
+            }
+
+            if (count != expectedFrameLength) {
                 ++otherFrames;
                 continue;
             }
@@ -316,7 +371,7 @@ int main(int argc, char** argv)
                         <<std::setw(2)
                         <<std::setfill('0')
                         <<index + 1
-                        <<"=0"
+                        <<"=0x"
                         <<std::hex
                         <<std::setw(4)
                         <<previous[index]
@@ -368,6 +423,11 @@ int main(int argc, char** argv)
             << " changes=" << changes
             << '\n';
 
+        std::cout << "LENGTHS";
+        for (const auto& [length, frameCount] : framesByLength)
+            std::cout << ' ' << length << '=' << frameCount;
+        std::cout << '\n';
+
         if(frames68 == 0)
         {
             std::cout << "RESULT NO_YTP_DATA\n";
@@ -375,7 +435,7 @@ int main(int argc, char** argv)
             closeSocket(receiver);
             WSACleanup();
 
-            return EXIT_SUCCESS;
+         return EXIT_FAILURE;;
         }
 
         std::cout << "RESULT YTP_MONITOR_OK\n";

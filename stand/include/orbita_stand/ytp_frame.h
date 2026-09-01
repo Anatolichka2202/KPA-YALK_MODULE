@@ -18,4 +18,19 @@ struct YtpLegacyMode2Frame {
 YtpLegacyMode2Frame decodeYtpLegacyMode2Frame(
     const std::vector<std::uint8_t>& payload);
 
+// Фактический кадр текущего стенда после ROKT 17 01:
+// 4 байта заголовка и 32 little-endian слова. Семантика заголовка и
+// назначение последних двух слов пока не выводятся из архивной прошивки.
+struct YtpRokt68Frame {
+    std::array<std::uint8_t, 4> header{};
+    std::array<std::uint16_t, 30> channelRaw{};
+    std::uint16_t calibrationCandidate31Raw = 0;
+    std::uint16_t calibrationCandidate32Raw = 0;
+};
+
+YtpRokt68Frame decodeYtpRokt68Frame(
+    const std::vector<std::uint8_t>& payload);
+
+bool isYtpNoMeasurementRaw(std::uint16_t raw) noexcept;
+
 } // namespace orbita::stand

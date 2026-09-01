@@ -22,6 +22,7 @@ struct Instance {
     bool yalkReference = false;
     bool ytpPassive = false;
     bool ytpLegacyMode2 = false;
+    bool ytpRokt68 = false;
 };
 
 unsigned timeout(const Instance& instance, const std::map<std::string, std::string>& args)
@@ -42,6 +43,7 @@ std::string statsText(const UlkStreamStats& stats)
         << "\nslow200=" << stats.slow200
         << "\nreference204=" << stats.reference204
         << "\nytp_legacy65=" << stats.ytpLegacy65
+        << "\nytp_rokt68=" << stats.ytpRokt68
         << "\nunknown=" << stats.unknown
         << "\ndropped=" << stats.dropped << '\n';
     return out.str();
@@ -50,13 +52,23 @@ std::string statsText(const UlkStreamStats& stats)
 UlkFrame waitYalk(Instance& instance, std::uint64_t after, unsigned timeoutMs)
 {
     if (instance.cancelled.load()) throw std::runtime_error("Operation cancelled");
-    if (instance.ytpPassive || instance.ytpLegacyMode2) {
+    if (instance.ytpPassive || instance.ytpLegacyMode2 || instance.ytpRokt68) {
         throw std::runtime_error("Активен отдельный поток ЯТП; декодер ЯЛК неприменим");
     }
     return instance.transport->waitFrame(
         instance.yalkReference ? UlkFrameKind::Reference204 : UlkFrameKind::Slow200,
         after,
                                          std::chrono::milliseconds(timeoutMs));
+}
+
+UlkFrame waitYtpRokt(Instance& instance, std::uint64_t after, unsigned timeoutMs)
+{
+    if (instance.cancelled.load()) throw std::runtime_error("Operation cancelled");
+    if (!instance.ytpRokt68) {
+        throw std::runtime_error("Активный поток ЯТП ROKT 68 байт не запущен");
+    }
+    return instance.transport->waitFrame(
+        UlkFrameKind::YtpRokt68, after, std::chrono::milliseconds(timeoutMs));
 }
 
 UlkFrame waitYtpLegacy(Instance& instance, std::uint64_t after, unsigned timeoutMs)
@@ -119,7 +131,7 @@ std::string readYtpChannel(Instance& instance,
         plugin::unsignedValue(args, "ytp_channel"));
     if (address < 1 || address > 32) {
         throw std::invalid_argument(
-            "ЯТП legacy mode 2 использует позиции 1..30 и калибровки 31..32");
+            "ЯТП использует позиции 1..30 и два кандидата калибровки 31..32");
     }
     const unsigned sampleCount = std::max(
         1u, plugin::unsignedValue(args, "sample_count", 16));
@@ -127,28 +139,45 @@ std::string readYtpChannel(Instance& instance,
         static_cast<unsigned>(instance.transport->stats().lastSequence));
     std::uint64_t firstSequence = 0;
     double rawSum = 0.0;
+    unsigned validSamples = 0;
+    unsigned invalidSamples = 0;
     std::uint8_t temperatureMode = 0;
     for (unsigned sample = 0; sample < sampleCount; ++sample) {
-        const auto frame = waitYtpLegacy(instance, sequence, timeout(instance, args));
+        const auto frame = instance.ytpRokt68
+            ? waitYtpRokt(instance, sequence, timeout(instance, args))
+            : waitYtpLegacy(instance, sequence, timeout(instance, args));
         if (!firstSequence) firstSequence = frame.sequence;
         sequence = frame.sequence;
-        const auto decoded = decodeYtpLegacyMode2Frame(frame.payload);
-        if (address <= decoded.channelRaw.size()) {
-            rawSum += decoded.channelRaw[address - 1];
-        } else if (address == 31) {
-            rawSum += decoded.calibrationMinimumRaw;
+        std::uint16_t raw = 0;
+        if (instance.ytpRokt68) {
+            const auto decoded = decodeYtpRokt68Frame(frame.payload);
+            if (address <= decoded.channelRaw.size()) raw = decoded.channelRaw[address - 1];
+            else if (address == 31) raw = decoded.calibrationCandidate31Raw;
+            else raw = decoded.calibrationCandidate32Raw;
         } else {
-            rawSum += decoded.calibrationMaximumRaw;
+            const auto decoded = decodeYtpLegacyMode2Frame(frame.payload);
+            if (address <= decoded.channelRaw.size()) raw = decoded.channelRaw[address - 1];
+            else if (address == 31) raw = decoded.calibrationMinimumRaw;
+            else raw = decoded.calibrationMaximumRaw;
+            temperatureMode = decoded.temperatureMode;
         }
-        temperatureMode = decoded.temperatureMode;
+        if (instance.ytpRokt68 && isYtpNoMeasurementRaw(raw)) ++invalidSamples;
+        else {
+            rawSum += raw;
+            ++validSamples;
+        }
     }
+    const double rawMean = validSamples ? rawSum / validSamples : 32768.0;
     std::ostringstream out;
     out << std::setprecision(15)
-        << "status=ready\nprotocol=legacy_mode2_65"
+        << "status=" << (validSamples ? "ready" : "no_measurement")
+        << "\nprotocol=" << (instance.ytpRokt68 ? "rokt_ytp68" : "legacy_mode2_65")
         << "\nulk_address=" << address
-        << "\nraw_mean=" << rawSum / sampleCount
+        << "\nraw_mean=" << rawMean
         << "\ntemperature_mode=" << static_cast<unsigned>(temperatureMode)
         << "\nsample_count=" << sampleCount
+        << "\nvalid_sample_count=" << validSamples
+        << "\ninvalid_sample_count=" << invalidSamples
         << "\nfirst_sequence=" << firstSequence
         << "\nlast_sequence=" << sequence << '\n';
     return out.str();
@@ -219,6 +248,7 @@ orbita_plugin_status_v1 invoke(void* value, const char* capability, const char* 
             instance.yalkReference = true;
             instance.ytpPassive = false;
             instance.ytpLegacyMode2 = false;
+            instance.ytpRokt68 = false;
             instance.transport->prepareYalkReference();
             instance.selectedMode = -2;
             return std::string("status=prepared\nprotocol=rokt_yalk\n");
@@ -239,6 +269,7 @@ orbita_plugin_status_v1 invoke(void* value, const char* capability, const char* 
             instance.yalkReference = false;
             instance.ytpPassive = false;
             instance.ytpLegacyMode2 = false;
+            instance.ytpRokt68 = false;
             const std::string protocol = args.count("protocol")
                 ? args.at("protocol") : "passive_capture";
             if (protocol == "passive_capture") {
@@ -248,6 +279,36 @@ orbita_plugin_status_v1 invoke(void* value, const char* capability, const char* 
                 return std::string(
                     "status=capturing\nprotocol=passive_capture\n"
                     "decoder=unconfirmed\nactive_command=none\n");
+            }
+            if (protocol == "rokt_ytp68") {
+                plugin::requireActiveOutputs(instance.config);
+                const unsigned endpoint = plugin::unsignedValue(args, "ytp_endpoint", 1);
+                if (endpoint < 1 || endpoint > 255) {
+                    throw std::invalid_argument("ytp_endpoint должен быть 1..255");
+                }
+                instance.ytpRokt68 = true;
+                instance.transport->startYtpRokt(static_cast<std::uint8_t>(endpoint));
+                instance.selectedMode = -4;
+                const auto frame = waitYtpRokt(instance, 0,
+                    plugin::unsignedValue(args, "timeout_ms", 3000));
+                const auto decoded = decodeYtpRokt68Frame(frame.payload);
+                unsigned validWords = 0;
+                for (const auto raw : decoded.channelRaw) {
+                    if (!isYtpNoMeasurementRaw(raw)) ++validWords;
+                }
+                if (!isYtpNoMeasurementRaw(decoded.calibrationCandidate31Raw)) ++validWords;
+                if (!isYtpNoMeasurementRaw(decoded.calibrationCandidate32Raw)) ++validWords;
+                std::ostringstream out;
+                out << "status=ready\nprotocol=rokt_ytp68\nactive_command=ROKT_17"
+                    << "\nytp_endpoint=" << endpoint
+                    << "\nframe_header=" << static_cast<unsigned>(decoded.header[0]) << ','
+                    << static_cast<unsigned>(decoded.header[1]) << ','
+                    << static_cast<unsigned>(decoded.header[2]) << ','
+                    << static_cast<unsigned>(decoded.header[3])
+                    << "\nvalid_word_count=" << validWords
+                    << "\ninvalid_word_count=" << (32 - validWords)
+                    << "\nfirst_sequence=" << frame.sequence << '\n';
+                return out.str();
             }
             if (protocol != "legacy_mode2") {
                 throw std::invalid_argument("Unsupported YTP adapter protocol: " + protocol);
@@ -265,6 +326,7 @@ orbita_plugin_status_v1 invoke(void* value, const char* capability, const char* 
             instance.transport->start(2);
             instance.selectedMode = 2;
             instance.ytpLegacyMode2 = true;
+            instance.ytpRokt68 = false;
             const auto frame = waitYtpLegacy(instance, 0,
                 plugin::unsignedValue(args, "timeout_ms", 3000));
             return std::string(
@@ -276,6 +338,7 @@ orbita_plugin_status_v1 invoke(void* value, const char* capability, const char* 
             instance.cancelled.store(false);
             instance.ytpPassive = false;
             instance.ytpLegacyMode2 = false;
+            instance.ytpRokt68 = false;
             const std::string protocol = args.count("protocol")
                 ? args.at("protocol")
                 : (instance.config.count("protocol") ? instance.config.at("protocol") : "legacy_mode6");
@@ -307,6 +370,7 @@ orbita_plugin_status_v1 invoke(void* value, const char* capability, const char* 
             instance.yalkReference = false;
             instance.ytpPassive = false;
             instance.ytpLegacyMode2 = false;
+            instance.ytpRokt68 = false;
             return std::string("status=ok\n");
         }
         if (command == "stats") return statsText(instance.transport->stats());
@@ -315,17 +379,39 @@ orbita_plugin_status_v1 invoke(void* value, const char* capability, const char* 
         if (command == "read_ytp_snapshot") {
             const std::uint64_t after = plugin::unsignedValue(args, "after_sequence",
                 static_cast<unsigned>(instance.transport->stats().lastSequence));
-            const auto frame = waitYtpLegacy(instance, after, timeout(instance, args));
-            const auto decoded = decodeYtpLegacyMode2Frame(frame.payload);
+            const auto frame = instance.ytpRokt68
+                ? waitYtpRokt(instance, after, timeout(instance, args))
+                : waitYtpLegacy(instance, after, timeout(instance, args));
             std::ostringstream out;
-            out << "status=ready\nprotocol=legacy_mode2_65\nsequence=" << frame.sequence
-                << "\ntemperature_mode=" << static_cast<unsigned>(decoded.temperatureMode)
-                << "\ncalibration_minimum_raw=" << decoded.calibrationMinimumRaw
-                << "\ncalibration_maximum_raw=" << decoded.calibrationMaximumRaw
+            std::array<std::uint16_t, 30> channels{};
+            std::uint16_t candidate31 = 0;
+            std::uint16_t candidate32 = 0;
+            unsigned temperatureMode = 0;
+            if (instance.ytpRokt68) {
+                const auto decoded = decodeYtpRokt68Frame(frame.payload);
+                channels = decoded.channelRaw;
+                candidate31 = decoded.calibrationCandidate31Raw;
+                candidate32 = decoded.calibrationCandidate32Raw;
+                out << "status=ready\nprotocol=rokt_ytp68\nsequence=" << frame.sequence
+                    << "\nframe_header=" << static_cast<unsigned>(decoded.header[0]) << ','
+                    << static_cast<unsigned>(decoded.header[1]) << ','
+                    << static_cast<unsigned>(decoded.header[2]) << ','
+                    << static_cast<unsigned>(decoded.header[3]);
+            } else {
+                const auto decoded = decodeYtpLegacyMode2Frame(frame.payload);
+                channels = decoded.channelRaw;
+                candidate31 = decoded.calibrationMinimumRaw;
+                candidate32 = decoded.calibrationMaximumRaw;
+                temperatureMode = decoded.temperatureMode;
+                out << "status=ready\nprotocol=legacy_mode2_65\nsequence=" << frame.sequence;
+            }
+            out << "\ntemperature_mode=" << temperatureMode
+                << "\ncalibration_candidate_31_raw=" << candidate31
+                << "\ncalibration_candidate_32_raw=" << candidate32
                 << "\nchannels=";
-            for (std::size_t index = 0; index < decoded.channelRaw.size(); ++index) {
+            for (std::size_t index = 0; index < channels.size(); ++index) {
                 if (index) out << ',';
-                out << decoded.channelRaw[index];
+                out << channels[index];
             }
             out << '\n';
             return out.str();
