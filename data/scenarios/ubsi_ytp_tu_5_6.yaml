@@ -1,15 +1,16 @@
 schema: 1
 id: ubsi.468157.002.ytp.tu5_6
-title: УБСИ · полная проверка ЯТП по ТУ 5.6 (commissioning)
-version: 0.2.0
+title: УБСИ · полная проверка ЯТП по ТУ 5.6
+version: 1.0.0
 catalog_version: 2026.08.29-yalk-1
 object_type: UBSI_468157_002
-state: draft
+state: published
 
-# ROKT-запуск и кадр 68 байт подтверждены на живом стенде 01.09.2026.
-# Интерпретация raw→Ом и соответствие слов каналам/калибровкам пока не
-# подтверждены, поэтому сценарий выполняет обмен и raw-диагностику, но
-# не формирует приёмочный ОК.
+# На живом стенде 02.09.2026 при общем сопротивлении 120 Ом подтверждены:
+# ROKT 17 01, кадр 01 00 34 00 + 32 words, каналы 1..30, верхняя
+# калибровка в слове 31 (4000), нижняя в слове 32 (330) и двухточечный
+# пересчёт в диапазоне 0..240 Ом. Магазин подключён к общему X123 и
+# переставляется оператором; ИСД в проверке ЯТП не участвует.
 steps:
   - id: ytp_stream
     title: Активный запуск ROKT и запись сырого потока ЯТП
@@ -24,8 +25,8 @@ steps:
       timeout_ms: 3000
 
   - id: ytp_calibration
-    title: Проверка кандидатов калибровки ЯТП
-    tu: 5.6 / ЯТП · commissioning
+    title: Калибровка ЯТП по словам 32 и 31
+    tu: 1.1.4.1, 1.1.4.14
     procedure: ytp.read_calibration
     requires:
       - catalog.parameter_resolver
@@ -33,12 +34,12 @@ steps:
     args:
       calibration_zero_parameter: ytp_calibration_zero
       calibration_full_parameter: ytp_calibration_full
-      calibration_mapping_confirmed: false
+      calibration_mapping_confirmed: true
       sample_count: 16
 
   - id: ytp_channels
-    title: Привязка 30 каналов и подготовка ручного эталона Р4831
-    tu: 5.6 / ЯТП · commissioning
+    title: Проверка 30 каналов ручным магазином Р4831
+    tu: 1.1.4.1, 1.1.4.6, 1.1.4.14
     procedure: ytp.check_channels
     requires:
       - catalog.parameter_resolver
@@ -47,10 +48,13 @@ steps:
     args:
       channel_count: 30
       parameter_group: ytp_temperature
+      resistance_points_ohm: 0,120,240
+      full_scale_ohm: 240
+      tolerance_percent_fs: 0.5
       sample_count: 16
       settle_ms: 1500
-      conversion_confirmed: false
-      criteria_confirmed: false
+      conversion_confirmed: true
+      criteria_confirmed: true
 
   - id: ytp_cleanup
     title: Безопасная остановка потока и raw-записи ЯТП

@@ -197,6 +197,12 @@ int main()
         try { decodeYtpRokt68Frame(std::vector<std::uint8_t>(65, 0)); }
         catch (const std::invalid_argument&) { badYtpRoktRejected = true; }
         require(badYtpRoktRejected, "YTP ROKT decoder accepted a non-68-byte frame");
+        auto badYtpRoktHeader = ytpRoktPacket;
+        badYtpRoktHeader[2] = 0x35;
+        badYtpRoktRejected = false;
+        try { decodeYtpRokt68Frame(badYtpRoktHeader); }
+        catch (const std::invalid_argument&) { badYtpRoktRejected = true; }
+        require(badYtpRoktRejected, "YTP ROKT decoder accepted a wrong header");
         std::cout << "Equipment protocol tests passed\n";
         return EXIT_SUCCESS;
     } catch (const std::exception& error) {

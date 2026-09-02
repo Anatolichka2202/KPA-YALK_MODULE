@@ -74,6 +74,19 @@ public:
         update();
     }
 
+    void configure(double maximum, const QString& maximumLabel,
+                   const QString& minimumLabel, const QString& axisText,
+                   const QString& referenceLegend, const QString& measuredLegend)
+    {
+        maximum_ = maximum;
+        maximumLabel_ = maximumLabel;
+        minimumLabel_ = minimumLabel;
+        axisText_ = axisText;
+        referenceLegend_ = referenceLegend;
+        measuredLegend_ = measuredLegend;
+        clear();
+    }
+
 protected:
     void paintEvent(QPaintEvent*) override
     {
@@ -86,10 +99,10 @@ protected:
         painter.drawRect(area);
 
         painter.setPen(QColor("#7e8a98"));
-        painter.drawText(8, 28, QStringLiteral("6,2 В"));
-        painter.drawText(18, static_cast<int>(area.bottom()), QStringLiteral("0 В"));
+        painter.drawText(8, 28, maximumLabel_);
+        painter.drawText(18, static_cast<int>(area.bottom()), minimumLabel_);
         painter.drawText(static_cast<int>(area.left()), height() - 10,
-                         QStringLiteral("Точки воздействия: 0 · 3,1 · 6,2 В"));
+                         axisText_);
 
         if (reference_.isEmpty()) {
             painter.setPen(QColor("#6f7a88"));
@@ -104,7 +117,7 @@ protected:
             for (int i = 0; i < values.size(); ++i) {
                 const double x = area.left() + (values.size() == 1 ? area.width() / 2.0
                     : area.width() * i / static_cast<double>(values.size() - 1));
-                const double normalized = qBound(0.0, values[i] / 6.2, 1.0);
+                const double normalized = qBound(0.0, values[i] / maximum_, 1.0);
                 const double y = area.bottom() - normalized * area.height();
                 if (i == 0) path.moveTo(x, y); else path.lineTo(x, y);
                 painter.setBrush(color);
@@ -121,15 +134,21 @@ protected:
 
         painter.setPen(QColor("#55b7ff"));
         painter.drawText(static_cast<int>(area.right()) - 175, 16,
-                         QStringLiteral("— В7-78/1"));
+                         referenceLegend_);
         painter.setPen(QColor("#70d79b"));
         painter.drawText(static_cast<int>(area.right()) - 90, 16,
-                         QStringLiteral("— ЯЛК"));
+                         measuredLegend_);
     }
 
 private:
     QVector<double> reference_;
     QVector<double> measured_;
+    double maximum_ = 6.2;
+    QString maximumLabel_ = QStringLiteral("6,2 В");
+    QString minimumLabel_ = QStringLiteral("0 В");
+    QString axisText_ = QStringLiteral("Точки воздействия: 0 · 3,1 · 6,2 В");
+    QString referenceLegend_ = QStringLiteral("— В7-78/1");
+    QString measuredLegend_ = QStringLiteral("— ЯЛК");
 };
 
 QLabel* makeSectionTitle(const QString& text)
@@ -473,6 +492,8 @@ void TestPage::rebuildTests()
                                 QStringLiteral("YALK_FULL_5_6"));
         } else if (selectedScopeCode() == QStringLiteral("ЯТП")
                    && selectedObjectCode() != QStringLiteral("BSI")) {
+            testCombo_->addItem(QStringLiteral("Быстрый контроль ЯТП · 30 каналов · 120 Ом"),
+                                QStringLiteral("YTP_120_CHECK"));
             testCombo_->addItem(QStringLiteral("Полная проверка ЯТП · 30 каналов · ТУ 5.6"),
                                 QStringLiteral("YTP_FULL_5_6"));
         }
@@ -498,15 +519,30 @@ void TestPage::updateSelectionSummary()
         scopeLabel_->setText(object == QStringLiteral("BSI")
             ? QStringLiteral("Полный сценарий ЯЛК в этом релизе предназначен для УБСИ, а не для БСИ.")
             : QStringLiteral("ЯЛК-96 УБСИ: ИСД задаёт 0 / 3,1 / 6,2 В, В7 измеряет эталон, адаптер УЛК читает 16 свежих кадров. Орбита и E20 не участвуют."));
+    } else if (test == QStringLiteral("YTP_120_CHECK")) {
+        scopeLabel_->setText(QStringLiteral(
+            "Быстрый контроль: Р4831 остаётся на 120 Ом, оператор подтверждает фактическое значение один раз, затем проверяются все 30 каналов. Результаты каналов оцениваются по ±1,2 Ом; общий итог помечается НЕПОЛНАЯ, потому что крайние точки диапазона не проверялись."));
     } else if (test == QStringLiteral("YTP_FULL_5_6")) {
         scopeLabel_->setText(QStringLiteral(
-            "ЯТП УБСИ: подготовлен отдельный путь адаптера, каталог 30 каналов, ручной эталон Р4831 и raw-отчёт. Текущий ROKT-формат и raw→Ом ещё требуют живого подтверждения, поэтому итог commissioning-прогона — НЕПОЛНАЯ. Орбита и E20 не запускаются."));
+            "ЯТП УБСИ: магазин Р4831 подключён к общему X123. Оператор вручную выставляет 0 / 120 / 240 Ом и вводит фактическое значение; ЯТП сама опрашивает 30 каналов, адаптер читает 16 свежих кадров. ИСД, Орбита и E20 не участвуют."));
     } else {
         scopeLabel_->setText(QStringLiteral("%1 · %2: диагностический прогон проверяет наличие источника данных, адресной привязки и стабильной выборки. Он не выдаётся за приёмочное испытание по ТУ.")
             .arg(object == QStringLiteral("BSI") ? QStringLiteral("БСИ") : QStringLiteral("УБСИ № 7"), scope));
     }
-    plot_->setVisible(test == QStringLiteral("YALK_FULL_5_6") || test.endsWith(QStringLiteral("NORMAL_5_6")));
-    if (test == QStringLiteral("YTP_FULL_5_6")) {
+    const bool ytpPlot = test == QStringLiteral("YTP_FULL_5_6")
+        || test == QStringLiteral("YTP_120_CHECK");
+    if (ytpPlot) {
+        plot_->configure(240.0, QStringLiteral("240 Ом"), QStringLiteral("0 Ом"),
+            QStringLiteral("Ручные точки Р4831: 0 · 120 · 240 Ом"),
+            QStringLiteral("— Р4831"), QStringLiteral("— ЯТП"));
+    } else {
+        plot_->configure(6.2, QStringLiteral("6,2 В"), QStringLiteral("0 В"),
+            QStringLiteral("Точки воздействия: 0 · 3,1 · 6,2 В"),
+            QStringLiteral("— В7-78/1"), QStringLiteral("— ЯЛК"));
+    }
+    plot_->setVisible(test == QStringLiteral("YALK_FULL_5_6")
+        || ytpPlot || test.endsWith(QStringLiteral("NORMAL_5_6")));
+    if (ytpPlot) {
         resultTable_->setHorizontalHeaderLabels({
             QStringLiteral("Канал"), QStringLiteral("Точка"),
             QStringLiteral("Задано, Ом"), QStringLiteral("Raw"),
@@ -627,8 +663,9 @@ QStringList TestPage::requiredEquipment() const
             ? QStringList{"RS485", "ISD", "V7", "SCHEME"}
             : QStringList{"RS485", "ISD", "V7", "SCHEME"};
     }
-    if (test == QStringLiteral("YTP_FULL_5_6")) {
-        return {"RS485", "R4831"};
+    if (test == QStringLiteral("YTP_FULL_5_6")
+        || test == QStringLiteral("YTP_120_CHECK")) {
+        return {"RS485", "R4831", "SCHEME"};
     }
     const auto scenario = scenarios_.constFind(test);
     if (scenario != scenarios_.cend()) {
@@ -856,6 +893,8 @@ void TestPage::setRunEvent(const orbita::stand::RunEvent& event)
             return found == event.data.end() ? QString() : QString::fromStdString(found->second);
         };
         if (!value("ytp_channel").isEmpty()) {
+            plot_->addPoint(value("actual_reference_ohm").toDouble(),
+                            value("measured_resistance_ohm").toDouble());
             progress_->setFormat(QStringLiteral(
                 "ЯТП: канал %1 · эталон %2 Ом · raw %3 · ЯТП %4 Ом")
                 .arg(value("ytp_channel"), value("actual_reference_ohm"),
@@ -920,7 +959,8 @@ void TestPage::setRunResult(const orbita::stand::ScenarioRunResult& result,
                 }
                 resultTable_->setItem(row, column, item);
             }
-            if (measurement.unit == "V") plot_->addPoint(measurement.reference, measurement.measured);
+            if (measurement.unit == "V" || measurement.unit == "Ом")
+                plot_->addPoint(measurement.reference, measurement.measured);
         }
         if (step.measurements.empty() && step.children.empty()) {
             const int row = resultTable_->rowCount();

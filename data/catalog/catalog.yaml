@@ -212,10 +212,10 @@ bindings:
     count: 30
     mask: 0xFFFF
     mode: 2
-    stimulus_route: ytp_channel
-    stimulus_offset_base: 0
-    stimulus_offset_from_locator: true
-    confirmed: false
+    conversion: ytp_two_point_240_ohm
+    # Магазин сопротивлений подключён к общему X123. Каналы выбирает и
+    # последовательно опрашивает сама ЯТП; поканального маршрута ИСД здесь нет.
+    confirmed: true
   - block_type: UBSI_468157_002
     slot: ytp
     parameter_group: ytp_calibration_zero
@@ -227,7 +227,7 @@ bindings:
     count: 1
     mask: 0xFFFF
     mode: 2
-    confirmed: false
+    confirmed: true
   - block_type: UBSI_468157_002
     slot: ytp
     parameter_group: ytp_calibration_full
@@ -239,7 +239,7 @@ bindings:
     count: 1
     mask: 0xFFFF
     mode: 2
-    confirmed: false
+    confirmed: true
   - block_type: UBSI_468157_002
     slot: yvp_8
     parameter_group: yvp_fast

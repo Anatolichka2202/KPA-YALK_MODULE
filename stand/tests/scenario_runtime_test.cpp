@@ -47,13 +47,16 @@ public:
             return "status=ok\npath=fake/frames.ulkbin\n";
         }
         if (capability == "ulk.parameter_source" && operation == "start_ytp_stream") {
-            return "status=ready\nprotocol=rokt_ytp68\nvalid_word_count=0\n"
-                   "invalid_word_count=32\nfirst_sequence=1\n";
+            return "status=ready\nprotocol=rokt_ytp68\nvalid_word_count=32\n"
+                   "invalid_word_count=0\nfirst_sequence=1\n";
         }
         if (capability == "ulk.parameter_source" && operation == "read_ytp_channel") {
-            return "status=no_measurement\nprotocol=rokt_ytp68\nraw_mean=32768\n"
-                   "temperature_mode=0\nsample_count=16\nvalid_sample_count=0\n"
-                   "invalid_sample_count=16\nfirst_sequence=2\nlast_sequence=17\n";
+            const unsigned address = static_cast<unsigned>(std::stoul(arguments.at("ulk_address")));
+            const double raw = address == 31 ? 4000.0 : address == 32 ? 330.0
+                : 330.0 + currentResistance * (4000.0 - 330.0) / 240.0;
+            return "status=ready\nprotocol=rokt_ytp68\nraw_mean=" + std::to_string(raw)
+                + "\ntemperature_mode=0\nsample_count=16\nvalid_sample_count=16\n"
+                  "invalid_sample_count=0\nfirst_sequence=2\nlast_sequence=17\n";
         }
         if (capability == "catalog.parameter_resolver" && operation == "resolve") {
             const std::string group = arguments.at("parameter_group");
@@ -64,8 +67,12 @@ public:
                 + std::to_string(locator)
                 + "\nstream_id=\nword_index=" + std::to_string(locator - 1)
                 + "\nmask=65535\nshift=0\nmode=2\nconversion_id=\n"
-                  "stimulus_route=ytp_channel\nstimulus_offset=" + std::to_string(index)
-                + "\nconfirmed=false\n";
+                  "stimulus_route=\nstimulus_offset=0\nconfirmed=true\n";
+        }
+        if (capability == "operator.manual_input" && operation == "confirm_value") {
+            currentResistance = std::stod(arguments.at("target_value"));
+            return "status=confirmed\nvalue=" + std::to_string(currentResistance)
+                + "\noperator=test\ntimestamp=2026-09-02T12:00:00\n";
         }
         return "status=ready\n";
     }
@@ -73,6 +80,7 @@ public:
     std::set<std::string> capabilities;
     std::vector<std::string> operations;
     bool stopped = false;
+    double currentResistance = 120.0;
 };
 
 ScenarioDefinition smallScenario()
@@ -160,14 +168,14 @@ void configurationAndCatalog(const QString& root)
     require(bsiDiagnostic.publicationState == PublicationState::Published,
             "BSI diagnostic scenario must be published as a non-acceptance procedure");
     require(engine.validate(ytpScenario).empty(), "Standalone YTP scenario must validate");
-    require(ytpScenario.publicationState == PublicationState::Draft
+    require(ytpScenario.publicationState == PublicationState::Published
                 && ytpScenario.steps.size() == 4,
-            "YTP must remain a four-stage commissioning scenario until live proof");
+            "YTP must be a published four-stage manual-reference scenario");
     require(profile.id == "ktma-main" && !profile.activeOutputsConfirmed,
             "Default stand profile must keep active outputs locked");
     require(profile.routes.at("yalk_analog.base") == "1"
                 && profile.routes.at("yalk_analog.safe") == "off"
-                && profile.routes.at("ytp_channel.base") == "TODO_CONFIRM",
+                && profile.routes.count("ytp_channel.base") == 0,
             "Structured ISD route fields were not loaded from the profile");
     require(profile.connections.at("adapter_rs485") == "Адаптер RS-485 → X1 ЯП-П"
                 && profile.connections.at("isd_to_yalk") == "ИСД → X1, X2, X3 ЯЛК",
@@ -232,20 +240,21 @@ void configurationAndCatalog(const QString& root)
     for (unsigned channel = 0; channel < 30; ++channel) {
         const auto mapped = resolveCatalogParameterBinding(
             db.toUtf8().toStdString(), "UBSI_468157_002", "ytp_temperature", channel);
-        require(mapped.locator == std::to_string(channel + 1) && !mapped.confirmed,
-                "YTP catalog must resolve all 30 logical channels without confirming them");
+        require(mapped.locator == std::to_string(channel + 1)
+                    && mapped.stimulusRoute.empty() && mapped.confirmed,
+                "YTP catalog must map 30 frame words without an ISD channel route");
     }
     const auto ytpCalibration = resolveCatalogParameterBinding(
         db.toUtf8().toStdString(), "UBSI_468157_002", "ytp_calibration_zero", 0);
-    require(ytpCalibration.locator == "32",
+    require(ytpCalibration.locator == "32" && ytpCalibration.confirmed,
             "YTP lower calibration must use reference ULK address 32");
     const auto yvp = resolveCatalogParameterBinding(
         db.toUtf8().toStdString(), "UBSI_468157_002", "yvp_fast", 0);
     require(yvp.source == "orbita.parameter_source"
                 && yvp.locator == "M16P1A11B21T21",
             "YVP must resolve to an Orbita address from catalog");
-    require(!yalk.confirmed && !ytp.confirmed && !yvp.confirmed,
-            "Unverified live mappings must not allow acceptance OK");
+    require(!yalk.confirmed && ytp.confirmed && !yvp.confirmed,
+            "Only live-confirmed bindings may allow acceptance OK");
 
     FakeEquipment diagnosticEquipment;
     diagnosticEquipment.capabilities.insert("orbita.parameter_source");
@@ -258,17 +267,17 @@ void configurationAndCatalog(const QString& root)
     ytpEquipment.capabilities = {
         "ulk.parameter_source", "catalog.parameter_resolver", "operator.manual_input"};
     const auto ytpRun = engine.run(
-        ytpScenario, ytpEquipment, profile.version, "", true);
-    require(ytpRun.verdict == RunVerdict::Incomplete,
-            "Unconfirmed YTP commissioning run must never produce acceptance OK");
+        ytpScenario, ytpEquipment, profile.version, "", false);
+    require(ytpRun.verdict == RunVerdict::Ok,
+            "Confirmed YTP manual-reference run must produce acceptance OK");
     require(std::find(ytpEquipment.operations.begin(), ytpEquipment.operations.end(),
                 "ulk.parameter_source:stop_stream") != ytpEquipment.operations.end()
             && std::find(ytpEquipment.operations.begin(), ytpEquipment.operations.end(),
                 "ulk.parameter_source:stop_record") != ytpEquipment.operations.end(),
             "YTP scenario must stop both stream and raw recording");
-    require(std::find(ytpEquipment.operations.begin(), ytpEquipment.operations.end(),
-                "operator.manual_input:confirm_value") == ytpEquipment.operations.end(),
-            "YTP commissioning must not request an unconfirmed resistance point");
+    require(std::count(ytpEquipment.operations.begin(), ytpEquipment.operations.end(),
+                "operator.manual_input:confirm_value") == 3,
+            "YTP must request all three manual R4831 points");
 }
 
 void builtinCapabilityBinding()

@@ -608,8 +608,10 @@ void MainWindow::initializeStandRuntime()
             QStringLiteral("Сценарий УБСИ не загружен"));
         testPage_->setScenarioInfo("YALK_FULL_5_6", false, false, {},
             QStringLiteral("Сценарий ЯЛК не загружен"));
-        testPage_->setScenarioInfo("YTP_FULL_5_6", false, true, {},
+        testPage_->setScenarioInfo("YTP_FULL_5_6", false, false, {},
             QStringLiteral("Сценарий ЯТП не загружен"));
+        testPage_->setScenarioInfo("YTP_120_CHECK", false, true, {},
+            QStringLiteral("Сценарий контроля ЯТП при 120 Ом не загружен"));
         testPage_->setScenarioInfo("BSI_DIAGNOSTIC", false, true, {},
             QStringLiteral("Диагностический сценарий БСИ не загружен"));
         const QDir scenarioDirectory(root.filePath("scenarios"));
@@ -625,6 +627,8 @@ void MainWindow::initializeStandRuntime()
                 code = QStringLiteral("YALK_FULL_5_6");
             } else if (scenario.id == "ubsi.468157.002.ytp.tu5_6") {
                 code = QStringLiteral("YTP_FULL_5_6");
+            } else if (scenario.id == "ubsi.468157.002.ytp.120ohm.check") {
+                code = QStringLiteral("YTP_120_CHECK");
                 diagnostic = true;
             } else if (scenario.id == "bsi.468157.003.telemetry.diagnostic") {
                 code = QStringLiteral("BSI_DIAGNOSTIC");
@@ -934,6 +938,7 @@ void MainWindow::onRunScenario(
     const auto scenario = iterator.value();
     if (scenarioCode != QStringLiteral("YALK_FULL_5_6")
         && scenarioCode != QStringLiteral("YTP_FULL_5_6")
+        && scenarioCode != QStringLiteral("YTP_120_CHECK")
         && equipmentRegistry_->hasCapability("orbita.parameter_source")
         && !orbita_->isRunning()) {
         onStart();

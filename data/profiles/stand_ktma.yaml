@@ -63,11 +63,6 @@ routes:
     type: 2
     bus: 0
     safe: off
-  ytp_channel:
-    base: TODO_CONFIRM
-    type: 2
-    bus: 0
-    safe: off
   yvp_input:
     base: TODO_CONFIRM
     type: 2

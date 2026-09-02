@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <map>
 #include <stdexcept>
 #include <string>
@@ -378,6 +379,25 @@ int main(int argc, char** argv)
                         <<std::dec;
                 }
                 std::cout<< '\n';
+                const double zeroRaw = previous[31];
+                const double fullRaw = previous[30];
+                if (fullRaw > zeroRaw) {
+                    double minimumOhms = std::numeric_limits<double>::max();
+                    double maximumOhms = std::numeric_limits<double>::lowest();
+                    double sumOhms = 0.0;
+                    for (unsigned index = 0; index < 30; ++index) {
+                        const double ohms = (previous[index] - zeroRaw) * 240.0
+                            / (fullRaw - zeroRaw);
+                        minimumOhms = std::min(minimumOhms, ohms);
+                        maximumOhms = std::max(maximumOhms, ohms);
+                        sumOhms += ohms;
+                    }
+                    std::cout << std::fixed << std::setprecision(3)
+                              << "OHMS calibration_zero_word=32 calibration_full_word=31"
+                              << " min=" << minimumOhms
+                              << " mean=" << sumOhms / 30.0
+                              << " max=" << maximumOhms << '\n';
+                }
                 continue;
             }
 

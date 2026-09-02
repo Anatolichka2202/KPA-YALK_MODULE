@@ -1,0 +1,35 @@
+Dependencies for Project 'GD32F303', Target 'Target 1': (DO NOT MODIFY !)
+F (.\startup_gd32f30x_xd.s)(0x63EF749F)(--cpu Cortex-M4 -g --apcs=interwork -I C:\Keil\ARM\RV31\INC -I C:\Keil\ARM\CMSIS\Include -I C:\Keil\ARM\Inc\GD\GD32F30x --list "startup_gd32f30x_xd.lst" --xref -o "startup_gd32f30x_xd.o" --depend "startup_gd32f30x_xd.d")
+F (.\main.c)(0x660583B5)(-c --cpu Cortex-M4 -g -O0 --apcs=interwork -I.\Include -I C:\Keil\ARM\RV31\INC -I C:\Keil\ARM\CMSIS\Include -I C:\Keil\ARM\Inc\GD\GD32F30x -o "main.o" --omf_browse "main.crf" --depend "main.d")
+I (C:\Keil\ARM\Inc\GD\GD32F30x\gd32f30x.h)(0x65F18C0F)
+I (C:\Keil\ARM\CMSIS\Include\core_cm4.h)(0x5087A1CE)
+I (C:\Keil\ARM\ARMCC\bin\..\include\stdint.h)(0x50F9A7A0)
+I (C:\Keil\ARM\CMSIS\Include\core_cmInstr.h)(0x5087A1CE)
+I (C:\Keil\ARM\CMSIS\Include\core_cmFunc.h)(0x5087A1CE)
+I (C:\Keil\ARM\CMSIS\Include\core_cm4_simd.h)(0x5087A1CE)
+I (C:\Keil\ARM\Inc\GD\GD32F30x\system_gd32f30x.h)(0x61AF0B78)
+I (.\Include\gd32f30x_libopt.h)(0x61CC215B)
+I (.\Include\gd32f30x_rcu.h)(0x62A6E3C7)
+I (.\Include\gd32f30x_adc.h)(0x61CC215C)
+I (.\Include\gd32f30x_can.h)(0x6392DB4B)
+I (.\Include\gd32f30x_crc.h)(0x61CC215C)
+I (.\Include\gd32f30x_ctc.h)(0x6392DB4B)
+I (.\Include\gd32f30x_dac.h)(0x61CC215C)
+I (.\Include\gd32f30x_dbg.h)(0x62C28B53)
+I (.\Include\gd32f30x_dma.h)(0x61CC215C)
+I (.\Include\gd32f30x_exti.h)(0x63ABB35A)
+I (.\Include\gd32f30x_fmc.h)(0x61CC215C)
+I (.\Include\gd32f30x_fwdgt.h)(0x62C28B52)
+I (.\Include\gd32f30x_gpio.h)(0x6392DB4B)
+I (.\Include\gd32f30x_i2c.h)(0x62C28B52)
+I (.\Include\gd32f30x_pmu.h)(0x62C28B53)
+I (.\Include\gd32f30x_bkp.h)(0x61CC215C)
+I (.\Include\gd32f30x_rtc.h)(0x61CC215B)
+I (.\Include\gd32f30x_sdio.h)(0x61CC215C)
+I (.\Include\gd32f30x_spi.h)(0x62F9F4F9)
+I (.\Include\gd32f30x_timer.h)(0x61CC215C)
+I (.\Include\gd32f30x_usart.h)(0x63ABB35A)
+I (.\Include\gd32f30x_wwdgt.h)(0x62A6E3C7)
+I (.\Include\gd32f30x_misc.h)(0x61CC215B)
+I (.\Include\gd32f30x_enet.h)(0x62A6E3C7)
+I (.\Include\gd32f30x_exmc.h)(0x61CC215C)

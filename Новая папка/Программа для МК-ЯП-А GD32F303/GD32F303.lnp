@@ -1,0 +1,5 @@
+--cpu Cortex-M4 "startup_gd32f30x_xd.o" "main.o" 
+--strict --scatter "GD32F303.sct" 
+--summary_stderr --info summarysizes --map --xref --callgraph --symbols 
+--info sizes --info totals --info unused --info veneers 
+ --list ".\GD32F303.map" -o GD32F303.axf

@@ -38,6 +38,13 @@ YtpRokt68Frame decodeYtpRokt68Frame(
             "Кадр ЯТП ROKT должен содержать ровно 68 байт");
     }
 
+    constexpr std::array<std::uint8_t, 4> ExpectedHeader{
+        0x01, 0x00, 0x34, 0x00};
+    if (!std::equal(ExpectedHeader.begin(), ExpectedHeader.end(), payload.begin())) {
+        throw std::invalid_argument(
+            "Кадр ЯТП ROKT имеет неверный заголовок; ожидался 01 00 34 00");
+    }
+
     YtpRokt68Frame result;
     std::copy_n(payload.begin(), result.header.size(), result.header.begin());
     const auto word = [&payload](std::size_t index) {

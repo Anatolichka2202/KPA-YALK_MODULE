@@ -1,0 +1,21 @@
+*** Creating Trace Output File 'GD32F303.tra' Ok.
+### Preparing for ADS-LD.
+### Creating ADS-LD Command Line
+### List of Objects: adding '"startup_gd32f30x_xd.o"'
+### List of Objects: adding '"main.o"'
+### ADS-LD Command completed:
+--cpu Cortex-M4 "startup_gd32f30x_xd.o" "main.o" 
+--strict --scatter "GD32F303.sct" 
+--summary_stderr --info summarysizes --map --xref --callgraph --symbols 
+--info sizes --info totals --info unused --info veneers 
+ --list ".\GD32F303.map" -o GD32F303.axf### Preparing Environment (PrepEnvAds)
+### ADS-LD Output File: 'GD32F303.axf'
+### ADS-LD Command File: 'GD32F303.lnp'
+### Checking for dirty Components...
+### Creating CmdFile 'GD32F303.lnp', Handle=0x00000654
+### Writing '.lnp' file
+### ADS-LD Command file 'GD32F303.lnp' is ready.
+### ADS-LD: About to start ADS-LD Thread.
+### ADS-LD: executed with 0 errors
+### Updating obj list
+### LDADS_file() completed.

@@ -90,11 +90,14 @@ int main(int argc, char** argv)
     require(equipment->isRowHidden(rowByName(equipment, QStringLiteral("E20-10"))),
             "direct UBSI YALK procedure must not require E20");
 
-    page.setScenarioInfo(QStringLiteral("YTP_FULL_5_6"), true, true,
-        {QStringLiteral("RS485"), QStringLiteral("R4831")}, QStringLiteral("ready"));
+    page.setScenarioInfo(QStringLiteral("YTP_FULL_5_6"), true, false,
+        {QStringLiteral("RS485"), QStringLiteral("R4831"), QStringLiteral("SCHEME")},
+        QStringLiteral("ready"));
     scope->setCurrentIndex(scope->findData(QStringLiteral("ЯТП")));
     require(test->findData(QStringLiteral("YTP_FULL_5_6")) >= 0,
             "UBSI must expose the standalone 30-channel YTP scenario");
+    require(test->findData(QStringLiteral("YTP_120_CHECK")) >= 0,
+            "UBSI must expose the fixed 120-ohm YTP check");
     test->setCurrentIndex(test->findData(QStringLiteral("YTP_FULL_5_6")));
     require(!equipment->isRowHidden(rowByName(equipment, QStringLiteral("Адаптер RS-485")))
                 && !equipment->isRowHidden(rowByName(equipment, QStringLiteral("Р4831"))),

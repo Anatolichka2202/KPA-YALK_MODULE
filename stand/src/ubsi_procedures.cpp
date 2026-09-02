@@ -780,10 +780,13 @@ YtpRawValue readYtpRaw(ProcedureContext& context, const std::string& parameterGr
             {"parameter_group", parameterGroup},
             {"sample_count", std::to_string(samples)}});
     const auto values = responseValues(response);
-    const unsigned raw = static_cast<unsigned>(
-        std::llround(responseNumber(response, "raw_mean")));
+    const double rawMean = responseNumber(response, "raw_mean");
+    const double raw = binding.mask == 0xFFFF && binding.shift == 0
+        ? rawMean
+        : static_cast<double>((static_cast<unsigned>(std::llround(rawMean))
+                               & binding.mask) >> binding.shift);
     return {
-        static_cast<double>((raw & binding.mask) >> binding.shift),
+        raw,
         static_cast<unsigned>(std::stoul(binding.locator)),
         responseUnsigned(response, "temperature_mode"),
         values.count("valid_sample_count")
@@ -860,6 +863,23 @@ ProcedureResult ytpReadCalibration(const ScenarioNode& node, ProcedureContext& c
                 + zeroBinding.locator + "/" + fullBinding.locator
                 + " содержат 0x8000 (нет измерения); raw→Ом не выполнялся", {}};
         }
+        if (argument(node, "calibration_mapping_confirmed", "false") != "true"
+            || !zeroBinding.confirmed || !fullBinding.confirmed) {
+            return {RunVerdict::Incomplete,
+                "Калибровки ЯТП прочитаны как raw commissioning-кандидаты "
+                + zeroBinding.locator + "/" + fullBinding.locator
+                + ", но их назначение и raw→Ом ещё не подтверждены", {}};
+        }
+        if (!(fullCandidate.raw > zeroCandidate.raw)) {
+            throw std::runtime_error("Верхняя калибровка ЯТП не больше нижней");
+        }
+        context.state["ytp.calibration_zero_raw"] = std::to_string(zeroCandidate.raw);
+        context.state["ytp.calibration_full_raw"] = std::to_string(fullCandidate.raw);
+        context.state["ytp.temperature_mode"] = std::to_string(fullCandidate.temperatureMode);
+        return {RunVerdict::Ok,
+            "Калибровка текущего ROKT-кадра подтверждена: слово "
+            + zeroBinding.locator + " — 0 Ом, слово " + fullBinding.locator
+            + " — 240 Ом", {}};
     }
     if (argument(node, "calibration_mapping_confirmed", "false") != "true"
         || !zeroBinding.confirmed || !fullBinding.confirmed) {
@@ -907,7 +927,8 @@ ProcedureResult ytpCheckChannels(const ScenarioNode& node, ProcedureContext& con
     }
     if (context.state.count("ytp.calibration_zero_raw") == 0
         || context.state.count("ytp.calibration_full_raw") == 0
-        || context.state["ytp.protocol"] != "legacy_mode2_65") {
+        || (context.state["ytp.protocol"] != "rokt_ytp68"
+            && context.state["ytp.protocol"] != "legacy_mode2_65")) {
         return {RunVerdict::Incomplete,
             "Каналы ЯТП не измерялись: нет подтверждённого декодера и калибровки", {}};
     }
