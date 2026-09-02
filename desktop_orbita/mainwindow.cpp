@@ -669,8 +669,10 @@ void MainWindow::initializeStandRuntime()
             if (available) scenarios_.insert(code, scenario);
             testPage_->setScenarioInfo(code, available, diagnostic, required, detail);
         }
-        if (!scenarios_.contains(QStringLiteral("UBSI_NORMAL_5_6"))) {
-            throw std::runtime_error("Опубликованный сценарий УБСИ 5.6 не готов");
+        if (!scenarios_.contains(QStringLiteral("YALK_FULL_5_6"))
+            || !scenarios_.contains(QStringLiteral("YTP_FULL_5_6"))
+            || !scenarios_.contains(QStringLiteral("YTP_120_CHECK"))) {
+            throw std::runtime_error("Сценарии поставки ЯЛК/ЯТП загружены не полностью");
         }
         QDir().mkpath(root.filePath("runs"));
         runStore_ = std::make_unique<orbita::stand::RunStore>(
@@ -714,6 +716,7 @@ void MainWindow::onCheckTestEquipment()
         {"orbita.v7_visa", "V7"}, {"orbita.akip_1160_pair", "AKIP"},
         {"orbita.rigol_generator", "RIGOL"},
         {"orbita.rigol_dho8xx", "SCOPE"}};
+    const QSet<QString> deliveryEquipment = {"RS485", "ISD", "V7"};
     const QSet<QString> activeCapabilities = {
         "stand.switch_matrix", "power.dc_supply", "signal.generator"};
 
@@ -798,6 +801,7 @@ void MainWindow::onCheckTestEquipment()
     QApplication::setOverrideCursor(Qt::WaitCursor);
     for (const auto& definition : standProfile_.devices) {
         const QString code = uiCodes.value(QString::fromStdString(definition.pluginId));
+        if (!deliveryEquipment.contains(code)) continue;
         if (!definition.enabled) {
             const auto reason = definition.configuration.find("disabled_reason");
             const QString detail = reason == definition.configuration.end()

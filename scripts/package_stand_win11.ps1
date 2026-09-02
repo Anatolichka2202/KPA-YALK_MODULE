@@ -55,13 +55,8 @@ foreach ($name in $runtimeFiles) {
 
 $standRuntime = Join-Path $buildRoot 'stand'
 $diagnosticFiles = @(
-    'orbita_equipment_probe.exe',
-    'orbita_telemetry_probe.exe',
-    'orbita_ubsi_udp_probe.exe',
     'orbita_ytp_rokt_probe.exe',
-    'yalk_timing_probe.exe',
-    'yalk_full_probe.exe',
-    'visa_discover.exe'
+    'yalk_full_probe.exe'
 )
 foreach ($name in $diagnosticFiles) {
     $source = Join-Path $standRuntime $name
@@ -70,7 +65,7 @@ foreach ($name in $diagnosticFiles) {
     }
 }
 
-$runtimeDirectories = @('address', 'catalog', 'profiles', 'scenarios')
+$runtimeDirectories = @('address', 'catalog', 'profiles')
 foreach ($name in $runtimeDirectories) {
     $source = Join-Path $runtimeRoot $name
     if (-not (Test-Path -LiteralPath $source -PathType Container)) {
@@ -79,16 +74,28 @@ foreach ($name in $runtimeDirectories) {
     Copy-Item -LiteralPath $source -Destination $packageRoot -Recurse
 }
 
+$scenarioTarget = Join-Path $packageRoot 'scenarios'
+New-Item -ItemType Directory -Path $scenarioTarget -Force | Out-Null
+$scenarioFiles = @(
+    'ubsi_yalk_tu_5_6.yaml',
+    'ubsi_ytp_tu_5_6.yaml',
+    'ubsi_ytp_120_check.yaml'
+)
+foreach ($name in $scenarioFiles) {
+    $source = Join-Path (Join-Path $runtimeRoot 'scenarios') $name
+    if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
+        throw "Required delivery scenario not found: $source"
+    }
+    Copy-Item -LiteralPath $source -Destination $scenarioTarget
+}
+
 $pluginSource = Join-Path $runtimeRoot 'plugins'
 $pluginTarget = Join-Path $packageRoot 'plugins'
 New-Item -ItemType Directory -Path $pluginTarget -Force | Out-Null
 $pluginAllowList = @(
     'orbita_plugin_ktma_adapter_udp.dll',
     'orbita_plugin_isd_http.dll',
-    'orbita_plugin_v7_visa.dll',
-    'orbita_plugin_akip_1160.dll',
-    'orbita_plugin_rigol_generator.dll',
-    'orbita_plugin_rigol_dho8xx.dll'
+    'orbita_plugin_v7_visa.dll'
 )
 foreach ($name in $pluginAllowList) {
     $source = Join-Path $pluginSource $name

@@ -36,20 +36,8 @@ struct CellInfo {
 };
 
 const CellInfo kUbsiCells[] = {
-    {"ЯП-П", "ячейка питания"},
-    {"ЯТП", "температурные каналы"},
-    {"ЯВП-8", "потенциометрические каналы"},
-    {"ЯЛК-96", "аналоговые и контактные каналы"}
-};
-
-const CellInfo kBsiCells[] = {
-    {"ЯП-А", "ячейка питания"},
-    {"ЯГР", "состав параметров уточняется по картам"},
-    {"ЯСМ", "цифровые параметры из приложения 2"},
-    {"ЯТП", "температурные каналы"},
-    {"ЯВП-8", "потенциометрические каналы"},
-    {"ЯЛК-96", "аналоговые и контактные каналы"},
-    {"ЯФК", "быстроменяющиеся параметры"}
+    {"ЯТП", "30 каналов сопротивления, общий вход X123"},
+    {"ЯЛК-96", "80 аналоговых и контактных каналов"}
 };
 
 class Plot : public QWidget
@@ -64,20 +52,23 @@ public:
     {
         reference_.clear();
         measured_.clear();
+        labels_.clear();
         update();
     }
 
-    void addPoint(double reference, double measured)
+    void addPoint(double reference, double measured, const QString& label = {})
     {
         reference_.push_back(reference);
         measured_.push_back(measured);
+        labels_.push_back(label);
         update();
     }
 
-    void configure(double maximum, const QString& maximumLabel,
+    void configure(double minimum, double maximum, const QString& maximumLabel,
                    const QString& minimumLabel, const QString& axisText,
                    const QString& referenceLegend, const QString& measuredLegend)
     {
+        minimum_ = minimum;
         maximum_ = maximum;
         maximumLabel_ = maximumLabel;
         minimumLabel_ = minimumLabel;
@@ -117,7 +108,8 @@ protected:
             for (int i = 0; i < values.size(); ++i) {
                 const double x = area.left() + (values.size() == 1 ? area.width() / 2.0
                     : area.width() * i / static_cast<double>(values.size() - 1));
-                const double normalized = qBound(0.0, values[i] / maximum_, 1.0);
+                const double span = qMax(0.000001, maximum_ - minimum_);
+                const double normalized = qBound(0.0, (values[i] - minimum_) / span, 1.0);
                 const double y = area.bottom() - normalized * area.height();
                 if (i == 0) path.moveTo(x, y); else path.lineTo(x, y);
                 painter.setBrush(color);
@@ -132,6 +124,15 @@ protected:
         drawSeries(reference_, QColor("#55b7ff"));
         drawSeries(measured_, QColor("#70d79b"));
 
+        painter.setPen(QColor("#7e8a98"));
+        const int stride = qMax(1, labels_.size() / 10);
+        for (int i = 0; i < labels_.size(); i += stride) {
+            const double x = area.left() + (labels_.size() == 1 ? area.width() / 2.0
+                : area.width() * i / static_cast<double>(labels_.size() - 1));
+            painter.drawText(QRectF(x - 22, area.bottom() + 2, 44, 17),
+                             Qt::AlignHCenter, labels_[i]);
+        }
+
         painter.setPen(QColor("#55b7ff"));
         painter.drawText(static_cast<int>(area.right()) - 175, 16,
                          referenceLegend_);
@@ -143,6 +144,8 @@ protected:
 private:
     QVector<double> reference_;
     QVector<double> measured_;
+    QVector<QString> labels_;
+    double minimum_ = 0.0;
     double maximum_ = 6.2;
     QString maximumLabel_ = QStringLiteral("6,2 В");
     QString minimumLabel_ = QStringLiteral("0 В");
@@ -183,13 +186,13 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
     root->setContentsMargins(18, 14, 18, 14);
     root->setSpacing(10);
 
-    auto* title = new QLabel(QStringLiteral("Испытания оборудования КТМА"));
+    auto* title = new QLabel(QStringLiteral("Проверка УЛК · ЯЛК-96 + ЯТП"));
     title->setStyleSheet("font-size:22px; font-weight:700; color:#f0f4f8;");
     root->addWidget(title);
 
     auto* subtitle = new QLabel(QStringLiteral(
-        "Выберите объект и вид испытания. Программа сначала проверит готовность стенда, "
-        "затем выполнит измерения и сформирует итог ОК/НЕ ОК."));
+        "Выберите ЯЛК или ЯТП. Во время проверки видны значения каждого канала, "
+        "состояние тракта и итоговый отчёт."));
     subtitle->setWordWrap(true);
     subtitle->setStyleSheet("color:#aab4c0; font-size:12px;");
     root->addWidget(subtitle);
@@ -216,8 +219,8 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
     scopeCombo_->setObjectName(QStringLiteral("testScope"));
     testCombo_->setObjectName(QStringLiteral("testType"));
     modeCombo_->setObjectName(QStringLiteral("testMode"));
-    objectCombo_->addItem(QStringLiteral("УБСИ № 7 · ЛВРМ.468157.002"), QStringLiteral("UBSI-7"));
-    objectCombo_->addItem(QStringLiteral("БСИ · ЛВРМ.468157.003"), QStringLiteral("BSI"));
+    objectCombo_->addItem(QStringLiteral("УЛК · ЯЛК-96 + ЯТП"), QStringLiteral("UBSI-7"));
+    objectCombo_->parentWidget()->setVisible(false);
     modeCombo_->addItem(QStringLiteral("Стенд — реальное оборудование"));
     modeCombo_->addItem(QStringLiteral("Демонстрация интерфейса — имитация"));
     root->addLayout(selectors);
@@ -266,29 +269,14 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
     equipmentTable_->verticalHeader()->hide();
     equipmentTable_->setEditTriggers(QAbstractItemView::NoEditTriggers);
     equipmentTable_->setSelectionMode(QAbstractItemView::NoSelection);
-    addEquipment("E20", QStringLiteral("E20-10 + Орбита"), QStringLiteral("USB / Lusbapi"),
-                 QStringLiteral("ещё не проверено"));
-    addEquipment("RS485", QStringLiteral("Адаптер RS-485 ЛВРМ.424349.001"), QStringLiteral("Ethernet"),
-                 QStringLiteral("UDP-плагин: нажмите «Проверить оборудование»"));
-    addEquipment("ISD", QStringLiteral("ИСД ЛВРМ.468173.001"), QStringLiteral("Ethernet / HTTP"),
-                 QStringLiteral("HTTP-плагин: нажмите «Проверить оборудование»"));
+    addEquipment("RS485", QStringLiteral("Адаптер УЛК"), QStringLiteral("192.168.0.115:1113 / UDP"),
+                 QStringLiteral("нажмите «Проверить оборудование»"));
+    addEquipment("ISD", QStringLiteral("ИСД"), QStringLiteral("192.168.0.101 / HTTP"),
+                 QStringLiteral("нажмите «Проверить оборудование»"));
     addEquipment("V7", QStringLiteral("В7-78/1"), QStringLiteral("USB / NI-VISA"),
                  QStringLiteral("нажмите «Проверить оборудование»"));
-    addEquipment("AKIP", QStringLiteral("Источник питания АКИП-1160/6"),
-                 QStringLiteral("2 × COM/VISA: ипНИ и ипБИ"),
-                 QStringLiteral("назначьте оба VISA-ресурса; активные команды требуют подтверждения профиля"));
-    addEquipment("RIGOL", QStringLiteral("Генератор Rigol DG-1022Z"), QStringLiteral("USB / VISA"),
-                 QStringLiteral("VISA/SCPI-плагин: нажмите «Проверить оборудование»"));
-    addEquipment("SCOPE", QStringLiteral("Осциллограф (DHO8xx или совместимый)"), QStringLiteral("USB / VISA"),
-                 QStringLiteral("роль WaveformAcquirer; конкретная модель не обязательна"));
-    addEquipment("R4831", QStringLiteral("Магазин сопротивлений Р4831 (ручной)"), QStringLiteral("нет"),
-                 QStringLiteral("оператор выставляет каждую точку и вводит фактическое значение"), true);
-    addEquipment("THERMO_SIM", QStringLiteral("Имитатор датчика «термопара»"),
-                 QStringLiteral("сигнальная линия через ИСД"),
-                 QStringLiteral("установите и подключите имитатор по схеме"), true);
-    addEquipment("SCHEME", QStringLiteral("Кабели и оснастка по схеме А.1 / В.1"),
-                 QStringLiteral("нет"),
-                 QStringLiteral("подтвердите сборку выбранной схемы и включение приборов"), true);
+    addEquipment("R4831", QStringLiteral("Магазин Р4831"), QStringLiteral("общий X123 / ручной"),
+                 QStringLiteral("постоянно установлено 120 Ом; подтвердите подключение"), true);
     equipmentTable_->setMinimumHeight(240);
     left->addWidget(equipmentTable_, 1);
 
@@ -427,7 +415,7 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
         }
     });
     rebuildScopes();
-    scopeCombo_->setCurrentIndex(scopeCombo_->findData(QStringLiteral("BLOCK")));
+    scopeCombo_->setCurrentIndex(scopeCombo_->findData(QStringLiteral("ЯТП")));
     setEngineerMode(false);
 }
 
@@ -456,10 +444,8 @@ void TestPage::rebuildScopes()
     const QString previous = selectedScopeCode();
     scopeCombo_->blockSignals(true);
     scopeCombo_->clear();
-    scopeCombo_->addItem(QStringLiteral("Весь блок"), QStringLiteral("BLOCK"));
-    const bool bsi = selectedObjectCode() == QStringLiteral("BSI");
-    const CellInfo* cells = bsi ? kBsiCells : kUbsiCells;
-    const int count = bsi ? int(std::size(kBsiCells)) : int(std::size(kUbsiCells));
+    const CellInfo* cells = kUbsiCells;
+    const int count = int(std::size(kUbsiCells));
     for (int i = 0; i < count; ++i) {
         scopeCombo_->addItem(QString::fromUtf8(cells[i].code), QString::fromUtf8(cells[i].code));
         scopeCombo_->setItemData(scopeCombo_->count() - 1, QString::fromUtf8(cells[i].purpose), Qt::ToolTipRole);
@@ -475,28 +461,14 @@ void TestPage::rebuildTests()
     const QString previous = selectedTestCode();
     testCombo_->blockSignals(true);
     testCombo_->clear();
-    if (selectedScopeCode() == QStringLiteral("BLOCK")) {
-        if (selectedObjectCode() == QStringLiteral("BSI")) {
-            testCombo_->addItem(QStringLiteral("Диагностика потока Орбита · не испытание ТУ"),
-                                QStringLiteral("BSI_DIAGNOSTIC"));
-        } else {
-            testCombo_->addItem(QStringLiteral("Функционирование в нормальных условиях · ТУ 5.6"),
-                                QStringLiteral("UBSI_NORMAL_5_6"));
-        }
-    } else {
-        testCombo_->addItem(QStringLiteral("Связь и чтение параметров · диагностика"),
-                            QStringLiteral("CELL_DIAGNOSTIC"));
-        if (selectedScopeCode() == QStringLiteral("ЯЛК-96")
-            && selectedObjectCode() != QStringLiteral("BSI")) {
-            testCombo_->addItem(QStringLiteral("Полная проверка ЯЛК · 80 адресов · ТУ 5.6"),
-                                QStringLiteral("YALK_FULL_5_6"));
-        } else if (selectedScopeCode() == QStringLiteral("ЯТП")
-                   && selectedObjectCode() != QStringLiteral("BSI")) {
-            testCombo_->addItem(QStringLiteral("Быстрый контроль ЯТП · 30 каналов · 120 Ом"),
-                                QStringLiteral("YTP_120_CHECK"));
-            testCombo_->addItem(QStringLiteral("Полная проверка ЯТП · 30 каналов · ТУ 5.6"),
-                                QStringLiteral("YTP_FULL_5_6"));
-        }
+    if (selectedScopeCode() == QStringLiteral("ЯЛК-96")) {
+        testCombo_->addItem(QStringLiteral("Полная проверка ЯЛК · 80 адресов · ТУ 5.6"),
+                            QStringLiteral("YALK_FULL_5_6"));
+    } else if (selectedScopeCode() == QStringLiteral("ЯТП")) {
+        testCombo_->addItem(QStringLiteral("Контроль ЯТП · 30 каналов · 120 Ом"),
+                            QStringLiteral("YTP_120_CHECK"));
+        testCombo_->addItem(QStringLiteral("Полная проверка ЯТП · 0 / 120 / 240 Ом"),
+                            QStringLiteral("YTP_FULL_5_6"));
     }
     const int oldIndex = testCombo_->findData(previous);
     testCombo_->setCurrentIndex(oldIndex >= 0 ? oldIndex : 0);
@@ -532,12 +504,16 @@ void TestPage::updateSelectionSummary()
     const bool ytpPlot = test == QStringLiteral("YTP_FULL_5_6")
         || test == QStringLiteral("YTP_120_CHECK");
     if (ytpPlot) {
-        plot_->configure(240.0, QStringLiteral("240 Ом"), QStringLiteral("0 Ом"),
-            QStringLiteral("Ручные точки Р4831: 0 · 120 · 240 Ом"),
+        const bool quick120 = test == QStringLiteral("YTP_120_CHECK");
+        plot_->configure(quick120 ? 116.0 : 0.0, quick120 ? 124.0 : 240.0,
+            quick120 ? QStringLiteral("124 Ом") : QStringLiteral("240 Ом"),
+            quick120 ? QStringLiteral("116 Ом") : QStringLiteral("0 Ом"),
+            quick120 ? QStringLiteral("Каналы ЯТП 1…30 при 120 Ом")
+                     : QStringLiteral("Каналы ЯТП 1…30; точки 0 · 120 · 240 Ом"),
             QStringLiteral("— Р4831"), QStringLiteral("— ЯТП"));
     } else {
-        plot_->configure(6.2, QStringLiteral("6,2 В"), QStringLiteral("0 В"),
-            QStringLiteral("Точки воздействия: 0 · 3,1 · 6,2 В"),
+        plot_->configure(-0.1, 6.3, QStringLiteral("6,3 В"), QStringLiteral("−0,1 В"),
+            QStringLiteral("Адреса ЯЛК 1…80; точки 0 · 3,1 · 6,2 В"),
             QStringLiteral("— В7-78/1"), QStringLiteral("— ЯЛК"));
     }
     plot_->setVisible(test == QStringLiteral("YALK_FULL_5_6")
@@ -559,7 +535,9 @@ void TestPage::updateSelectionSummary()
     }
     const QStringList required = requiredEquipment();
     for (auto it = equipmentRows_.cbegin(); it != equipmentRows_.cend(); ++it) {
-        equipmentTable_->setRowHidden(it->row, !required.contains(it.key()));
+        const bool alwaysStatus = it.key() == QStringLiteral("RS485")
+            || it.key() == QStringLiteral("ISD");
+        equipmentTable_->setRowHidden(it->row, !alwaysStatus && !required.contains(it.key()));
     }
     resultTable_->setRowCount(0);
     summaryTable_->setRowCount(0);
@@ -653,25 +631,19 @@ void TestPage::setEquipmentChecking(const QString& code, const QString& detail)
 
 QStringList TestPage::requiredEquipment() const
 {
-    const QString object = selectedObjectCode();
     const QString test = selectedTestCode();
-    if (test == QStringLiteral("CELL_DIAGNOSTIC")) {
-        return object == QStringLiteral("BSI") ? QStringList{"E20"} : QStringList{"RS485"};
-    }
     if (test == QStringLiteral("YALK_FULL_5_6")) {
-        return object == QStringLiteral("BSI")
-            ? QStringList{"RS485", "ISD", "V7", "SCHEME"}
-            : QStringList{"RS485", "ISD", "V7", "SCHEME"};
+        return {"RS485", "ISD", "V7"};
     }
     if (test == QStringLiteral("YTP_FULL_5_6")
         || test == QStringLiteral("YTP_120_CHECK")) {
-        return {"RS485", "R4831", "SCHEME"};
+        return {"RS485", "R4831"};
     }
     const auto scenario = scenarios_.constFind(test);
     if (scenario != scenarios_.cend()) {
         return scenario->requiredEquipment;
     }
-    return {"RS485", "ISD", "V7", "AKIP", "RIGOL", "SCOPE", "R4831", "SCHEME"};
+    return {"RS485"};
 }
 
 void TestPage::updateStartAvailability()
@@ -761,6 +733,35 @@ void TestPage::startSelectedTest()
 
 void TestPage::advanceDemo()
 {
+    const bool ytp = selectedTestCode() == QStringLiteral("YTP_FULL_5_6")
+        || selectedTestCode() == QStringLiteral("YTP_120_CHECK");
+    if (ytp) {
+        static const double measured[] = {120.26, 120.33, 120.39};
+        if (demoStep_ >= 3) {
+            finishDemo();
+            return;
+        }
+        const int row = resultTable_->rowCount();
+        resultTable_->insertRow(row);
+        const QString channel = QString::number(demoStep_ + 1);
+        const QStringList values = {
+            channel, QStringLiteral("120 Ом"), QStringLiteral("120"),
+            QString::number(2169 + demoStep_), QStringLiteral("330"),
+            QStringLiteral("4000"), QStringLiteral("120.000"),
+            QString::number(measured[demoStep_], 'f', 3),
+            QString::number(measured[demoStep_] - 120.0, 'f', 3),
+            QString::number((measured[demoStep_] - 120.0) / 2.4, 'f', 3),
+            QStringLiteral("сопротивление"), QStringLiteral("OK")};
+        for (int column = 0; column < values.size(); ++column)
+            resultTable_->setItem(row, column, new QTableWidgetItem(values[column]));
+        plot_->addPoint(120.0, measured[demoStep_], channel);
+        ++demoStep_;
+        progress_->setValue(demoStep_);
+        progress_->setFormat(QStringLiteral("ДЕМО: ЯТП, показано %1 из 30 каналов")
+            .arg(demoStep_));
+        return;
+    }
+
     if (selectedTestCode() != QStringLiteral("YALK_FULL_5_6")) {
         static const QString stages[] = {
             QStringLiteral("Источник данных"),
@@ -894,7 +895,8 @@ void TestPage::setRunEvent(const orbita::stand::RunEvent& event)
         };
         if (!value("ytp_channel").isEmpty()) {
             plot_->addPoint(value("actual_reference_ohm").toDouble(),
-                            value("measured_resistance_ohm").toDouble());
+                            value("measured_resistance_ohm").toDouble(),
+                            value("ytp_channel"));
             progress_->setFormat(QStringLiteral(
                 "ЯТП: канал %1 · эталон %2 Ом · raw %3 · ЯТП %4 Ом")
                 .arg(value("ytp_channel"), value("actual_reference_ohm"),
@@ -902,7 +904,7 @@ void TestPage::setRunEvent(const orbita::stand::RunEvent& event)
         } else {
             const double reference = value("v7_v").toDouble();
             const double measured = value("yalk_v").toDouble();
-            plot_->addPoint(reference, measured);
+            plot_->addPoint(reference, measured, value("ulk_address"));
             progress_->setFormat(QStringLiteral("ЯЛК: адрес %1 · %2 В · В7 %3 В · ЯЛК %4 В")
                 .arg(value("ulk_address"), value("command_v"), value("v7_v"), value("yalk_v")));
         }
@@ -960,7 +962,8 @@ void TestPage::setRunResult(const orbita::stand::ScenarioRunResult& result,
                 resultTable_->setItem(row, column, item);
             }
             if (measurement.unit == "V" || measurement.unit == "Ом")
-                plot_->addPoint(measurement.reference, measurement.measured);
+                plot_->addPoint(measurement.reference, measurement.measured,
+                                ytp ? attribute("ytp_channel") : attribute("ulk_address"));
         }
         if (step.measurements.empty() && step.children.empty()) {
             const int row = resultTable_->rowCount();
