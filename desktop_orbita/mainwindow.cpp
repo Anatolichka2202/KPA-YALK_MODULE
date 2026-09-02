@@ -364,6 +364,7 @@ void MainWindow::setupDockWidgets()
 void MainWindow::setupToolBar()
 {
     QToolBar* toolbar = addToolBar("Управление");
+    mainToolbar_ = toolbar;
     toolbar->setMovable(false);
     toolbar->setStyleSheet("QToolBar { spacing: 4px; }");
 
@@ -541,6 +542,13 @@ void MainWindow::setupToolBar()
             this, &MainWindow::onStopScenario);
     connect(accessModeCombo_, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, [this](int index) { setEngineerMode(index == 1); });
+    auto* engineerShortcut = new QAction(this);
+    engineerShortcut->setShortcut(QKeySequence(Qt::Key_F12));
+    engineerShortcut->setShortcutContext(Qt::ApplicationShortcut);
+    addAction(engineerShortcut);
+    connect(engineerShortcut, &QAction::triggered, this, [this] {
+        accessModeCombo_->setCurrentIndex(accessModeCombo_->currentIndex() == 0 ? 1 : 0);
+    });
 
     // --- Подключаем config combo ---
     connect(configCombo_, QOverload<int>::of(&QComboBox::activated), this, [this](int i) {
@@ -612,6 +620,8 @@ void MainWindow::initializeStandRuntime()
             QStringLiteral("Сценарий ЯТП не загружен"));
         testPage_->setScenarioInfo("YTP_120_CHECK", false, true, {},
             QStringLiteral("Сценарий контроля ЯТП при 120 Ом не загружен"));
+        testPage_->setScenarioInfo("ULK_COMBINED_CHECK", false, true, {},
+            QStringLiteral("Совмещённый сценарий ЯЛК + ЯТП не загружен"));
         testPage_->setScenarioInfo("BSI_DIAGNOSTIC", false, true, {},
             QStringLiteral("Диагностический сценарий БСИ не загружен"));
         const QDir scenarioDirectory(root.filePath("scenarios"));
@@ -629,6 +639,9 @@ void MainWindow::initializeStandRuntime()
                 code = QStringLiteral("YTP_FULL_5_6");
             } else if (scenario.id == "ubsi.468157.002.ytp.120ohm.check") {
                 code = QStringLiteral("YTP_120_CHECK");
+                diagnostic = true;
+            } else if (scenario.id == "ubsi.468157.002.ulk.combined.check") {
+                code = QStringLiteral("ULK_COMBINED_CHECK");
                 diagnostic = true;
             } else if (scenario.id == "bsi.468157.003.telemetry.diagnostic") {
                 code = QStringLiteral("BSI_DIAGNOSTIC");
@@ -671,7 +684,8 @@ void MainWindow::initializeStandRuntime()
         }
         if (!scenarios_.contains(QStringLiteral("YALK_FULL_5_6"))
             || !scenarios_.contains(QStringLiteral("YTP_FULL_5_6"))
-            || !scenarios_.contains(QStringLiteral("YTP_120_CHECK"))) {
+            || !scenarios_.contains(QStringLiteral("YTP_120_CHECK"))
+            || !scenarios_.contains(QStringLiteral("ULK_COMBINED_CHECK"))) {
             throw std::runtime_error("Сценарии поставки ЯЛК/ЯТП загружены не полностью");
         }
         QDir().mkpath(root.filePath("runs"));
@@ -943,6 +957,7 @@ void MainWindow::onRunScenario(
     if (scenarioCode != QStringLiteral("YALK_FULL_5_6")
         && scenarioCode != QStringLiteral("YTP_FULL_5_6")
         && scenarioCode != QStringLiteral("YTP_120_CHECK")
+        && scenarioCode != QStringLiteral("ULK_COMBINED_CHECK")
         && equipmentRegistry_->hasCapability("orbita.parameter_source")
         && !orbita_->isRunning()) {
         onStart();
@@ -980,6 +995,8 @@ void MainWindow::onStopScenario()
 void MainWindow::setEngineerMode(bool enabled)
 {
     testPage_->setEngineerMode(enabled);
+    if (mainToolbar_) mainToolbar_->setVisible(enabled);
+    if (menuBar()) menuBar()->setVisible(enabled);
     for (auto* action : {actMain_, actDetail_, actConfig_, actDb_}) {
         if (action) action->setVisible(enabled);
     }

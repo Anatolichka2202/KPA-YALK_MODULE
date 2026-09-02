@@ -1,0 +1,115 @@
+schema: 1
+id: ubsi.468157.002.ulk.combined.check
+title: УЛК · совмещённая проверка ЯЛК-96 и ЯТП при 120 Ом
+version: 1.0.0
+catalog_version: 2026.08.29-yalk-1
+object_type: UBSI_468157_002
+state: published
+
+# Один отчёт: полный маршрут ЯЛК, затем одноточечный контроль ЯТП при
+# постоянно установленном на общем X123 магазине 120 Ом.
+steps:
+  - id: yalk_stream
+    title: Запуск потока ЯЛК
+    tu: 5.6 / ЯЛК
+    procedure: yalk.start_stream
+    requires:
+      - ulk.parameter_source
+      - stand.switch_matrix
+    args:
+      configure_settle_ms: 500
+      timeout_ms: 3000
+
+  - id: yalk_calibration
+    title: Калибровка ЯЛК по адресам 97 и 99
+    tu: 1.1.4.1, 1.1.4.14
+    procedure: yalk.read_calibration
+    requires:
+      - catalog.parameter_resolver
+      - ulk.parameter_source
+      - stand.switch_matrix
+      - measure.reference_voltage
+    args:
+      channel_count: 80
+      sample_count: 16
+      settle_ms: 150
+      full_voltage: 6.2
+      commissioning: true
+
+  - id: yalk_channels
+    title: Проверка 80 адресов ЯЛК
+    tu: 1.1.4.1, 1.1.4.14
+    procedure: yalk.check_channels
+    requires:
+      - catalog.parameter_resolver
+      - ulk.parameter_source
+      - stand.switch_matrix
+      - measure.reference_voltage
+    args:
+      channel_count: 80
+      point_volts: 0,3.1,6.2
+      sample_count: 16
+      settle_ms: 150
+      channel_off_settle_ms: 1000
+      full_scale_v: 6.2
+      tolerance_percent_fs: 0.5
+      commissioning: true
+
+  - id: yalk_cleanup
+    title: Сброс ЯЛК
+    tu: 5.6 / ЯЛК · завершение
+    procedure: yalk.safe_cleanup
+    requires:
+      - ulk.parameter_source
+      - stand.switch_matrix
+
+  - id: ytp_stream
+    title: Перевод адаптера в режим ЯТП
+    tu: 5.6 / ЯТП · контроль 120 Ом
+    procedure: ytp.start_stream
+    requires:
+      - ulk.parameter_source
+    args:
+      protocol: rokt_ytp68
+      ytp_endpoint: 1
+      stream_settle_ms: 1000
+      timeout_ms: 3000
+
+  - id: ytp_calibration
+    title: Калибровка ЯТП по словам 32 и 31
+    tu: 1.1.4.1, 1.1.4.14
+    procedure: ytp.read_calibration
+    requires:
+      - catalog.parameter_resolver
+      - ulk.parameter_source
+    args:
+      calibration_zero_parameter: ytp_calibration_zero
+      calibration_full_parameter: ytp_calibration_full
+      calibration_mapping_confirmed: true
+      sample_count: 16
+
+  - id: ytp_channels
+    title: Проверка 30 каналов ЯТП при 120 Ом
+    tu: 1.1.4.1, 1.1.4.6, 1.1.4.14 · одна контрольная точка
+    procedure: ytp.check_channels
+    requires:
+      - catalog.parameter_resolver
+      - ulk.parameter_source
+      - operator.manual_input
+    args:
+      channel_count: 30
+      parameter_group: ytp_temperature
+      resistance_points_ohm: 120
+      full_scale_ohm: 240
+      tolerance_percent_fs: 0.5
+      sample_count: 16
+      settle_ms: 1500
+      conversion_confirmed: true
+      criteria_confirmed: true
+
+  - id: ytp_cleanup
+    title: Остановка потока ЯТП
+    tu: 5.6 / завершение
+    procedure: ytp.safe_cleanup
+    requires:
+      - ulk.parameter_source

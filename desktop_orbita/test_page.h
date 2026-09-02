@@ -96,6 +96,7 @@ private:
     QPushButton* startButton_ = nullptr;
     QPushButton* stopButton_ = nullptr;
     QPushButton* detailsButton_ = nullptr;
+    QPushButton* reportButton_ = nullptr;
     QLineEdit* serialEdit_ = nullptr;
     QCheckBox* partialCheck_ = nullptr;
     TestPlotWidget* plot_ = nullptr;
@@ -109,4 +110,5 @@ private:
     bool runInProgress_ = false;
     bool engineerMode_ = false;
     int completedSteps_ = 0;
+    QString reportPath_;
 };

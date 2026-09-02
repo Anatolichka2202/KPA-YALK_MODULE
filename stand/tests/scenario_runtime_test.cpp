@@ -152,11 +152,15 @@ void configurationAndCatalog(const QString& root)
     const auto scenarioPath = QDir(root).filePath(QStringLiteral("data/scenarios/ubsi_tu_5_6.yaml"));
     const auto bsiDiagnosticPath = QDir(root).filePath(QStringLiteral("data/scenarios/bsi_diagnostic.yaml"));
     const auto ytpScenarioPath = QDir(root).filePath(QStringLiteral("data/scenarios/ubsi_ytp_tu_5_6.yaml"));
+    const auto ytp120Path = QDir(root).filePath(QStringLiteral("data/scenarios/ubsi_ytp_120_check.yaml"));
+    const auto combinedPath = QDir(root).filePath(QStringLiteral("data/scenarios/ubsi_ulk_combined_check.yaml"));
     const auto profilePath = QDir(root).filePath(QStringLiteral("data/profiles/stand_ktma.yaml"));
     const auto catalogPath = QDir(root).filePath(QStringLiteral("data/catalog/catalog.yaml"));
     auto scenario = loadScenarioYaml(scenarioPath.toUtf8().toStdString());
     auto bsiDiagnostic = loadScenarioYaml(bsiDiagnosticPath.toUtf8().toStdString());
     auto ytpScenario = loadScenarioYaml(ytpScenarioPath.toUtf8().toStdString());
+    auto ytp120 = loadScenarioYaml(ytp120Path.toUtf8().toStdString());
+    auto combined = loadScenarioYaml(combinedPath.toUtf8().toStdString());
     auto profile = loadStandProfile(profilePath.toUtf8().toStdString());
     ScenarioEngine engine;
     registerUbsiProcedures(engine);
@@ -171,6 +175,10 @@ void configurationAndCatalog(const QString& root)
     require(ytpScenario.publicationState == PublicationState::Published
                 && ytpScenario.steps.size() == 4,
             "YTP must be a published four-stage manual-reference scenario");
+    require(engine.validate(ytp120).empty() && ytp120.steps.size() == 4,
+            "Fixed 120-ohm YTP scenario must validate");
+    require(engine.validate(combined).empty() && combined.steps.size() == 8,
+            "Combined YALK/YTP delivery scenario must validate as eight stages");
     require(profile.id == "ktma-main" && !profile.activeOutputsConfirmed,
             "Default stand profile must keep active outputs locked");
     require(profile.routes.at("yalk_analog.base") == "1"

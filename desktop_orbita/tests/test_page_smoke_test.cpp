@@ -2,6 +2,7 @@
 
 #include <QApplication>
 #include <QComboBox>
+#include <QPixmap>
 #include <QTableWidget>
 
 #include <cstdlib>
@@ -42,7 +43,7 @@ int main(int argc, char** argv)
     require(equipment->columnCount() == 5,
             "equipment table must distinguish PC link, control type, status and diagnostics");
     require(object->count() == 1, "delivery UI must contain only ULK");
-    require(scope->count() == 2, "delivery UI must contain only YTP and YALK");
+    require(scope->count() == 3, "delivery UI must contain YTP, YALK and combined mode");
     require(scope->currentData() == QStringLiteral("ЯТП"),
             "fixed 120-ohm YTP check must be initially selected");
     require(test->currentData() == QStringLiteral("YTP_120_CHECK"),
@@ -68,6 +69,16 @@ int main(int argc, char** argv)
     require(equipment->isRowHidden(rowByName(equipment, QStringLiteral("Р4831"))),
             "YALK must hide the YTP resistance store");
 
+    page.setScenarioInfo(QStringLiteral("ULK_COMBINED_CHECK"), true, true,
+        {QStringLiteral("RS485"), QStringLiteral("ISD"),
+         QStringLiteral("V7"), QStringLiteral("R4831")}, QStringLiteral("ready"));
+    scope->setCurrentIndex(scope->findData(QStringLiteral("УЛК+ЯТП")));
+    require(test->currentData() == QStringLiteral("ULK_COMBINED_CHECK"),
+            "combined card must select the combined runtime scenario");
+    require(!equipment->isRowHidden(rowByName(equipment, QStringLiteral("Р4831")))
+                && !equipment->isRowHidden(rowByName(equipment, QStringLiteral("В7-78/1"))),
+            "combined mode must expose both YALK and YTP equipment");
+
     page.setScenarioInfo(QStringLiteral("YTP_FULL_5_6"), true, false,
         {QStringLiteral("RS485"), QStringLiteral("R4831")},
         QStringLiteral("ready"));
@@ -91,6 +102,21 @@ int main(int argc, char** argv)
     mode->setCurrentIndex(1);
     require(mode->currentData().isNull() || mode->currentIndex() == 1,
             "demonstration mode must be selectable");
+    if (const QString screenshot = qEnvironmentVariable("ORBITA_UI_SCREENSHOT");
+        !screenshot.isEmpty()) {
+        mode->setCurrentIndex(0);
+        scope->setCurrentIndex(scope->findData(QStringLiteral("ЯТП")));
+        test->setCurrentIndex(test->findData(QStringLiteral("YTP_120_CHECK")));
+        page.setEquipmentStatus(QStringLiteral("RS485"), true,
+            QStringLiteral("ROKT / UDP 192.168.0.115:1113"));
+        page.setEquipmentStatus(QStringLiteral("ISD"), true,
+            QStringLiteral("HTTP 192.168.0.101"));
+        page.setEngineerMode(false);
+        page.resize(1664, 935);
+        page.show();
+        QApplication::processEvents();
+        require(page.grab().save(screenshot), "cannot save UI screenshot");
+    }
     std::cout << "Test page BSI/UBSI selection smoke test passed\n";
     return EXIT_SUCCESS;
 }

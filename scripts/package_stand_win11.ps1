@@ -53,6 +53,9 @@ foreach ($name in $runtimeFiles) {
     }
 }
 
+$deliveryReadme = Join-Path $PSScriptRoot '..\docs\30_ПОСТАВКА_УЛК_МИНИМУМ.md'
+Copy-Item -LiteralPath $deliveryReadme -Destination (Join-Path $packageRoot 'README_УЛК.md')
+
 $standRuntime = Join-Path $buildRoot 'stand'
 $diagnosticFiles = @(
     'orbita_ytp_rokt_probe.exe',
@@ -79,7 +82,8 @@ New-Item -ItemType Directory -Path $scenarioTarget -Force | Out-Null
 $scenarioFiles = @(
     'ubsi_yalk_tu_5_6.yaml',
     'ubsi_ytp_tu_5_6.yaml',
-    'ubsi_ytp_120_check.yaml'
+    'ubsi_ytp_120_check.yaml',
+    'ubsi_ulk_combined_check.yaml'
 )
 foreach ($name in $scenarioFiles) {
     $source = Join-Path (Join-Path $runtimeRoot 'scenarios') $name

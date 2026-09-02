@@ -151,6 +151,7 @@ private:
     // Быстрый выбор конфига в тулбаре
     QComboBox* configCombo_ = nullptr;
     QComboBox* accessModeCombo_ = nullptr;
+    QToolBar* mainToolbar_ = nullptr;
 
     // Сценарий проверки
     QAction* actScenario_ = nullptr;
