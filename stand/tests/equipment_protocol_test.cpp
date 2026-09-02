@@ -81,10 +81,12 @@ int main()
         require(ytpStart.size() == 128
                     && ytpStart[0] == 'R' && ytpStart[1] == 'O'
                     && ytpStart[2] == 'K' && ytpStart[3] == 'T'
-                    && ytpStart[4] == 0x17 && ytpStart[5] == 0x01
-                    && std::all_of(ytpStart.begin() + 6, ytpStart.end(),
+                    && ytpStart[4] == 0x0A && ytpStart[5] == 0x02
+                    && ytpStart[6] == 0x00 && ytpStart[7] == 0x01
+                    && ytpStart[8] == 0x00
+                    && std::all_of(ytpStart.begin() + 9, ytpStart.end(),
                         [](std::uint8_t byte) { return byte == 0; }),
-                "YTP ROKT 17 start command is wrong");
+                "YTP ROKT 0A 02 start command is wrong");
         std::vector<std::uint8_t> yalkPacket(200, 0);
         yalkPacket[0] = 0x34;
         yalkPacket[1] = 0xA2;

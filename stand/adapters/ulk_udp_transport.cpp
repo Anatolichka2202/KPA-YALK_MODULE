@@ -599,8 +599,11 @@ std::vector<std::uint8_t> UlkUdpTransport::ytpRoktStartCommand(
     result[1] = 'O';
     result[2] = 'K';
     result[3] = 'T';
-    result[4] = 0x17;
-    result[5] = endpointNumber;
+    // Captured from a successful KPA_Rokot YTP run on 02.09.2026.
+    // 0x02 is the YTP mode on the wire; byte 7 selects the YTP endpoint.
+    result[4] = 0x0A;
+    result[5] = 0x02;
+    result[7] = endpointNumber;
     return result;
 }
 

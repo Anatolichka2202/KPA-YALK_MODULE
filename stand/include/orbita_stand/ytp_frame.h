@@ -18,7 +18,7 @@ struct YtpLegacyMode2Frame {
 YtpLegacyMode2Frame decodeYtpLegacyMode2Frame(
     const std::vector<std::uint8_t>& payload);
 
-// Фактический кадр текущего стенда после ROKT 17 01:
+// Фактический кадр текущего стенда после ROKT 0A 02 00 01 00:
 // 4 байта заголовка и 32 little-endian слова. Семантика заголовка и
 // назначение последних двух слов пока не выводятся из архивной прошивки.
 struct YtpRokt68Frame {

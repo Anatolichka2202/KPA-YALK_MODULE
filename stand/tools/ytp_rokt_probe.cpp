@@ -109,7 +109,7 @@ int main(int argc, char** argv)
     const auto workMode =
         argc >= 5
             ? static_cast<std::uint8_t>(std::stoul(argv[4], nullptr, 0))
-            : static_cast<std::uint8_t>(0x0D);
+            : static_cast<std::uint8_t>(0x02);
 
     const unsigned monitorSeconds =
         argc >= 6
@@ -121,9 +121,8 @@ int main(int argc, char** argv)
             ? static_cast<int>(std::stoul(argv[6]))
             : 68;
 
-    // 0x0A starts the generic mode selected by workMode.  The reference KPA
-    // uses the separate 0x17 command for its three-part YTP stream; in that
-    // case workMode is the one-based YTP interface number.
+    // A successful reference KPA capture uses ROKT 0A 02 00 01 00.
+    // workMode selects the wire mode for the generic 0x0A command.
     const auto startOpcode =
         argc >= 8
             ? static_cast<std::uint8_t>(std::stoul(argv[7], nullptr, 0))

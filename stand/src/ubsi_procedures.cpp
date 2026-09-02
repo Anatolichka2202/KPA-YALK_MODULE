@@ -795,19 +795,54 @@ YtpRawValue readYtpRaw(ProcedureContext& context, const std::string& parameterGr
             ? static_cast<unsigned>(std::stoul(values.at("invalid_sample_count"))) : 0};
 }
 
+std::vector<unsigned> ytpIsdRouteChannels(const ScenarioNode& node)
+{
+    const auto configured = numbers(node, "isd_route_channels");
+    if (configured.empty()) return {3, 9, 12, 17};
+    std::vector<unsigned> channels;
+    channels.reserve(configured.size());
+    for (const double value : configured) {
+        const auto channel = static_cast<unsigned>(std::llround(value));
+        if (channel == 0 || std::abs(value - channel) > 1e-9) {
+            throw std::invalid_argument("Каналы коммутации ЯТП должны быть натуральными числами");
+        }
+        channels.push_back(channel);
+    }
+    return channels;
+}
+
+void setYtpIsdRoutes(const ScenarioNode& node, ProcedureContext& context, bool enabled)
+{
+    const auto type = natural(node, "isd_switch_type", 7);
+    for (const auto channel : ytpIsdRouteChannels(node)) {
+        context.equipment.invoke("stand.switch_matrix", "switch", {
+            {"type", std::to_string(type)}, {"channel", std::to_string(channel)},
+            {"enabled", enabled ? "true" : "false"}});
+    }
+}
+
 ProcedureResult ytpStartStream(const ScenarioNode& node, ProcedureContext& context)
 {
     const auto record = responseValues(context.equipment.invoke(
         "ulk.parameter_source", "start_record", {{"run_id", context.runId}}));
+    bool routesEnabled = false;
     try {
+        // Exact order recovered from a successful KPA_Rokot run on 02.09.2026:
+        // ISD reset -> ROKT addressing -> 500 ms -> ISD reset -> ROKT 0A mode 2
+        // -> 1 s -> ISD type-7 routes 3/9/12/17 -> wait for a fresh 68-byte frame.
+        context.equipment.invoke("stand.switch_matrix", "full_reset", {});
+        context.equipment.invoke("ulk.parameter_source", "prepare_ytp_rokt", {});
+        wait(context, 500);
+        context.equipment.invoke("stand.switch_matrix", "full_reset", {});
+        context.equipment.invoke("ulk.parameter_source", "start_prepared_ytp_rokt", {
+            {"ytp_endpoint", argument(node, "ytp_endpoint", "1")}});
+        wait(context, natural(node, "stream_settle_ms", 1000));
+        setYtpIsdRoutes(node, context, true);
+        routesEnabled = true;
         const auto response = responseValues(context.equipment.invoke(
-            "ulk.parameter_source", "start_ytp_stream", {
-                {"protocol", argument(node, "protocol", "passive_capture")},
-                {"archive_protocol_confirmed_for_device",
-                    argument(node, "archive_protocol_confirmed_for_device", "false")},
+            "ulk.parameter_source", "await_ytp_rokt", {
                 {"ytp_endpoint", argument(node, "ytp_endpoint", "1")},
-                {"stream_settle_ms",
-                    std::to_string(natural(node, "stream_settle_ms", 1000))},
+                {"stream_settle_ms", "0"},
                 {"timeout_ms", std::to_string(natural(node, "timeout_ms", 3000))}}));
         context.state["ytp.protocol"] = response.count("protocol")
             ? response.at("protocol") : std::string("unknown");
@@ -817,7 +852,7 @@ ProcedureResult ytpStartStream(const ScenarioNode& node, ProcedureContext& conte
             ? response.at("valid_word_count") : std::string("unknown");
         if (context.state.at("ytp.protocol") == "rokt_ytp68") {
             return {RunVerdict::Ok,
-                "Запущен активный ЯТП: ROKT 17 01, принимаются кадры 68 байт; "
+                "Запущен активный ЯТП: ROKT 0A 02 00 01 00, принимаются кадры 68 байт; "
                 "валидных слов в первом кадре " + context.state.at("ytp.valid_word_count")
                 + "/32, raw сохраняется в " + context.state.at("ytp.raw_path"), {}};
         }
@@ -829,6 +864,12 @@ ProcedureResult ytpStartStream(const ScenarioNode& node, ProcedureContext& conte
             "Запущен пассивный захват ЯТП без управляющей команды; формат текущего ROKT-потока "
             "не подтверждён, raw сохраняется в " + context.state.at("ytp.raw_path"), {}};
     } catch (...) {
+        if (routesEnabled) {
+            try { setYtpIsdRoutes(node, context, false); } catch (...) {}
+        }
+        try {
+            context.equipment.invoke("ulk.parameter_source", "stop_stream", {});
+        } catch (...) {}
         try {
             context.equipment.invoke("ulk.parameter_source", "stop_record", {});
         } catch (...) {
@@ -995,13 +1036,19 @@ ProcedureResult ytpCheckChannels(const ScenarioNode& node, ProcedureContext& con
     return result;
 }
 
-ProcedureResult ytpSafeCleanup(const ScenarioNode&, ProcedureContext& context)
+ProcedureResult ytpSafeCleanup(const ScenarioNode& node, ProcedureContext& context)
 {
     std::string failures;
     try {
-        context.equipment.invoke("ulk.parameter_source", "stop_stream", {});
+        setYtpIsdRoutes(node, context, false);
     } catch (const std::exception& error) {
         failures = error.what();
+    }
+    try {
+        context.equipment.invoke("ulk.parameter_source", "stop_stream", {});
+    } catch (const std::exception& error) {
+        if (!failures.empty()) failures += "; ";
+        failures += error.what();
     }
     try {
         context.equipment.invoke("ulk.parameter_source", "stop_record", {});

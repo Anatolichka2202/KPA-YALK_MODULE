@@ -15,9 +15,12 @@ steps:
     procedure: ytp.start_stream
     requires:
       - ulk.parameter_source
+      - stand.switch_matrix
     args:
       protocol: rokt_ytp68
       ytp_endpoint: 1
+      isd_switch_type: 7
+      isd_route_channels: 3,9,12,17
       stream_settle_ms: 1000
       timeout_ms: 3000
 
@@ -59,3 +62,7 @@ steps:
     procedure: ytp.safe_cleanup
     requires:
       - ulk.parameter_source
+      - stand.switch_matrix
+    args:
+      isd_switch_type: 7
+      isd_route_channels: 3,9,12,17

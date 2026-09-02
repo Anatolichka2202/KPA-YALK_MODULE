@@ -46,7 +46,7 @@ public:
         if (capability == "ulk.parameter_source" && operation == "start_record") {
             return "status=ok\npath=fake/frames.ulkbin\n";
         }
-        if (capability == "ulk.parameter_source" && operation == "start_ytp_stream") {
+        if (capability == "ulk.parameter_source" && operation == "await_ytp_rokt") {
             return "status=ready\nprotocol=rokt_ytp68\nvalid_word_count=32\n"
                    "invalid_word_count=0\nfirst_sequence=1\n";
         }
@@ -273,7 +273,8 @@ void configurationAndCatalog(const QString& root)
 
     FakeEquipment ytpEquipment;
     ytpEquipment.capabilities = {
-        "ulk.parameter_source", "catalog.parameter_resolver", "operator.manual_input"};
+        "ulk.parameter_source", "stand.switch_matrix",
+        "catalog.parameter_resolver", "operator.manual_input"};
     const auto ytpRun = engine.run(
         ytpScenario, ytpEquipment, profile.version, "", false);
     require(ytpRun.verdict == RunVerdict::Ok,
@@ -286,6 +287,9 @@ void configurationAndCatalog(const QString& root)
     require(std::count(ytpEquipment.operations.begin(), ytpEquipment.operations.end(),
                 "operator.manual_input:confirm_value") == 3,
             "YTP must request all three manual R4831 points");
+    require(std::count(ytpEquipment.operations.begin(), ytpEquipment.operations.end(),
+                "stand.switch_matrix:switch") == 8,
+            "YTP must enable and disable the four captured ISD type-7 routes");
 }
 
 void builtinCapabilityBinding()

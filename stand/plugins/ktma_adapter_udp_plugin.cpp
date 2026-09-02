@@ -72,6 +72,34 @@ UlkFrame waitYtpRokt(Instance& instance, std::uint64_t after, unsigned timeoutMs
         UlkFrameKind::YtpRokt68, after, std::chrono::milliseconds(timeoutMs));
 }
 
+std::string awaitYtpRokt(Instance& instance, unsigned endpoint,
+                         const std::map<std::string, std::string>& args)
+{
+    std::this_thread::sleep_for(std::chrono::milliseconds(
+        plugin::unsignedValue(args, "stream_settle_ms", 0)));
+    const auto afterSettle = instance.transport->stats().lastSequence;
+    const auto frame = waitYtpRokt(instance, afterSettle,
+        plugin::unsignedValue(args, "timeout_ms", 3000));
+    const auto decoded = decodeYtpRokt68Frame(frame.payload);
+    unsigned validWords = 0;
+    for (const auto raw : decoded.channelRaw) {
+        if (!isYtpNoMeasurementRaw(raw)) ++validWords;
+    }
+    if (!isYtpNoMeasurementRaw(decoded.calibrationCandidate31Raw)) ++validWords;
+    if (!isYtpNoMeasurementRaw(decoded.calibrationCandidate32Raw)) ++validWords;
+    std::ostringstream out;
+    out << "status=ready\nprotocol=rokt_ytp68\nactive_command=ROKT_0A_02"
+        << "\nytp_endpoint=" << endpoint
+        << "\nframe_header=" << static_cast<unsigned>(decoded.header[0]) << ','
+        << static_cast<unsigned>(decoded.header[1]) << ','
+        << static_cast<unsigned>(decoded.header[2]) << ','
+        << static_cast<unsigned>(decoded.header[3])
+        << "\nvalid_word_count=" << validWords
+        << "\ninvalid_word_count=" << (32 - validWords)
+        << "\nfirst_sequence=" << frame.sequence << '\n';
+    return out.str();
+}
+
 UlkFrame waitYtpLegacy(Instance& instance, std::uint64_t after, unsigned timeoutMs)
 {
     if (instance.cancelled.load()) throw std::runtime_error("Operation cancelled");
@@ -265,6 +293,37 @@ orbita_plugin_status_v1 invoke(void* value, const char* capability, const char* 
             return std::string("status=ready\nprotocol=rokt_yalk\nmode=reference204\nfirst_sequence=")
                 + std::to_string(frame.sequence) + '\n';
         }
+        if (command == "prepare_ytp_rokt") {
+            plugin::requireActiveOutputs(instance.config);
+            instance.cancelled.store(false);
+            instance.yalkReference = false;
+            instance.ytpPassive = false;
+            instance.ytpLegacyMode2 = false;
+            instance.ytpRokt68 = true;
+            instance.transport->prepareYtpRokt();
+            instance.selectedMode = -5;
+            return std::string("status=prepared\nprotocol=rokt_ytp68\n");
+        }
+        if (command == "start_prepared_ytp_rokt") {
+            plugin::requireActiveOutputs(instance.config);
+            if (!instance.ytpRokt68 || instance.selectedMode != -5) {
+                throw std::runtime_error("ROKT YTP stream was not prepared");
+            }
+            const unsigned endpoint = plugin::unsignedValue(args, "ytp_endpoint", 1);
+            if (endpoint < 1 || endpoint > 255) {
+                throw std::invalid_argument("ytp_endpoint должен быть 1..255");
+            }
+            instance.transport->startPreparedYtpRokt(static_cast<std::uint8_t>(endpoint));
+            instance.selectedMode = -4;
+            return std::string("status=started\nprotocol=rokt_ytp68\nactive_command=ROKT_0A_02\n");
+        }
+        if (command == "await_ytp_rokt") {
+            if (!instance.ytpRokt68 || instance.selectedMode != -4) {
+                throw std::runtime_error("ROKT YTP stream is not started");
+            }
+            const unsigned endpoint = plugin::unsignedValue(args, "ytp_endpoint", 1);
+            return awaitYtpRokt(instance, endpoint, args);
+        }
         if (command == "start_ytp_stream" || command == "prepare_ytp") {
             instance.cancelled.store(false);
             instance.yalkReference = false;
@@ -290,29 +349,9 @@ orbita_plugin_status_v1 invoke(void* value, const char* capability, const char* 
                 instance.ytpRokt68 = true;
                 instance.transport->startYtpRokt(static_cast<std::uint8_t>(endpoint));
                 instance.selectedMode = -4;
-                std::this_thread::sleep_for(std::chrono::milliseconds(
-                    plugin::unsignedValue(args, "stream_settle_ms", 1000)));
-                const auto afterSettle = instance.transport->stats().lastSequence;
-                const auto frame = waitYtpRokt(instance, afterSettle,
-                    plugin::unsignedValue(args, "timeout_ms", 3000));
-                const auto decoded = decodeYtpRokt68Frame(frame.payload);
-                unsigned validWords = 0;
-                for (const auto raw : decoded.channelRaw) {
-                    if (!isYtpNoMeasurementRaw(raw)) ++validWords;
-                }
-                if (!isYtpNoMeasurementRaw(decoded.calibrationCandidate31Raw)) ++validWords;
-                if (!isYtpNoMeasurementRaw(decoded.calibrationCandidate32Raw)) ++validWords;
-                std::ostringstream out;
-                out << "status=ready\nprotocol=rokt_ytp68\nactive_command=ROKT_17"
-                    << "\nytp_endpoint=" << endpoint
-                    << "\nframe_header=" << static_cast<unsigned>(decoded.header[0]) << ','
-                    << static_cast<unsigned>(decoded.header[1]) << ','
-                    << static_cast<unsigned>(decoded.header[2]) << ','
-                    << static_cast<unsigned>(decoded.header[3])
-                    << "\nvalid_word_count=" << validWords
-                    << "\ninvalid_word_count=" << (32 - validWords)
-                    << "\nfirst_sequence=" << frame.sequence << '\n';
-                return out.str();
+                auto waitArgs = args;
+                if (!waitArgs.count("stream_settle_ms")) waitArgs["stream_settle_ms"] = "1000";
+                return awaitYtpRokt(instance, endpoint, waitArgs);
             }
             if (protocol != "legacy_mode2") {
                 throw std::invalid_argument("Unsupported YTP adapter protocol: " + protocol);
