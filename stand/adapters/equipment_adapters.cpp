@@ -77,10 +77,10 @@ QByteArray httpGet(const IsdHttpConfig& config, const QString& path)
     const QByteArray body = reply->readAll();
     reply->deleteLater();
 
-    if (error != QNetworkReply::NoError) {
-    if (status < 200 || status >= 300) {
-        throw std::runtime_error("ISD HTTP status " + std::to_string(status));
-            }
+    if (error == QNetworkReply::NoError) {
+        if (status < 200 || status >= 300) {
+            throw std::runtime_error("ISD HTTP status " + std::to_string(status));
+        }
         return body;
     }
     const bool transient =
