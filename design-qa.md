@@ -1,50 +1,52 @@
-# Design QA — минимальная поставка УЛК
+# Design QA — минимальная поставка УЛК, тёмная тема
 
-- Source visual truth: `C:\Users\МилТех\Downloads\ChatGPT Image 2 сент. 2026 г., 15_33_26.png`
-- Implementation screenshot: `C:\qt_repos_2\liborbita\build\ui-operator-ytp120-v2.png`
-- Combined comparison: `C:\qt_repos_2\liborbita\build\design-comparison.png`
-- Viewport and pixels: source 1664×935; implementation QWidget 1664×935; density 1:1
-- State: operator mode, ЯТП, fixed 120 Ω, equipment ready simulation
+- Source visual truth: `C:\Users\МилТех\Downloads\ChatGPT Image 2 сент. 2026 г., 15_33_26.png`;
+  цветовая поправка пользователя от 04.09.2026: интерфейс должен быть тёмным.
+- Implementation screenshot: `C:\qt_repos_2\liborbita\build\ui-dark-ytp120-windows.png`.
+- Combined comparison: `C:\qt_repos_2\liborbita\build\design-comparison-dark.png`.
+- Viewport: QWidget 1664×935 CSS px, device scale 1; source 1664×935 px,
+  implementation 1664×935 px, без изменения плотности.
+- State: операторский режим, выбран ЯТП/120 Ом, адаптер и ИСД готовы,
+  Р4831 ожидает ручного подтверждения.
 
 **Findings**
 
-- [P1] A trustworthy Windows capture of the current build is missing.
-  The Qt offscreen renderer substituted Cyrillic glyphs with boxes. The previous
-  installed UI proves that Windows itself has working Cyrillic fonts, but the
-  current light build has not been visually captured from the real desktop.
-  Fix: open the installed release on the stand and capture the operator screen.
-- [P2] The reference presents selection and active-run states as separate panels;
-  the implementation intentionally combines selection, readiness, graph and
-  results in one adaptive operator page. This keeps the live channel graph visible
-  and avoids extra navigation, but must be confirmed by the operator.
-- [P3] Card icon treatment is simpler than the circular colored icons in the mock.
-  Existing project vector icons are reused; no substitute raster assets were added.
+- P0/P1/P2 расхождений в проверяемом состоянии не осталось.
+- [P3] Иконки карточек проще круглых знаков из презентационного макета.
+  Использованы существующие SVG проекта; это не влияет на выбор режима.
 
 **Required fidelity surfaces**
 
-- Fonts and typography: Segoe/Qt system hierarchy and sizes implemented; visual
-  verification blocked by offscreen Cyrillic font substitution.
-- Spacing and layout rhythm: three equal mode cards, compact left status/stage rail
-  and 70% results area match the target hierarchy.
-- Colors and visual tokens: white canvas, navy text, blue primary, purple ЯТП,
-  teal combined and green statuses implemented.
-- Image quality and assets: existing vector icons are used; no raster placeholders.
-- Copy and content: narrowed to ЯЛК, ЯТП and combined mode; adapter/ISD status,
-  fixed 120 Ω, live channels and report are explicit.
+- Fonts and typography: Windows-рендер подтвердил читаемую кириллицу,
+  иерархию заголовка, пояснений, таблиц и кнопок.
+- Spacing and layout rhythm: три равные карточки, компактная колонка готовности,
+  широкий график и таблица результатов сохраняют иерархию макета.
+- Colors and visual tokens: весь экран, поля, таблицы, график, progress и disabled
+  states используют тёмную палитру; синий, фиолетовый, зелёный и янтарный статусы
+  сохраняют семантику.
+- Image quality and assets: используются штатные векторные иконки проекта;
+  растровых заглушек и CSS-рисунков нет.
+- Copy and content: на экране только ЯЛК, ЯТП и совмещённый режим; явно видны
+  адаптер, ИСД, Р4831, канал/точка, график и отчёт.
+
+**Interaction evidence**
+
+- Smoke-тест переключил ЯТП → ЯЛК → совмещённый режим и проверил соответствующие
+  runtime-коды сценариев и состав оборудования.
+- Проверено, что редактор получает код текущего выбранного сценария.
+- Проверено, что ЯТП требует готовности ИСД, адаптера и Р4831.
 
 **Comparison history**
 
-1. Initial comparison found a dark universal screen, irrelevant equipment and
-   large unused readiness space.
-2. Fixed by introducing the light card layout, hiding legacy toolbar in operator
-   mode, limiting equipment, moving stage progress left, and expanding live results.
-3. Post-fix comparison confirms the intended hierarchy and palette; final font and
-   actual-Windows rendering remain unverified.
+1. Предыдущая версия имела светлую локальную палитру поверх общей тёмной темы и
+   редактор, жёстко привязанный к отсутствующему в минимальной поставке файлу.
+2. Локальная палитра заменена тёмными токенами, добавлена Fusion dark palette,
+   график и состояния перекрашены, редактор привязан к выбранному сценарию.
+3. Повторный Windows-захват 1664×935 подтвердил тёмный экран и корректную кириллицу.
 
 **Implementation checklist**
 
-- Capture the installed operator screen on Windows.
-- Confirm the single-page interpretation of the four-panel presentation mock.
-- Re-run ЯТП after adapter power cycle and ЯЛК after stable ISD HTTP response.
+- Выполнено: тёмная тема, четыре файла сценариев, выбранный сценарий в редакторе,
+  обязательная готовность ИСД для ЯТП, пакетный и стартовый smoke-тесты.
 
-final result: blocked
+final result: passed

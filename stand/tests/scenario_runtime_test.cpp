@@ -101,6 +101,13 @@ ScenarioDefinition smallScenario()
 
 void engineSemantics()
 {
+    require(combineVerdicts(RunVerdict::Incomplete, RunVerdict::Fail)
+                == RunVerdict::Fail,
+            "FAIL must not be masked by a commissioning INCOMPLETE verdict");
+    require(combineVerdicts(RunVerdict::Fail, RunVerdict::Incomplete)
+                == RunVerdict::Fail,
+            "Later INCOMPLETE steps must preserve an earlier FAIL verdict");
+
     ScenarioEngine engine;
     engine.registerProcedure("ok", [](const ScenarioNode&, ProcedureContext&) {
         return ProcedureResult{RunVerdict::Ok, "ok", {}};

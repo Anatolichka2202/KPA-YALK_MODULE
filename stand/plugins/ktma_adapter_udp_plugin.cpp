@@ -130,6 +130,8 @@ std::string readChannel(Instance& instance, const std::map<std::string, std::str
     double rawSum = 0.0;
     double codeSum = 0.0;
     unsigned signalOnes = 0;
+    std::ostringstream rawSamples;
+    std::ostringstream codeSamples;
     for (unsigned sample = 0; sample < sampleCount; ++sample) {
         const auto frame = waitYalk(instance, sequence, timeout(instance, args));
         if (!firstSequence) firstSequence = frame.sequence;
@@ -138,6 +140,9 @@ std::string readChannel(Instance& instance, const std::map<std::string, std::str
         const auto& value = words[address - 1];
         rawSum += value.rawWord;
         codeSum += value.analogCode;
+        if (sample) { rawSamples << ','; codeSamples << ','; }
+        rawSamples << value.rawWord;
+        codeSamples << value.analogCode;
         if (value.contact) ++signalOnes;
     }
     std::ostringstream out;
@@ -148,6 +153,8 @@ std::string readChannel(Instance& instance, const std::map<std::string, std::str
         << "\nsignal=" << (signalOnes * 2 >= sampleCount ? 1 : 0)
         << "\nsignal_ones=" << signalOnes
         << "\nsample_count=" << sampleCount
+        << "\nraw_samples=" << rawSamples.str()
+        << "\nanalog_code_samples=" << codeSamples.str()
         << "\nfirst_sequence=" << firstSequence
         << "\nlast_sequence=" << sequence << '\n';
     return out.str();
@@ -170,6 +177,7 @@ std::string readYtpChannel(Instance& instance,
     double rawSum = 0.0;
     unsigned validSamples = 0;
     unsigned invalidSamples = 0;
+    std::ostringstream rawSamples;
     std::uint8_t temperatureMode = 0;
     for (unsigned sample = 0; sample < sampleCount; ++sample) {
         const auto frame = instance.ytpRokt68
@@ -190,6 +198,8 @@ std::string readYtpChannel(Instance& instance,
             else raw = decoded.calibrationMaximumRaw;
             temperatureMode = decoded.temperatureMode;
         }
+        if (sample) rawSamples << ',';
+        rawSamples << raw;
         if (instance.ytpRokt68 && isYtpNoMeasurementRaw(raw)) ++invalidSamples;
         else {
             rawSum += raw;
@@ -207,6 +217,7 @@ std::string readYtpChannel(Instance& instance,
         << "\nsample_count=" << sampleCount
         << "\nvalid_sample_count=" << validSamples
         << "\ninvalid_sample_count=" << invalidSamples
+        << "\nraw_samples=" << rawSamples.str()
         << "\nfirst_sequence=" << firstSequence
         << "\nlast_sequence=" << sequence << '\n';
     return out.str();

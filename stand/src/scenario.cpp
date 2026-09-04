@@ -71,8 +71,11 @@ RunVerdict combineVerdicts(RunVerdict current, RunVerdict next) noexcept
         switch (verdict) {
         case RunVerdict::NotRun: return 0;
         case RunVerdict::Ok: return 1;
-        case RunVerdict::Fail: return 2;
-        case RunVerdict::Incomplete: return 3;
+        case RunVerdict::Incomplete: return 2;
+        // Если хотя бы одно выполненное измерение не прошло допуск, общий
+        // результат обязан оставаться FAIL. Признак commissioning/частичного
+        // состава не должен маскировать уже установленное несоответствие.
+        case RunVerdict::Fail: return 3;
         case RunVerdict::Error: return 4;
         case RunVerdict::Aborted: return 5;
         }

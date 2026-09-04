@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <iomanip>
 #include <sstream>
 #include <stdexcept>
 #include <thread>
@@ -457,6 +458,8 @@ struct UlkChannelValue {
     bool signal = false;
     unsigned firstSequence = 0;
     unsigned lastSequence = 0;
+    std::string rawSamples;
+    std::string codeSamples;
 };
 
 unsigned ulkLastSequence(ProcedureContext& context)
@@ -473,12 +476,15 @@ UlkChannelValue readUlkChannel(
         {"sample_count", std::to_string(samples)},
         {"after_sequence", std::to_string(afterSequence)},
         {"timeout_ms", "3000"}});
+    const auto values = responseValues(response);
     return {
         responseNumber(response, "raw_mean"),
         responseNumber(response, "analog_code_mean"),
         responseBool(response, "signal"),
         responseUnsigned(response, "first_sequence"),
-        responseUnsigned(response, "last_sequence")};
+        responseUnsigned(response, "last_sequence"),
+        values.count("raw_samples") ? values.at("raw_samples") : std::string(),
+        values.count("analog_code_samples") ? values.at("analog_code_samples") : std::string()};
 }
 
 double stateNumber(const ProcedureContext& context, const std::string& key)
@@ -486,6 +492,24 @@ double stateNumber(const ProcedureContext& context, const std::string& key)
     const auto found = context.state.find(key);
     if (found == context.state.end()) throw std::runtime_error("Нет состояния сценария ЯЛК: " + key);
     return std::stod(found->second);
+}
+
+std::string scaledSamples(const std::string& samples, double zero, double full,
+                          double fullScale)
+{
+    if (samples.empty() || !(full > zero)) return {};
+    std::istringstream input(samples);
+    std::ostringstream output;
+    output << std::setprecision(10);
+    std::string token;
+    bool first = true;
+    while (std::getline(input, token, ',')) {
+        if (token.empty()) continue;
+        if (!first) output << ',';
+        output << (std::stod(token) - zero) * fullScale / (full - zero);
+        first = false;
+    }
+    return output.str();
 }
 
 void setYalkVoltage(ProcedureContext& context, const LogicalBinding& binding,
@@ -566,13 +590,19 @@ ProcedureResult yalkReadCalibration(const ScenarioNode& node, ProcedureContext& 
     }
     context.state["yalk.zero_code"] = std::to_string(zeroValue.code);
     context.state["yalk.full_code"] = std::to_string(fullValue.code);
-    context.state["yalk.full_voltage"] = std::to_string(v7);
+    // Калибровочные коды 97/99 задают шкалу 0...6,2 В. В7 в этом шаге
+    // подтверждает наличие воздействия, но не подменяет номинал шкалы:
+    // иначе фактические ~6,145 В сжимают весь пересчёт примерно на 0,9 %.
+    context.state["yalk.full_voltage"] = std::to_string(number(node, "full_voltage", 6.2));
+    context.state["yalk.calibration_reference_v"] = std::to_string(v7);
     ProcedureResult result{RunVerdict::Ok, "Снята калибровка ЯЛК по адресам 97/99", {}};
     auto value = measurement("ubsi.yalk.calibration", "Калибровочная шкала ЯЛК",
                              6.2, v7, 5.5, 6.8, "В");
     value.attributes = {{"zero_code", std::to_string(zeroValue.code)},
                         {"full_code", std::to_string(fullValue.code)},
-                        {"zero_address", zero.locator}, {"full_address", full.locator}};
+                        {"zero_address", zero.locator}, {"full_address", full.locator},
+                        {"calibration_reference_v", std::to_string(v7)},
+                        {"scale_voltage_v", std::to_string(number(node, "full_voltage", 6.2))}};
     append(result, std::move(value));
     markCommissioning(result, confirmed);
     return result;
@@ -660,6 +690,13 @@ ProcedureResult yalkCheckChannels(const ScenarioNode& node, ProcedureContext& co
                 {"command_v", std::to_string(pointVolts[point])},
                 {"raw", std::to_string(reading.raw)},
                 {"analog_code", std::to_string(reading.code)},
+                {"raw_samples", reading.rawSamples},
+                {"analog_code_samples", reading.codeSamples},
+                {"value_samples", scaledSamples(reading.codeSamples,
+                    stateNumber(context, "yalk.zero_code"),
+                    stateNumber(context, "yalk.full_code"),
+                    stateNumber(context, "yalk.full_voltage"))},
+                {"sample_count", std::to_string(natural(node, "sample_count", 16))},
                 {"signal", reading.signal ? "1" : "0"}, {"v7_v", std::to_string(v7)},
                 {"yalk_v", std::to_string(volts)}, {"absolute_error_v", std::to_string(absolute)},
                 {"reduced_error_percent", std::to_string(reduced)},
@@ -763,6 +800,7 @@ struct YtpRawValue {
     unsigned temperatureMode = 0;
     unsigned validSamples = 0;
     unsigned invalidSamples = 0;
+    std::string rawSamples;
 };
 
 YtpRawValue readYtpRaw(ProcedureContext& context, const std::string& parameterGroup,
@@ -792,7 +830,8 @@ YtpRawValue readYtpRaw(ProcedureContext& context, const std::string& parameterGr
         values.count("valid_sample_count")
             ? static_cast<unsigned>(std::stoul(values.at("valid_sample_count"))) : samples,
         values.count("invalid_sample_count")
-            ? static_cast<unsigned>(std::stoul(values.at("invalid_sample_count"))) : 0};
+            ? static_cast<unsigned>(std::stoul(values.at("invalid_sample_count"))) : 0,
+        values.count("raw_samples") ? values.at("raw_samples") : std::string()};
 }
 
 std::vector<unsigned> ytpIsdRouteChannels(const ScenarioNode& node)
@@ -1017,6 +1056,9 @@ ProcedureResult ytpCheckChannels(const ScenarioNode& node, ProcedureContext& con
                 {"target_resistance_ohm", std::to_string(resistance)},
                 {"actual_reference_ohm", std::to_string(actualResistance)},
                 {"raw", std::to_string(raw)},
+                {"raw_samples", value.rawSamples},
+                {"value_samples", scaledSamples(value.rawSamples, zeroRaw, fullRaw, fullScale)},
+                {"sample_count", std::to_string(value.validSamples)},
                 {"calibration_zero_raw", std::to_string(zeroRaw)},
                 {"calibration_full_raw", std::to_string(fullRaw)},
                 {"measured_resistance_ohm", std::to_string(measured)},
