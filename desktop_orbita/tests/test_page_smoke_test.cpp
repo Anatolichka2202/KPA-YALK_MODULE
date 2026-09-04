@@ -48,6 +48,11 @@ int main(int argc, char** argv)
             "fixed 120-ohm YTP check must be initially selected");
     require(test->currentData() == QStringLiteral("YTP_120_CHECK"),
             "120-ohm YTP check must be the initial procedure");
+    require(page.currentScenarioCode() == QStringLiteral("YTP_120_CHECK"),
+            "scenario editor must follow the selected delivery procedure");
+    require(page.styleSheet().contains(QStringLiteral("background:#14171c"))
+                && !page.styleSheet().contains(QStringLiteral("background:#f7f9fc")),
+            "delivery test page must use the dark theme");
     require(rowByName(equipment, QStringLiteral("АКИП")) < 0,
             "AKIP must not be present in the minimal delivery UI");
     require(rowByName(equipment, QStringLiteral("Rigol")) < 0,
@@ -58,7 +63,8 @@ int main(int argc, char** argv)
             "ISD status must always be visible");
 
     page.setScenarioInfo(QStringLiteral("YTP_120_CHECK"), true, true,
-        {QStringLiteral("RS485"), QStringLiteral("R4831")}, QStringLiteral("ready"));
+        {QStringLiteral("RS485"), QStringLiteral("ISD"), QStringLiteral("R4831")},
+        QStringLiteral("ready"));
     require(!equipment->isRowHidden(rowByName(equipment, QStringLiteral("Р4831"))),
             "YTP must show the common manual resistance store");
 

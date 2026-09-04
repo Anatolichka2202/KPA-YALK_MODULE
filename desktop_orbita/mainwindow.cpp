@@ -562,11 +562,12 @@ void MainWindow::setupToolBar()
 // ----------------------------------------------------------------------------
 void MainWindow::onOpenScenario()
 {
-    const QString path = QDir(QCoreApplication::applicationDirPath())
-        .filePath(QStringLiteral("scenarios/ubsi_tu_5_6.yaml"));
+    const QString code = testPage_->currentScenarioCode();
+    const QString path = scenarioPaths_.value(code);
     if (!QFileInfo::exists(path)) {
         QMessageBox::warning(this, QStringLiteral("Сценарий"),
-            QStringLiteral("Файл сценария не найден:\n%1").arg(path));
+            QStringLiteral("Файл выбранного сценария не найден.\nРежим: %1\nПуть: %2")
+                .arg(code, path.isEmpty() ? QStringLiteral("не определён") : path));
         return;
     }
     ScenarioYamlEditor editor(path, this);
@@ -612,6 +613,7 @@ void MainWindow::initializeStandRuntime()
             {"power.dc_supply", "AKIP"}, {"signal.generator", "RIGOL"},
             {"operator.manual_input", "R4831"}, {"measure.waveform", "SCOPE"}};
         scenarios_.clear();
+        scenarioPaths_.clear();
         testPage_->setScenarioInfo("UBSI_NORMAL_5_6", false, false, {},
             QStringLiteral("Сценарий УБСИ не загружен"));
         testPage_->setScenarioInfo("YALK_FULL_5_6", false, false, {},
@@ -679,7 +681,10 @@ void MainWindow::initializeStandRuntime()
                          QString::fromStdString(scenario.version),
                          QString::fromStdString(standProfile_.version))
                 : errors.join(QStringLiteral("; "));
-            if (available) scenarios_.insert(code, scenario);
+            if (available) {
+                scenarios_.insert(code, scenario);
+                scenarioPaths_.insert(code, file.absoluteFilePath());
+            }
             testPage_->setScenarioInfo(code, available, diagnostic, required, detail);
         }
         if (!scenarios_.contains(QStringLiteral("YALK_FULL_5_6"))

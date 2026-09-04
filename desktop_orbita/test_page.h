@@ -42,6 +42,7 @@ public:
     void setRunEvent(const orbita::stand::RunEvent& event);
     void setRunResult(const orbita::stand::ScenarioRunResult& result,
                       const QString& reportPath = {});
+    QString currentScenarioCode() const;
 
 signals:
     void equipmentCheckRequested();

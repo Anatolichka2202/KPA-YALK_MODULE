@@ -88,20 +88,20 @@ protected:
     {
         QPainter painter(this);
         painter.setRenderHint(QPainter::Antialiasing);
-        painter.fillRect(rect(), QColor("#ffffff"));
+        painter.fillRect(rect(), QColor("#0e1115"));
 
         const QRectF area = rect().adjusted(48, 18, -18, -34);
-        painter.setPen(QColor("#d8e0ec"));
+        painter.setPen(QColor("#2c333d"));
         painter.drawRect(area);
 
-        painter.setPen(QColor("#5d6b82"));
+        painter.setPen(QColor("#8b95a3"));
         painter.drawText(8, 28, maximumLabel_);
         painter.drawText(18, static_cast<int>(area.bottom()), minimumLabel_);
         painter.drawText(static_cast<int>(area.left()), height() - 10,
                          axisText_);
 
         if (reference_.isEmpty()) {
-            painter.setPen(QColor("#7b8799"));
+            painter.setPen(QColor("#7e8a98"));
             painter.drawText(area, Qt::AlignCenter,
                              QStringLiteral("График появится во время проверки"));
             return;
@@ -129,7 +129,7 @@ protected:
         drawSeries(reference_, QColor("#55b7ff"));
         drawSeries(measured_, QColor("#70d79b"));
 
-        painter.setPen(QColor("#5d6b82"));
+        painter.setPen(QColor("#8b95a3"));
         const int stride = qMax(1, labels_.size() / 10);
         for (int i = 0; i < labels_.size(); i += stride) {
             const double x = area.left() + (labels_.size() == 1 ? area.width() / 2.0
@@ -162,7 +162,7 @@ private:
 QLabel* makeSectionTitle(const QString& text)
 {
     auto* label = new QLabel(text);
-    label->setStyleSheet("font-size:15px; font-weight:700; color:#10203f; margin-top:6px;");
+    label->setStyleSheet("font-size:15px; font-weight:700; color:#e6eaf0; margin-top:6px;");
     return label;
 }
 
@@ -177,14 +177,14 @@ public:
 TestPage::TestPage(QWidget* parent) : QWidget(parent)
 {
     setStyleSheet(
-        "QWidget { background:#f7f9fc; color:#10203f; }"
-        "QComboBox, QTableWidget { background:#ffffff; color:#10203f; border:1px solid #d8e0ec; }"
+        "QWidget { background:#14171c; color:#e6eaf0; }"
+        "QComboBox, QLineEdit, QTableWidget { background:#0e1115; color:#e6eaf0; border:1px solid #2c333d; }"
         "QComboBox { padding:7px; min-height:22px; }"
-        "QHeaderView::section { background:#f2f5fa; color:#526179; padding:6px; border:1px solid #d8e0ec; }"
-        "QPushButton { background:#ffffff; color:#155fd7; border:1px solid #cbd6e5; padding:9px 14px; border-radius:6px; }"
-        "QPushButton:hover { background:#eef5ff; border-color:#2f80ed; }"
-        "QPushButton:disabled { color:#9ba7b8; background:#f2f4f7; border-color:#dce2ea; }"
-        "QProgressBar { background:#e9eef5; border:0; text-align:center; min-height:20px; border-radius:5px; }"
+        "QHeaderView::section { background:#0e1115; color:#8b95a3; padding:6px; border:1px solid #232a33; }"
+        "QPushButton { background:#1b2129; color:#c2ccd8; border:1px solid #2c333d; padding:9px 14px; border-radius:6px; }"
+        "QPushButton:hover { background:#2a313b; border-color:#5e93b8; }"
+        "QPushButton:disabled { color:#5b6573; background:#1c2128; border-color:#232a33; }"
+        "QProgressBar { background:#1c222a; border:0; text-align:center; min-height:20px; border-radius:5px; }"
         "QProgressBar::chunk { background:#2f80ed; border-radius:5px; }");
 
     auto* root = new QVBoxLayout(this);
@@ -192,14 +192,14 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
     root->setSpacing(10);
 
     auto* title = new QLabel(QStringLiteral("Проверка УЛК · ЯЛК-96 + ЯТП"));
-    title->setStyleSheet("font-size:25px; font-weight:700; color:#0b1b3c;");
+    title->setStyleSheet("font-size:25px; font-weight:700; color:#f1f5f9;");
     root->addWidget(title);
 
     auto* subtitle = new QLabel(QStringLiteral(
         "Выберите ЯЛК или ЯТП. Во время проверки видны значения каждого канала, "
         "состояние тракта и итоговый отчёт."));
     subtitle->setWordWrap(true);
-    subtitle->setStyleSheet("color:#64728a; font-size:13px;");
+    subtitle->setStyleSheet("color:#8b95a3; font-size:13px;");
     root->addWidget(subtitle);
 
     auto* selectors = new QHBoxLayout;
@@ -209,7 +209,7 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
         layout->setContentsMargins(0, 0, 0, 0);
         layout->setSpacing(4);
         auto* label = new QLabel(caption);
-        label->setStyleSheet("color:#8e9aa8; font-size:11px;");
+        label->setStyleSheet("color:#7e8a98; font-size:11px;");
         combo = new QComboBox;
         layout->addWidget(label);
         layout->addWidget(combo);
@@ -246,10 +246,10 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
         button->setMinimumHeight(86);
         button->setObjectName(QStringLiteral("modeCard_%1").arg(scopeCode));
         button->setStyleSheet(QStringLiteral(
-            "QPushButton { background:#ffffff; color:#172747; border:1px solid #d6deea; "
+            "QPushButton { background:#12161c; color:#dfe6ee; border:1px solid #2c333d; "
             "font-size:13px; font-weight:600; text-align:left; padding:14px; border-radius:9px; }"
-            "QPushButton:hover { border:2px solid %1; background:#f8fbff; }"
-            "QPushButton:checked { border:2px solid %1; color:%1; background:#f5f9ff; }")
+            "QPushButton:hover { border:2px solid %1; background:#1b2129; }"
+            "QPushButton:checked { border:2px solid %1; color:%1; background:#18212c; }")
             .arg(accent));
         modeGroup->addButton(button);
         modeCards->addWidget(button, 1);
@@ -274,12 +274,12 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
 
     auto* runOptions = new QHBoxLayout;
     auto* serialLabel = new QLabel(QStringLiteral("Заводской номер (необязательно):"));
-    serialLabel->setStyleSheet("color:#8e9aa8;");
+    serialLabel->setStyleSheet("color:#8b95a3;");
     serialEdit_ = new QLineEdit;
     serialEdit_->setObjectName(QStringLiteral("objectSerial"));
     serialEdit_->setPlaceholderText(QStringLiteral("например, УБСИ-007"));
     serialEdit_->setMaximumWidth(230);
-    serialEdit_->setStyleSheet("background:#ffffff; color:#10203f; border:1px solid #cfd8e6; padding:7px;");
+    serialEdit_->setStyleSheet("background:#0e1115; color:#e6eaf0; border:1px solid #2c333d; padding:7px;");
     partialCheck_ = new QCheckBox(QStringLiteral("Диагностический запуск без части оборудования"));
     partialCheck_->setObjectName(QStringLiteral("allowPartial"));
     partialCheck_->setToolTip(QStringLiteral("Такой запуск никогда не получает итог ОК"));
@@ -293,7 +293,7 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
     scopeLabel_ = new QLabel;
     scopeLabel_->setWordWrap(true);
     scopeLabel_->setStyleSheet(
-        "background:#eef5ff; color:#244e86; border:1px solid #c9dcf5; "
+        "background:#132033; color:#9ac7ff; border:1px solid #27466c; "
         "padding:8px 10px; border-radius:4px;");
     root->addWidget(scopeLabel_);
 
@@ -345,7 +345,7 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
     diagnosticLabel_->setWordWrap(true);
     diagnosticLabel_->setTextInteractionFlags(Qt::TextSelectableByMouse);
     diagnosticLabel_->setStyleSheet(
-        "background:#ffffff; color:#5d6b82; border:1px solid #d8e0ec; "
+        "background:#0e1115; color:#8b95a3; border:1px solid #2c333d; "
         "padding:7px 9px; border-radius:4px;");
     left->addWidget(diagnosticLabel_);
 
@@ -409,13 +409,13 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
     verdictLabel_ = new QLabel(QStringLiteral("ИТОГ НЕ СФОРМИРОВАН"));
     verdictLabel_->setStyleSheet(
         "font-size:16px; font-weight:700; color:#8e9aa8; padding:8px 12px;"
-        "border:1px solid #d3dce8; border-radius:4px;");
+        "border:1px solid #3a424d; border-radius:4px;");
     startButton_ = new QPushButton(QStringLiteral("Запустить проверку"));
     startButton_->setMinimumWidth(210);
     startButton_->setStyleSheet(
         "QPushButton { background:#286a49; border:1px solid #3d9a6b; font-size:14px; font-weight:700; padding:11px 18px; }"
         "QPushButton:hover { background:#327e58; }"
-        "QPushButton:disabled { background:#eef2f6; border-color:#d8e0ec; color:#9aa6b6; }");
+        "QPushButton:disabled { background:#1c2128; border-color:#232a33; color:#5b6573; }");
     actionBar->addWidget(verdictLabel_, 1);
     reportButton_ = new QPushButton(QStringLiteral("Открыть отчёт"));
     reportButton_->setObjectName(QStringLiteral("openReport"));
@@ -425,7 +425,7 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
     stopButton_->setEnabled(false);
     stopButton_->setStyleSheet(
         "QPushButton { background:#5d2d31; border:1px solid #9a4d55; font-weight:600; padding:11px 18px; }"
-        "QPushButton:disabled { background:#eef2f6; border-color:#d8e0ec; color:#9aa6b6; }");
+        "QPushButton:disabled { background:#1c2128; border-color:#232a33; color:#5b6573; }");
     actionBar->addWidget(stopButton_);
     actionBar->addWidget(startButton_);
     root->addLayout(actionBar);
@@ -493,6 +493,11 @@ QString TestPage::selectedScopeCode() const
 QString TestPage::selectedTestCode() const
 {
     return testCombo_->currentData().toString();
+}
+
+QString TestPage::currentScenarioCode() const
+{
+    return selectedTestCode();
 }
 
 void TestPage::rebuildScopes()
@@ -622,7 +627,7 @@ void TestPage::updateSelectionSummary()
     verdictLabel_->setText(QStringLiteral("ИТОГ НЕ СФОРМИРОВАН"));
     verdictLabel_->setStyleSheet(
         "font-size:16px; font-weight:700; color:#8e9aa8; padding:8px 12px;"
-        "border:1px solid #d3dce8; border-radius:4px;");
+        "border:1px solid #3a424d; border-radius:4px;");
     updateStartAvailability();
 }
 
@@ -663,12 +668,12 @@ void TestPage::setEquipmentStatus(const QString& code, bool ready, const QString
     if (!ready) {
         diagnosticLabel_->setText(QStringLiteral("%1: %2").arg(code, detail));
         diagnosticLabel_->setStyleSheet(
-            "background:#fff1f0; color:#b83d35; border:1px solid #efb5b0; "
+            "background:#2a1718; color:#e1766d; border:1px solid #6b3434; "
             "padding:7px 9px; border-radius:4px;");
     } else if (code == QStringLiteral("V7")) {
         diagnosticLabel_->setText(QStringLiteral("В7-78/1: %1").arg(detail));
         diagnosticLabel_->setStyleSheet(
-            "background:#effaf3; color:#18794e; border:1px solid #a7dfbc; "
+            "background:#14251c; color:#70d79b; border:1px solid #315c43; "
             "padding:7px 9px; border-radius:4px;");
     }
     updateStartAvailability();
@@ -686,7 +691,7 @@ void TestPage::setEquipmentMissingPlugin(const QString& code, const QString& det
     equipmentTable_->item(it->row, 4)->setToolTip(detail);
     diagnosticLabel_->setText(QStringLiteral("%1: %2").arg(code, detail));
     diagnosticLabel_->setStyleSheet(
-        "background:#fff1f0; color:#b83d35; border:1px solid #efb5b0; "
+        "background:#2a1718; color:#e1766d; border:1px solid #6b3434; "
         "padding:7px 9px; border-radius:4px;");
     updateStartAvailability();
 }
@@ -712,7 +717,7 @@ QStringList TestPage::requiredEquipment() const
     }
     if (test == QStringLiteral("YTP_FULL_5_6")
         || test == QStringLiteral("YTP_120_CHECK")) {
-        return {"RS485", "R4831"};
+        return {"RS485", "ISD", "R4831"};
     }
     if (test == QStringLiteral("ULK_COMBINED_CHECK")) {
         return {"RS485", "ISD", "V7", "R4831"};
@@ -762,7 +767,7 @@ void TestPage::updateStartAvailability()
         const auto it = equipmentRows_.constFind(code);
         if (it == equipmentRows_.cend() || !it->ready) missing << code;
     }
-    const bool partial = partialCheck_->isChecked() || scenario->diagnostic;
+    const bool partial = partialCheck_->isChecked();
     startButton_->setEnabled((missing.isEmpty() || partial) && !demoTimer_->isActive());
     if (missing.isEmpty()) {
         readinessLabel_->setText(scenario->diagnostic
@@ -927,8 +932,8 @@ void TestPage::setScenarioInfo(
     scenarios_.insert(code, ScenarioInfo{available, diagnostic, requiredEquipment, detail});
     diagnosticLabel_->setText(detail);
     diagnosticLabel_->setStyleSheet(available
-        ? QStringLiteral("background:#effaf3; color:#18794e; border:1px solid #a7dfbc; padding:7px 9px; border-radius:4px;")
-        : QStringLiteral("background:#fff1f0; color:#b83d35; border:1px solid #efb5b0; padding:7px 9px; border-radius:4px;"));
+        ? QStringLiteral("background:#14251c; color:#70d79b; border:1px solid #315c43; padding:7px 9px; border-radius:4px;")
+        : QStringLiteral("background:#2a1718; color:#e1766d; border:1px solid #6b3434; padding:7px 9px; border-radius:4px;"));
     updateSelectionSummary();
 }
 

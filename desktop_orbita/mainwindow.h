@@ -166,6 +166,7 @@ private:
     std::unique_ptr<orbita::stand::RunStore> runStore_;
     orbita::stand::StandProfile standProfile_;
     QHash<QString, orbita::stand::ScenarioDefinition> scenarios_;
+    QHash<QString, QString> scenarioPaths_;
     QFutureWatcher<orbita::stand::ScenarioRunResult>* scenarioWatcher_ = nullptr;
     bool standRuntimeReady_ = false;
 
