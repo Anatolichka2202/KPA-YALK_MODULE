@@ -622,7 +622,7 @@ void MainWindow::initializeStandRuntime()
             QStringLiteral("Сценарий ЯТП не загружен"));
         testPage_->setScenarioInfo("YTP_120_CHECK", false, true, {},
             QStringLiteral("Сценарий контроля ЯТП при 120 Ом не загружен"));
-        testPage_->setScenarioInfo("ULK_COMBINED_CHECK", false, true, {},
+        testPage_->setScenarioInfo("ULK_COMBINED_CHECK", false, false, {},
             QStringLiteral("Совмещённый сценарий ЯЛК + ЯТП не загружен"));
         testPage_->setScenarioInfo("BSI_DIAGNOSTIC", false, true, {},
             QStringLiteral("Диагностический сценарий БСИ не загружен"));
@@ -644,7 +644,6 @@ void MainWindow::initializeStandRuntime()
                 diagnostic = true;
             } else if (scenario.id == "ubsi.468157.002.ulk.combined.check") {
                 code = QStringLiteral("ULK_COMBINED_CHECK");
-                diagnostic = true;
             } else if (scenario.id == "bsi.468157.003.telemetry.diagnostic") {
                 code = QStringLiteral("BSI_DIAGNOSTIC");
                 diagnostic = true;
@@ -699,18 +698,21 @@ void MainWindow::initializeStandRuntime()
         scenarioWatcher_ = new QFutureWatcher<orbita::stand::ScenarioRunResult>(this);
         connect(scenarioWatcher_, &QFutureWatcherBase::finished, this, [this]() {
             const auto result = scenarioWatcher_->result();
-            QString reportPath;
+            QString tuReportPath;
+            QString productionReportPath;
             try {
                 runStore_->save(result);
                 const QDir root(QCoreApplication::applicationDirPath());
                 const QString reportDir = root.filePath("runs/" + QString::fromStdString(result.runId));
                 const auto paths = orbita::stand::writeHtmlCsvReport(result, reportDir.toStdString());
-                reportPath = QString::fromStdString(paths.html);
-                log(QStringLiteral("Отчёт сформирован: %1").arg(reportPath));
+                tuReportPath = QString::fromStdString(paths.tuHtml);
+                productionReportPath = QString::fromStdString(paths.productionHtml);
+                log(QStringLiteral("Краткий протокол ТУ: %1").arg(tuReportPath));
+                log(QStringLiteral("Производственная ведомость: %1").arg(productionReportPath));
             } catch (const std::exception& error) {
                 log(QStringLiteral("Не удалось сохранить результат: %1").arg(QString::fromUtf8(error.what())));
             }
-            testPage_->setRunResult(result, reportPath);
+            testPage_->setRunResult(result, tuReportPath, productionReportPath);
         });
         standRuntimeReady_ = true;
         log(QStringLiteral("Плагины оборудования: загружено %1").arg(equipmentPlugins_->plugins().size()));
@@ -735,9 +737,9 @@ void MainWindow::onCheckTestEquipment()
         {"orbita.v7_visa", "V7"}, {"orbita.akip_1160_pair", "AKIP"},
         {"orbita.rigol_generator", "RIGOL"},
         {"orbita.rigol_dho8xx", "SCOPE"}};
-    const QSet<QString> deliveryEquipment = {"RS485", "ISD", "V7"};
+    const QSet<QString> deliveryEquipment = {"RS485", "ISD", "V7", "AKIP"};
     const QSet<QString> activeCapabilities = {
-        "stand.switch_matrix", "power.dc_supply", "signal.generator"};
+        "stand.switch_matrix", "signal.generator"};
 
     equipmentRegistry_->safeStopAll();
     equipmentRegistry_->clear();

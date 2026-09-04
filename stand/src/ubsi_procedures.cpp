@@ -278,6 +278,72 @@ ProcedureResult readiness(const ScenarioNode& node, ProcedureContext& context)
     return result;
 }
 
+ProcedureResult supplyStatus(const ScenarioNode& node, ProcedureContext& context)
+{
+    auto response = context.equipment.invoke("power.dc_supply", "read_state", {});
+    auto values = responseValues(response);
+    const bool wasEnabled = values.count("output_enabled")
+        && (values.at("output_enabled") == "true" || values.at("output_enabled") == "1");
+    if (!wasEnabled) {
+        // SafeStop intentionally leaves the source off. A new operator-started
+        // run must arm known setpoints before it may enable output.
+        context.equipment.invoke("power.dc_supply", "set_current_limit", {
+            {"amperes", std::to_string(number(node, "startup_current_limit_a", 0.6))}});
+        context.equipment.invoke("power.dc_supply", "set_voltage", {
+            {"volts", std::to_string(number(node, "nominal_voltage_v", 27.0))}});
+        context.equipment.invoke("power.dc_supply", "output", {{"enabled", "true"}});
+        wait(context, natural(node, "startup_settle_ms", 500));
+        response = context.equipment.invoke("power.dc_supply", "read_state", {});
+        values = responseValues(response);
+    }
+    const double voltage = responseNumber(response, "volts");
+    const double current = responseNumber(response, "amperes");
+    const bool outputEnabled = values.count("output_enabled")
+        && (values.at("output_enabled") == "true" || values.at("output_enabled") == "1");
+
+    ProcedureResult result{RunVerdict::Ok,
+        wasEnabled ? "Проверены питание и ток потребления УБСИ"
+                   : "АКИП включён повторно; проверены питание и ток потребления УБСИ", {}};
+    auto voltageResult = measurement("ubsi.supply.voltage", "Напряжение питания УБСИ",
+        number(node, "nominal_voltage_v", 27.0), voltage,
+        number(node, "minimum_voltage_v", 24.0),
+        number(node, "maximum_voltage_v", 35.0), "В");
+    voltageResult.attributes = {{"supply_voltage_v", std::to_string(voltage)},
+                                {"supply_current_a", std::to_string(current)},
+                                {"output_enabled", outputEnabled ? "1" : "0"}};
+    append(result, std::move(voltageResult));
+    auto currentResult = measurement("ubsi.supply.current", "Ток потребления УБСИ",
+        0.0, current, 0.0, number(node, "maximum_current_a", 0.4), "А");
+    currentResult.attributes = {{"supply_voltage_v", std::to_string(voltage)},
+                                {"supply_current_a", std::to_string(current)},
+                                {"output_enabled", outputEnabled ? "1" : "0"}};
+    append(result, std::move(currentResult));
+    auto outputResult = measurement("ubsi.supply.output", "Выход АКИП включён",
+        1.0, outputEnabled ? 1.0 : 0.0, 1.0, 1.0, "лог.");
+    outputResult.attributes = {{"supply_voltage_v", std::to_string(voltage)},
+                               {"supply_current_a", std::to_string(current)},
+                               {"output_enabled", outputEnabled ? "1" : "0"}};
+    append(result, std::move(outputResult));
+    return result;
+}
+
+ProcedureResult powerSafeOff(const ScenarioNode&, ProcedureContext& context)
+{
+    context.equipment.invoke("power.dc_supply", "output", {{"enabled", "false"}});
+    const auto response = context.equipment.invoke("power.dc_supply", "read_state", {});
+    const auto values = responseValues(response);
+    const bool outputEnabled = values.count("output_enabled")
+        && (values.at("output_enabled") == "true" || values.at("output_enabled") == "1");
+    ProcedureResult result{RunVerdict::Ok, "Выход АКИП выключен после испытания", {}};
+    auto value = measurement("ubsi.supply.safe_off", "Безопасное отключение АКИП",
+        0.0, outputEnabled ? 1.0 : 0.0, 0.0, 0.0, "лог.");
+    value.attributes = {{"supply_voltage_v", values.count("volts") ? values.at("volts") : ""},
+                        {"supply_current_a", values.count("amperes") ? values.at("amperes") : ""},
+                        {"output_enabled", outputEnabled ? "1" : "0"}};
+    append(result, std::move(value));
+    return result;
+}
+
 ProcedureResult supplyRange(const ScenarioNode& node, ProcedureContext& context)
 {
     ProcedureResult result{RunVerdict::Ok, "Проверены питание и ток потребления", {}};
@@ -749,12 +815,41 @@ ProcedureResult yalkCheckOverload(const ScenarioNode& node, ProcedureContext&)
         "Алгоритм перегрузки разрешён профилем, но аппаратная карта поканальной коммутации ещё не зафиксирована", {}};
 }
 
-ProcedureResult yalkSafeCleanup(const ScenarioNode&, ProcedureContext& context)
+ProcedureResult yalkSafeCleanup(const ScenarioNode& node, ProcedureContext& context)
 {
     context.equipment.invoke("stand.switch_matrix", "full_reset", {});
+    wait(context, natural(node, "settle_ms", 300));
+    double residual = readReferenceVoltage(context);
+    const double maximum = number(node, "maximum_residual_voltage_v", 0.2);
+
+    // Some ISD firmware revisions acknowledge type=4 while retaining the last
+    // type=5 output.  Only if the voltmeter proves that this happened, repeat
+    // the exact two-command output-off sequence for every mapped YALK input.
+    if (!std::isfinite(residual) || residual > maximum) {
+        const unsigned count = natural(node, "channel_count", 80);
+        for (unsigned channel = 0; channel < count; ++channel) {
+            try {
+                const auto binding = resolveLogicalBinding(context, "yalk_voltage", channel);
+                setYalkVoltage(context, binding, 0.0, false);
+            } catch (...) {
+                // Continue clearing the remaining routes.  The final V7
+                // measurement is the authoritative cleanup result.
+            }
+        }
+        context.equipment.invoke("stand.switch_matrix", "full_reset", {});
+        wait(context, natural(node, "retry_settle_ms", 500));
+        residual = readReferenceVoltage(context);
+    }
     context.equipment.invoke("ulk.parameter_source", "stop_stream", {});
     context.equipment.invoke("ulk.parameter_source", "stop_record", {});
-    return {RunVerdict::Ok, "ИСД сброшен, поток и запись адаптера остановлены", {}};
+    ProcedureResult result{RunVerdict::Ok,
+        "ИСД сброшен, остаточное напряжение проверено, поток адаптера остановлен", {}};
+    auto value = measurement("ubsi.yalk.cleanup_voltage", "Остаточное напряжение после сброса ЯЛК",
+        0.0, residual, 0.0, maximum, "В");
+    value.attributes = {{"v7_v", std::to_string(residual)},
+                        {"cleanup_voltage_v", std::to_string(residual)}};
+    append(result, std::move(value));
+    return result;
 }
 
 ProcedureResult referenceVoltage(const ScenarioNode& node, ProcedureContext& context)
@@ -1029,10 +1124,18 @@ ProcedureResult ytpCheckChannels(const ScenarioNode& node, ProcedureContext& con
     }
     const double tolerance = fullScale * tolerancePercent / 100.0;
     ProcedureResult result{RunVerdict::Ok, "Проверены 30 каналов ЯТП", {}};
-    for (const double resistance : points) {
+    for (std::size_t pointIndex = 0; pointIndex < points.size(); ++pointIndex) {
+        const double resistance = points[pointIndex];
+        context.eventSink({std::chrono::system_clock::now(), node.id, "OPERATOR",
+            "Переключите Р4831 на " + std::to_string(resistance) + " Ом",
+            RunVerdict::NotRun,
+            {{"target_resistance_ohm", std::to_string(resistance)},
+             {"point_index", std::to_string(pointIndex + 1)},
+             {"point_count", std::to_string(points.size())}}});
         const auto confirmation = responseValues(context.equipment.invoke(
             "operator.manual_input", "confirm_value", {
-                {"title", "Р4831: установите сопротивление для проверки ЯТП"},
+                {"title", "Р4831: точка " + std::to_string(pointIndex + 1)
+                    + " из " + std::to_string(points.size())},
                 {"target_value", std::to_string(resistance)}, {"unit", "Ом"}}));
         const auto actualValue = confirmation.find("value");
         if (actualValue == confirmation.end()) {
@@ -1063,7 +1166,7 @@ ProcedureResult ytpCheckChannels(const ScenarioNode& node, ProcedureContext& con
                 {"calibration_full_raw", std::to_string(fullRaw)},
                 {"measured_resistance_ohm", std::to_string(measured)},
                 {"absolute_error_ohm", std::to_string(std::abs(error))},
-                {"reduced_error_percent", std::to_string(error / fullScale * 100.0)},
+                {"reduced_error_percent", std::to_string(std::abs(error) / fullScale * 100.0)},
                 {"operator", confirmation.count("operator")
                     ? confirmation.at("operator") : std::string("не указан")},
                 {"timestamp", confirmation.count("timestamp")
@@ -1189,6 +1292,8 @@ void registerUbsiProcedures(ScenarioEngine& engine)
 {
     engine.registerProcedure("ubsi.binding_check", bindingCheck);
     engine.registerProcedure("ubsi.readiness", readiness);
+    engine.registerProcedure("ubsi.supply_status", supplyStatus);
+    engine.registerProcedure("ubsi.power_safe_off", powerSafeOff);
     engine.registerProcedure("ubsi.supply_range", supplyRange);
     engine.registerProcedure("ubsi.sensor_supply", sensorSupply);
     engine.registerProcedure("ubsi.yalk_analog", yalkAnalog);

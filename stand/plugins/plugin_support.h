@@ -78,10 +78,14 @@ inline bool booleanValue(
 
 inline void requireActiveOutputs(const std::map<std::string, std::string>& configuration)
 {
-    if (!booleanValue(configuration, "profile.active_outputs_confirmed")
-        && !booleanValue(configuration, "device.active_commands_confirmed")) {
+    const auto deviceConfirmation = configuration.find("device.active_commands_confirmed");
+    const bool deviceExplicitlyBlocked = deviceConfirmation != configuration.end()
+        && !booleanValue(configuration, "device.active_commands_confirmed");
+    if (deviceExplicitlyBlocked
+        || (!booleanValue(configuration, "profile.active_outputs_confirmed")
+            && !booleanValue(configuration, "device.active_commands_confirmed"))) {
         throw std::runtime_error(
-            "Активные воздействия запрещены: подтвердите весь профиль или активные команды этого устройства");
+            "Активные воздействия запрещены настройкой этого устройства или профиля");
     }
 }
 

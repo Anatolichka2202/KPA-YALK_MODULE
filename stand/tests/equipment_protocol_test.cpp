@@ -2,6 +2,7 @@
 #include "orbita_stand/ulk_udp_transport.h"
 #include "orbita_stand/yalk_frame.h"
 #include "orbita_stand/ytp_frame.h"
+#include "../plugins/plugin_support.h"
 
 #include <algorithm>
 #include <array>
@@ -23,6 +24,17 @@ void require(bool condition, const char* message)
 int main()
 {
     try {
+        std::map<std::string, std::string> globallyConfirmed{
+            {"profile.active_outputs_confirmed", "true"}};
+        plugin::requireActiveOutputs(globallyConfirmed);
+        auto deviceBlocked = globallyConfirmed;
+        deviceBlocked["device.active_commands_confirmed"] = "false";
+        bool deviceBlockHonored = false;
+        try { plugin::requireActiveOutputs(deviceBlocked); }
+        catch (const std::runtime_error&) { deviceBlockHonored = true; }
+        require(deviceBlockHonored,
+                "Explicit device active-command block did not override the profile");
+
         require(IsdHttpRouter::switchPath(2, 17, true) == "/type=2num=17val=1",
                 "ISD switching command differs from Delphi reference");
         require(IsdHttpRouter::analogPath(5, 2000, false)

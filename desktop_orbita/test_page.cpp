@@ -280,7 +280,7 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
     root->setContentsMargins(18, 14, 18, 14);
     root->setSpacing(10);
 
-    auto* title = new QLabel(QStringLiteral("Проверка УЛК · ЯЛК-96 + ЯТП"));
+    auto* title = new QLabel(QStringLiteral("Проверка УБСИ · ЯЛК-96 + ЯТП"));
     title->setStyleSheet("font-size:25px; font-weight:700; color:#f1f5f9;");
     root->addWidget(title);
 
@@ -348,14 +348,14 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
         });
         return button;
     };
-    auto* yalkCard = addModeCard(QStringLiteral("УЛК / ЯЛК"),
+    auto* yalkCard = addModeCard(QStringLiteral("ЯЛК-96"),
         QStringLiteral("Поток, адреса и каналы"), QStringLiteral("ЯЛК-96"),
         QStringLiteral("#2f80ed"), QStringLiteral(":/icons/collect.svg"));
     auto* ytpCard = addModeCard(QStringLiteral("ЯТП"),
-        QStringLiteral("30 каналов · сейчас 120 Ом"), QStringLiteral("ЯТП"),
+        QStringLiteral("30 каналов · 0 / 120 / 240 Ом"), QStringLiteral("ЯТП"),
         QStringLiteral("#8247d6"), QStringLiteral(":/icons/detail.svg"));
-    addModeCard(QStringLiteral("УЛК + ЯТП"),
-        QStringLiteral("Единый прогон и отчёт"), QStringLiteral("УЛК+ЯТП"),
+    addModeCard(QStringLiteral("УБСИ по ТУ"),
+        QStringLiteral("ЯЛК + ЯТП + питание"), QStringLiteral("УЛК+ЯТП"),
         QStringLiteral("#079b9d"), QStringLiteral(":/icons/scenario.svg"));
     ytpCard->setChecked(true);
     Q_UNUSED(yalkCard);
@@ -411,10 +411,12 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
                  QStringLiteral("нажмите «Проверить оборудование»"));
     addEquipment("V7", QStringLiteral("В7-78/1"), QStringLiteral("USB / NI-VISA"),
                  QStringLiteral("нажмите «Проверить оборудование»"));
+    addEquipment("AKIP", QStringLiteral("АКИП-1160/6"), QStringLiteral("USB / COM"),
+                 QStringLiteral("контроль U/I; выход отключается после проверки"));
     addEquipment("R4831", QStringLiteral("Магазин Р4831"), QStringLiteral("общий X123 / ручной"),
-                 QStringLiteral("постоянно установлено 120 Ом; подтвердите подключение"), true);
+                 QStringLiteral("подключён к X123; оператор переключает 0 / 120 / 240 Ом"), true);
     equipmentTable_->setMinimumHeight(135);
-    equipmentTable_->setMaximumHeight(190);
+    equipmentTable_->setMaximumHeight(220);
     left->addWidget(equipmentTable_);
 
     auto* readinessBar = new QHBoxLayout;
@@ -513,10 +515,14 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
         "QPushButton:hover { background:#327e58; }"
         "QPushButton:disabled { background:#1c2128; border-color:#232a33; color:#5b6573; }");
     actionBar->addWidget(verdictLabel_, 1);
-    reportButton_ = new QPushButton(QStringLiteral("Открыть отчёт"));
-    reportButton_->setObjectName(QStringLiteral("openReport"));
-    reportButton_->setEnabled(false);
-    actionBar->addWidget(reportButton_);
+    tuReportButton_ = new QPushButton(QStringLiteral("Краткий отчёт ТУ"));
+    tuReportButton_->setObjectName(QStringLiteral("openTuReport"));
+    tuReportButton_->setEnabled(false);
+    actionBar->addWidget(tuReportButton_);
+    productionReportButton_ = new QPushButton(QStringLiteral("Ведомость каналов"));
+    productionReportButton_->setObjectName(QStringLiteral("openProductionReport"));
+    productionReportButton_->setEnabled(false);
+    actionBar->addWidget(productionReportButton_);
     stopButton_ = new QPushButton(QStringLiteral("Безопасно остановить"));
     stopButton_->setEnabled(false);
     stopButton_->setStyleSheet(
@@ -539,9 +545,13 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
     });
     connect(startButton_, &QPushButton::clicked, this, &TestPage::startSelectedTest);
     connect(stopButton_, &QPushButton::clicked, this, &TestPage::stopRequested);
-    connect(reportButton_, &QPushButton::clicked, this, [this] {
-        if (!reportPath_.isEmpty())
-            QDesktopServices::openUrl(QUrl::fromLocalFile(reportPath_));
+    connect(tuReportButton_, &QPushButton::clicked, this, [this] {
+        if (!tuReportPath_.isEmpty())
+            QDesktopServices::openUrl(QUrl::fromLocalFile(tuReportPath_));
+    });
+    connect(productionReportButton_, &QPushButton::clicked, this, [this] {
+        if (!productionReportPath_.isEmpty())
+            QDesktopServices::openUrl(QUrl::fromLocalFile(productionReportPath_));
     });
     connect(partialCheck_, &QCheckBox::toggled, this, &TestPage::updateStartAvailability);
     connect(objectCombo_, QOverload<int>::of(&QComboBox::currentIndexChanged),
@@ -622,12 +632,12 @@ void TestPage::rebuildTests()
         testCombo_->addItem(QStringLiteral("Полная проверка ЯЛК · 80 адресов · ТУ 5.6"),
                             QStringLiteral("YALK_FULL_5_6"));
     } else if (selectedScopeCode() == QStringLiteral("ЯТП")) {
-        testCombo_->addItem(QStringLiteral("Контроль ЯТП · 30 каналов · 120 Ом"),
-                            QStringLiteral("YTP_120_CHECK"));
         testCombo_->addItem(QStringLiteral("Полная проверка ЯТП · 0 / 120 / 240 Ом"),
                             QStringLiteral("YTP_FULL_5_6"));
+        testCombo_->addItem(QStringLiteral("Быстрый контроль ЯТП · только 120 Ом (не ТУ)"),
+                            QStringLiteral("YTP_120_CHECK"));
     } else if (selectedScopeCode() == QStringLiteral("УЛК+ЯТП")) {
-        testCombo_->addItem(QStringLiteral("Совмещённая проверка ЯЛК + ЯТП 120 Ом"),
+        testCombo_->addItem(QStringLiteral("Совмещённая проверка ЯЛК + ЯТП · ТУ 5.6"),
                             QStringLiteral("ULK_COMBINED_CHECK"));
     }
     const int oldIndex = testCombo_->findData(previous);
@@ -659,7 +669,9 @@ void TestPage::updateSelectionSummary()
             "ЯТП УБСИ: магазин Р4831 подключён к общему X123. Оператор вручную выставляет 0 / 120 / 240 Ом и вводит фактическое значение; ЯТП сама опрашивает 30 каналов, адаптер читает 16 свежих кадров. ИСД, Орбита и E20 не участвуют."));
     } else if (test == QStringLiteral("ULK_COMBINED_CHECK")) {
         scopeLabel_->setText(QStringLiteral(
-            "Единый прогон: сначала ЯЛК по адресам 1…80, затем ЯТП по каналам 1…30 при текущих 120 Ом. Адаптер автоматически переключается между режимами; формируется один журнал и один отчёт."));
+            "Проверяемый объём ТУ: питание и ток АКИП, ЯЛК по 80 адресам, затем ЯТП по 30 каналам. "
+            "ЯВП-8 зачтена по отдельному производственному контролю. Контакты, обрыв и ±12 В "
+            "будут включены после подтверждения безопасной карты ИСД. Формируются краткий протокол ТУ и ведомость каналов."));
     } else {
         scopeLabel_->setText(QStringLiteral("%1 · %2: диагностический прогон проверяет наличие источника данных, адресной привязки и стабильной выборки. Он не выдаётся за приёмочное испытание по ТУ.")
             .arg(object == QStringLiteral("BSI") ? QStringLiteral("БСИ") : QStringLiteral("УБСИ № 7"), scope));
@@ -809,14 +821,14 @@ QStringList TestPage::requiredEquipment() const
 {
     const QString test = selectedTestCode();
     if (test == QStringLiteral("YALK_FULL_5_6")) {
-        return {"RS485", "ISD", "V7"};
+        return {"RS485", "ISD", "V7", "AKIP"};
     }
     if (test == QStringLiteral("YTP_FULL_5_6")
         || test == QStringLiteral("YTP_120_CHECK")) {
-        return {"RS485", "ISD", "R4831"};
+        return {"RS485", "ISD", "AKIP", "R4831"};
     }
     if (test == QStringLiteral("ULK_COMBINED_CHECK")) {
-        return {"RS485", "ISD", "V7", "R4831"};
+        return {"RS485", "ISD", "V7", "AKIP", "R4831"};
     }
     const auto scenario = scenarios_.constFind(test);
     if (scenario != scenarios_.cend()) {
@@ -883,8 +895,10 @@ void TestPage::updateStartAvailability()
 
 void TestPage::resetResults()
 {
-    reportPath_.clear();
-    reportButton_->setEnabled(false);
+    tuReportPath_.clear();
+    productionReportPath_.clear();
+    tuReportButton_->setEnabled(false);
+    productionReportButton_->setEnabled(false);
     resultTable_->setRowCount(0);
     summaryTable_->setRowCount(0);
     plot_->clear();
@@ -1086,6 +1100,13 @@ void TestPage::setRunEvent(const orbita::stand::RunEvent& event)
         progress_->setFormat(QStringLiteral("Завершено этапов: %1 · %2")
             .arg(completedSteps_)
             .arg(QString::fromStdString(event.message)));
+    } else if (event.stage == "OPERATOR") {
+        const auto found = event.data.find("target_resistance_ohm");
+        const QString target = found == event.data.end()
+            ? QStringLiteral("—") : QString::fromStdString(found->second);
+        progress_->setFormat(QStringLiteral(
+            "РУЧНОЙ ЭТАП: установите Р4831 на %1 Ом и подтвердите значение")
+            .arg(target));
     } else if (event.stage == "MEASUREMENT") {
         const auto value = [&event](const char* key) -> QString {
             const auto found = event.data.find(key);
@@ -1123,7 +1144,8 @@ void TestPage::setRunEvent(const orbita::stand::RunEvent& event)
 }
 
 void TestPage::setRunResult(const orbita::stand::ScenarioRunResult& result,
-                            const QString& reportPath)
+                            const QString& tuReportPath,
+                            const QString& productionReportPath)
 {
     runInProgress_ = false;
     resultTable_->setRowCount(0);
@@ -1142,6 +1164,10 @@ void TestPage::setRunResult(const orbita::stand::ScenarioRunResult& result,
             };
             const bool ytp = !attribute("ytp_channel").isEmpty();
             const bool yalk = !ytp && !attribute("ulk_address").isEmpty();
+            // The large table is the production channel sheet.  Power,
+            // cleanup and calibration summaries remain visible in the stage
+            // table and in the concise TU protocol.
+            if (!ytp && !yalk) continue;
             QStringList values;
             if (selectedTestCode() == QStringLiteral("ULK_COMBINED_CHECK")) {
                 values = ytp ? QStringList{
@@ -1164,8 +1190,7 @@ void TestPage::setRunResult(const orbita::stand::ScenarioRunResult& result,
                     acceptanceText(measurement.verdict)};
             } else values = ytp ? QStringList{
                 attribute("ytp_channel"),
-                QString::fromStdString(measurement.title.empty()
-                    ? measurement.parameterKey : measurement.title),
+                attribute("actual_reference_ohm") + QStringLiteral(" Ом"),
                 attribute("target_resistance_ohm"), attribute("raw"),
                 attribute("calibration_zero_raw"), attribute("calibration_full_raw"),
                 attribute("actual_reference_ohm"), attribute("measured_resistance_ohm"),
@@ -1269,11 +1294,14 @@ void TestPage::setRunResult(const orbita::stand::ScenarioRunResult& result,
     progress_->setRange(0, 100);
     progress_->setValue(100);
     progress_->setFormat(QStringLiteral("Проверка завершена: %1").arg(verdict));
-    if (!reportPath.isEmpty()) {
-        reportPath_ = reportPath;
-        reportButton_->setEnabled(true);
-        diagnosticLabel_->setText(QStringLiteral("Отчёт: %1").arg(reportPath));
-        diagnosticLabel_->setToolTip(reportPath);
+    if (!tuReportPath.isEmpty()) {
+        tuReportPath_ = tuReportPath;
+        productionReportPath_ = productionReportPath;
+        tuReportButton_->setEnabled(true);
+        productionReportButton_->setEnabled(!productionReportPath_.isEmpty());
+        diagnosticLabel_->setText(QStringLiteral("Протокол ТУ: %1\nВедомость каналов: %2")
+            .arg(tuReportPath_, productionReportPath_));
+        diagnosticLabel_->setToolTip(tuReportPath_);
     }
     updateStartAvailability();
 }

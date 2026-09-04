@@ -122,7 +122,8 @@ devices:
       - power.dc_supply
     # 01.09.2026 один АКИП-1160/6 аппаратно идентифицирован на COM15.
     # Назначение второго источника ипБИ добавляется через port_bi после *IDN?.
-    # Активное включение остаётся заблокированным до проверки силовой схемы.
+    # 04.09.2026 подтверждено: источник питает УБСИ; новый прогон должен
+    # восстановить 27 В после обязательного OUTP OFF предыдущего прогона.
     config:
       port: COM15
       baud: 115200
@@ -132,7 +133,7 @@ devices:
       current_limit_is_total: true
       max_voltage_v: 60
       max_current_a: 10
-      device.active_commands_confirmed: false
+      device.active_commands_confirmed: true
   - id: generator
     plugin: orbita.rigol_generator
     bind:

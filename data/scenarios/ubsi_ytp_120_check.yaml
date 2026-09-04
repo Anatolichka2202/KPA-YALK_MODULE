@@ -9,6 +9,20 @@ state: published
 # Рабочий одноточечный контроль для стенда, на котором Р4831 постоянно
 # установлен на 120 Ом. Это не заменяет полную проверку диапазона 0..240 Ом.
 steps:
+  - id: supply_status
+    title: Включение и контроль питания УБСИ перед проверкой
+    tu: 1.1.4.3, 1.1.4.5 · контрольный прогон
+    procedure: ubsi.supply_status
+    requires:
+      - power.dc_supply
+    args:
+      nominal_voltage_v: 27
+      minimum_voltage_v: 24
+      maximum_voltage_v: 35
+      maximum_current_a: 0.4
+      startup_current_limit_a: 0.6
+      startup_settle_ms: 500
+
   - id: ytp_stream
     title: Активный запуск ROKT и запись сырого потока ЯТП
     tu: 5.6 / ЯТП · контроль 120 Ом
@@ -66,3 +80,10 @@ steps:
     args:
       isd_switch_type: 7
       isd_route_channels: 3,9,12,17
+
+  - id: power_off
+    title: Отключение питания УБСИ после проверки
+    tu: безопасное завершение контрольного прогона
+    procedure: ubsi.power_safe_off
+    requires:
+      - power.dc_supply

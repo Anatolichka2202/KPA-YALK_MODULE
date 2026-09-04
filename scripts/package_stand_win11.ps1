@@ -53,8 +53,12 @@ foreach ($name in $runtimeFiles) {
     }
 }
 
-$deliveryReadme = Join-Path $PSScriptRoot '..\docs\30_ПОСТАВКА_УЛК_МИНИМУМ.md'
-Copy-Item -LiteralPath $deliveryReadme -Destination (Join-Path $packageRoot 'README_УЛК.md')
+$deliveryReadme = Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot '..\docs') -Filter '30_*.md' |
+    Select-Object -First 1 -ExpandProperty FullName
+if (-not $deliveryReadme) {
+    throw "Delivery README 30_*.md not found"
+}
+Copy-Item -LiteralPath $deliveryReadme -Destination (Join-Path $packageRoot 'README_UBSI.md')
 
 $standRuntime = Join-Path $buildRoot 'stand'
 $diagnosticFiles = @(
@@ -99,7 +103,8 @@ New-Item -ItemType Directory -Path $pluginTarget -Force | Out-Null
 $pluginAllowList = @(
     'orbita_plugin_ktma_adapter_udp.dll',
     'orbita_plugin_isd_http.dll',
-    'orbita_plugin_v7_visa.dll'
+    'orbita_plugin_v7_visa.dll',
+    'orbita_plugin_akip_1160.dll'
 )
 foreach ($name in $pluginAllowList) {
     $source = Join-Path $pluginSource $name
@@ -119,7 +124,7 @@ if ($LASTEXITCODE -ne 0) {
 
 Compress-Archive -LiteralPath $packageRoot -DestinationPath $archivePath -CompressionLevel Optimal
 $hash = Get-FileHash -LiteralPath $archivePath -Algorithm SHA256
-$hashLine = '{0}  {1}' -f $hash.Hash.ToLowerInvariant(), (Split-Path -Leaf $archivePath)
+$hashLine = "{0}  {1}" -f $hash.Hash.ToLowerInvariant(), (Split-Path -Leaf $archivePath)
 Set-Content -LiteralPath "$archivePath.sha256.txt" -Value $hashLine -Encoding utf8
 
 [pscustomobject]@{

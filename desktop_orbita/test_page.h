@@ -41,7 +41,8 @@ public:
     void setRunInProgress(bool running, const QString& stage = {});
     void setRunEvent(const orbita::stand::RunEvent& event);
     void setRunResult(const orbita::stand::ScenarioRunResult& result,
-                      const QString& reportPath = {});
+                      const QString& tuReportPath = {},
+                      const QString& productionReportPath = {});
     QString currentScenarioCode() const;
 
 signals:
@@ -97,7 +98,8 @@ private:
     QPushButton* startButton_ = nullptr;
     QPushButton* stopButton_ = nullptr;
     QPushButton* detailsButton_ = nullptr;
-    QPushButton* reportButton_ = nullptr;
+    QPushButton* tuReportButton_ = nullptr;
+    QPushButton* productionReportButton_ = nullptr;
     QLineEdit* serialEdit_ = nullptr;
     QCheckBox* partialCheck_ = nullptr;
     TestPlotWidget* plot_ = nullptr;
@@ -111,5 +113,6 @@ private:
     bool runInProgress_ = false;
     bool engineerMode_ = false;
     int completedSteps_ = 0;
-    QString reportPath_;
+    QString tuReportPath_;
+    QString productionReportPath_;
 };

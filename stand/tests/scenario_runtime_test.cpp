@@ -46,6 +46,34 @@ public:
         if (capability == "ulk.parameter_source" && operation == "start_record") {
             return "status=ok\npath=fake/frames.ulkbin\n";
         }
+        if (capability == "ulk.parameter_source" && operation == "start_prepared_yalk_reference") {
+            return "status=ready\nfirst_sequence=1\n";
+        }
+        if (capability == "ulk.parameter_source" && operation == "stats") {
+            return "status=ready\nlast_sequence=1\n";
+        }
+        if (capability == "stand.switch_matrix" && operation == "yalk_set_voltage") {
+            currentVoltage = std::stod(arguments.at("volts"));
+            return "status=ready\n";
+        }
+        if (capability == "stand.switch_matrix" && operation == "yalk_output_off") {
+            currentVoltage = 0.0;
+            return "status=ready\n";
+        }
+        if (capability == "measure.reference_voltage") {
+            const double reference = currentVoltage == 6.2 ? 6.145 : currentVoltage;
+            return "status=ready\nvolts=" + std::to_string(reference) + "\n";
+        }
+        if (capability == "ulk.parameter_source" && operation == "read_channel") {
+            const unsigned address = static_cast<unsigned>(std::stoul(arguments.at("ulk_address")));
+            const double reference = currentVoltage == 6.2 ? 6.145 : currentVoltage;
+            const double code = address == 97 ? 125.0 : address == 99 ? 925.0
+                : 125.0 + reference / 6.2 * 800.0;
+            return "status=ready\nraw_mean=" + std::to_string(code)
+                + "\nanalog_code_mean=" + std::to_string(code)
+                + "\nsignal=" + std::string(currentVoltage >= 6.2 ? "1" : "0")
+                + "\nsample_count=16\nfirst_sequence=2\nlast_sequence=17\n";
+        }
         if (capability == "ulk.parameter_source" && operation == "await_ytp_rokt") {
             return "status=ready\nprotocol=rokt_ytp68\nvalid_word_count=32\n"
                    "invalid_word_count=0\nfirst_sequence=1\n";
@@ -61,6 +89,15 @@ public:
         if (capability == "catalog.parameter_resolver" && operation == "resolve") {
             const std::string group = arguments.at("parameter_group");
             const unsigned index = static_cast<unsigned>(std::stoul(arguments.at("channel_index")));
+            if (group.rfind("yalk_", 0) == 0) {
+                const unsigned locator = group == "yalk_calibration_zero" ? 97
+                    : group == "yalk_calibration_full" ? 99 : index + 1;
+                return "source=ulk.parameter_source\nlocator_type=ulk_address\nlocator="
+                    + std::to_string(locator)
+                    + "\nstream_id=\nword_index=" + std::to_string(locator - 1)
+                    + "\nmask=1023\nshift=0\nmode=0\nconversion_id=\n"
+                      "stimulus_route=yalk_analog\nstimulus_offset=0\nconfirmed=true\n";
+            }
             const unsigned locator = group == "ytp_temperature" ? index + 1
                 : (group == "ytp_calibration_zero" ? 32 : 31);
             return "source=ulk.parameter_source\nlocator_type=ulk_address\nlocator="
@@ -74,6 +111,18 @@ public:
             return "status=confirmed\nvalue=" + std::to_string(currentResistance)
                 + "\noperator=test\ntimestamp=2026-09-02T12:00:00\n";
         }
+        if (capability == "power.dc_supply" && operation == "read_state") {
+            return "status=ready\nvolts=" + std::string(supplyOutputEnabled ? "27.0" : "0.0")
+                + "\namperes=" + std::string(supplyOutputEnabled ? "0.2" : "0.0")
+                + "\noutput_enabled=" + (supplyOutputEnabled ? "true" : "false") + "\n";
+        }
+        if (capability == "power.dc_supply" && operation == "output") {
+            supplyOutputEnabled = arguments.at("enabled") == "true";
+            if (supplyOutputEnabled) ++supplyEnableCount;
+            else ++supplyDisableCount;
+            return std::string("status=ok\noutput_enabled=")
+                + (supplyOutputEnabled ? "true\n" : "false\n");
+        }
         return "status=ready\n";
     }
     void safeStopAll() noexcept override { stopped = true; }
@@ -81,6 +130,10 @@ public:
     std::vector<std::string> operations;
     bool stopped = false;
     double currentResistance = 120.0;
+    double currentVoltage = 0.0;
+    bool supplyOutputEnabled = true;
+    unsigned supplyEnableCount = 0;
+    unsigned supplyDisableCount = 0;
 };
 
 ScenarioDefinition smallScenario()
@@ -180,14 +233,14 @@ void configurationAndCatalog(const QString& root)
             "BSI diagnostic scenario must be published as a non-acceptance procedure");
     require(engine.validate(ytpScenario).empty(), "Standalone YTP scenario must validate");
     require(ytpScenario.publicationState == PublicationState::Published
-                && ytpScenario.steps.size() == 4,
-            "YTP must be a published four-stage manual-reference scenario");
-    require(engine.validate(ytp120).empty() && ytp120.steps.size() == 4,
+                && ytpScenario.steps.size() == 6,
+            "YTP must be a published six-stage powered manual-reference scenario");
+    require(engine.validate(ytp120).empty() && ytp120.steps.size() == 6,
             "Fixed 120-ohm YTP scenario must validate");
-    require(engine.validate(combined).empty() && combined.steps.size() == 8,
-            "Combined YALK/YTP delivery scenario must validate as eight stages");
-    require(profile.id == "ktma-main" && !profile.activeOutputsConfirmed,
-            "Default stand profile must keep active outputs locked");
+    require(engine.validate(combined).empty() && combined.steps.size() == 10,
+            "Combined powered YALK/YTP delivery scenario must validate as ten stages");
+    require(profile.id == "ktma-main" && profile.activeOutputsConfirmed,
+            "Verified stand profile must allow the captured active commands");
     require(profile.routes.at("yalk_analog.base") == "1"
                 && profile.routes.at("yalk_analog.safe") == "off"
                 && profile.routes.count("ytp_channel.base") == 0,
@@ -268,8 +321,8 @@ void configurationAndCatalog(const QString& root)
     require(yvp.source == "orbita.parameter_source"
                 && yvp.locator == "M16P1A11B21T21",
             "YVP must resolve to an Orbita address from catalog");
-    require(!yalk.confirmed && ytp.confirmed && !yvp.confirmed,
-            "Only live-confirmed bindings may allow acceptance OK");
+    require(yalk.confirmed && ytp.confirmed && !yvp.confirmed,
+            "Live-confirmed YALK/YTP bindings must allow acceptance OK");
 
     FakeEquipment diagnosticEquipment;
     diagnosticEquipment.capabilities.insert("orbita.parameter_source");
@@ -281,7 +334,7 @@ void configurationAndCatalog(const QString& root)
     FakeEquipment ytpEquipment;
     ytpEquipment.capabilities = {
         "ulk.parameter_source", "stand.switch_matrix",
-        "catalog.parameter_resolver", "operator.manual_input"};
+        "catalog.parameter_resolver", "operator.manual_input", "power.dc_supply"};
     const auto ytpRun = engine.run(
         ytpScenario, ytpEquipment, profile.version, "", false);
     require(ytpRun.verdict == RunVerdict::Ok,
@@ -297,6 +350,15 @@ void configurationAndCatalog(const QString& root)
     require(std::count(ytpEquipment.operations.begin(), ytpEquipment.operations.end(),
                 "stand.switch_matrix:switch") == 8,
             "YTP must enable and disable the four captured ISD type-7 routes");
+    require(!ytpEquipment.supplyOutputEnabled,
+            "YTP scenario must switch the AKIP output off after the test");
+    const auto repeatedYtpRun = engine.run(
+        ytpScenario, ytpEquipment, profile.version, "", false);
+    require(repeatedYtpRun.verdict == RunVerdict::Ok
+                && ytpEquipment.supplyEnableCount == 1
+                && ytpEquipment.supplyDisableCount >= 2
+                && !ytpEquipment.supplyOutputEnabled,
+            "A repeated YTP run must restore AKIP output and switch it off again");
 }
 
 void builtinCapabilityBinding()
@@ -316,6 +378,49 @@ void builtinCapabilityBinding()
             "Built-in capability did not receive invocation");
     registry.safeStopAll();
     require(stopped, "Built-in capability did not receive safe stop");
+}
+
+void productionYalkScaleRegression()
+{
+    ScenarioEngine engine;
+    registerUbsiProcedures(engine);
+    ScenarioDefinition scenario;
+    scenario.id = "yalk-regression";
+    scenario.title = "YALK scale regression";
+    scenario.version = "1";
+    scenario.catalogVersion = "1";
+    scenario.objectType = "UBSI_468157_002";
+    scenario.publicationState = PublicationState::Published;
+    scenario.steps = {
+        {"stream", "Поток", "5.6", "yalk.start_stream",
+         {"ulk.parameter_source", "stand.switch_matrix"},
+         {{"configure_settle_ms", "1"}, {"timeout_ms", "10"}}, {}},
+        {"cal", "Калибровка", "5.6", "yalk.read_calibration",
+         {"catalog.parameter_resolver", "ulk.parameter_source", "stand.switch_matrix",
+          "measure.reference_voltage"},
+         {{"channel_count", "1"}, {"sample_count", "1"}, {"settle_ms", "1"},
+          {"full_voltage", "6.2"}}, {}},
+        {"channels", "Канал", "5.6", "yalk.check_channels",
+         {"catalog.parameter_resolver", "ulk.parameter_source", "stand.switch_matrix",
+          "measure.reference_voltage"},
+         {{"channel_count", "1"}, {"point_volts", "0,3.1,6.2"},
+          {"sample_count", "1"}, {"settle_ms", "1"}, {"channel_off_settle_ms", "1"},
+          {"full_scale_v", "6.2"}, {"tolerance_percent_fs", "0.5"}}, {}}
+    };
+    FakeEquipment equipment;
+    equipment.capabilities = {"ulk.parameter_source", "stand.switch_matrix",
+        "catalog.parameter_resolver", "measure.reference_voltage"};
+    const auto run = engine.run(scenario, equipment, "p1", "", false);
+    if (run.verdict != RunVerdict::Ok) {
+        for (const auto& step : run.steps) {
+            std::cerr << step.nodeId << ": " << toString(step.verdict) << " " << step.message << '\n';
+            for (const auto& item : step.measurements)
+                std::cerr << "  " << item.title << ": " << item.measured << " vs "
+                          << item.reference << " => " << toString(item.verdict) << '\n';
+        }
+    }
+    require(run.verdict == RunVerdict::Ok,
+        "YALK 97/99 conversion must use the nominal 6.2 V scale, not the V7 calibration reading");
 }
 
 void waveformDecoder()
@@ -367,8 +472,15 @@ void persistenceAndReport()
     RunStore store(QDir(temporary.path()).filePath(QStringLiteral("runs.db")).toUtf8().toStdString());
     store.save(run);
     const auto report = writeHtmlCsvReport(run, temporary.path().toUtf8().toStdString());
-    require(QFile::exists(QString::fromUtf8(report.html)) && QFile::exists(QString::fromUtf8(report.csv)),
-            "HTML/CSV report was not created");
+    require(QFile::exists(QString::fromUtf8(report.html))
+                && QFile::exists(QString::fromUtf8(report.productionHtml))
+                && QFile::exists(QString::fromUtf8(report.csv)),
+            "TU HTML, production HTML and CSV reports were not created");
+    QFile html(QString::fromUtf8(report.html));
+    require(html.open(QIODevice::ReadOnly), "Cannot open HTML report");
+    const auto htmlText = html.readAll();
+    require(htmlText.contains("НЕ НОРМА") && htmlText.contains("Измерений не в норме"),
+            "TU report must use the operator-facing НОРМА / НЕ НОРМА wording and counts");
 
     ScenarioRunResult ytpRun = run;
     ytpRun.runId = "ytp-run-1";
@@ -405,6 +517,7 @@ int main(int argc, char** argv)
         engineSemantics();
         configurationAndCatalog(QStringLiteral(ORBITA_SOURCE_DIR));
         builtinCapabilityBinding();
+        productionYalkScaleRegression();
         waveformDecoder();
         pluginContracts();
         persistenceAndReport();

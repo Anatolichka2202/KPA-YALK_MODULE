@@ -149,7 +149,7 @@ bindings:
     stimulus_route: yalk_analog
     stimulus_offset_base: 0
     stimulus_offset_from_locator: true
-    confirmed: false
+    confirmed: true
   - block_type: UBSI_468157_002
     slot: yalk_96
     parameter_group: yalk_signal
@@ -163,7 +163,7 @@ bindings:
     count: 80
     mask: 0x0400
     shift: 10
-    confirmed: false
+    confirmed: true
   - block_type: UBSI_468157_002
     slot: yalk_96
     parameter_group: yalk_calibration_zero
@@ -174,7 +174,7 @@ bindings:
     address_offset: 0
     count: 1
     mask: 0x03FF
-    confirmed: false
+    confirmed: true
   - block_type: UBSI_468157_002
     slot: yalk_96
     parameter_group: yalk_calibration_full
@@ -186,7 +186,7 @@ bindings:
     count: 1
     mask: 0x03FF
     conversion: yalk_two_point_6v2
-    confirmed: false
+    confirmed: true
   - block_type: UBSI_468157_002
     slot: yalk_96
     parameter_group: yalk_reference_supply

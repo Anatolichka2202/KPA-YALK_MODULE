@@ -6,6 +6,7 @@
 #include <QTableWidget>
 
 #include <cstdlib>
+#include <cmath>
 #include <iostream>
 
 namespace {
@@ -45,16 +46,16 @@ int main(int argc, char** argv)
     require(object->count() == 1, "delivery UI must contain only ULK");
     require(scope->count() == 3, "delivery UI must contain YTP, YALK and combined mode");
     require(scope->currentData() == QStringLiteral("ЯТП"),
-            "fixed 120-ohm YTP check must be initially selected");
-    require(test->currentData() == QStringLiteral("YTP_120_CHECK"),
-            "120-ohm YTP check must be the initial procedure");
-    require(page.currentScenarioCode() == QStringLiteral("YTP_120_CHECK"),
+            "YTP must be initially selected");
+    require(test->currentData() == QStringLiteral("YTP_FULL_5_6"),
+            "full three-point YTP check must be the initial procedure");
+    require(page.currentScenarioCode() == QStringLiteral("YTP_FULL_5_6"),
             "scenario editor must follow the selected delivery procedure");
     require(page.styleSheet().contains(QStringLiteral("background:#14171c"))
                 && !page.styleSheet().contains(QStringLiteral("background:#f7f9fc")),
             "delivery test page must use the dark theme");
-    require(rowByName(equipment, QStringLiteral("АКИП")) < 0,
-            "AKIP must not be present in the minimal delivery UI");
+    require(rowByName(equipment, QStringLiteral("АКИП")) >= 0,
+            "AKIP voltage/current status must be present in the TU delivery UI");
     require(rowByName(equipment, QStringLiteral("Rigol")) < 0,
             "Rigol must not be present in the minimal delivery UI");
     require(!equipment->isRowHidden(rowByName(equipment, QStringLiteral("Адаптер УЛК"))),
@@ -75,7 +76,7 @@ int main(int argc, char** argv)
     require(equipment->isRowHidden(rowByName(equipment, QStringLiteral("Р4831"))),
             "YALK must hide the YTP resistance store");
 
-    page.setScenarioInfo(QStringLiteral("ULK_COMBINED_CHECK"), true, true,
+    page.setScenarioInfo(QStringLiteral("ULK_COMBINED_CHECK"), true, false,
         {QStringLiteral("RS485"), QStringLiteral("ISD"),
          QStringLiteral("V7"), QStringLiteral("R4831")}, QStringLiteral("ready"));
     scope->setCurrentIndex(scope->findData(QStringLiteral("УЛК+ЯТП")));
@@ -112,12 +113,45 @@ int main(int argc, char** argv)
         !screenshot.isEmpty()) {
         mode->setCurrentIndex(0);
         scope->setCurrentIndex(scope->findData(QStringLiteral("ЯТП")));
-        test->setCurrentIndex(test->findData(QStringLiteral("YTP_120_CHECK")));
+        test->setCurrentIndex(test->findData(QStringLiteral("YTP_FULL_5_6")));
         page.setEquipmentStatus(QStringLiteral("RS485"), true,
             QStringLiteral("ROKT / UDP 192.168.0.115:1113"));
         page.setEquipmentStatus(QStringLiteral("ISD"), true,
             QStringLiteral("HTTP 192.168.0.101"));
         page.setEngineerMode(false);
+        orbita::stand::ScenarioRunResult preview;
+        preview.runId = "preview";
+        preview.scenarioId = "ubsi.468157.002.ytp.tu5_6";
+        preview.verdict = orbita::stand::RunVerdict::Ok;
+        orbita::stand::StepRunResult channels;
+        channels.title = "Проверка 30 каналов ЯТП";
+        channels.verdict = orbita::stand::RunVerdict::Ok;
+        for (int channel = 1; channel <= 30; ++channel) {
+            for (const double point : {0.0, 120.0, 240.0}) {
+                const double measured = point + (channel % 5 - 2) * 0.08;
+                orbita::stand::MeasurementResult value;
+                value.title = "ЯТП канал " + std::to_string(channel);
+                value.reference = point;
+                value.measured = measured;
+                value.unit = "Ом";
+                value.verdict = orbita::stand::RunVerdict::Ok;
+                value.attributes = {
+                    {"ytp_channel", std::to_string(channel)},
+                    {"target_resistance_ohm", std::to_string(point)},
+                    {"actual_reference_ohm", std::to_string(point)},
+                    {"raw", std::to_string(330 + int(point / 240.0 * 3670))},
+                    {"calibration_zero_raw", "330"}, {"calibration_full_raw", "4000"},
+                    {"measured_resistance_ohm", std::to_string(measured)},
+                    {"absolute_error_ohm", std::to_string(std::abs(measured - point))},
+                    {"reduced_error_percent", std::to_string((measured - point) / 2.4)},
+                    {"sample_count", "16"}, {"temperature_mode", "0"},
+                    {"value_samples", std::to_string(measured - 0.03) + ","
+                        + std::to_string(measured) + "," + std::to_string(measured + 0.03)}};
+                channels.measurements.push_back(std::move(value));
+            }
+        }
+        preview.steps.push_back(std::move(channels));
+        page.setRunResult(preview);
         page.resize(1664, 935);
         page.show();
         QApplication::processEvents();

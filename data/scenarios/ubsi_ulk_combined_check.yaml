@@ -1,21 +1,34 @@
 schema: 1
 id: ubsi.468157.002.ulk.combined.check
-title: УЛК · совмещённая проверка ЯЛК-96 и ЯТП при 120 Ом
+title: УЛК · совмещённая проверка ЯЛК-96 и ЯТП по ТУ 5.6
 version: 1.0.0
 catalog_version: 2026.08.29-yalk-1
 object_type: UBSI_468157_002
 state: published
 
-# Один отчёт: полный маршрут ЯЛК, затем одноточечный контроль ЯТП при
-# постоянно установленном на общем X123 магазине 120 Ом.
+# Один отчёт: полный маршрут ЯЛК, затем три ручные точки ЯТП. Магазин
+# подключён к общему X123 и переключается оператором на 0 / 120 / 240 Ом.
 steps:
+  - id: supply_status
+    title: Включение и контроль питания УБСИ перед проверкой
+    tu: 1.1.4.3, 1.1.4.5
+    procedure: ubsi.supply_status
+    requires:
+      - power.dc_supply
+    args:
+      nominal_voltage_v: 27
+      minimum_voltage_v: 24
+      maximum_voltage_v: 35
+      maximum_current_a: 0.4
+      startup_current_limit_a: 0.6
+      startup_settle_ms: 500
+
   - id: yalk_stream
     title: Запуск потока ЯЛК
     tu: 5.6 / ЯЛК
     procedure: yalk.start_stream
     requires:
       - ulk.parameter_source
-      - stand.switch_matrix
       - stand.switch_matrix
     args:
       configure_settle_ms: 500
@@ -35,7 +48,6 @@ steps:
       sample_count: 16
       settle_ms: 150
       full_voltage: 6.2
-      commissioning: true
 
   - id: yalk_channels
     title: Проверка 80 адресов ЯЛК
@@ -54,19 +66,25 @@ steps:
       channel_off_settle_ms: 1000
       full_scale_v: 6.2
       tolerance_percent_fs: 0.5
-      commissioning: true
 
   - id: yalk_cleanup
-    title: Сброс ЯЛК
+    title: Сброс ЯЛК и контроль отсутствия воздействия
     tu: 5.6 / ЯЛК · завершение
     procedure: yalk.safe_cleanup
     requires:
       - ulk.parameter_source
       - stand.switch_matrix
+      - catalog.parameter_resolver
+      - measure.reference_voltage
+    args:
+      channel_count: 80
+      maximum_residual_voltage_v: 0.2
+      settle_ms: 300
+      retry_settle_ms: 500
 
   - id: ytp_stream
     title: Перевод адаптера в режим ЯТП
-    tu: 5.6 / ЯТП · контроль 120 Ом
+    tu: 5.6 / ЯТП
     procedure: ytp.start_stream
     requires:
       - ulk.parameter_source
@@ -93,8 +111,8 @@ steps:
       sample_count: 16
 
   - id: ytp_channels
-    title: Проверка 30 каналов ЯТП при 120 Ом
-    tu: 1.1.4.1, 1.1.4.6, 1.1.4.14 · одна контрольная точка
+    title: Проверка 30 каналов ЯТП в точках 0 / 120 / 240 Ом
+    tu: 1.1.4.1, 1.1.4.6, 1.1.4.14
     procedure: ytp.check_channels
     requires:
       - catalog.parameter_resolver
@@ -103,7 +121,7 @@ steps:
     args:
       channel_count: 30
       parameter_group: ytp_temperature
-      resistance_points_ohm: 120
+      resistance_points_ohm: 0,120,240
       full_scale_ohm: 240
       tolerance_percent_fs: 0.5
       sample_count: 16
@@ -121,3 +139,10 @@ steps:
     args:
       isd_switch_type: 7
       isd_route_channels: 3,9,12,17
+
+  - id: power_off
+    title: Отключение питания УБСИ после проверки
+    tu: 5.6 / безопасное завершение
+    procedure: ubsi.power_safe_off
+    requires:
+      - power.dc_supply
