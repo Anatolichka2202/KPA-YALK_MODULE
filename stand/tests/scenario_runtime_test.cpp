@@ -74,6 +74,15 @@ public:
                 + "\nsignal=" + std::string(currentVoltage >= 6.2 ? "1" : "0")
                 + "\nsample_count=16\nfirst_sequence=2\nlast_sequence=17\n";
         }
+        if (capability == "ulk.parameter_source" && operation == "read_snapshot") {
+            std::string words;
+            for (unsigned index = 0; index < 100; ++index) {
+                if (index) words += ',';
+                words += std::to_string(500u + index);
+            }
+            return "status=ready\nsequence=" + std::to_string(++snapshotSequence)
+                + "\nwords=" + words + "\n";
+        }
         if (capability == "ulk.parameter_source" && operation == "await_ytp_rokt") {
             return "status=ready\nprotocol=rokt_ytp68\nvalid_word_count=32\n"
                    "invalid_word_count=0\nfirst_sequence=1\n";
@@ -134,6 +143,7 @@ public:
     bool supplyOutputEnabled = true;
     unsigned supplyEnableCount = 0;
     unsigned supplyDisableCount = 0;
+    unsigned snapshotSequence = 20;
 };
 
 ScenarioDefinition smallScenario()
@@ -237,8 +247,8 @@ void configurationAndCatalog(const QString& root)
             "YTP must be a published six-stage powered manual-reference scenario");
     require(engine.validate(ytp120).empty() && ytp120.steps.size() == 6,
             "Fixed 120-ohm YTP scenario must validate");
-    require(engine.validate(combined).empty() && combined.steps.size() == 10,
-            "Combined powered YALK/YTP delivery scenario must validate as ten stages");
+    require(engine.validate(combined).empty() && combined.steps.size() == 12,
+            "Combined powered YALK/YTP delivery scenario must validate as twelve stages");
     require(profile.id == "ktma-main" && profile.activeOutputsConfirmed,
             "Verified stand profile must allow the captured active commands");
     require(profile.routes.at("yalk_analog.base") == "1"
@@ -423,6 +433,45 @@ void productionYalkScaleRegression()
         "YALK 97/99 conversion must use the nominal 6.2 V scale, not the V7 calibration reading");
 }
 
+void yalkOverloadSequenceRegression()
+{
+    ScenarioEngine engine;
+    registerUbsiProcedures(engine);
+    ScenarioDefinition scenario;
+    scenario.id = "yalk-overload-regression";
+    scenario.title = "YALK overload sequence regression";
+    scenario.version = "1";
+    scenario.catalogVersion = "1";
+    scenario.objectType = "UBSI_468157_002";
+    scenario.publicationState = PublicationState::Published;
+    scenario.steps = {
+        {"stream", "Поток", "5.6", "yalk.start_stream",
+         {"ulk.parameter_source", "stand.switch_matrix"},
+         {{"configure_settle_ms", "1"}, {"timeout_ms", "10"}}, {}},
+        {"cal", "Калибровка", "5.6", "yalk.read_calibration",
+         {"catalog.parameter_resolver", "ulk.parameter_source", "stand.switch_matrix",
+          "measure.reference_voltage"},
+         {{"channel_count", "1"}, {"sample_count", "1"}, {"settle_ms", "1"},
+          {"full_voltage", "6.2"}}, {}},
+        {"overload", "Перегрузка", "1.1.4.10", "yalk.check_overload",
+         {"ulk.parameter_source", "stand.switch_matrix"},
+         {{"mapping_confirmed", "true"}, {"physical_channel_count", "2"},
+          {"observed_address_count", "2"}, {"sample_count", "1"},
+          {"baseline_settle_ms", "1"}, {"settle_ms", "1"},
+          {"full_scale_v", "6.2"}, {"tolerance_percent_fs", "0.5"}}, {}}
+    };
+    FakeEquipment equipment;
+    equipment.capabilities = {"ulk.parameter_source", "stand.switch_matrix",
+        "catalog.parameter_resolver", "measure.reference_voltage"};
+    const auto run = engine.run(scenario, equipment, "p1", "", false);
+    require(run.verdict == RunVerdict::Ok && run.steps.size() == 3
+                && run.steps.back().measurements.size() == 4,
+            "YALK overload must test both polarities for every physical channel");
+    require(std::count(equipment.operations.begin(), equipment.operations.end(),
+                "ulk.parameter_source:read_snapshot") == 5,
+            "YALK overload must save one baseline and read one fresh snapshot per impact");
+}
+
 void waveformDecoder()
 {
     const std::string preamble = "1,0,2,1,0.001,0,0,0.01,0,32768";
@@ -518,6 +567,7 @@ int main(int argc, char** argv)
         configurationAndCatalog(QStringLiteral(ORBITA_SOURCE_DIR));
         builtinCapabilityBinding();
         productionYalkScaleRegression();
+        yalkOverloadSequenceRegression();
         waveformDecoder();
         pluginContracts();
         persistenceAndReport();

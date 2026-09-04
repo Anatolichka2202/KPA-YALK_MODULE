@@ -693,7 +693,8 @@ ProcedureResult yalkCheckInitial(const ScenarioNode& node, ProcedureContext& con
     ProcedureResult result{RunVerdict::Ok, "Проверено исходное отключённое состояние ЯЛК", {}};
     context.equipment.invoke("stand.switch_matrix", "full_reset", {});
     unsigned sequence = ulkLastSequence(context);
-    \
+    const double fullScale = number(node, "full_scale_v", 6.2);
+    const double tolerance = fullScale * number(node, "tolerance_percent_fs", 0.5) / 100.0;
     for (unsigned channel = 0; channel < count; ++channel) {
         const auto binding = resolveLogicalBinding(context, "yalk_voltage", channel);
         const unsigned address = static_cast<unsigned>(std::stoul(binding.locator));
@@ -702,11 +703,12 @@ ProcedureResult yalkCheckInitial(const ScenarioNode& node, ProcedureContext& con
         sequence = reading.lastSequence;
         const double volts = yalkCodeToVolts(reading.code, context);
         auto analog = measurement("ubsi.yalk.initial." + binding.locator,
-            "ЯЛК адрес " + binding.locator + ": исходный аналоговый код",
-            0.0, reading.code, 0.0, 0.0, "код");
+            "ЯЛК адрес " + binding.locator + ": обрыв, аналоговый вход",
+            0.0, volts, -tolerance, tolerance, "В");
         analog.attributes = {{"ulk_address", binding.locator},
                              {"raw", std::to_string(reading.raw)},
                              {"analog_code", std::to_string(reading.code)},
+                             {"yalk_v", std::to_string(volts)},
                              {"signal", reading.signal ? "1" : "0"}};
         append(result, std::move(analog));
         append(result, measurement("ubsi.yalk.initial.signal." + binding.locator,
@@ -805,18 +807,185 @@ ProcedureResult yalkCheckChannels(const ScenarioNode& node, ProcedureContext& co
     return result;
 }
 
-ProcedureResult yalkCheckOverload(const ScenarioNode& node, ProcedureContext&)
+struct YalkSnapshotValue {
+    double code = 0.0;
+    bool signal = false;
+};
+
+std::vector<unsigned> commaSeparatedUnsigned(const std::string& text)
+{
+    std::vector<unsigned> result;
+    std::stringstream stream(text);
+    std::string item;
+    while (std::getline(stream, item, ',')) {
+        if (!item.empty()) result.push_back(static_cast<unsigned>(std::stoul(item)));
+    }
+    return result;
+}
+
+std::vector<YalkSnapshotValue> readYalkSnapshot(
+    ProcedureContext& context, unsigned sampleCount, unsigned& sequence)
+{
+    std::vector<double> codeSums(100, 0.0);
+    std::vector<unsigned> signalOnes(100, 0);
+    for (unsigned sample = 0; sample < std::max(1u, sampleCount); ++sample) {
+        const auto response = context.equipment.invoke("ulk.parameter_source", "read_snapshot", {
+            {"after_sequence", std::to_string(sequence)}, {"timeout_ms", "3000"}});
+        const auto values = responseValues(response);
+        const auto iterator = values.find("words");
+        if (iterator == values.end()) throw std::runtime_error("Адаптер не вернул снимок ЯЛК");
+        const auto words = commaSeparatedUnsigned(iterator->second);
+        if (words.size() < 100) throw std::runtime_error("В снимке ЯЛК меньше 100 слов");
+        sequence = responseUnsigned(response, "sequence");
+        for (std::size_t index = 0; index < 100; ++index) {
+            codeSums[index] += words[index] & 0x03FFu;
+            if ((words[index] & 0x0400u) != 0) ++signalOnes[index];
+        }
+    }
+    std::vector<YalkSnapshotValue> result(100);
+    const unsigned samples = std::max(1u, sampleCount);
+    for (std::size_t index = 0; index < result.size(); ++index) {
+        result[index].code = codeSums[index] / samples;
+        result[index].signal = signalOnes[index] * 2 >= samples;
+    }
+    return result;
+}
+
+ProcedureResult yalkCheckOverload(const ScenarioNode& node, ProcedureContext& context)
 {
     if (argument(node, "mapping_confirmed", "false") != "true") {
         return {RunVerdict::Incomplete,
             "Маршруты обрыва и ±12 В ещё не подтверждены на УБСИ; опасное воздействие не выполнялось", {}};
     }
-    return {RunVerdict::Incomplete,
-        "Алгоритм перегрузки разрешён профилем, но аппаратная карта поканальной коммутации ещё не зафиксирована", {}};
+
+    // Буквальный перенос 10_ЯЛК_перегрузки.scn: создаётся пилообразный фон
+    // на физических каналах ИСД 1..88, сохраняется весь кадр ЯЛК, затем
+    // маршруты 96 (+12 В) и 95 (-12 В) поочерёдно подключаются к каждому
+    // каналу. Проверяются все остальные слова, как в исходном -кромеN.
+    const unsigned physicalCount = natural(node, "physical_channel_count", 88);
+    const unsigned observedCount = natural(node, "observed_address_count", 88);
+    const unsigned samples = natural(node, "sample_count", 4);
+    const unsigned settle = natural(node, "settle_ms", 150);
+    const double fullScale = number(node, "full_scale_v", 6.2);
+    const double tolerancePercent = number(node, "tolerance_percent_fs", 0.5);
+    const double toleranceVolts = fullScale * tolerancePercent / 100.0;
+    const std::string positiveRoute = argument(
+        node, "positive_overload_route", "yalk_overload_positive");
+    const std::string negativeRoute = argument(
+        node, "negative_overload_route", "yalk_overload_negative");
+
+    auto analogCode = [](unsigned channel) {
+        return channel <= 10 ? 780u + (channel - 1) * 30u
+                             : 1800u + (channel - 11) * 20u;
+    };
+    auto setAnalog = [&context](unsigned channel, unsigned code, bool enabled) {
+        context.equipment.invoke("stand.switch_matrix", "analog", {
+            {"channel", std::to_string(channel)}, {"code", std::to_string(code)},
+            {"enabled", enabled ? "true" : "false"}});
+    };
+    auto setSwitch = [&context](const std::map<std::string, std::string>& args) {
+        context.equipment.invoke("stand.switch_matrix", "switch", args);
+    };
+    auto sourceOff = [&]() {
+        for (const auto& route : {positiveRoute, negativeRoute}) {
+            try { setSwitch({{"route", route}, {"enabled", "false"}}); } catch (...) {}
+        }
+    };
+
+    ProcedureResult result{RunVerdict::Ok,
+        "Проверена устойчивость остальных каналов ЯЛК при перегрузке ±12 В", {}};
+    context.equipment.invoke("stand.switch_matrix", "full_reset", {});
+    try {
+        for (unsigned channel = 1; channel <= physicalCount; ++channel) {
+            setAnalog(channel, analogCode(channel), true);
+        }
+        wait(context, natural(node, "baseline_settle_ms", 1000));
+        unsigned sequence = ulkLastSequence(context);
+        const auto baseline = readYalkSnapshot(context, samples, sequence);
+
+        for (const auto& polarity : std::vector<std::pair<std::string, std::string>>{
+                 {positiveRoute, "+12 В"}, {negativeRoute, "-12 В"}}) {
+            setSwitch({{"route", polarity.first}, {"enabled", "true"}});
+            for (unsigned target = 1; target <= physicalCount; ++target) {
+                bool targetConnected = false;
+                try {
+                    setAnalog(target, 0, false);
+                    setSwitch({{"channel", std::to_string(target)}, {"enabled", "true"}});
+                    targetConnected = true;
+                    wait(context, settle);
+                    const auto current = readYalkSnapshot(context, samples, sequence);
+
+                    double maximumDelta = 0.0;
+                    std::vector<unsigned> analogFailures;
+                    std::vector<unsigned> signalFailures;
+                    for (unsigned address = 1;
+                         address <= std::min<unsigned>(observedCount, current.size()); ++address) {
+                        if (address == target) continue;
+                        const double baselineVolts = yalkCodeToVolts(baseline[address - 1].code, context);
+                        const double currentVolts = yalkCodeToVolts(current[address - 1].code, context);
+                        const double delta = std::abs(currentVolts - baselineVolts);
+                        maximumDelta = std::max(maximumDelta, delta);
+                        if (delta > toleranceVolts) analogFailures.push_back(address);
+                        if (current[address - 1].signal != baseline[address - 1].signal) {
+                            signalFailures.push_back(address);
+                        }
+                    }
+                    auto value = measurement(
+                        "ubsi.yalk.overload." + polarity.first + "." + std::to_string(target),
+                        "ЯЛК канал " + std::to_string(target) + ", перегрузка " + polarity.second,
+                        0.0, maximumDelta, 0.0, toleranceVolts, "В");
+                    auto join = [](const std::vector<unsigned>& items) {
+                        std::ostringstream out;
+                        for (std::size_t index = 0; index < items.size(); ++index) {
+                            if (index) out << ',';
+                            out << items[index];
+                        }
+                        return out.str();
+                    };
+                    value.attributes = {{"overload", polarity.second},
+                        {"target_isd_channel", std::to_string(target)},
+                        {"maximum_delta_v", std::to_string(maximumDelta)},
+                        {"tolerance_percent_fs", std::to_string(tolerancePercent)},
+                        {"analog_failure_addresses", join(analogFailures)},
+                        {"signal_failure_addresses", join(signalFailures)}};
+                    if (!signalFailures.empty()) {
+                        value.verdict = RunVerdict::Fail;
+                        value.message = "Изменились сигнальные признаки остальных каналов";
+                    }
+                    append(result, std::move(value));
+                    setSwitch({{"channel", std::to_string(target)}, {"enabled", "false"}});
+                    targetConnected = false;
+                    setAnalog(target, analogCode(target), true);
+                } catch (...) {
+                    if (targetConnected) {
+                        try { setSwitch({{"channel", std::to_string(target)}, {"enabled", "false"}}); }
+                        catch (...) {}
+                    }
+                    try { setAnalog(target, analogCode(target), true); } catch (...) {}
+                    throw;
+                }
+            }
+            setSwitch({{"route", polarity.first}, {"enabled", "false"}});
+        }
+        sourceOff();
+        context.equipment.invoke("stand.switch_matrix", "full_reset", {});
+    } catch (...) {
+        sourceOff();
+        try { context.equipment.invoke("stand.switch_matrix", "full_reset", {}); } catch (...) {}
+        throw;
+    }
+    return result;
 }
 
 ProcedureResult yalkSafeCleanup(const ScenarioNode& node, ProcedureContext& context)
 {
+    for (const auto& route : {std::string("yalk_overload_positive"),
+                              std::string("yalk_overload_negative")}) {
+        try {
+            context.equipment.invoke("stand.switch_matrix", "switch", {
+                {"route", route}, {"enabled", "false"}});
+        } catch (...) {}
+    }
     context.equipment.invoke("stand.switch_matrix", "full_reset", {});
     wait(context, natural(node, "settle_ms", 300));
     double residual = readReferenceVoltage(context);

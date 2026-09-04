@@ -49,6 +49,20 @@ steps:
       settle_ms: 150
       full_voltage: 6.2
 
+  - id: yalk_initial
+    title: Обрыв и исходное отключённое состояние 80 адресов ЯЛК
+    tu: 1.1.4.1, 1.1.4.10
+    procedure: yalk.check_initial_state
+    requires:
+      - catalog.parameter_resolver
+      - ulk.parameter_source
+      - stand.switch_matrix
+    args:
+      channel_count: 80
+      sample_count: 4
+      full_scale_v: 6.2
+      tolerance_percent_fs: 0.5
+
   - id: yalk_channels
     title: Проверка 80 адресов ЯЛК
     tu: 1.1.4.1, 1.1.4.14
@@ -64,6 +78,25 @@ steps:
       sample_count: 16
       settle_ms: 150
       channel_off_settle_ms: 1000
+      full_scale_v: 6.2
+      tolerance_percent_fs: 0.5
+
+  - id: yalk_overload
+    title: Устойчивость остальных каналов при перегрузке ±12 В
+    tu: 1.1.4.10, 1.1.4.11
+    procedure: yalk.check_overload
+    requires:
+      - ulk.parameter_source
+      - stand.switch_matrix
+    args:
+      mapping_confirmed: true
+      physical_channel_count: 88
+      observed_address_count: 88
+      positive_overload_route: yalk_overload_positive
+      negative_overload_route: yalk_overload_negative
+      sample_count: 4
+      baseline_settle_ms: 1000
+      settle_ms: 150
       full_scale_v: 6.2
       tolerance_percent_fs: 0.5
 

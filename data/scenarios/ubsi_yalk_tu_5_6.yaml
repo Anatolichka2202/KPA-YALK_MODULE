@@ -79,6 +79,25 @@ steps:
       full_scale_v: 6.2
       tolerance_percent_fs: 0.5
 
+  - id: yalk_overload
+    title: Устойчивость остальных каналов при перегрузке ±12 В
+    tu: 1.1.4.10, 1.1.4.11
+    procedure: yalk.check_overload
+    requires:
+      - ulk.parameter_source
+      - stand.switch_matrix
+    args:
+      mapping_confirmed: true
+      physical_channel_count: 88
+      observed_address_count: 88
+      positive_overload_route: yalk_overload_positive
+      negative_overload_route: yalk_overload_negative
+      sample_count: 4
+      baseline_settle_ms: 1000
+      settle_ms: 150
+      full_scale_v: 6.2
+      tolerance_percent_fs: 0.5
+
   - id: yalk_cleanup
     title: Безопасный сброс ЯЛК и контроль отсутствия воздействия
     tu: 5.6 / завершение проверки
