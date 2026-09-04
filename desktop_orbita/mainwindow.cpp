@@ -17,6 +17,7 @@
 #include <QSettings>
 #include <QFileInfo>
 #include <QSet>
+#include <QEventLoop>
 #include <QtConcurrent/QtConcurrentRun>
 #include <sstream>
 #include <algorithm>
@@ -810,19 +811,12 @@ void MainWindow::onCheckTestEquipment()
                      << "\n";
             return response.str();
         });
-    testPage_->setEquipmentChecking("E20", QStringLiteral("Проверка E20-10 и активного набора Орбиты…"));
-    const bool orbitaReady = e20Available_ && !currentSpecs_.empty();
-    if (orbitaReady) {
-        equipmentRegistry_->bind("orbita.parameter_source",
-            [this](const std::string& operation,
-                   const std::map<std::string, std::string>& arguments) {
-                return invokeOrbitaParameterSource(operation, arguments);
-            });
-    }
     QApplication::setOverrideCursor(Qt::WaitCursor);
-    for (const auto& definition : standProfile_.devices) {
+    const auto checkDevice = [this, &uiCodes, &deliveryEquipment, &activeCapabilities](
+                                 const orbita::stand::DeviceProfile& definition,
+                                 bool armSupply) {
         const QString code = uiCodes.value(QString::fromStdString(definition.pluginId));
-        if (!deliveryEquipment.contains(code)) continue;
+        if (!deliveryEquipment.contains(code)) return;
         if (!definition.enabled) {
             const auto reason = definition.configuration.find("disabled_reason");
             const QString detail = reason == definition.configuration.end()
@@ -831,9 +825,13 @@ void MainWindow::onCheckTestEquipment()
             if (!code.isEmpty()) testPage_->setEquipmentStatus(code, false, detail);
             log(QStringLiteral("%1: %2")
                 .arg(QString::fromStdString(definition.id), detail));
-            continue;
+            return;
         }
-        if (!code.isEmpty()) testPage_->setEquipmentChecking(code, QStringLiteral("Загрузка DLL и безопасный probe…"));
+        if (!code.isEmpty()) {
+            testPage_->setEquipmentChecking(code, armSupply
+                ? QStringLiteral("Подключение АКИП и включение питания УБСИ 27 В…")
+                : QStringLiteral("Загрузка DLL и проверка связи…"));
+        }
         try {
             auto config = definition.configuration;
             config["record_root"] = QDir(QCoreApplication::applicationDirPath())
@@ -862,8 +860,20 @@ void MainWindow::onCheckTestEquipment()
                 equipmentRegistry_->bind(capability, device);
             }
             equipmentDevices_.push_back(device);
+            std::string finalResponse = response;
+            if (armSupply) {
+                // Адаптер УБСИ питается от этого источника. Мастер готовности
+                // обязан включить питание до сетевой проверки адаптера.
+                device->invoke("power.dc_supply", "set_current_limit", {{"amperes", "0.6"}});
+                device->invoke("power.dc_supply", "set_voltage", {{"volts", "27.0"}});
+                device->invoke("power.dc_supply", "output", {{"enabled", "true"}});
+                finalResponse = device->invoke("power.dc_supply", "read_state", {});
+                if (finalResponse.find("output_enabled=true") == std::string::npos) {
+                    throw std::runtime_error("АКИП не подтвердил включение питания УБСИ");
+                }
+            }
             const bool ready = passiveReady && !activeBlocked;
-            QString detail = QString::fromStdString(response).trimmed();
+            QString detail = QString::fromStdString(finalResponse).trimmed();
             if (activeBlocked) detail += QStringLiteral(
                 "; активные воздействия заблокированы профилем до подтверждения схемы");
             if (!code.isEmpty()) testPage_->setEquipmentStatus(code, ready, detail);
@@ -874,6 +884,40 @@ void MainWindow::onCheckTestEquipment()
             log(QStringLiteral("%1 не готов: %2")
                 .arg(QString::fromStdString(definition.id), detail));
         }
+    };
+
+    // 1. Сначала включаем питание УБСИ. Предыдущий safeStop освобождает COM и
+    // гарантирует известное состояние, но новый экземпляр АКИП сразу заново
+    // задаёт 27 В / 0,6 А и включает выход.
+    for (const auto& definition : standProfile_.devices) {
+        if (definition.pluginId == "orbita.akip_1160_pair") checkDevice(definition, true);
+    }
+
+    // 2. Проверяем остальное оборудование, не зависящее от запуска UDP-потока.
+    testPage_->setEquipmentChecking("E20", QStringLiteral("Проверка E20-10 и активного набора Орбиты…"));
+    const bool orbitaReady = e20Available_ && !currentSpecs_.empty();
+    if (orbitaReady) {
+        equipmentRegistry_->bind("orbita.parameter_source",
+            [this](const std::string& operation,
+                   const std::map<std::string, std::string>& arguments) {
+                return invokeOrbitaParameterSource(operation, arguments);
+            });
+    }
+    for (const auto& definition : standProfile_.devices) {
+        if (definition.pluginId == "orbita.akip_1160_pair"
+            || definition.pluginId == "orbita.ktma_adapter_udp") continue;
+        checkDevice(definition, false);
+    }
+
+    // 3. После включения питания адаптеру требуется время на загрузку.
+    testPage_->setEquipmentChecking("RS485",
+        QStringLiteral("Питание включено; ожидание запуска адаптера 3 с…"));
+    log(QStringLiteral("АКИП включён; выдержка 3 с перед проверкой адаптера УЛК"));
+    QEventLoop startupDelay;
+    QTimer::singleShot(3000, &startupDelay, &QEventLoop::quit);
+    startupDelay.exec(QEventLoop::ExcludeUserInputEvents);
+    for (const auto& definition : standProfile_.devices) {
+        if (definition.pluginId == "orbita.ktma_adapter_udp") checkDevice(definition, false);
     }
     QApplication::restoreOverrideCursor();
     testPage_->setEquipmentStatus("E20", orbitaReady,

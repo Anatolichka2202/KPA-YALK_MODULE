@@ -48,8 +48,8 @@ steps:
       full_voltage: 6.2
 
   - id: yalk_initial
-    title: Исходное отключённое состояние 80 адресов ЯЛК
-    tu: 1.1.4.1
+    title: Обрыв и исходное отключённое состояние 80 входов ЯЛК
+    tu: 1.1.4.10
     procedure: yalk.check_initial_state
     requires:
       - catalog.parameter_resolver
@@ -62,7 +62,7 @@ steps:
       tolerance_percent_fs: 0.5
 
   - id: yalk_channels
-    title: Аналоговые значения и сигнальные признаки ЯЛК
+    title: Аналоговые и контактные сигналы ЯЛК в состояниях 0 и 1
     tu: 1.1.4.1, 1.1.4.14
     procedure: yalk.check_channels
     requires:
@@ -87,7 +87,9 @@ steps:
       - ulk.parameter_source
       - stand.switch_matrix
     args:
-      mapping_confirmed: true
+      # Живой прогон 04.09.2026 показал: прямой type=1 допускает num 1..64.
+      # Карта команд для физических каналов 65..88 пока не подтверждена.
+      mapping_confirmed: false
       physical_channel_count: 88
       observed_address_count: 88
       positive_overload_route: yalk_overload_positive

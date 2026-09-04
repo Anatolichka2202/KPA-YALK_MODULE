@@ -67,11 +67,12 @@ public:
         if (capability == "ulk.parameter_source" && operation == "read_channel") {
             const unsigned address = static_cast<unsigned>(std::stoul(arguments.at("ulk_address")));
             const double reference = currentVoltage == 6.2 ? 6.145 : currentVoltage;
-            const double code = address == 97 ? 125.0 : address == 99 ? 925.0
+            const bool open = forceOpenReading && address < 97 && currentVoltage == 0.0;
+            const double code = open ? 0.0 : address == 97 ? 125.0 : address == 99 ? 925.0
                 : 125.0 + reference / 6.2 * 800.0;
             return "status=ready\nraw_mean=" + std::to_string(code)
                 + "\nanalog_code_mean=" + std::to_string(code)
-                + "\nsignal=" + std::string(currentVoltage >= 6.2 ? "1" : "0")
+                + "\nsignal=" + std::string(open || currentVoltage >= 6.2 ? "1" : "0")
                 + "\nsample_count=16\nfirst_sequence=2\nlast_sequence=17\n";
         }
         if (capability == "ulk.parameter_source" && operation == "read_snapshot") {
@@ -144,6 +145,7 @@ public:
     unsigned supplyEnableCount = 0;
     unsigned supplyDisableCount = 0;
     unsigned snapshotSequence = 20;
+    bool forceOpenReading = false;
 };
 
 ScenarioDefinition smallScenario()
@@ -431,6 +433,12 @@ void productionYalkScaleRegression()
     }
     require(run.verdict == RunVerdict::Ok,
         "YALK 97/99 conversion must use the nominal 6.2 V scale, not the V7 calibration reading");
+    const auto& channelStep = run.steps.back();
+    require(!channelStep.measurements.empty()
+                && channelStep.measurements.back().parameterKey
+                    == "ubsi.yalk.contacts.coverage"
+                && channelStep.measurements.back().measured == 1.0,
+            "YALK run must report explicit contact-state coverage");
 }
 
 void yalkOverloadSequenceRegression()
@@ -470,6 +478,71 @@ void yalkOverloadSequenceRegression()
     require(std::count(equipment.operations.begin(), equipment.operations.end(),
                 "ulk.parameter_source:read_snapshot") == 5,
             "YALK overload must save one baseline and read one fresh snapshot per impact");
+}
+
+void yalkOpenStateRegression()
+{
+    ScenarioEngine engine;
+    registerUbsiProcedures(engine);
+    ScenarioDefinition scenario;
+    scenario.id = "yalk-open-regression";
+    scenario.title = "YALK open state regression";
+    scenario.version = "1";
+    scenario.catalogVersion = "1";
+    scenario.objectType = "UBSI_468157_002";
+    scenario.publicationState = PublicationState::Published;
+    scenario.steps = {
+        {"stream", "Поток", "5.6", "yalk.start_stream",
+         {"ulk.parameter_source", "stand.switch_matrix"},
+         {{"configure_settle_ms", "1"}, {"timeout_ms", "10"}}, {}},
+        {"cal", "Калибровка", "5.6", "yalk.read_calibration",
+         {"catalog.parameter_resolver", "ulk.parameter_source", "stand.switch_matrix",
+          "measure.reference_voltage"},
+         {{"channel_count", "1"}, {"sample_count", "1"}, {"settle_ms", "1"},
+          {"full_voltage", "6.2"}}, {}},
+        {"initial", "Обрыв", "1.1.4.10", "yalk.check_initial_state",
+         {"catalog.parameter_resolver", "ulk.parameter_source", "stand.switch_matrix"},
+         {{"channel_count", "1"}, {"sample_count", "1"}, {"full_scale_v", "6.2"}}, {}}
+    };
+    FakeEquipment equipment;
+    equipment.forceOpenReading = true;
+    equipment.capabilities = {"ulk.parameter_source", "stand.switch_matrix",
+        "catalog.parameter_resolver", "measure.reference_voltage"};
+    const auto run = engine.run(scenario, equipment, "p1", "", false);
+    require(run.verdict == RunVerdict::Ok && run.steps.back().measurements.size() == 2,
+        "Negative YALK open value with signal=1 must satisfy the TU open-state criterion");
+    require(run.steps.back().measurements.front().measured < 0.0,
+        "YALK open-state regression must exercise a negative calibrated voltage");
+}
+
+void yalkCleanupSignedResidualRegression()
+{
+    ScenarioEngine engine;
+    registerUbsiProcedures(engine);
+    ScenarioDefinition scenario;
+    scenario.id = "yalk-cleanup-signed-residual-regression";
+    scenario.title = "YALK cleanup signed residual regression";
+    scenario.version = "1";
+    scenario.catalogVersion = "1";
+    scenario.objectType = "UBSI_468157_002";
+    scenario.publicationState = PublicationState::Published;
+    scenario.steps = {
+        {"cleanup", "Сброс", "5.6", "yalk.safe_cleanup",
+         {"ulk.parameter_source", "stand.switch_matrix", "measure.reference_voltage"},
+         {{"settle_ms", "1"}, {"retry_settle_ms", "1"},
+          {"maximum_residual_voltage_v", "0.2"}}, {}}
+    };
+    FakeEquipment equipment;
+    equipment.currentVoltage = -0.019;
+    equipment.capabilities = {"ulk.parameter_source", "stand.switch_matrix",
+        "measure.reference_voltage"};
+    const auto run = engine.run(scenario, equipment, "p1", "", false);
+    require(run.verdict == RunVerdict::Ok && run.steps.size() == 1
+                && run.steps.front().measurements.size() == 1,
+            "Signed cleanup residual inside +/- limit must satisfy the TU cleanup check");
+    const auto& residual = run.steps.front().measurements.front();
+    require(residual.lowerLimit == -0.2 && residual.upperLimit == 0.2,
+            "YALK cleanup residual must be checked by absolute magnitude");
 }
 
 void waveformDecoder()
@@ -567,6 +640,8 @@ int main(int argc, char** argv)
         configurationAndCatalog(QStringLiteral(ORBITA_SOURCE_DIR));
         builtinCapabilityBinding();
         productionYalkScaleRegression();
+        yalkOpenStateRegression();
+        yalkCleanupSignedResidualRegression();
         yalkOverloadSequenceRegression();
         waveformDecoder();
         pluginContracts();

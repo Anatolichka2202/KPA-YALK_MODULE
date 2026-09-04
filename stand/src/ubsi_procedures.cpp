@@ -694,7 +694,6 @@ ProcedureResult yalkCheckInitial(const ScenarioNode& node, ProcedureContext& con
     context.equipment.invoke("stand.switch_matrix", "full_reset", {});
     unsigned sequence = ulkLastSequence(context);
     const double fullScale = number(node, "full_scale_v", 6.2);
-    const double tolerance = fullScale * number(node, "tolerance_percent_fs", 0.5) / 100.0;
     for (unsigned channel = 0; channel < count; ++channel) {
         const auto binding = resolveLogicalBinding(context, "yalk_voltage", channel);
         const unsigned address = static_cast<unsigned>(std::stoul(binding.locator));
@@ -704,7 +703,14 @@ ProcedureResult yalkCheckInitial(const ScenarioNode& node, ProcedureContext& con
         const double volts = yalkCodeToVolts(reading.code, context);
         auto analog = measurement("ubsi.yalk.initial." + binding.locator,
             "ЯЛК адрес " + binding.locator + ": обрыв, аналоговый вход",
-            0.0, volts, -tolerance, tolerance, "В");
+            0.0, volts, -fullScale, 0.0, "В");
+        // ТУ задаёт для обрыва не окрестность нуля, а строго отрицательное
+        // значение. На живом ЯЛК это raw=0x0400, analog=0 и около -0,97 В
+        // после калибровки по адресам 97/99.
+        if (!(volts < 0.0)) {
+            analog.verdict = RunVerdict::Fail;
+            analog.message = "При обрыве значение ЯЛК должно быть ниже 0 В";
+        }
         analog.attributes = {{"ulk_address", binding.locator},
                              {"raw", std::to_string(reading.raw)},
                              {"analog_code", std::to_string(reading.code)},
@@ -732,12 +738,15 @@ ProcedureResult yalkCheckChannels(const ScenarioNode& node, ProcedureContext& co
     }
     const double fullScale = number(node, "full_scale_v", 6.2);
     const double tolerance = fullScale * number(node, "tolerance_percent_fs", 0.5) / 100.0;
-    ProcedureResult result{RunVerdict::Ok, "Проверены 80 адресов ЯЛК", {}};
+    ProcedureResult result{RunVerdict::Ok,
+        "Проверены аналоговые значения и контактные сигналы 80 адресов ЯЛК", {}};
+    unsigned contactChannelsPassed = 0;
     for (unsigned channel = 0; channel < count; ++channel) {
         const auto binding = resolveLogicalBinding(context, "yalk_voltage", channel);
         const unsigned address = static_cast<unsigned>(std::stoul(binding.locator));
 
         bool outputEnabled = false;
+        bool contactPassed = true;
         try{
         for (std::size_t point = 0; point < pointVolts.size(); ++point) {
             setYalkVoltage(context, binding, pointVolts[point], true);
@@ -777,18 +786,21 @@ ProcedureResult yalkCheckChannels(const ScenarioNode& node, ProcedureContext& co
             if (point == 0 || point == 2) {
                 const bool expected = point == 2;
                 auto signal = measurement("ubsi.yalk.signal." + binding.locator + "." + std::to_string(point),
-                    "ЯЛК адрес " + binding.locator + ": сигнальный признак",
+                    "ЯЛК адрес " + binding.locator + ": контактный сигнал при "
+                        + std::to_string(pointVolts[point]) + " В",
                     expected ? 1 : 0, reading.signal ? 1 : 0,
                     expected ? 1 : 0, expected ? 1 : 0, "лог.");
                 signal.attributes = {{"ulk_address", binding.locator},
                                      {"command_v", std::to_string(pointVolts[point])},
                                      {"signal", reading.signal ? "1" : "0"}};
+                contactPassed = contactPassed && signal.verdict == RunVerdict::Ok;
                 append(result, std::move(signal));
             }
         }
         setYalkVoltage(context, binding, 0.0, false);
         outputEnabled = false;
         wait(context, natural(node, "channel_off_settle_ms", 1000));
+        if (contactPassed) ++contactChannelsPassed;
         }catch(...)
         {
             if(outputEnabled)
@@ -803,6 +815,16 @@ ProcedureResult yalkCheckChannels(const ScenarioNode& node, ProcedureContext& co
             throw;
         }
     }
+    auto coverage = measurement("ubsi.yalk.contacts.coverage",
+        "Контактные каналы ЯЛК, прошедшие состояния 0 и 1",
+        static_cast<double>(count), static_cast<double>(contactChannelsPassed),
+        static_cast<double>(count), static_cast<double>(count), "каналов");
+    coverage.attributes = {{"required_by_tu_minimum", "30"},
+                           {"tested_channels", std::to_string(count)},
+                           {"passed_channels", std::to_string(contactChannelsPassed)},
+                           {"logic_0_test_voltage_v", std::to_string(pointVolts.front())},
+                           {"logic_1_test_voltage_v", std::to_string(pointVolts.back())}};
+    append(result, std::move(coverage));
     markCommissioning(result, confirmed);
     return result;
 }
@@ -994,7 +1016,7 @@ ProcedureResult yalkSafeCleanup(const ScenarioNode& node, ProcedureContext& cont
     // Some ISD firmware revisions acknowledge type=4 while retaining the last
     // type=5 output.  Only if the voltmeter proves that this happened, repeat
     // the exact two-command output-off sequence for every mapped YALK input.
-    if (!std::isfinite(residual) || residual > maximum) {
+    if (!std::isfinite(residual) || std::abs(residual) > maximum) {
         const unsigned count = natural(node, "channel_count", 80);
         for (unsigned channel = 0; channel < count; ++channel) {
             try {
@@ -1014,7 +1036,7 @@ ProcedureResult yalkSafeCleanup(const ScenarioNode& node, ProcedureContext& cont
     ProcedureResult result{RunVerdict::Ok,
         "ИСД сброшен, остаточное напряжение проверено, поток адаптера остановлен", {}};
     auto value = measurement("ubsi.yalk.cleanup_voltage", "Остаточное напряжение после сброса ЯЛК",
-        0.0, residual, 0.0, maximum, "В");
+        0.0, residual, -maximum, maximum, "В");
     value.attributes = {{"v7_v", std::to_string(residual)},
                         {"cleanup_voltage_v", std::to_string(residual)}};
     append(result, std::move(value));
