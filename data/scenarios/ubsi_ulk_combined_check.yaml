@@ -1,7 +1,7 @@
 schema: 1
 id: ubsi.468157.002.ulk.combined.check
 title: УЛК · совмещённая проверка ЯЛК-96 и ЯТП по ТУ 5.6
-version: 1.0.0
+version: 1.1.0
 catalog_version: 2026.08.29-yalk-1
 object_type: UBSI_468157_002
 state: published
@@ -9,19 +9,36 @@ state: published
 # Один отчёт: полный маршрут ЯЛК, затем три ручные точки ЯТП. Магазин
 # подключён к общему X123 и переключается оператором на 0 / 120 / 240 Ом.
 steps:
-  - id: supply_status
-    title: Включение и контроль питания УБСИ перед проверкой
-    tu: 1.1.4.3, 1.1.4.5
-    procedure: ubsi.supply_status
+  - id: readiness
+    title: Готовность УБСИ после холодного включения не более 30 секунд
+    tu: 1.1.4.4
+    procedure: ubsi.readiness
     requires:
       - power.dc_supply
+      - ulk.parameter_source
     args:
-      nominal_voltage_v: 27
-      minimum_voltage_v: 24
-      maximum_voltage_v: 35
-      maximum_current_a: 0.4
-      startup_current_limit_a: 0.6
-      startup_settle_ms: 500
+      voltage_v: 27
+      current_limit_a: 0.6
+      off_settle_ms: 500
+      timeout_ms: 30000
+
+  - id: supply_range
+    title: Работа при 24 / 27 / 35 В, ток до 400 мА и выдержки 19 / 37 В
+    tu: 1.1.4.3, 1.1.4.5
+    procedure: ubsi.supply_range
+    requires:
+      - power.dc_supply
+      - ulk.parameter_source
+    args:
+      voltage_points_v: 24,27,35
+      current_limit_a: 0.4
+      current_check_voltage_v: 27
+      supply_current_limit_a: 0.6
+      voltage_tolerance_v: 0.5
+      settle_ms: 500
+      survival_points_v: 19,37
+      survival_seconds: 300,60
+      restore_voltage_v: 27
 
   - id: yalk_stream
     title: Запуск потока ЯЛК
@@ -48,6 +65,8 @@ steps:
       sample_count: 16
       settle_ms: 150
       full_voltage: 6.2
+      reference_tolerance_v: 0.03
+      reference_adjust_attempts: 3
 
   - id: yalk_initial
     title: Обрыв и исходное отключённое состояние 80 входов ЯЛК

@@ -15,6 +15,7 @@
 #include <QMenuBar>
 #include <QIcon>
 #include <QSettings>
+#include <QPalette>
 #include <QFileInfo>
 #include <QSet>
 #include <QEventLoop>
@@ -49,6 +50,7 @@ MainWindow::MainWindow(QWidget* parent)
     setupUi();
     setupToolBar();
     setupDockWidgets();
+    applyTheme(false);
 
     // Нижняя строка статуса
     m_statusBarLabel = new QLabel(this);
@@ -373,6 +375,7 @@ void MainWindow::setupToolBar()
     accessModeCombo_->setObjectName(QStringLiteral("accessMode"));
     accessModeCombo_->addItem(QStringLiteral("Оператор"), false);
     accessModeCombo_->addItem(QStringLiteral("Инженер"), true);
+    accessModeCombo_->addItem(QStringLiteral("Администратор"), true);
     accessModeCombo_->setToolTip(QStringLiteral(
         "Инженерный режим открывает сырые параметры, конфигурацию и редактор сценариев"));
     toolbar->addWidget(accessModeCombo_);
@@ -542,7 +545,7 @@ void MainWindow::setupToolBar()
     connect(testPage_, &TestPage::stopRequested,
             this, &MainWindow::onStopScenario);
     connect(accessModeCombo_, QOverload<int>::of(&QComboBox::currentIndexChanged),
-            this, [this](int index) { setEngineerMode(index == 1); });
+            this, [this](int index) { setEngineerMode(index > 0); });
     auto* engineerShortcut = new QAction(this);
     engineerShortcut->setShortcut(QKeySequence(Qt::Key_F12));
     engineerShortcut->setShortcutContext(Qt::ApplicationShortcut);
@@ -551,11 +554,51 @@ void MainWindow::setupToolBar()
         accessModeCombo_->setCurrentIndex(accessModeCombo_->currentIndex() == 0 ? 1 : 0);
     });
 
+    themeAction_ = menuBar()->addAction(QStringLiteral("Светлая тема"));
+    themeAction_->setCheckable(true);
+    themeAction_->setToolTip(QStringLiteral("Переключить тёмную операторскую и светлую инженерскую тему"));
+    connect(themeAction_, &QAction::toggled, this, [this](bool light) { applyTheme(light); });
+
     // --- Подключаем config combo ---
     connect(configCombo_, QOverload<int>::of(&QComboBox::activated), this, [this](int i) {
         if (i > 0) applyConfiguration(configCombo_->itemText(i));
     });
     setEngineerMode(false);
+}
+
+void MainWindow::applyTheme(bool light)
+{
+    lightTheme_ = light;
+    QPalette palette = QApplication::palette();
+    if (light) {
+        palette.setColor(QPalette::Window, QColor("#f3f5f7"));
+        palette.setColor(QPalette::Base, QColor("#ffffff"));
+        palette.setColor(QPalette::AlternateBase, QColor("#e9edf2"));
+        palette.setColor(QPalette::Text, QColor("#1b2430"));
+        palette.setColor(QPalette::WindowText, QColor("#1b2430"));
+        palette.setColor(QPalette::Button, QColor("#e6ebf0"));
+        palette.setColor(QPalette::ButtonText, QColor("#1b2430"));
+        palette.setColor(QPalette::Highlight, QColor("#2f6fed"));
+        palette.setColor(QPalette::HighlightedText, QColor("#ffffff"));
+        if (themeAction_) themeAction_->setText(QStringLiteral("Тёмная тема"));
+    } else {
+        palette.setColor(QPalette::Window, QColor("#14171c"));
+        palette.setColor(QPalette::Base, QColor("#0e1115"));
+        palette.setColor(QPalette::AlternateBase, QColor("#1b1f26"));
+        palette.setColor(QPalette::Text, QColor("#dfe6ee"));
+        palette.setColor(QPalette::WindowText, QColor("#dfe6ee"));
+        palette.setColor(QPalette::Button, QColor("#202631"));
+        palette.setColor(QPalette::ButtonText, QColor("#dfe6ee"));
+        palette.setColor(QPalette::Highlight, QColor("#2f6fed"));
+        palette.setColor(QPalette::HighlightedText, QColor("#ffffff"));
+        if (themeAction_) themeAction_->setText(QStringLiteral("Светлая тема"));
+    }
+    QApplication::setPalette(palette);
+}
+
+void MainWindow::toggleTheme()
+{
+    applyTheme(!lightTheme_);
 }
 
 // ----------------------------------------------------------------------------
@@ -619,6 +662,8 @@ void MainWindow::initializeStandRuntime()
             QStringLiteral("Сценарий УБСИ не загружен"));
         testPage_->setScenarioInfo("YALK_FULL_5_6", false, false, {},
             QStringLiteral("Сценарий ЯЛК не загружен"));
+        testPage_->setScenarioInfo("YALK_CONTACT_THRESHOLDS", false, false, {},
+            QStringLiteral("Опциональный сценарий контактных порогов не загружен"));
         testPage_->setScenarioInfo("YTP_FULL_5_6", false, false, {},
             QStringLiteral("Сценарий ЯТП не загружен"));
         testPage_->setScenarioInfo("YTP_120_CHECK", false, true, {},
@@ -638,6 +683,8 @@ void MainWindow::initializeStandRuntime()
                 code = QStringLiteral("UBSI_NORMAL_5_6");
             } else if (scenario.id == "ubsi.468157.002.yalk.tu5_6") {
                 code = QStringLiteral("YALK_FULL_5_6");
+            } else if (scenario.id == "ubsi.468157.002.yalk.contact_thresholds") {
+                code = QStringLiteral("YALK_CONTACT_THRESHOLDS");
             } else if (scenario.id == "ubsi.468157.002.ytp.tu5_6") {
                 code = QStringLiteral("YTP_FULL_5_6");
             } else if (scenario.id == "ubsi.468157.002.ytp.120ohm.check") {
@@ -688,6 +735,7 @@ void MainWindow::initializeStandRuntime()
             testPage_->setScenarioInfo(code, available, diagnostic, required, detail);
         }
         if (!scenarios_.contains(QStringLiteral("YALK_FULL_5_6"))
+            || !scenarios_.contains(QStringLiteral("YALK_CONTACT_THRESHOLDS"))
             || !scenarios_.contains(QStringLiteral("YTP_FULL_5_6"))
             || !scenarios_.contains(QStringLiteral("YTP_120_CHECK"))
             || !scenarios_.contains(QStringLiteral("ULK_COMBINED_CHECK"))) {
@@ -1006,6 +1054,7 @@ void MainWindow::onRunScenario(
     }
     const auto scenario = iterator.value();
     if (scenarioCode != QStringLiteral("YALK_FULL_5_6")
+        && scenarioCode != QStringLiteral("YALK_CONTACT_THRESHOLDS")
         && scenarioCode != QStringLiteral("YTP_FULL_5_6")
         && scenarioCode != QStringLiteral("YTP_120_CHECK")
         && scenarioCode != QStringLiteral("ULK_COMBINED_CHECK")

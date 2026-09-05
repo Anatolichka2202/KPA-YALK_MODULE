@@ -376,6 +376,14 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
     runOptions->addWidget(serialEdit_);
     runOptions->addSpacing(16);
     runOptions->addWidget(partialCheck_);
+    contactThresholdCheck_ = new QCheckBox(
+        QStringLiteral("Опция ЯЛК: пороги контактов 1,0 / 2,4 В"));
+    contactThresholdCheck_->setObjectName(QStringLiteral("contactThresholdOption"));
+    contactThresholdCheck_->setToolTip(QStringLiteral(
+        "Запускает отдельную проверку всех 80 адресов; не входит в обязательный прогон УБСИ"));
+    contactThresholdCheck_->setVisible(false);
+    runOptions->addSpacing(16);
+    runOptions->addWidget(contactThresholdCheck_);
     runOptions->addStretch(1);
     root->addLayout(runOptions);
 
@@ -554,6 +562,14 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
             QDesktopServices::openUrl(QUrl::fromLocalFile(productionReportPath_));
     });
     connect(partialCheck_, &QCheckBox::toggled, this, &TestPage::updateStartAvailability);
+    connect(contactThresholdCheck_, &QCheckBox::toggled, this, [this](bool enabled) {
+        if (selectedScopeCode() != QStringLiteral("ЯЛК-96")) return;
+        const QString code = enabled
+            ? QStringLiteral("YALK_CONTACT_THRESHOLDS")
+            : QStringLiteral("YALK_FULL_5_6");
+        const int index = testCombo_->findData(code);
+        if (index >= 0) testCombo_->setCurrentIndex(index);
+    });
     connect(objectCombo_, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &TestPage::rebuildScopes);
     connect(scopeCombo_, QOverload<int>::of(&QComboBox::currentIndexChanged),
@@ -631,6 +647,8 @@ void TestPage::rebuildTests()
     if (selectedScopeCode() == QStringLiteral("ЯЛК-96")) {
         testCombo_->addItem(QStringLiteral("Полная проверка ЯЛК · 80 адресов · ТУ 5.6"),
                             QStringLiteral("YALK_FULL_5_6"));
+        testCombo_->addItem(QStringLiteral("Опция · контактные пороги 1,0 / 2,4 В"),
+                            QStringLiteral("YALK_CONTACT_THRESHOLDS"));
     } else if (selectedScopeCode() == QStringLiteral("ЯТП")) {
         testCombo_->addItem(QStringLiteral("Полная проверка ЯТП · 0 / 120 / 240 Ом"),
                             QStringLiteral("YTP_FULL_5_6"));
@@ -640,7 +658,15 @@ void TestPage::rebuildTests()
         testCombo_->addItem(QStringLiteral("Совмещённая проверка ЯЛК + ЯТП · ТУ 5.6"),
                             QStringLiteral("ULK_COMBINED_CHECK"));
     }
-    const int oldIndex = testCombo_->findData(previous);
+    const bool yalkScope = selectedScopeCode() == QStringLiteral("ЯЛК-96");
+    contactThresholdCheck_->setVisible(yalkScope);
+    if (!yalkScope) {
+        const QSignalBlocker blocker(contactThresholdCheck_);
+        contactThresholdCheck_->setChecked(false);
+    }
+    const QString requested = yalkScope && contactThresholdCheck_->isChecked()
+        ? QStringLiteral("YALK_CONTACT_THRESHOLDS") : previous;
+    const int oldIndex = testCombo_->findData(requested);
     testCombo_->setCurrentIndex(oldIndex >= 0 ? oldIndex : 0);
     testCombo_->blockSignals(false);
     updateSelectionSummary();
@@ -661,6 +687,9 @@ void TestPage::updateSelectionSummary()
         scopeLabel_->setText(object == QStringLiteral("BSI")
             ? QStringLiteral("Полный сценарий ЯЛК в этом релизе предназначен для УБСИ, а не для БСИ.")
             : QStringLiteral("ЯЛК-96 УБСИ: ИСД задаёт 0 / 3,1 / 6,2 В, В7 измеряет эталон, адаптер УЛК читает 16 свежих кадров. Орбита и E20 не участвуют."));
+    } else if (test == QStringLiteral("YALK_CONTACT_THRESHOLDS")) {
+        scopeLabel_->setText(QStringLiteral(
+            "Опциональная проверка контактных порогов ЯЛК-96: для каждого из 80 адресов ИСД задаёт 1,0 и 2,4 В, В7 подтверждает фактическое воздействие, поток адаптера должен показать соответственно 0 и 1."));
     } else if (test == QStringLiteral("YTP_120_CHECK")) {
         scopeLabel_->setText(QStringLiteral(
             "Быстрый контроль: Р4831 остаётся на 120 Ом, оператор подтверждает фактическое значение один раз, затем проверяются все 30 каналов. Результаты каналов оцениваются по ±1,2 Ом; общий итог помечается НЕПОЛНАЯ, потому что крайние точки диапазона не проверялись."));
@@ -669,9 +698,9 @@ void TestPage::updateSelectionSummary()
             "ЯТП УБСИ: магазин Р4831 подключён к общему X123. Оператор вручную выставляет 0 / 120 / 240 Ом и вводит фактическое значение; ЯТП сама опрашивает 30 каналов, адаптер читает 16 свежих кадров. ИСД, Орбита и E20 не участвуют."));
     } else if (test == QStringLiteral("ULK_COMBINED_CHECK")) {
         scopeLabel_->setText(QStringLiteral(
-            "Проверяемый объём ТУ: питание и ток АКИП, ЯЛК по 80 адресам, затем ЯТП по 30 каналам. "
-            "ЯВП-8 зачтена по отдельному производственному контролю. Контакты, обрыв и ±12 В "
-            "будут включены после подтверждения безопасной карты ИСД. Формируются краткий протокол ТУ и ведомость каналов."));
+            "Проверяемый объём ТУ: холодная готовность до 30 с; питание 24 / 27 / 35 В и ток до 400 мА; "
+            "выдержки 19 В — 5 минут и 37 В — 1 минута; ЯЛК по 80 адресам, обрыв и ±12 В; затем ЯТП по 30 каналам. "
+            "ЯВП-8 зачтена по производственному контролю. Формируются краткий протокол ТУ и ведомость каналов."));
     } else {
         scopeLabel_->setText(QStringLiteral("%1 · %2: диагностический прогон проверяет наличие источника данных, адресной привязки и стабильной выборки. Он не выдаётся за приёмочное испытание по ТУ.")
             .arg(object == QStringLiteral("BSI") ? QStringLiteral("БСИ") : QStringLiteral("УБСИ № 7"), scope));
@@ -690,12 +719,17 @@ void TestPage::updateSelectionSummary()
             quick120 ? QStringLiteral("Каналы ЯТП 1…30 при 120 Ом")
                      : QStringLiteral("Каналы ЯТП 1…30; точки 0 · 120 · 240 Ом"),
             QStringLiteral("— Р4831"), QStringLiteral("— ЯТП"));
+    } else if (test == QStringLiteral("YALK_CONTACT_THRESHOLDS")) {
+        plot_->configure(0.8, 2.6, QStringLiteral("2,6 В"), QStringLiteral("0,8 В"),
+            QStringLiteral("Контактные пороги ЯЛК; точки 1,0 · 2,4 В"),
+            QStringLiteral("— В7-78/1"), QStringLiteral("— ЯЛК"));
     } else {
         plot_->configure(-0.1, 6.3, QStringLiteral("6,3 В"), QStringLiteral("−0,1 В"),
             QStringLiteral("Адреса ЯЛК 1…80; точки 0 · 3,1 · 6,2 В"),
             QStringLiteral("— В7-78/1"), QStringLiteral("— ЯЛК"));
     }
     plot_->setVisible(test == QStringLiteral("YALK_FULL_5_6")
+        || test == QStringLiteral("YALK_CONTACT_THRESHOLDS")
         || test == QStringLiteral("ULK_COMBINED_CHECK")
         || ytpPlot || test.endsWith(QStringLiteral("NORMAL_5_6")));
     if (test == QStringLiteral("ULK_COMBINED_CHECK")) {
@@ -820,7 +854,8 @@ void TestPage::setEquipmentChecking(const QString& code, const QString& detail)
 QStringList TestPage::requiredEquipment() const
 {
     const QString test = selectedTestCode();
-    if (test == QStringLiteral("YALK_FULL_5_6")) {
+    if (test == QStringLiteral("YALK_FULL_5_6")
+        || test == QStringLiteral("YALK_CONTACT_THRESHOLDS")) {
         return {"RS485", "ISD", "V7", "AKIP"};
     }
     if (test == QStringLiteral("YTP_FULL_5_6")

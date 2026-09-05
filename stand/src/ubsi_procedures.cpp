@@ -252,24 +252,33 @@ ProcedureResult readiness(const ScenarioNode& node, ProcedureContext& context)
     const double voltage = number(node, "voltage_v", 27.0);
     const double currentLimit = number(node, "current_limit_a", 0.6);
     const unsigned timeoutMs = natural(node, "timeout_ms", 30000);
+    // Готовность измеряется от холодного включения, а не от момента, когда
+    // мастер оборудования уже успел запитать адаптер для самопроверки.
+    context.equipment.invoke("power.dc_supply", "output", {{"enabled", "false"}});
+    wait(context, natural(node, "off_settle_ms", 500));
     // АКИП запоминает прежнюю уставку тока. Ограничение обязательно задаётся
     // текущим сценарием до включения выхода, а не наследуется от ручной работы.
     context.equipment.invoke("power.dc_supply", "set_current_limit", {
         {"amperes", std::to_string(currentLimit)}});
     context.equipment.invoke("power.dc_supply", "set_voltage", {{"volts", std::to_string(voltage)}});
-    context.equipment.invoke("power.dc_supply", "output", {{"enabled", "true"}});
     const auto started = std::chrono::steady_clock::now();
+    context.equipment.invoke("power.dc_supply", "output", {{"enabled", "true"}});
     while (std::chrono::duration_cast<std::chrono::milliseconds>(
                std::chrono::steady_clock::now() - started).count() <= timeoutMs) {
         if (context.stopRequested.load()) throw std::runtime_error("Остановлено оператором");
-        const auto status = responseValues(context.equipment.invoke(
-            "ulk.parameter_source", "alive", {}));
-        if (status.count("status") && status.at("status") == "ready") {
-            const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
-            append(result, measurement("ubsi.ready_time", "Время готовности", 0.0, seconds,
-                                       0.0, timeoutMs / 1000.0, "с"));
-            result.message = "УБСИ вышел на передачу данных";
-            return result;
+        try {
+            const auto status = responseValues(context.equipment.invoke(
+                "ulk.parameter_source", "alive", {}));
+            if (status.count("status") && status.at("status") == "ready") {
+                const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+                append(result, measurement("ubsi.ready_time", "Время готовности", 0.0, seconds,
+                                           0.0, timeoutMs / 1000.0, "с"));
+                result.message = "УБСИ вышел на передачу данных";
+                return result;
+            }
+        } catch (const std::exception&) {
+            // Во время перезапуска адаптер закономерно недоступен. До истечения
+            // нормативных 30 секунд это состояние является ожиданием, не ошибкой.
         }
         wait(context, std::min(250u, timeoutMs));
     }
@@ -346,35 +355,87 @@ ProcedureResult powerSafeOff(const ScenarioNode&, ProcedureContext& context)
 
 ProcedureResult supplyRange(const ScenarioNode& node, ProcedureContext& context)
 {
-    ProcedureResult result{RunVerdict::Ok, "Проверены питание и ток потребления", {}};
+    ProcedureResult result{RunVerdict::Ok,
+        "Проверены работа УБСИ во всём диапазоне питания и предельные выдержки", {}};
     const auto points = numbers(node, "voltage_points_v");
     if (points.empty()) throw std::invalid_argument("Для проверки питания нужны voltage_points_v");
     const unsigned settleMs = natural(node, "settle_ms", 500);
     const double currentLimit = number(node, "current_limit_a", 0.4);
+    const double currentCheckVoltage = number(node, "current_check_voltage_v", 27.0);
+    const double supplyCurrentLimit = number(node, "supply_current_limit_a", 0.6);
+    const double voltageTolerance = number(node, "voltage_tolerance_v", 0.5);
+    const double restoreVoltage = number(node, "restore_voltage_v", 27.0);
     context.equipment.invoke("power.dc_supply", "set_current_limit", {
-        {"amperes", std::to_string(number(node, "supply_current_limit_a", 0.6))}});
-    for (const double voltage : points) {
-        context.equipment.invoke("power.dc_supply", "set_voltage", {{"volts", std::to_string(voltage)}});
-        wait(context, settleMs);
-        const double current = responseNumber(context.equipment.invoke(
-            "power.dc_supply", "read_state", {}), "amperes");
-        append(result, measurement("ubsi.supply_current", "Ток при " + std::to_string(voltage) + " В",
-                                   0.0, current, 0.0, currentLimit, "А"));
-        const auto alive = responseValues(context.equipment.invoke("ulk.parameter_source", "alive", {}));
-        if (!alive.count("status") || alive.at("status") != "ready") {
-            MeasurementResult data = measurement("ubsi.data_alive", "Передача данных", 1, 0, 1, 1, "лог.");
-            append(result, std::move(data));
-        }
-    }
+        {"amperes", std::to_string(supplyCurrentLimit)}});
     const auto survival = numbers(node, "survival_points_v");
     const auto durations = numbers(node, "survival_seconds");
     if (survival.size() != durations.size()) throw std::invalid_argument("survival_points_v и survival_seconds должны совпадать");
-    for (std::size_t index = 0; index < survival.size(); ++index) {
-        context.equipment.invoke("power.dc_supply", "set_voltage", {{"volts", std::to_string(survival[index])}});
-        wait(context, static_cast<unsigned>(durations[index] * 1000.0));
-        const auto alive = responseValues(context.equipment.invoke("ulk.parameter_source", "alive", {}));
-        append(result, measurement("ubsi.survival", "Работа при " + std::to_string(survival[index]) + " В",
-            1, alive.count("status") && alive.at("status") == "ready" ? 1 : 0, 1, 1, "лог."));
+
+    const auto restore = [&]() {
+        context.equipment.invoke("power.dc_supply", "set_voltage", {
+            {"volts", std::to_string(restoreVoltage)}});
+        wait(context, settleMs);
+    };
+    try {
+        context.equipment.invoke("power.dc_supply", "output", {{"enabled", "true"}});
+        for (const double voltage : points) {
+            context.equipment.invoke("power.dc_supply", "set_voltage", {{"volts", std::to_string(voltage)}});
+            wait(context, settleMs);
+            const auto state = context.equipment.invoke("power.dc_supply", "read_state", {});
+            const double actualVoltage = responseNumber(state, "volts");
+            const double current = responseNumber(state, "amperes");
+            auto voltageResult = measurement("ubsi.supply_voltage",
+                "Фактическое питание при уставке " + std::to_string(voltage) + " В",
+                voltage, actualVoltage, voltage - voltageTolerance, voltage + voltageTolerance, "В");
+            voltageResult.attributes = {{"setpoint_v", std::to_string(voltage)},
+                                        {"supply_current_a", std::to_string(current)}};
+            append(result, std::move(voltageResult));
+            auto currentResult = measurement("ubsi.supply_current",
+                "Ток УБСИ при " + std::to_string(voltage) + " В"
+                    + (std::abs(voltage - currentCheckVoltage) < 0.01
+                        ? " (нормируемый)" : " (наблюдение)"),
+                0.0, current, 0.0,
+                std::abs(voltage - currentCheckVoltage) < 0.01 ? currentLimit : supplyCurrentLimit,
+                "А");
+            currentResult.attributes = {{"supply_voltage_v", std::to_string(actualVoltage)},
+                                        {"setpoint_v", std::to_string(voltage)}};
+            append(result, std::move(currentResult));
+            const auto alive = responseValues(context.equipment.invoke("ulk.parameter_source", "alive", {}));
+            auto data = measurement("ubsi.data_alive", "Передача данных при " + std::to_string(voltage) + " В",
+                1, alive.count("status") && alive.at("status") == "ready" ? 1 : 0, 1, 1, "лог.");
+            data.attributes = {{"supply_voltage_v", std::to_string(actualVoltage)},
+                               {"supply_current_a", std::to_string(current)}};
+            append(result, std::move(data));
+        }
+        for (std::size_t index = 0; index < survival.size(); ++index) {
+            context.equipment.invoke("power.dc_supply", "set_voltage", {{"volts", std::to_string(survival[index])}});
+            wait(context, static_cast<unsigned>(durations[index] * 1000.0));
+            const auto state = context.equipment.invoke("power.dc_supply", "read_state", {});
+            const double actualVoltage = responseNumber(state, "volts");
+            const double current = responseNumber(state, "amperes");
+            const auto alive = responseValues(context.equipment.invoke("ulk.parameter_source", "alive", {}));
+            auto heldVoltage = measurement("ubsi.survival_voltage",
+                "Фактическое напряжение выдержки " + std::to_string(survival[index]) + " В",
+                survival[index], actualVoltage,
+                survival[index] - voltageTolerance, survival[index] + voltageTolerance, "В");
+            heldVoltage.attributes = {{"setpoint_v", std::to_string(survival[index])},
+                                      {"duration_s", std::to_string(durations[index])},
+                                      {"supply_current_a", std::to_string(current)}};
+            append(result, std::move(heldVoltage));
+            auto survived = measurement("ubsi.survival",
+                "Состояние после " + std::to_string(durations[index]) + " с при "
+                    + std::to_string(survival[index]) + " В",
+                1, alive.count("status") && alive.at("status") == "ready" ? 1 : 0, 1, 1, "лог.");
+            survived.attributes = {{"setpoint_v", std::to_string(survival[index])},
+                                   {"duration_s", std::to_string(durations[index])},
+                                   {"supply_voltage_v", std::to_string(actualVoltage)},
+                                   {"supply_current_a", std::to_string(current)}};
+            append(result, std::move(survived));
+        }
+        restore();
+    } catch (...) {
+        try { restore(); } catch (...) {}
+        throw;
     }
     return result;
 }
@@ -642,9 +703,19 @@ ProcedureResult yalkReadCalibration(const ScenarioNode& node, ProcedureContext& 
     const auto first = resolveLogicalBinding(context, "yalk_voltage", 0);
     const auto zero = resolveLogicalBinding(context, "yalk_calibration_zero", 0);
     const auto full = resolveLogicalBinding(context, "yalk_calibration_full", 0);
-    setYalkVoltage(context, first, number(node, "full_voltage", 6.2), true);
-    wait(context, natural(node, "settle_ms", 150));
-    const double v7 = readReferenceVoltage(context);
+    const double nominalReference = number(node, "full_voltage", 6.2);
+    double stimulusCommand = nominalReference;
+    double v7 = 0.0;
+    // ИСД задаёт воздействие, В7 является эталоном. Небольшую систематическую
+    // ошибку источника компенсируем обратной связью, чтобы на входе ЯЛК были
+    // именно нормативные 6,2 ±0,03 В, а не только команда 6,20 В по HTTP.
+    for (unsigned attempt = 0; attempt < natural(node, "reference_adjust_attempts", 3); ++attempt) {
+        setYalkVoltage(context, first, stimulusCommand, true);
+        wait(context, natural(node, "settle_ms", 150));
+        v7 = readReferenceVoltage(context);
+        if (std::abs(v7 - nominalReference) <= number(node, "reference_tolerance_v", 0.03)) break;
+        stimulusCommand += nominalReference - v7;
+    }
     unsigned sequence = ulkLastSequence(context);
     const auto zeroValue = readUlkChannel(context, static_cast<unsigned>(std::stoul(zero.locator)),
                                           natural(node, "sample_count", 16), sequence);
@@ -659,7 +730,7 @@ ProcedureResult yalkReadCalibration(const ScenarioNode& node, ProcedureContext& 
     // Калибровочные коды 97/99 задают шкалу 0...6,2 В. В7 в этом шаге
     // подтверждает наличие воздействия, но не подменяет номинал шкалы:
     // иначе фактические ~6,145 В сжимают весь пересчёт примерно на 0,9 %.
-    context.state["yalk.full_voltage"] = std::to_string(number(node, "full_voltage", 6.2));
+    context.state["yalk.full_voltage"] = std::to_string(nominalReference);
     context.state["yalk.calibration_reference_v"] = std::to_string(v7);
     ProcedureResult result{RunVerdict::Ok, "Снята калибровка ЯЛК по адресам 97/99", {}};
     auto value = measurement("ubsi.yalk.calibration", "Калибровочная шкала ЯЛК",
@@ -668,8 +739,15 @@ ProcedureResult yalkReadCalibration(const ScenarioNode& node, ProcedureContext& 
                         {"full_code", std::to_string(fullValue.code)},
                         {"zero_address", zero.locator}, {"full_address", full.locator},
                         {"calibration_reference_v", std::to_string(v7)},
-                        {"scale_voltage_v", std::to_string(number(node, "full_voltage", 6.2))}};
+                        {"scale_voltage_v", std::to_string(nominalReference)},
+                        {"stimulus_command_v", std::to_string(stimulusCommand)}};
     append(result, std::move(value));
+    auto reference = measurement("ubsi.reference_6v2",
+        "Эталонное напряжение 6,2 В (В7-78/1)", 6.2, v7, 6.17, 6.23, "В");
+    reference.attributes = {{"source", "В7-78/1"},
+                            {"setpoint_v", std::to_string(stimulusCommand)},
+                            {"tolerance_v", "0.03"}};
+    append(result, std::move(reference));
     markCommissioning(result, confirmed);
     return result;
 }
@@ -733,8 +811,12 @@ ProcedureResult yalkCheckChannels(const ScenarioNode& node, ProcedureContext& co
         return {RunVerdict::Incomplete, "Адреса/маршруты ЯЛК не подтверждены", {}};
     }
     const auto pointVolts = numbers(node, "point_volts");
-    if (pointVolts.size() != 3) {
-        throw std::invalid_argument("Для ЯЛК требуются три точки напряжения");
+    const auto signalExpectations = numbers(node, "signal_expectations");
+    if (pointVolts.empty()
+        || (signalExpectations.empty() && pointVolts.size() != 3)
+        || (!signalExpectations.empty() && signalExpectations.size() != pointVolts.size())) {
+        throw std::invalid_argument(
+            "Для ЯЛК нужны три штатные точки либо signal_expectations для каждой точки");
     }
     const double fullScale = number(node, "full_scale_v", 6.2);
     const double tolerance = fullScale * number(node, "tolerance_percent_fs", 0.5) / 100.0;
@@ -783,8 +865,12 @@ ProcedureResult yalkCheckChannels(const ScenarioNode& node, ProcedureContext& co
             context.eventSink({std::chrono::system_clock::now(), node.id, "MEASUREMENT",
                 analog.title, verdict, analog.attributes});
             append(result, std::move(analog));
-            if (point == 0 || point == 2) {
-                const bool expected = point == 2;
+            const bool checkSignal = !signalExpectations.empty()
+                || point == 0 || point + 1 == pointVolts.size();
+            if (checkSignal) {
+                const bool expected = !signalExpectations.empty()
+                    ? signalExpectations[point] >= 0.5
+                    : point + 1 == pointVolts.size();
                 auto signal = measurement("ubsi.yalk.signal." + binding.locator + "." + std::to_string(point),
                     "ЯЛК адрес " + binding.locator + ": контактный сигнал при "
                         + std::to_string(pointVolts[point]) + " В",

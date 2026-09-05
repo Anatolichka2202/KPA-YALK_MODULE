@@ -83,6 +83,7 @@ ReportPaths writeHtmlCsvReport(const ScenarioRunResult& run, const std::string& 
     const bool ytpReport = hasYtp && !hasYalk;
     const bool mixedReport = hasYtp && hasYalk;
     const bool formalTu = run.scenarioId == "ubsi.468157.002.yalk.tu5_6"
+        || run.scenarioId == "ubsi.468157.002.yalk.contact_thresholds"
         || run.scenarioId == "ubsi.468157.002.ytp.tu5_6"
         || run.scenarioId == "ubsi.468157.002.ulk.combined.check";
     const bool combinedTu = run.scenarioId == "ubsi.468157.002.ulk.combined.check";

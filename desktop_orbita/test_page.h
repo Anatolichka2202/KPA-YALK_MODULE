@@ -102,6 +102,7 @@ private:
     QPushButton* productionReportButton_ = nullptr;
     QLineEdit* serialEdit_ = nullptr;
     QCheckBox* partialCheck_ = nullptr;
+    QCheckBox* contactThresholdCheck_ = nullptr;
     TestPlotWidget* plot_ = nullptr;
     EquipmentControlWidget* advancedControl_ = nullptr;
     QWidget* advancedContainer_ = nullptr;

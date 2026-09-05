@@ -1,0 +1,94 @@
+schema: 1
+id: ubsi.468157.002.yalk.contact_thresholds
+title: УБСИ · опциональная проверка контактных порогов ЯЛК-96
+version: 1.0.0
+catalog_version: 2026.08.29-yalk-1
+object_type: UBSI_468157_002
+state: published
+
+# Отдельная длительная опция. Не входит в обязательный совмещённый прогон:
+# ИСД задаёт 1,0 и 2,4 В, В7 подтверждает фактическое воздействие, а поток
+# адаптера подтверждает контактное состояние каждого из 80 адресов ЯЛК.
+steps:
+  - id: supply_status
+    title: Включение и контроль питания УБСИ
+    tu: 1.1.4.3, 1.1.4.5
+    procedure: ubsi.supply_status
+    requires:
+      - power.dc_supply
+    args:
+      nominal_voltage_v: 27
+      minimum_voltage_v: 24
+      maximum_voltage_v: 35
+      maximum_current_a: 0.4
+      startup_current_limit_a: 0.6
+      startup_settle_ms: 500
+
+  - id: yalk_stream
+    title: Запуск потока ЯЛК
+    tu: 5.6 / ЯЛК
+    procedure: yalk.start_stream
+    requires:
+      - ulk.parameter_source
+      - stand.switch_matrix
+    args:
+      configure_settle_ms: 500
+      timeout_ms: 3000
+
+  - id: yalk_calibration
+    title: Калибровка ЯЛК по адресам 97 и 99
+    tu: 1.1.4.1, 1.1.4.14
+    procedure: yalk.read_calibration
+    requires:
+      - catalog.parameter_resolver
+      - ulk.parameter_source
+      - stand.switch_matrix
+      - measure.reference_voltage
+    args:
+      channel_count: 80
+      sample_count: 16
+      settle_ms: 150
+      full_voltage: 6.2
+      reference_tolerance_v: 0.03
+      reference_adjust_attempts: 3
+
+  - id: yalk_contact_thresholds
+    title: Контактные пороги всех адресов: 0 при 1,0 В и 1 при 2,4 В
+    tu: 1.1.4.1
+    procedure: yalk.check_channels
+    requires:
+      - catalog.parameter_resolver
+      - ulk.parameter_source
+      - stand.switch_matrix
+      - measure.reference_voltage
+    args:
+      channel_count: 80
+      point_volts: 1.0,2.4
+      signal_expectations: 0,1
+      sample_count: 16
+      settle_ms: 150
+      channel_off_settle_ms: 1000
+      full_scale_v: 6.2
+      tolerance_percent_fs: 0.5
+
+  - id: yalk_cleanup
+    title: Безопасный сброс ЯЛК
+    tu: 5.6 / завершение проверки
+    procedure: yalk.safe_cleanup
+    requires:
+      - ulk.parameter_source
+      - stand.switch_matrix
+      - catalog.parameter_resolver
+      - measure.reference_voltage
+    args:
+      channel_count: 80
+      maximum_residual_voltage_v: 0.2
+      settle_ms: 300
+      retry_settle_ms: 500
+
+  - id: power_off
+    title: Отключение питания УБСИ после проверки
+    tu: 5.6 / безопасное завершение
+    procedure: ubsi.power_safe_off
+    requires:
+      - power.dc_supply

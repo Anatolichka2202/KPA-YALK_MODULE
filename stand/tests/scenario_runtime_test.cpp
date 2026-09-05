@@ -64,18 +64,18 @@ public:
             return "status=ready\n";
         }
         if (capability == "measure.reference_voltage") {
-            const double reference = currentVoltage == 6.2 ? 6.145 : currentVoltage;
+            const double reference = currentVoltage >= 5.0 ? currentVoltage - 0.055 : currentVoltage;
             return "status=ready\nvolts=" + std::to_string(reference) + "\n";
         }
         if (capability == "ulk.parameter_source" && operation == "read_channel") {
             const unsigned address = static_cast<unsigned>(std::stoul(arguments.at("ulk_address")));
-            const double reference = currentVoltage == 6.2 ? 6.145 : currentVoltage;
+            const double reference = currentVoltage >= 5.0 ? currentVoltage - 0.055 : currentVoltage;
             const bool open = forceOpenReading && address < 97 && currentVoltage == 0.0;
             const double code = open ? 0.0 : address == 97 ? 125.0 : address == 99 ? 925.0
                 : 125.0 + reference / 6.2 * 800.0;
             return "status=ready\nraw_mean=" + std::to_string(code)
                 + "\nanalog_code_mean=" + std::to_string(code)
-                + "\nsignal=" + std::string(open || currentVoltage >= 6.2 ? "1" : "0")
+                + "\nsignal=" + std::string(open || currentVoltage >= 2.4 ? "1" : "0")
                 + "\nsample_count=16\nfirst_sequence=2\nlast_sequence=17\n";
         }
         if (capability == "ulk.parameter_source" && operation == "read_snapshot") {
@@ -233,6 +233,7 @@ void configurationAndCatalog(const QString& root)
     const auto ytpScenarioPath = QDir(root).filePath(QStringLiteral("data/scenarios/ubsi_ytp_tu_5_6.yaml"));
     const auto ytp120Path = QDir(root).filePath(QStringLiteral("data/scenarios/ubsi_ytp_120_check.yaml"));
     const auto combinedPath = QDir(root).filePath(QStringLiteral("data/scenarios/ubsi_ulk_combined_check.yaml"));
+    const auto contactPath = QDir(root).filePath(QStringLiteral("data/scenarios/ubsi_yalk_contact_thresholds.yaml"));
     const auto profilePath = QDir(root).filePath(QStringLiteral("data/profiles/stand_ktma.yaml"));
     const auto catalogPath = QDir(root).filePath(QStringLiteral("data/catalog/catalog.yaml"));
     auto scenario = loadScenarioYaml(scenarioPath.toUtf8().toStdString());
@@ -240,6 +241,7 @@ void configurationAndCatalog(const QString& root)
     auto ytpScenario = loadScenarioYaml(ytpScenarioPath.toUtf8().toStdString());
     auto ytp120 = loadScenarioYaml(ytp120Path.toUtf8().toStdString());
     auto combined = loadScenarioYaml(combinedPath.toUtf8().toStdString());
+    auto contacts = loadScenarioYaml(contactPath.toUtf8().toStdString());
     auto profile = loadStandProfile(profilePath.toUtf8().toStdString());
     ScenarioEngine engine;
     registerUbsiProcedures(engine);
@@ -256,8 +258,10 @@ void configurationAndCatalog(const QString& root)
             "YTP must be a published six-stage powered manual-reference scenario");
     require(engine.validate(ytp120).empty() && ytp120.steps.size() == 6,
             "Fixed 120-ohm YTP scenario must validate");
-    require(engine.validate(combined).empty() && combined.steps.size() == 12,
-            "Combined powered YALK/YTP delivery scenario must validate as twelve stages");
+    require(engine.validate(combined).empty() && combined.steps.size() == 13,
+            "Combined powered YALK/YTP delivery scenario must validate as thirteen stages");
+    require(engine.validate(contacts).empty() && contacts.steps.size() == 6,
+            "Optional YALK contact-threshold scenario must validate as six stages");
     require(profile.id == "ktma-main" && profile.activeOutputsConfirmed,
             "Verified stand profile must allow the captured active commands");
     require(profile.routes.at("yalk_analog.base") == "1"

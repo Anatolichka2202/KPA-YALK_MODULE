@@ -152,6 +152,8 @@ private:
     QComboBox* configCombo_ = nullptr;
     QComboBox* accessModeCombo_ = nullptr;
     QToolBar* mainToolbar_ = nullptr;
+    QAction* themeAction_ = nullptr;
+    bool lightTheme_ = false;
 
     // Сценарий проверки
     QAction* actScenario_ = nullptr;
@@ -178,6 +180,8 @@ private slots:
     void onRunScenario(const QString& scenarioCode, const QString& objectSerial,
                        bool allowPartial);
     void onStopScenario();
+    void toggleTheme();
+    void applyTheme(bool light);
 };
 
 #endif // MAINWINDOW_H
