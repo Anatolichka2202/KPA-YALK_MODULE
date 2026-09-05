@@ -1,6 +1,16 @@
+add_library(orbita_stand_core STATIC
+    src/scenario.cpp
+)
+
+target_include_directories(orbita_stand_core
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+target_compile_features(orbita_stand_core PUBLIC cxx_std_17)
+
 add_library(orbita_stand_domain STATIC
     src/yalk_analog_procedure.cpp
-    src/scenario.cpp
     src/ubsi_procedures.cpp
     src/telemetry_procedures.cpp
 )
@@ -11,6 +21,7 @@ target_include_directories(orbita_stand_domain
 )
 
 target_compile_features(orbita_stand_domain PUBLIC cxx_std_17)
+target_link_libraries(orbita_stand_domain PUBLIC orbita_stand_core)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Network SerialPort Sql Gui)
 
