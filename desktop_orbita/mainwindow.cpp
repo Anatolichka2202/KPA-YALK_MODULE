@@ -5,6 +5,9 @@
 #include <QHBoxLayout>
 #include <QFileDialog>
 #include <QMessageBox>
+#include <QDialog>
+#include <QTableWidget>
+#include <QHeaderView>
 #include <QInputDialog>
 #include <QDateTime>
 #include <QApplication>
@@ -535,6 +538,101 @@ void MainWindow::setupToolBar()
         control->show();
     });
 
+    auto* registrarAction = toolsMenu_->addAction(
+        QStringLiteral("Регистратор КТМА: состав и этапы"));
+    registrarAction->setToolTip(QStringLiteral(
+        "Показывает изделия и рассчитанный итог регистратора; измерения остаются в runs.db."));
+    connect(registrarAction, &QAction::triggered, this, [this] {
+        if (!registrar_) {
+            QMessageBox::warning(this, QStringLiteral("Регистратор КТМА"),
+                QStringLiteral("Регистратор не инициализирован. Проверьте каталог поставки."));
+            return;
+        }
+        try {
+            const auto products = registrar_->listProducts();
+            QDialog dialog(this);
+            dialog.setWindowTitle(QStringLiteral("Регистратор КТМА"));
+            dialog.resize(760, 420);
+            auto* layout = new QVBoxLayout(&dialog);
+            auto* label = new QLabel(
+                QStringLiteral("registrar.db · состав изделия и итог по активным ячейкам"),
+                &dialog);
+            label->setStyleSheet(QStringLiteral("color:#9aa7b5;"));
+            layout->addWidget(label);
+            auto* table = new QTableWidget(&dialog);
+            table->setColumnCount(4);
+            table->setHorizontalHeaderLabels({QStringLiteral("Изделие"), QStringLiteral("Тип"),
+                QStringLiteral("Серийный номер"), QStringLiteral("Итог")});
+            table->setRowCount(static_cast<int>(products.size()));
+            table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+            table->setSelectionBehavior(QAbstractItemView::SelectRows);
+            for (int row = 0; row < table->rowCount(); ++row) {
+                const auto& product = products[static_cast<std::size_t>(row)];
+                const auto verdict = registrar_->productVerdict(product.id);
+                table->setItem(row, 0, new QTableWidgetItem(QString::fromStdString(product.id)));
+                table->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(product.productType)));
+                table->setItem(row, 2, new QTableWidgetItem(QString::fromStdString(product.serialNumber)));
+                table->setItem(row, 3, new QTableWidgetItem(
+                    QString::fromUtf8(ktma::registrar::toString(verdict))));
+            }
+            table->resizeColumnsToContents();
+            table->horizontalHeader()->setStretchLastSection(true);
+            layout->addWidget(table);
+            auto* details = new QTextEdit(&dialog);
+            details->setReadOnly(true);
+            details->setMinimumHeight(150);
+            details->setStyleSheet(QStringLiteral(
+                "QTextEdit{background:#0e1115;color:#c8d1db;border:1px solid #2a313b;}"));
+            layout->addWidget(details);
+            auto refreshDetails = [this, products, details](int row) {
+                if (row < 0 || row >= static_cast<int>(products.size())) {
+                    details->clear();
+                    return;
+                }
+                const auto report = registrar_->productReport(
+                    products[static_cast<std::size_t>(row)].id);
+                QString text;
+                text += QStringLiteral("Состав и история замен:\n");
+                for (const auto& component : report.components) {
+                    text += QStringLiteral("• %1 / SN %2 — %3")
+                        .arg(QString::fromStdString(component.componentType),
+                             QString::fromStdString(component.serialNumber),
+                             component.active ? QStringLiteral("установлена")
+                                               : QStringLiteral("снята: ")
+                                                     + QString::fromStdString(component.removalReason));
+                    text += QLatin1Char('\n');
+                }
+                text += QStringLiteral("\nЭтапы:\n");
+                for (const auto& attempt : report.stageAttempts) {
+                    text += QStringLiteral("• %1 / %2 — %3")
+                        .arg(QString::fromStdString(attempt.componentId),
+                             QString::fromUtf8(ktma::registrar::toString(attempt.stage)),
+                             QString::fromUtf8(ktma::registrar::toString(attempt.verdict)));
+                    if (!attempt.runId.empty()) {
+                        text += QStringLiteral(" (run_id=%1)").arg(QString::fromStdString(attempt.runId));
+                    }
+                    text += QLatin1Char('\n');
+                }
+                details->setPlainText(text);
+            };
+            connect(table, &QTableWidget::currentCellChanged, &dialog,
+                [refreshDetails](int currentRow, int, int, int) {
+                    refreshDetails(currentRow);
+                });
+            if (table->rowCount() > 0) {
+                table->setCurrentCell(0, 0);
+                refreshDetails(0);
+            }
+            auto* close = new QPushButton(QStringLiteral("Закрыть"), &dialog);
+            connect(close, &QPushButton::clicked, &dialog, &QDialog::accept);
+            layout->addWidget(close, 0, Qt::AlignRight);
+            dialog.exec();
+        } catch (const std::exception& error) {
+            QMessageBox::warning(this, QStringLiteral("Регистратор КТМА"),
+                QString::fromUtf8(error.what()));
+        }
+    });
+
     connect(testPage_, &TestPage::equipmentCheckRequested,
             this, &MainWindow::onCheckTestEquipment);
     connect(testPage_, &TestPage::runRequested,
@@ -595,6 +693,11 @@ void MainWindow::initializeStandRuntime()
 {
     try {
         const QDir root(QCoreApplication::applicationDirPath());
+        // Реестр жизненного цикла намеренно отдельный от parameters.db и
+        // runs.db: UI создаёт его при первом запуске, а подробности прогона
+        // остаются в RunStore.
+        registrar_ = std::make_unique<ktma::registrar::Registrar>(
+            root.filePath(QStringLiteral("registrar.db")).toStdString());
         standProfile_ = orbita::stand::loadStandProfile(
             root.filePath("profiles/stand_ktma.yaml").toStdString());
         const auto catalog = orbita::stand::importCatalogYaml(

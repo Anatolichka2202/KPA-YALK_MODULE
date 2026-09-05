@@ -1,0 +1,101 @@
+schema: 1
+title: КТМА / стендовое ПО — машинный индекс
+updated: 2026-09-05
+source_priority:
+  - tu_method
+  - live_stand_kpa
+  - archived_firmware
+  - current_code
+objects:
+  - id: ktma
+    type: product_lifecycle
+    status: model_preliminary
+    docs: 01_ktma_model.md
+  - id: ubsi
+    type: block
+    source: docs/14_ТУ_УБСИ_468157_002.md
+    status: partial_verified
+    cells: [yalk96, ytp, yvp8, ypp]
+  - id: bsi
+    type: block
+    source: docs/15_ТУ_БСИ_468157_003.md
+    status: diagnostic_skeleton
+    cells: [ypa, ygr, ysm, ytp, yvp8, yalk96, yfk]
+  - id: rpu
+    type: final_lifecycle_stage
+    status: preliminary_unconfirmed
+    docs: 08_open_questions.md
+cells:
+  - id: yalk96
+    block: [ubsi, bsi]
+    status: verified_live_path
+    source: ulk.parameter_source
+  - id: ytp
+    block: [ubsi, bsi]
+    status: verified_live_path
+    source: ulk.parameter_source
+  - id: yvp8
+    block: [ubsi, bsi]
+    status: production_control_or_unverified
+  - id: ypp
+    block: [ubsi]
+    status: not_verified
+  - id: yfk
+    block: [bsi]
+    status: not_verified
+databases:
+  - id: parameters
+    path: parameters.db
+    role: address_catalog
+  - id: runs
+    path: runs.db
+    role: measurements_events_raw
+  - id: registrar
+    path: registrar.db
+    role: product_components_stages_verdict
+capabilities:
+  - ulk.parameter_source
+  - stand.switch_matrix
+  - measure.reference_voltage
+  - power.dc_supply
+  - catalog.parameter_resolver
+  - operator.manual_input
+scenarios:
+  - id: ubsi.468157.002.ulk_yalk_ytp
+    path: data/scenarios/ubsi_ulk_combined_check.yaml
+    status: published_partial_verified
+  - id: ubsi.468157.002.yalk_tu5_6
+    path: data/scenarios/ubsi_yalk_tu_5_6.yaml
+    status: published
+  - id: ubsi.468157.002.ytp_tu5_6
+    path: data/scenarios/ubsi_ytp_tu_5_6.yaml
+    status: published_manual_reference
+  - id: ubsi.468157.002.ytp_120
+    path: data/scenarios/ubsi_ytp_120_check.yaml
+    status: published_control_run
+  - id: bsi.diagnostic
+    path: data/scenarios/bsi_diagnostic.yaml
+    status: diagnostic_only
+references:
+  - id: kpa_rokot
+    path: KPA_Rokot.exe
+    type: executable
+    trust: live_reference
+    sha256: BA14F393883B1EE19C8B142ADE1949B2F155DC8FD0DDDF9FDEAF9A21D0C1C35E
+    confirms: [rokt_yalk_204, rokt_ytp_68]
+  - id: liborbita
+    path: orbita/
+    type: decoder_library
+    trust: implementation_reference
+    confirms: [orbita_frame_decode, parameter_source]
+  - id: isd_plugin
+    path: stand/plugins/isd_http_plugin.cpp
+    type: source
+    trust: implementation_plus_live_capture
+    confirms: [isd_type5_volts_bus1]
+  - id: adapter_plugin
+    path: stand/plugins/ktma_adapter_udp_plugin.cpp
+    type: source
+    trust: implementation_plus_live_capture
+    confirms: [udp_broadcast_receive, rokt_transport]
+open_questions: 08_open_questions.md

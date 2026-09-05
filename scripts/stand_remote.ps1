@@ -106,12 +106,12 @@ switch ($Action) {
             $archive = $Path
         } else {
             $archive = Get-ChildItem (Join-Path $PSScriptRoot '..\build\deploy') `
-                -Filter 'orbita_desktop_ubsi_priority_*.zip' -File |
+                -Filter 'orbita_desktop_*.zip' -File |
                 Sort-Object LastWriteTime -Descending |
                 Select-Object -First 1 -ExpandProperty FullName
         }
         if (-not $archive) {
-            throw 'No orbita_desktop_ubsi_priority_*.zip release found; run package_stand_win11.ps1 first'
+            throw 'No orbita_desktop_*.zip release found; run package_stand_win11.ps1 first'
         }
         $resolvedArchive = (Resolve-Path -LiteralPath $archive).Path
         $archiveName = Split-Path -Leaf $resolvedArchive
