@@ -7,6 +7,8 @@
 
 #include <string>
 
+#include <vector>
+
 namespace ktma::registrar {
 
 class Registrar
@@ -21,6 +23,7 @@ public:
     std::string createComponent(
         const std::string& componentType,
         const std::string& serialNumber);
+
 
     void installComponent(
         const std::string& productId,
@@ -42,6 +45,9 @@ public:
     void finishStage(
         const std::string& stageAttemptId,
         Verdict verdict);
+
+    std::vector<Product> listProducts();
+
 
 private:
     QSqlDatabase database_;
