@@ -12,6 +12,7 @@
 #include <QDateTime>
 #include <QApplication>
 #include <QCoreApplication>
+#include <QCloseEvent>
 #include <QDir>
 #include <QActionGroup>
 #include <QMenu>
@@ -109,8 +110,25 @@ MainWindow::MainWindow(QWidget* parent)
 MainWindow::~MainWindow()
 {
     if (scenarioEngine_) scenarioEngine_->requestStop();
-    if (equipmentRegistry_) equipmentRegistry_->safeStopAll();
     if (scenarioWatcher_ && scenarioWatcher_->isRunning()) scenarioWatcher_->waitForFinished();
+    if (equipmentRegistry_) equipmentRegistry_->safeStopAll();
+}
+
+void MainWindow::closeEvent(QCloseEvent* event)
+{
+    if (scenarioWatcher_ && scenarioWatcher_->isRunning()) {
+        // Сохранение runs.db и обоих отчётов выполняется обработчиком finished.
+        // Если разрушить окно сейчас, деструктор дождётся worker-потока, но
+        // queued-сигнал finished уже некому будет обработать и отчёт потеряется.
+        closeAfterScenario_ = true;
+        if (scenarioEngine_) scenarioEngine_->requestStop();
+        testPage_->setRunInProgress(
+            true, QStringLiteral("Остановка и сохранение отчёта перед закрытием…"));
+        log(QStringLiteral("Закрытие отложено до безопасной остановки и сохранения отчёта"));
+        event->ignore();
+        return;
+    }
+    QMainWindow::closeEvent(event);
 }
 
 // ----------------------------------------------------------------------------
@@ -772,7 +790,7 @@ void MainWindow::initializeStandRuntime()
         testPage_->setScenarioInfo("YTP_120_CHECK", false, true, {},
             QStringLiteral("Сценарий контроля ЯТП при 120 Ом не загружен"));
         testPage_->setScenarioInfo("ULK_COMBINED_CHECK", false, false, {},
-            QStringLiteral("Совмещённый сценарий ЯЛК + ЯТП не загружен"));
+            QStringLiteral("Полный сценарий УБСИ не загружен"));
         testPage_->setScenarioInfo("BSI_DIAGNOSTIC", false, true, {},
             QStringLiteral("Диагностический сценарий БСИ не загружен"));
         const QDir scenarioDirectory(root.filePath("scenarios"));
@@ -865,6 +883,10 @@ void MainWindow::initializeStandRuntime()
                 log(QStringLiteral("Не удалось сохранить результат: %1").arg(QString::fromUtf8(error.what())));
             }
             testPage_->setRunResult(result, tuReportPath, productionReportPath);
+            if (closeAfterScenario_) {
+                closeAfterScenario_ = false;
+                QTimer::singleShot(0, this, &QWidget::close);
+            }
         });
         standRuntimeReady_ = true;
         log(QStringLiteral("Плагины оборудования: загружено %1").arg(equipmentPlugins_->plugins().size()));
@@ -932,8 +954,33 @@ void MainWindow::onCheckTestEquipment()
     equipmentRegistry_->bind("operator.manual_input",
         [this](const std::string& operation,
                const std::map<std::string, std::string>& arguments) {
-            if (operation != "confirm_value") {
+            if (operation != "confirm_value" && operation != "confirm_text") {
                 throw std::invalid_argument("Неизвестная ручная операция: " + operation);
+            }
+            if (operation == "confirm_text") {
+                bool accepted = false;
+                QString value;
+                const QString title = arguments.count("title")
+                    ? QString::fromStdString(arguments.at("title"))
+                    : QStringLiteral("Подтверждающий документ");
+                const QString prompt = arguments.count("prompt")
+                    ? QString::fromStdString(arguments.at("prompt"))
+                    : QStringLiteral("Введите номер и дату документа:");
+                QMetaObject::invokeMethod(this, [&] {
+                    value = QInputDialog::getText(this, title,
+                        prompt + QStringLiteral("\nЕсли документа нет, оставьте поле пустым — пункт будет отмечен как НЕ ПРОВЕРЕНО."),
+                        QLineEdit::Normal, {}, &accepted).trimmed();
+                }, Qt::BlockingQueuedConnection);
+                const QString operatorName = qEnvironmentVariable("USERNAME",
+                    qEnvironmentVariable("USER", QStringLiteral("неизвестен")));
+                std::ostringstream response;
+                response << "status=" << (accepted && !value.isEmpty() ? "confirmed" : "not_confirmed")
+                         << "\nvalue=" << value.toStdString()
+                         << "\noperator=" << operatorName.toStdString()
+                         << "\ntimestamp="
+                         << QDateTime::currentDateTime().toString(Qt::ISODateWithMs).toStdString()
+                         << "\n";
+                return response.str();
             }
             bool accepted = false;
             double actual = 0.0;
@@ -1187,7 +1234,9 @@ void MainWindow::onRunScenario(
 void MainWindow::onStopScenario()
 {
     if (scenarioEngine_) scenarioEngine_->requestStop();
-    if (equipmentRegistry_) equipmentRegistry_->safeStopAll();
+    // Worker-поток сам вызывает safeStopAll() в единой точке завершения
+    // ScenarioEngine. Параллельный вызов отсюда мог дважды останавливать один
+    // UDP transport и зависать до формирования отчёта.
     testPage_->setRunInProgress(true, QStringLiteral("Остановка и безопасный сброс оборудования…"));
     log(QStringLiteral("Оператор запросил безопасную остановку сценария"));
 }

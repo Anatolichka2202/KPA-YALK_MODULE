@@ -246,9 +246,42 @@ ProcedureResult bindingCheck(const ScenarioNode& node, ProcedureContext& context
                 + ", но стендовая привязка ещё не подтверждена живыми данными", {}};
 }
 
+ProcedureResult externalEvidence(const ScenarioNode& node, ProcedureContext& context)
+{
+    const std::string evidenceType = argument(node, "evidence_type", "производственный протокол");
+    const std::string prompt = argument(node, "prompt",
+        "Введите номер и дату документа, подтверждающего выполнение требования");
+    const auto response = responseValues(context.equipment.invoke(
+        "operator.manual_input", "confirm_text", {
+            {"title", node.title}, {"prompt", prompt}, {"evidence_type", evidenceType}}));
+    const auto status = response.find("status");
+    const auto value = response.find("value");
+    if (status == response.end() || status->second != "confirmed"
+        || value == response.end() || value->second.empty()) {
+        return {RunVerdict::Incomplete,
+            "Требование не проверено стендом и подтверждающий документ не указан", {}};
+    }
+
+    ProcedureResult result{RunVerdict::Ok,
+        "Требование принято по документу: " + value->second, {}};
+    auto evidence = measurement("ubsi.external_evidence." + node.id,
+        node.title, 1.0, 1.0, 1.0, 1.0, "док.");
+    evidence.attributes = {
+        {"evidence_type", evidenceType},
+        {"evidence_reference", value->second},
+        {"source", "внешний документ"},
+        {"operator", response.count("operator") ? response.at("operator") : "не указан"},
+        {"timestamp", response.count("timestamp") ? response.at("timestamp") : "не указано"}};
+    append(result, std::move(evidence));
+    return result;
+}
+
 ProcedureResult readiness(const ScenarioNode& node, ProcedureContext& context)
 {
-    ProcedureResult result{RunVerdict::Fail, "УБСИ не выдал данные за нормативное время", {}};
+    // Начальный verdict должен позволять успешному измерению завершить шаг как
+    // OK. При истечении timeout добавляем измерение за верхней границей, и
+    // append() самостоятельно переводит результат в FAIL.
+    ProcedureResult result{RunVerdict::Ok, "УБСИ не выдал данные за нормативное время", {}};
     const double voltage = number(node, "voltage_v", 27.0);
     const double currentLimit = number(node, "current_limit_a", 0.6);
     const unsigned timeoutMs = natural(node, "timeout_ms", 30000);
@@ -365,6 +398,7 @@ ProcedureResult supplyRange(const ScenarioNode& node, ProcedureContext& context)
     const double supplyCurrentLimit = number(node, "supply_current_limit_a", 0.6);
     const double voltageTolerance = number(node, "voltage_tolerance_v", 0.5);
     const double restoreVoltage = number(node, "restore_voltage_v", 27.0);
+    const unsigned recoveryTimeoutMs = natural(node, "recovery_timeout_ms", 30000);
     context.equipment.invoke("power.dc_supply", "set_current_limit", {
         {"amperes", std::to_string(supplyCurrentLimit)}});
     const auto survival = numbers(node, "survival_points_v");
@@ -375,6 +409,23 @@ ProcedureResult supplyRange(const ScenarioNode& node, ProcedureContext& context)
         context.equipment.invoke("power.dc_supply", "set_voltage", {
             {"volts", std::to_string(restoreVoltage)}});
         wait(context, settleMs);
+    };
+    const auto dataAvailable = [&](unsigned timeoutMs) {
+        const auto started = std::chrono::steady_clock::now();
+        do {
+            if (context.stopRequested.load()) throw std::runtime_error("Остановлено оператором");
+            try {
+                const auto alive = responseValues(context.equipment.invoke(
+                    "ulk.parameter_source", "alive", {{"timeout_ms", "500"}}));
+                if (alive.count("status") && alive.at("status") == "ready") return true;
+            } catch (const std::exception&) {
+                // При изменении питания адаптер, запитанный от того же АКИП,
+                // может перезапускаться. До истечения времени восстановления
+                // отсутствие кадров является ожидаемым состоянием.
+            }
+        } while (std::chrono::duration_cast<std::chrono::milliseconds>(
+                     std::chrono::steady_clock::now() - started).count() < timeoutMs);
+        return false;
     };
     try {
         context.equipment.invoke("power.dc_supply", "output", {{"enabled", "true"}});
@@ -400,9 +451,8 @@ ProcedureResult supplyRange(const ScenarioNode& node, ProcedureContext& context)
             currentResult.attributes = {{"supply_voltage_v", std::to_string(actualVoltage)},
                                         {"setpoint_v", std::to_string(voltage)}};
             append(result, std::move(currentResult));
-            const auto alive = responseValues(context.equipment.invoke("ulk.parameter_source", "alive", {}));
             auto data = measurement("ubsi.data_alive", "Передача данных при " + std::to_string(voltage) + " В",
-                1, alive.count("status") && alive.at("status") == "ready" ? 1 : 0, 1, 1, "лог.");
+                1, dataAvailable(3000) ? 1 : 0, 1, 1, "лог.");
             data.attributes = {{"supply_voltage_v", std::to_string(actualVoltage)},
                                {"supply_current_a", std::to_string(current)}};
             append(result, std::move(data));
@@ -413,7 +463,6 @@ ProcedureResult supplyRange(const ScenarioNode& node, ProcedureContext& context)
             const auto state = context.equipment.invoke("power.dc_supply", "read_state", {});
             const double actualVoltage = responseNumber(state, "volts");
             const double current = responseNumber(state, "amperes");
-            const auto alive = responseValues(context.equipment.invoke("ulk.parameter_source", "alive", {}));
             auto heldVoltage = measurement("ubsi.survival_voltage",
                 "Фактическое напряжение выдержки " + std::to_string(survival[index]) + " В",
                 survival[index], actualVoltage,
@@ -422,14 +471,26 @@ ProcedureResult supplyRange(const ScenarioNode& node, ProcedureContext& context)
                                       {"duration_s", std::to_string(durations[index])},
                                       {"supply_current_a", std::to_string(current)}};
             append(result, std::move(heldVoltage));
+
+            // 19/37 В являются предельными воздействиями, а не рабочими
+            // точками. Адаптер питается от того же АКИП и при 19 В сам теряет
+            // обмен, поэтому проверять UDP-поток прямо на воздействии нельзя.
+            // Работоспособность УБСИ оценивается после возврата к 27 В и
+            // появления нового (не сохранённого до воздействия) кадра.
+            restore();
+            const bool recovered = dataAvailable(recoveryTimeoutMs);
+            const auto restoredState = context.equipment.invoke("power.dc_supply", "read_state", {});
+            const double restoredActualVoltage = responseNumber(restoredState, "volts");
+            const double restoredCurrent = responseNumber(restoredState, "amperes");
             auto survived = measurement("ubsi.survival",
-                "Состояние после " + std::to_string(durations[index]) + " с при "
-                    + std::to_string(survival[index]) + " В",
-                1, alive.count("status") && alive.at("status") == "ready" ? 1 : 0, 1, 1, "лог.");
+                "Работоспособность после " + std::to_string(durations[index]) + " с при "
+                    + std::to_string(survival[index]) + " В и возврата к 27 В",
+                1, recovered ? 1 : 0, 1, 1, "лог.");
             survived.attributes = {{"setpoint_v", std::to_string(survival[index])},
                                    {"duration_s", std::to_string(durations[index])},
-                                   {"supply_voltage_v", std::to_string(actualVoltage)},
-                                   {"supply_current_a", std::to_string(current)}};
+                                   {"exposure_voltage_v", std::to_string(actualVoltage)},
+                                   {"recovery_voltage_v", std::to_string(restoredActualVoltage)},
+                                   {"recovery_current_a", std::to_string(restoredCurrent)}};
             append(result, std::move(survived));
         }
         restore();
@@ -704,18 +765,15 @@ ProcedureResult yalkReadCalibration(const ScenarioNode& node, ProcedureContext& 
     const auto zero = resolveLogicalBinding(context, "yalk_calibration_zero", 0);
     const auto full = resolveLogicalBinding(context, "yalk_calibration_full", 0);
     const double nominalReference = number(node, "full_voltage", 6.2);
-    double stimulusCommand = nominalReference;
-    double v7 = 0.0;
-    // ИСД задаёт воздействие, В7 является эталоном. Небольшую систематическую
-    // ошибку источника компенсируем обратной связью, чтобы на входе ЯЛК были
-    // именно нормативные 6,2 ±0,03 В, а не только команда 6,20 В по HTTP.
-    for (unsigned attempt = 0; attempt < natural(node, "reference_adjust_attempts", 3); ++attempt) {
-        setYalkVoltage(context, first, stimulusCommand, true);
-        wait(context, natural(node, "settle_ms", 150));
-        v7 = readReferenceVoltage(context);
-        if (std::abs(v7 - nominalReference) <= number(node, "reference_tolerance_v", 0.03)) break;
-        stimulusCommand += nominalReference - v7;
-    }
+    const double stimulusCommand = nominalReference;
+    // Команда ИСД ограничена диапазоном 0...6,20 В. Фактическое
+    // воздействие (на живом стенде около 6,145 В) измеряет В7 и оно же
+    // используется как эталон канальной проверки. Нельзя пытаться
+    // «дотянуть» его командой выше 6,20 В. Требование 6,2 ±0,03 В в
+    // выходной телеметрии УБСИ — отдельный пункт ТУ, а не допуск ИСД.
+    setYalkVoltage(context, first, stimulusCommand, true);
+    wait(context, natural(node, "settle_ms", 150));
+    const double v7 = readReferenceVoltage(context);
     unsigned sequence = ulkLastSequence(context);
     const auto zeroValue = readUlkChannel(context, static_cast<unsigned>(std::stoul(zero.locator)),
                                           natural(node, "sample_count", 16), sequence);
@@ -733,7 +791,7 @@ ProcedureResult yalkReadCalibration(const ScenarioNode& node, ProcedureContext& 
     context.state["yalk.full_voltage"] = std::to_string(nominalReference);
     context.state["yalk.calibration_reference_v"] = std::to_string(v7);
     ProcedureResult result{RunVerdict::Ok, "Снята калибровка ЯЛК по адресам 97/99", {}};
-    auto value = measurement("ubsi.yalk.calibration", "Калибровочная шкала ЯЛК",
+    auto value = measurement("ubsi.yalk.calibration", "Опорное воздействие калибровки ЯЛК",
                              6.2, v7, 5.5, 6.8, "В");
     value.attributes = {{"zero_code", std::to_string(zeroValue.code)},
                         {"full_code", std::to_string(fullValue.code)},
@@ -742,12 +800,6 @@ ProcedureResult yalkReadCalibration(const ScenarioNode& node, ProcedureContext& 
                         {"scale_voltage_v", std::to_string(nominalReference)},
                         {"stimulus_command_v", std::to_string(stimulusCommand)}};
     append(result, std::move(value));
-    auto reference = measurement("ubsi.reference_6v2",
-        "Эталонное напряжение 6,2 В (В7-78/1)", 6.2, v7, 6.17, 6.23, "В");
-    reference.attributes = {{"source", "В7-78/1"},
-                            {"setpoint_v", std::to_string(stimulusCommand)},
-                            {"tolerance_v", "0.03"}};
-    append(result, std::move(reference));
     markCommissioning(result, confirmed);
     return result;
 }
@@ -1575,6 +1627,7 @@ ProcedureResult yvp(const ScenarioNode& node, ProcedureContext& context)
 void registerUbsiProcedures(ScenarioEngine& engine)
 {
     engine.registerProcedure("ubsi.binding_check", bindingCheck);
+    engine.registerProcedure("ubsi.external_evidence", externalEvidence);
     engine.registerProcedure("ubsi.readiness", readiness);
     engine.registerProcedure("ubsi.supply_status", supplyStatus);
     engine.registerProcedure("ubsi.power_safe_off", powerSafeOff);

@@ -83,3 +83,4 @@ InitialElectrical → PostVibrationElectrical → PostClimateElectrical
 - [Регистратор](06_registrar.md)
 - [Референсные программы](07_reference_programs.md)
 - [Открытые вопросы](08_open_questions.md)
+- [План подэтапов УБСИ](09_ubsi_stage_plan.md)

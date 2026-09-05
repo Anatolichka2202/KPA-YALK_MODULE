@@ -69,6 +69,8 @@ int main(int argc, char** argv)
 
         const auto failedAttempt = registrar.beginComponentStage(
             product, yalkOld, Stage::InitialElectrical);
+        expectThrows([&] { registrar.finishStage(failedAttempt, Verdict::Fail); },
+                     "a terminal stage without run_id must be rejected");
         registrar.attachRun(failedAttempt, "run-failed");
         registrar.finishStage(failedAttempt, Verdict::Fail);
         require(registrar.productVerdict(product) == Verdict::Fail,
@@ -98,6 +100,13 @@ int main(int argc, char** argv)
                 "replacement must not delete the old binding");
         expectThrows([&] { registrar.attachRun(failedAttempt, "run-failed"); },
                      "a run must not be attached twice");
+
+        const auto removedOnlyProduct = registrar.createProduct("UBSI", "UBSI-REMOVED");
+        const auto removedOnlyComponent = registrar.createComponent("YTP", "YTP-REMOVED");
+        registrar.installComponent(removedOnlyProduct, removedOnlyComponent);
+        registrar.removeComponent(removedOnlyProduct, removedOnlyComponent, "test removal");
+        require(registrar.productVerdict(removedOnlyProduct) == Verdict::Incomplete,
+                "product without active components must remain incomplete");
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
         return 1;

@@ -35,6 +35,7 @@
 #include "test_page.h"
 
 class QMenu;
+class QCloseEvent;
 
 class MainWindow : public QMainWindow
 {
@@ -43,6 +44,9 @@ class MainWindow : public QMainWindow
 public:
     MainWindow(QWidget* parent = nullptr);
     ~MainWindow();
+
+protected:
+    void closeEvent(QCloseEvent* event) override;
 
 private slots:
     // Управление сбором
@@ -172,6 +176,7 @@ private:
     QHash<QString, orbita::stand::ScenarioDefinition> scenarios_;
     QHash<QString, QString> scenarioPaths_;
     QFutureWatcher<orbita::stand::ScenarioRunResult>* scenarioWatcher_ = nullptr;
+    bool closeAfterScenario_ = false;
     bool standRuntimeReady_ = false;
 
 private slots:

@@ -3,6 +3,7 @@
 #include <QApplication>
 #include <QComboBox>
 #include <QPixmap>
+#include <QPushButton>
 #include <QTableWidget>
 
 #include <cstdlib>
@@ -79,7 +80,11 @@ int main(int argc, char** argv)
     page.setScenarioInfo(QStringLiteral("ULK_COMBINED_CHECK"), true, false,
         {QStringLiteral("RS485"), QStringLiteral("ISD"),
          QStringLiteral("V7"), QStringLiteral("R4831")}, QStringLiteral("ready"));
-    scope->setCurrentIndex(scope->findData(QStringLiteral("УЛК+ЯТП")));
+    auto* fullTuCard = page.findChild<QPushButton*>(QStringLiteral("modeCard_УБСИ ПО ТУ"));
+    require(fullTuCard, "full UBSI TU mode card not found");
+    fullTuCard->click();
+    require(scope->currentData() == QStringLiteral("УБСИ ПО ТУ"),
+            "full UBSI TU card must select its scope");
     require(test->currentData() == QStringLiteral("ULK_COMBINED_CHECK"),
             "combined card must select the combined runtime scenario");
     require(!equipment->isRowHidden(rowByName(equipment, QStringLiteral("Р4831")))

@@ -2,11 +2,13 @@
 #include "orbita_stand/equipment_adapters.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cctype>
 #include <iomanip>
 #include <memory>
 #include <sstream>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -86,6 +88,45 @@ void outputsOff(Instance& instance) noexcept
     for (auto& supply : instance.supplies) {
         try { supply.instrument->setOutput(false); } catch (...) {}
     }
+}
+
+std::string supplyLabel(const Supply& supply)
+{
+    const std::string role = supply.role == "ni" ? "ипНИ"
+        : supply.role == "bi" ? "ипБИ" : supply.role;
+    return supply.instrument->portName() + " (" + role + ")";
+}
+
+void confirmOutputsOff(Instance& instance)
+{
+    const unsigned attempts = std::max(
+        1u, plugin::unsignedValue(instance.config, "output_confirm_attempts", 4));
+    const unsigned settleMilliseconds = plugin::unsignedValue(
+        instance.config, "output_confirm_settle_ms", 150);
+    std::string lastFailure;
+    for (unsigned attempt = 0; attempt < attempts; ++attempt) {
+        if (settleMilliseconds) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(settleMilliseconds));
+        }
+        bool allOff = true;
+        lastFailure.clear();
+        for (auto& supply : instance.supplies) {
+            try {
+                if (supply.instrument->outputEnabled()) {
+                    allOff = false;
+                    lastFailure = "АКИП не подтвердил отключение выхода " + supplyLabel(supply);
+                    break;
+                }
+            } catch (const std::exception& error) {
+                allOff = false;
+                lastFailure = error.what();
+                break;
+            }
+        }
+        if (allOff) return;
+    }
+    throw std::runtime_error(lastFailure.empty()
+        ? "АКИП не подтвердил отключение выхода" : lastFailure);
 }
 
 void verifyNear(double actual, double expected, double tolerance, const std::string& what)
@@ -186,11 +227,11 @@ orbita_plugin_status_v1 invoke(void* value, const char* capability, const char* 
 
         if (action == "output" && !plugin::booleanValue(args, "enabled")) {
             outputsOff(instance);
-            for (auto& supply : instance.supplies) {
-                if (supply.instrument->outputEnabled()) {
-                    throw std::runtime_error("АКИП не подтвердил отключение выхода " + supply.role);
-                }
-            }
+            // Фактический АКИП иногда ещё возвращает ON при немедленном OUTP?
+            // (на стенде наблюдалось подтверждение через 300+ мс). Проверяем с
+            // ограниченными повторами, не превращая нормальную задержку прибора
+            // в техническую ошибку прогона.
+            confirmOutputsOff(instance);
             return std::string("status=ok\noutput_enabled=false\n");
         }
 

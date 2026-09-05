@@ -60,10 +60,10 @@ capabilities:
   - power.dc_supply
   - catalog.parameter_resolver
   - operator.manual_input
-scenarios:
-  - id: ubsi.468157.002.ulk_yalk_ytp
+  scenarios:
+  - id: ubsi.468157.002.ulk.combined.check
     path: data/scenarios/ubsi_ulk_combined_check.yaml
-    status: published_partial_verified
+    status: published_awaiting_full_live_run
   - id: ubsi.468157.002.yalk_tu5_6
     path: data/scenarios/ubsi_yalk_tu_5_6.yaml
     status: published
@@ -99,3 +99,4 @@ references:
     trust: implementation_plus_live_capture
     confirms: [udp_broadcast_receive, rokt_transport]
 open_questions: 08_open_questions.md
+stage_plan: 09_ubsi_stage_plan.md

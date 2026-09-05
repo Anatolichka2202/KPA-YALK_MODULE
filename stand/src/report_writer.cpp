@@ -107,7 +107,8 @@ ReportPaths writeHtmlCsvReport(const ScenarioRunResult& run, const std::string& 
             return found == value->attributes.end() ? QString() : raw(found->second);
         };
         if (value->parameterKey.rfind("ubsi.supply", 0) == 0
-            || value->parameterKey.rfind("ubsi.yalk.cleanup", 0) == 0) continue;
+            || value->parameterKey.rfind("ubsi.yalk.cleanup", 0) == 0
+            || value->attributes.count("evidence_reference") != 0) continue;
         const bool ytpValue = value->attributes.count("ytp_channel") != 0;
         if (mixedReport) {
             csvStream << field(ytpValue ? QStringLiteral("ЯТП") : QStringLiteral("ЯЛК")) << ';'
@@ -238,7 +239,8 @@ ReportPaths writeHtmlCsvReport(const ScenarioRunResult& run, const std::string& 
             return found == value->attributes.end() ? QString() : escape(found->second);
         };
         if (value->parameterKey.rfind("ubsi.supply", 0) == 0
-            || value->parameterKey.rfind("ubsi.yalk.cleanup", 0) == 0) continue;
+            || value->parameterKey.rfind("ubsi.yalk.cleanup", 0) == 0
+            || value->attributes.count("evidence_reference") != 0) continue;
         output << QStringLiteral("<tr class=\"") << QString::fromLatin1(toString(value->verdict))
                << QStringLiteral("\"><td>");
         const bool ytpValue = value->attributes.count("ytp_channel") != 0;
@@ -338,9 +340,24 @@ ReportPaths writeHtmlCsvReport(const ScenarioRunResult& run, const std::string& 
     for (const auto& step : run.steps) writeBriefStep(step);
     brief << QStringLiteral("</tbody></table>");
     if (combinedTu) {
-        brief << QStringLiteral("<h2>Принятые, но не измеренные стендом составные части</h2>")
-              << QStringLiteral("<table><thead><tr><th>Составная часть</th><th>Статус</th><th>Основание</th></tr></thead><tbody>")
-              << QStringLiteral("<tr><td>ЯВП-8</td><td>ЗАЧТЕНО ПО ПРОИЗВОДСТВЕННОМУ КОНТРОЛЮ</td><td>Номер и дата производственного протокола должны быть указаны перед выпуском итогового документа</td></tr></tbody></table>");
+        brief << QStringLiteral("<h2>Внешние подтверждающие документы</h2>")
+              << QStringLiteral("<table><thead><tr><th>Требование</th><th>Пункт ТУ</th><th>Тип документа</th><th>Номер и дата</th><th>Оператор</th><th>Время</th></tr></thead><tbody>");
+        for (const auto& [step, value] : measurements) {
+            const auto reference = value->attributes.find("evidence_reference");
+            if (reference == value->attributes.end()) continue;
+            const auto attribute = [value](const char* key) {
+                const auto found = value->attributes.find(key);
+                return found == value->attributes.end() ? QString() : escape(found->second);
+            };
+            brief << QStringLiteral("<tr><td>") << escape(step->title)
+                  << QStringLiteral("</td><td>") << escape(step->tuRequirement)
+                  << QStringLiteral("</td><td>") << attribute("evidence_type")
+                  << QStringLiteral("</td><td>") << attribute("evidence_reference")
+                  << QStringLiteral("</td><td>") << attribute("operator")
+                  << QStringLiteral("</td><td>") << attribute("timestamp")
+                  << QStringLiteral("</td></tr>");
+        }
+        brief << QStringLiteral("</tbody></table>");
     }
     brief << QStringLiteral("<p class=\"no-print\"><a href=\"") << stem
           << QStringLiteral(".html\">Открыть подробную ведомость каналов</a> · <a href=\"")

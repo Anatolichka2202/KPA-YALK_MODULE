@@ -1,17 +1,19 @@
 schema: 1
 id: ubsi.468157.002.ulk.combined.check
-title: УЛК · совмещённая проверка ЯЛК-96 и ЯТП по ТУ 5.6
-version: 1.1.0
+title: УБСИ · полная проверка по ТУ
+version: 2.0.0
 catalog_version: 2026.08.29-yalk-1
 object_type: UBSI_468157_002
 state: published
 
-# Один отчёт: полный маршрут ЯЛК, затем три ручные точки ЯТП. Магазин
-# подключён к общему X123 и переключается оператором на 0 / 120 / 240 Ом.
+# Один отчёт: питание, полный маршрут ЯЛК, затем три ручные точки ЯТП.
+# Магазин подключён к общему X123 и переключается оператором на
+# 0 / 120 / 240 Ом. Пункты, для которых на стенде нет измерительного тракта,
+# принимаются только по введённому оператором номеру внешнего протокола.
 steps:
   - id: readiness
     title: Готовность УБСИ после холодного включения не более 30 секунд
-    tu: 1.1.4.4
+    tu: 1.1.4.13
     procedure: ubsi.readiness
     requires:
       - power.dc_supply
@@ -39,6 +41,7 @@ steps:
       survival_points_v: 19,37
       survival_seconds: 300,60
       restore_voltage_v: 27
+      recovery_timeout_ms: 30000
 
   - id: yalk_stream
     title: Запуск потока ЯЛК
@@ -65,8 +68,6 @@ steps:
       sample_count: 16
       settle_ms: 150
       full_voltage: 6.2
-      reference_tolerance_v: 0.03
-      reference_adjust_attempts: 3
 
   - id: yalk_initial
     title: Обрыв и исходное отключённое состояние 80 входов ЯЛК
@@ -94,6 +95,25 @@ steps:
     args:
       channel_count: 80
       point_volts: 0,3.1,6.2
+      sample_count: 16
+      settle_ms: 150
+      channel_off_settle_ms: 1000
+      full_scale_v: 6.2
+      tolerance_percent_fs: 0.5
+
+  - id: yalk_contact_thresholds
+    title: Контактные пороги всех адресов: 0 при 1,0 В и 1 при 2,4 В
+    tu: 1.1.4.1
+    procedure: yalk.check_channels
+    requires:
+      - catalog.parameter_resolver
+      - ulk.parameter_source
+      - stand.switch_matrix
+      - measure.reference_voltage
+    args:
+      channel_count: 80
+      point_volts: 1.0,2.4
+      signal_expectations: 0,1
       sample_count: 16
       settle_ms: 150
       channel_off_settle_ms: 1000
@@ -192,6 +212,56 @@ steps:
     args:
       isd_switch_type: 7
       isd_route_channels: 3,9,12,17
+
+  - id: sensor_supply_evidence
+    title: Питание датчиков 6,2 В при 350 мА, защита при 450 мА и восстановление
+    tu: 1.1.4.2
+    procedure: ubsi.external_evidence
+    requires:
+      - operator.manual_input
+    args:
+      evidence_type: производственный протокол ЯП-П
+      prompt: Введите номер и дату протокола проверки 6,2 В / 350 мА / 450 мА
+
+  - id: reference_stream_evidence
+    title: Эталон 6,2 ±0,03 В выдан в выходной поток телеметрической информации
+    tu: 1.1.4.9
+    procedure: ubsi.external_evidence
+    requires:
+      - operator.manual_input
+    args:
+      evidence_type: протокол выходного потока УБСИ
+      prompt: Введите номер и дату протокола, подтверждающего эталон 6,2 В в выходном потоке
+
+  - id: yvp_evidence
+    title: ЯВП-8 — пьезоэлектрические каналы и АЧХ
+    tu: 1.1.4.1, 1.1.4.7, 1.1.4.8, 1.1.4.14
+    procedure: ubsi.external_evidence
+    requires:
+      - operator.manual_input
+    args:
+      evidence_type: производственный протокол ЯВП-8
+      prompt: Введите номер и дату производственного протокола ЯВП-8
+
+  - id: input_current_evidence
+    title: Входной ток измерительного канала не более 2 мкА
+    tu: 1.1.4.14
+    procedure: ubsi.external_evidence
+    requires:
+      - operator.manual_input
+    args:
+      evidence_type: протокол измерения входного тока
+      prompt: Введите номер и дату протокола измерения входного тока не более 2 мкА
+
+  - id: insulation_evidence
+    title: Сопротивление изоляции не менее 20 МОм
+    tu: 1.1.4.4, 1.1.4.12 / метод 5.5
+    procedure: ubsi.external_evidence
+    requires:
+      - operator.manual_input
+    args:
+      evidence_type: протокол измерения сопротивления изоляции
+      prompt: Введите номер и дату протокола измерения сопротивления изоляции
 
   - id: power_off
     title: Отключение питания УБСИ после проверки

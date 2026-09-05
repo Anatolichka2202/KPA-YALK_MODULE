@@ -49,6 +49,15 @@ public:
         if (capability == "ulk.parameter_source" && operation == "start_record") {
             return "status=ok\npath=fake/frames.ulkbin\n";
         }
+        if (capability == "ulk.parameter_source" && operation == "alive") {
+            aliveSupplyVoltages.push_back(supplyVoltage);
+            if (simulateAdapterOutAtSurvival
+                && (std::abs(supplyVoltage - 19.0) < 0.01
+                    || std::abs(supplyVoltage - 37.0) < 0.01)) {
+                throw std::runtime_error("adapter is rebooting at survival voltage");
+            }
+            return "status=ready\nsequence=1\n";
+        }
         if (capability == "ulk.parameter_source" && operation == "start_prepared_yalk_reference") {
             return "status=ready\nfirst_sequence=1\n";
         }
@@ -57,6 +66,10 @@ public:
         }
         if (capability == "stand.switch_matrix" && operation == "yalk_set_voltage") {
             currentVoltage = std::stod(arguments.at("volts"));
+            yalkVoltages.push_back(currentVoltage);
+            if (currentVoltage > 6.2) {
+                throw std::invalid_argument("YALK voltage must be in range 0.00..6.20 V");
+            }
             return "status=ready\n";
         }
         if (capability == "stand.switch_matrix" && operation == "yalk_output_off") {
@@ -126,10 +139,20 @@ public:
             return "status=confirmed\nvalue=" + std::to_string(currentResistance)
                 + "\noperator=test\ntimestamp=2026-09-02T12:00:00\n";
         }
+        if (capability == "operator.manual_input" && operation == "confirm_text") {
+            return "status=confirmed\nvalue=PR-42 from 2026-09-05\n"
+                   "operator=test\ntimestamp=2026-09-05T12:00:00\n";
+        }
         if (capability == "power.dc_supply" && operation == "read_state") {
-            return "status=ready\nvolts=" + std::string(supplyOutputEnabled ? "27.0" : "0.0")
+            return "status=ready\nvolts=" + std::string(supplyOutputEnabled
+                    ? std::to_string(supplyVoltage) : "0.0")
                 + "\namperes=" + std::string(supplyOutputEnabled ? "0.2" : "0.0")
                 + "\noutput_enabled=" + (supplyOutputEnabled ? "true" : "false") + "\n";
+        }
+        if (capability == "power.dc_supply" && operation == "set_voltage") {
+            supplyVoltage = std::stod(arguments.at("volts"));
+            supplyVoltages.push_back(supplyVoltage);
+            return "status=ok\n";
         }
         if (capability == "power.dc_supply" && operation == "output") {
             supplyOutputEnabled = arguments.at("enabled") == "true";
@@ -144,11 +167,16 @@ public:
     std::set<std::string> capabilities;
     std::vector<std::string> operations;
     std::vector<std::map<std::string, std::string>> switchArguments;
+    std::vector<double> yalkVoltages;
+    std::vector<double> supplyVoltages;
+    std::vector<double> aliveSupplyVoltages;
     std::vector<unsigned> snapshotAfterSequences;
     bool stopped = false;
     double currentResistance = 120.0;
     double currentVoltage = 0.0;
     bool supplyOutputEnabled = true;
+    double supplyVoltage = 27.0;
+    bool simulateAdapterOutAtSurvival = false;
     unsigned supplyEnableCount = 0;
     unsigned supplyDisableCount = 0;
     unsigned snapshotSequence = 20;
@@ -261,8 +289,8 @@ void configurationAndCatalog(const QString& root)
             "YTP must be a published six-stage powered manual-reference scenario");
     require(engine.validate(ytp120).empty() && ytp120.steps.size() == 6,
             "Fixed 120-ohm YTP scenario must validate");
-    require(engine.validate(combined).empty() && combined.steps.size() == 13,
-            "Combined powered YALK/YTP delivery scenario must validate as thirteen stages");
+    require(engine.validate(combined).empty() && combined.steps.size() == 19,
+            "Full UBSI delivery scenario must validate as nineteen traceable stages");
     require(engine.validate(contacts).empty() && contacts.steps.size() == 6,
             "Optional YALK contact-threshold scenario must validate as six stages");
     require(profile.id == "ktma-main" && profile.activeOutputsConfirmed,
@@ -447,6 +475,8 @@ void productionYalkScaleRegression()
     }
     require(run.verdict == RunVerdict::Ok,
         "YALK 97/99 conversion must use the nominal 6.2 V scale, not the V7 calibration reading");
+    require(equipment.yalkVoltages == std::vector<double>({6.2, 0.0, 3.1, 6.2}),
+        "YALK calibration must issue one bounded 6.20 V command and never overdrive ISD");
     const auto& channelStep = run.steps.back();
     require(!channelStep.measurements.empty()
                 && channelStep.measurements.back().parameterKey
@@ -567,6 +597,102 @@ void yalkCleanupSignedResidualRegression()
             "YALK cleanup residual must be checked by absolute magnitude");
 }
 
+void ubsiReadinessSuccessRegression()
+{
+    ScenarioEngine engine;
+    registerUbsiProcedures(engine);
+    ScenarioDefinition scenario;
+    scenario.id = "ubsi-readiness-success-regression";
+    scenario.title = "UBSI readiness success regression";
+    scenario.version = "1";
+    scenario.catalogVersion = "1";
+    scenario.objectType = "UBSI_468157_002";
+    scenario.publicationState = PublicationState::Published;
+    scenario.steps = {
+        {"readiness", "Готовность", "1.1.4.13", "ubsi.readiness",
+         {"power.dc_supply", "ulk.parameter_source"},
+         {{"off_settle_ms", "1"}, {"timeout_ms", "10"}}, {}}
+    };
+    FakeEquipment equipment;
+    equipment.capabilities = {"power.dc_supply", "ulk.parameter_source"};
+    const auto run = engine.run(scenario, equipment, "p1", "", false);
+    require(run.verdict == RunVerdict::Ok && run.steps.size() == 1
+                && run.steps.front().verdict == RunVerdict::Ok,
+            "UBSI readiness must be OK when telemetry appears before 30 seconds");
+    require(equipment.supplyDisableCount == 1 && equipment.supplyEnableCount == 1,
+            "UBSI readiness must measure from a controlled cold power cycle");
+}
+
+void ubsiSurvivalRecoveryRegression()
+{
+    ScenarioEngine engine;
+    registerUbsiProcedures(engine);
+
+    ScenarioDefinition scenario;
+    scenario.id = "ubsi-survival-recovery";
+    scenario.title = "UBSI survival recovery";
+    scenario.version = "1";
+    scenario.catalogVersion = "1";
+    scenario.publicationState = PublicationState::Published;
+    ScenarioNode step;
+    step.id = "supply";
+    step.title = "Supply range and survival";
+    step.tuRequirement = "1.1.4.3, 1.1.4.5";
+    step.procedure = "ubsi.supply_range";
+    step.requiredCapabilities = {"power.dc_supply", "ulk.parameter_source"};
+    step.arguments = {{"voltage_points_v", "24,27,35"},
+        {"survival_points_v", "19,37"}, {"survival_seconds", "0,0"},
+        {"restore_voltage_v", "27"}, {"settle_ms", "0"},
+        {"recovery_timeout_ms", "10"}};
+    scenario.steps = {step};
+
+    FakeEquipment equipment;
+    equipment.capabilities = {"power.dc_supply", "ulk.parameter_source"};
+    equipment.simulateAdapterOutAtSurvival = true;
+    const auto run = engine.run(scenario, equipment, "test", "", false);
+    require(run.verdict == RunVerdict::Ok,
+            "Survival must be verified after nominal-voltage recovery, not while the shared-supply adapter is offline");
+    require(std::find(equipment.aliveSupplyVoltages.begin(), equipment.aliveSupplyVoltages.end(), 19.0)
+                == equipment.aliveSupplyVoltages.end()
+            && std::find(equipment.aliveSupplyVoltages.begin(), equipment.aliveSupplyVoltages.end(), 37.0)
+                == equipment.aliveSupplyVoltages.end(),
+            "The UDP adapter must not be required to stream at the 19/37 V survival exposure points");
+    const auto followedByNominal = [&equipment](double exposure) {
+        for (std::size_t index = 1; index < equipment.supplyVoltages.size(); ++index) {
+            if (equipment.supplyVoltages[index - 1] == exposure
+                && equipment.supplyVoltages[index] == 27.0) return true;
+        }
+        return false;
+    };
+    require(followedByNominal(19.0) && followedByNominal(37.0),
+            "Each survival exposure must be followed by a return to nominal 27 V");
+}
+
+void externalEvidenceRegression()
+{
+    ScenarioEngine engine;
+    registerUbsiProcedures(engine);
+    ScenarioDefinition scenario;
+    scenario.id = "external-evidence-regression";
+    scenario.title = "External evidence regression";
+    scenario.version = "1";
+    scenario.catalogVersion = "1";
+    scenario.objectType = "UBSI_468157_002";
+    scenario.publicationState = PublicationState::Published;
+    scenario.steps = {
+        {"input_current", "Входной ток не более 2 мкА", "1.1.4.14",
+         "ubsi.external_evidence", {"operator.manual_input"},
+         {{"evidence_type", "протокол измерения"}}, {}}
+    };
+    FakeEquipment equipment;
+    equipment.capabilities = {"operator.manual_input"};
+    const auto run = engine.run(scenario, equipment, "p1", "", false);
+    require(run.verdict == RunVerdict::Ok
+                && run.steps.front().measurements.front().attributes.at("evidence_reference")
+                    == "PR-42 from 2026-09-05",
+            "External evidence must be traceable in the run result");
+}
+
 void waveformDecoder()
 {
     const std::string preamble = "1,0,2,1,0.001,0,0,0.01,0,32768";
@@ -650,6 +776,28 @@ void persistenceAndReport()
     require(ytpCsvText.contains("Канал ЯТП") && ytpCsvText.contains("Эталон, Ом")
                 && ytpCsvText.contains("100.2"),
             "YTP CSV report must expose channel/reference/raw/ohm fields");
+
+    ScenarioRunResult evidenceRun = run;
+    evidenceRun.runId = "evidence-run-1";
+    evidenceRun.scenarioId = "ubsi.468157.002.ulk.combined.check";
+    evidenceRun.scenarioTitle = "Полная проверка УБСИ";
+    evidenceRun.verdict = RunVerdict::Ok;
+    MeasurementResult evidence{
+        "ubsi.external_evidence.yvp", "ЯВП-8", 1.0, 1.0, 1.0, 1.0,
+        "док.", RunVerdict::Ok, {}};
+    evidence.attributes = {{"evidence_type", "производственный протокол ЯВП-8"},
+        {"evidence_reference", "PR-42 от 05.09.2026"}, {"operator", "tester"},
+        {"timestamp", "2026-09-05T12:00:00"}};
+    evidenceRun.steps = {{"yvp_evidence", "ЯВП-8", "1.1.4.7",
+                          RunVerdict::Ok, "принято", {evidence}, {}}};
+    const auto evidenceReport = writeHtmlCsvReport(
+        evidenceRun, temporary.path().toUtf8().toStdString());
+    QFile evidenceHtml(QString::fromUtf8(evidenceReport.tuHtml));
+    require(evidenceHtml.open(QIODevice::ReadOnly), "Cannot open external evidence report");
+    const auto evidenceText = evidenceHtml.readAll();
+    require(evidenceText.contains("PR-42") && evidenceText.contains("tester")
+                && evidenceText.contains("Внешние подтверждающие документы"),
+            "TU report must print the actual external evidence reference and operator");
 }
 
 } // namespace
@@ -664,6 +812,9 @@ int main(int argc, char** argv)
         productionYalkScaleRegression();
         yalkOpenStateRegression();
         yalkCleanupSignedResidualRegression();
+        ubsiReadinessSuccessRegression();
+        ubsiSurvivalRecoveryRegression();
+        externalEvidenceRegression();
         yalkOverloadSequenceRegression();
         waveformDecoder();
         pluginContracts();

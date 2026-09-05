@@ -42,7 +42,7 @@ struct CellInfo {
 const CellInfo kUbsiCells[] = {
     {"ЯТП", "30 каналов сопротивления, общий вход X123"},
     {"ЯЛК-96", "80 аналоговых и контактных каналов"},
-    {"УЛК+ЯТП", "последовательная проверка ЯЛК и ЯТП"}
+    {"УБСИ ПО ТУ", "полная проверка питания, ЯЛК-96, ЯТП и внешних протоколов"}
 };
 
 class Plot : public QWidget
@@ -355,7 +355,7 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
         QStringLiteral("30 каналов · 0 / 120 / 240 Ом"), QStringLiteral("ЯТП"),
         QStringLiteral("#8247d6"), QStringLiteral(":/icons/detail.svg"));
     addModeCard(QStringLiteral("УБСИ по ТУ"),
-        QStringLiteral("ЯЛК + ЯТП + питание"), QStringLiteral("УЛК+ЯТП"),
+        QStringLiteral("полная проверка и отчётность"), QStringLiteral("УБСИ ПО ТУ"),
         QStringLiteral("#079b9d"), QStringLiteral(":/icons/scenario.svg"));
     ytpCard->setChecked(true);
     Q_UNUSED(yalkCard);
@@ -654,8 +654,8 @@ void TestPage::rebuildTests()
                             QStringLiteral("YTP_FULL_5_6"));
         testCombo_->addItem(QStringLiteral("Быстрый контроль ЯТП · только 120 Ом (не ТУ)"),
                             QStringLiteral("YTP_120_CHECK"));
-    } else if (selectedScopeCode() == QStringLiteral("УЛК+ЯТП")) {
-        testCombo_->addItem(QStringLiteral("Совмещённая проверка ЯЛК + ЯТП · ТУ 5.6"),
+    } else if (selectedScopeCode() == QStringLiteral("УБСИ ПО ТУ")) {
+        testCombo_->addItem(QStringLiteral("Полная проверка УБСИ · ТУ 5.5 + 5.6"),
                             QStringLiteral("ULK_COMBINED_CHECK"));
     }
     const bool yalkScope = selectedScopeCode() == QStringLiteral("ЯЛК-96");
@@ -699,8 +699,8 @@ void TestPage::updateSelectionSummary()
     } else if (test == QStringLiteral("ULK_COMBINED_CHECK")) {
         scopeLabel_->setText(QStringLiteral(
             "Проверяемый объём ТУ: холодная готовность до 30 с; питание 24 / 27 / 35 В и ток до 400 мА; "
-            "выдержки 19 В — 5 минут и 37 В — 1 минута; ЯЛК по 80 адресам, обрыв и ±12 В; затем ЯТП по 30 каналам. "
-            "ЯВП-8 зачтена по производственному контролю. Формируются краткий протокол ТУ и ведомость каналов."));
+            "выдержки 19 В — 5 минут и 37 В — 1 минута; ЯЛК по 80 адресам, пороги, обрыв и ±12 В; затем ЯТП по 30 каналам. "
+            "Непроверяемые стендом пункты принимаются только по введённому номеру внешнего протокола. Формируются краткий протокол ТУ и ведомость каналов."));
     } else {
         scopeLabel_->setText(QStringLiteral("%1 · %2: диагностический прогон проверяет наличие источника данных, адресной привязки и стабильной выборки. Он не выдаётся за приёмочное испытание по ТУ.")
             .arg(object == QStringLiteral("BSI") ? QStringLiteral("БСИ") : QStringLiteral("УБСИ № 7"), scope));

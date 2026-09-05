@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>МилТех Станция · Административный режим</title>
+  <link rel="stylesheet" href="admin.css?v=1">
+</head>
+<body>
+  <div class="admin-window">
+    <header class="admin-titlebar">
+      <div class="admin-brand"><img src="miltech-industrial-mark.svg" alt="МилТех" style="filter:none"><div><b>МИЛТЕХ СТАНЦИЯ</b><small>АДМИНИСТРАТИВНЫЙ РЕЖИМ</small></div></div>
+      <div class="admin-summary"><span><i></i> ЯДРО ГОТОВО</span><span>Локальная БД</span><span>Сессии: 2</span><span>F12</span></div>
+    </header>
+    <div class="admin-workspace">
+      <aside class="admin-nav">
+        <div class="nav-section">СТАНЦИЯ</div>
+        <button class="active" data-page="home"><b>01</b><span>Главное окно<small>ядро и надстройки</small></span></button>
+        <button data-page="sessions"><b>02</b><span>Сессии<small>окна и оборудование</small></span></button>
+        <div class="nav-section">ДАННЫЕ</div>
+        <button data-page="database"><b>03</b><span>БД ОКР<small>изделия и ячейки</small></span></button>
+        <button data-page="reports"><b>04</b><span>Отчётность<small>протокол и паспорт</small></span></button>
+        <button data-page="composition"><b>05</b><span>Состав изделия<small>перенос и замена</small></span></button>
+        <div class="nav-section">КОНФИГУРАЦИЯ</div>
+        <button data-page="plugins"><b>06</b><span>Надстройки и плагины<small>КТМА · оборудование</small></span></button>
+        <button data-page="scenarios"><b>07</b><span>Сценарии<small>черновики и публикация</small></span></button>
+        <button data-page="reportEditor"><b>08</b><span>Редактор отчёта<small>шаблон и метаданные</small></span></button>
+        <button data-page="forms"><b>09</b><span>Формы и профиль<small>стенд · допуски · ввод</small></span></button>
+        <button data-page="appearance"><b>10</b><span>Оформление<small>темы и фирменный стиль</small></span></button>
+      </aside>
+      <main id="admin-root"></main>
+    </div>
+    <footer class="admin-status"><span>СТАНЦИЯ 0.2 · ЛОКАЛЬНЫЙ РЕЖИМ</span><span>База: station-local.db</span><span>Последняя запись: 14:25:08</span><b>ГОТОВО</b></footer>
+  </div>
+  <script src="admin.js?v=1"></script>
+</body>
+</html>

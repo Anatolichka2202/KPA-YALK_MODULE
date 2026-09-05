@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 92" role="img" aria-labelledby="title">
+  <title id="title">КТМА — надстройка МилТех Станции</title><rect width="420" height="92" fill="#0d1721"/>
+  <path d="M16 18h58v56H16z" fill="#121f2b" stroke="#7048b8" stroke-width="2"/>
+  <path d="M27 57V35h9v8l10-8h11L44 46l14 11H46L36 49v8Z" fill="#eef5fa"/>
+  <path d="M20 22h50M20 70h50" stroke="#3e91e6" stroke-width="2"/>
+  <text x="96" y="31" fill="#8da2b4" font-family="Segoe UI,Arial" font-size="11" letter-spacing="2.4">МИЛТЕХ СТАНЦИЯ · НАДСТРОЙКА</text>
+  <text x="96" y="67" fill="#a978ff" font-family="Segoe UI,Arial" font-size="36" font-weight="700" letter-spacing="7">КТМА</text>
+  <text x="255" y="65" fill="#dbe8f2" font-family="Consolas,monospace" font-size="12">УБСИ / СТЕНД 01</text>
+</svg>

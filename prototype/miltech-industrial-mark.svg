@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
+  <title id="title">Технический знак МилТех</title>
+  <desc id="desc">Упрощённый круглый знак с ракетой, звездой и дорожками платы</desc>
+  <circle cx="32" cy="32" r="29" fill="#09111a" stroke="#dbe8f2" stroke-width="2"/>
+  <path d="M17 35 37 15c4-4 9-6 12-6-1 8-4 15-9 20L25 44l-7 2 2-7Z" fill="#dbe8f2"/>
+  <circle cx="39" cy="20" r="3.4" fill="#09111a" stroke="#3e91e6" stroke-width="1.8"/>
+  <path d="m18 38-6-1 5-6 5-1m9 9 1 7-7 5-1-7Z" fill="#3e91e6"/>
+  <path d="m11 50 8-8m-5 12 8-8" stroke="#dbe8f2" stroke-width="2" stroke-linecap="round"/>
+  <path d="M34 47h9l4-5h6M39 53h8l3-3h4" fill="none" stroke="#48c78e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="53" cy="42" r="2" fill="#09111a" stroke="#48c78e" stroke-width="2"/>
+  <circle cx="54" cy="50" r="2" fill="#09111a" stroke="#48c78e" stroke-width="2"/>
+  <path d="m48 9 1.6 3.4 3.7.4-2.8 2.5.8 3.6-3.3-1.8-3.2 1.8.7-3.6-2.7-2.5 3.7-.4Z" fill="#e5ad55"/>
+</svg>

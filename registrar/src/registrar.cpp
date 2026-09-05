@@ -396,6 +396,17 @@ void Registrar::finishStage(const std::string& stageAttemptId, Verdict verdict)
     if (verdict == Verdict::InProgress || verdict == Verdict::Incomplete) {
         throw std::invalid_argument("a finished stage must have a terminal verdict");
     }
+    if (verdict == Verdict::Ok || verdict == Verdict::Fail) {
+        QSqlQuery linkedRun(database_);
+        linkedRun.prepare(QStringLiteral(
+            "SELECT 1 FROM stage_runs WHERE stage_attempt_id = ?"));
+        linkedRun.addBindValue(QString::fromStdString(stageAttemptId));
+        if (!linkedRun.exec()) throwSql(linkedRun, "find stage run");
+        if (!linkedRun.next()) {
+            throw std::logic_error(
+                "a completed stage must be linked to a stand run");
+        }
+    }
     QSqlQuery query(database_);
     query.prepare(QStringLiteral(
         "UPDATE stage_attempts SET verdict = ?, finished_at = ? "
@@ -503,8 +514,10 @@ Verdict Registrar::productVerdict(const std::string& productId) const
         Stage::InitialElectrical, Stage::PostVibrationElectrical,
         Stage::PostClimateElectrical, Stage::FinalElectrical};
     bool incomplete = false;
+    bool hasActiveComponent = false;
     for (const auto& binding : bindings) {
         if (!binding.active) continue;
+        hasActiveComponent = true;
         for (const Stage stage : requiredStages) {
             QSqlQuery query(database_);
             query.prepare(QStringLiteral(
@@ -537,6 +550,7 @@ Verdict Registrar::productVerdict(const std::string& productId) const
             if (verdict != Verdict::Ok) incomplete = true;
         }
     }
+    if (!hasActiveComponent) return Verdict::Incomplete;
     return incomplete ? Verdict::Incomplete : Verdict::Ok;
 }
 

@@ -1,1 +1,50 @@
-<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Стендовый комплекс КТМА</title><link rel="stylesheet" href="styles.css?v=6"></head><body><div class="window"><header class="titlebar"><div class="brand"><img src="miltech-mark.png"><span>СТЕНДОВЫЙ КОМПЛЕКС КТМА <small>МилТех · v0.2 design preview</small></span></div><div class="window-status"><b class="green">●</b> СТАНЦИЯ ГОТОВА <span class="sep">|</span> KTMA-01 <span class="sep">|</span> 14:25:04</div><button class="mode">ОПЕРАТОР ▾</button></header><div class="workspace"><aside class="screen-nav"><div class="nav-caption">УБСИ · ИСПЫТАНИЯ</div><button class="screen-button active" data-screen="select"><b>00</b><span>УБСИ · Этапы<small>жизненный цикл объекта</small></span></button><button class="screen-button" data-screen="yalk"><b>01</b><span>УБСИ · ЯЛК-96<small>80 каналов · 97/99</small></span></button><button class="screen-button" data-screen="ytp"><b>02</b><span>УБСИ · ЯТП<small>30 каналов · Р4831</small></span></button><button class="screen-button" data-screen="combined"><b>03</b><span>УБСИ · Сводка<small>ЯЛК-96 + ЯТП</small></span></button><div class="nav-caption lower">ИНЖЕНЕРСКИЙ КОНТУР</div><button class="screen-button" data-screen="db"><b>D</b><span>БД ОКР<small>объекты и ячейки</small></span></button><button class="screen-button" data-screen="reports"><b>R</b><span>Отчётность<small>протокол · паспорт</small></span></button><button class="screen-button" data-screen="plugins"><b>P</b><span>Плагины КТМА<small>состав и связь</small></span></button><button class="screen-button" data-screen="scenario"><b>E</b><span>Редактор сценария<small>черновик · diff</small></span></button><button class="screen-button" data-screen="report-editor"><b>M</b><span>Редактор отчёта<small>метаданные</small></span></button><button class="screen-button" data-screen="forms"><b>F</b><span>Формы<small>ввод и подтверждения</small></span></button><div class="nav-caption lower">СИСТЕМА</div><button class="screen-button" data-screen="ktma"><b>K</b><span>Главное меню КТМА<small>контуры и роли</small></span></button><button class="screen-button" data-screen="station"><b>S</b><span>Главное окно Станции<small>рабочее место</small></span></button><button class="screen-button" data-screen="brand"><b>B</b><span>Бренд и загрузка<small>логотипы · темы</small></span></button></aside><main id="screen"></main></div><footer class="statusbar"><span>СОСТОЯНИЕ СИСТЕМЫ</span><strong>● ПРОВЕРКА НЕ ЗАПУЩЕНА</strong><span class="status-note">Ethernet/RS-485: online · ИСД: online · В7-78/1: connected</span><button>БЕЗОПАСНО ОСТАНОВИТЬ</button><button class="blue">ЗАПУСТИТЬ ПРОВЕРКУ</button></footer></div><script src="app.js?v=6"></script></body></html>
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>МилТех Станция · УБСИ</title>
+  <link rel="stylesheet" href="test.css?v=1">
+</head>
+<body>
+  <div class="test-window">
+    <header class="titlebar">
+      <div class="brand">
+        <img src="miltech-industrial-mark.svg" alt="МилТех" style="filter:none">
+        <div><b>МИЛТЕХ СТАНЦИЯ</b><small>КТМА · УБСИ · испытательная сессия</small></div>
+      </div>
+      <div class="station-state"><i></i><b>СТЕНД ГОТОВ</b><span>Сессия УБСИ-01</span><span>14:25:04</span></div>
+      <button class="admin-key" id="open-admin"><kbd>F12</kbd> АДМИНИСТРАТИВНЫЙ</button>
+    </header>
+
+    <main id="test-root"></main>
+
+    <footer class="commandbar">
+      <div class="result"><small>ИТОГ</small><b id="footer-result">ВЫПОЛНЯЕТСЯ</b></div>
+      <div class="footer-progress"><span id="footer-step">ЯЛК-96 · каналы 57 / 80</span><div><i id="footer-progress" style="width:71%"></i></div></div>
+      <button class="secondary">ОТЧЁТ</button>
+      <button class="danger" id="safe-stop">БЕЗОПАСНО ОСТАНОВИТЬ</button>
+      <button class="primary" id="start-test">ЗАПУСТИТЬ</button>
+    </footer>
+  </div>
+
+  <div class="dialog-layer" id="resistance-layer" aria-hidden="true">
+    <section class="dialog" role="dialog" aria-modal="true" aria-labelledby="resistance-title">
+      <div class="dialog-head">
+        <div><small>РУЧНАЯ ОПЕРАЦИЯ · Р4831</small><h2 id="resistance-title">Точка ЯТП · канал 01 / 30</h2></div>
+        <button class="close-dialog" data-close-dialog>×</button>
+      </div>
+      <div class="target-value"><small>УСТАНОВИТЬ НА МАГАЗИНЕ</small><b id="resistance-target">120 Ω</b><span>Р4831 подключён к общему X123</span></div>
+      <div class="dialog-form">
+        <label>Фактическое значение, Ω<input value="120,34" inputmode="decimal"></label>
+        <label>Допуск<input value="± 0,50 %" readonly></label>
+      </div>
+      <label class="confirmation"><input type="checkbox" id="resistance-confirm"> Р4831 установлен на заданное сопротивление</label>
+      <div class="audit"><span>Оператор: <b>Иванов И.И.</b></span><span>Время: <b>10:21:14</b></span></div>
+      <div class="dialog-buttons"><button class="secondary" data-close-dialog>ОТМЕНА</button><button class="primary" id="confirm-resistance" disabled>ПОДТВЕРДИТЬ ТОЧКУ</button></div>
+    </section>
+  </div>
+
+  <script src="test.js?v=1"></script>
+</body>
+</html>
