@@ -48,17 +48,17 @@ routes:
     bus: 0
     safe: off
   yalk_overload_positive:
-    # 10_ЯЛК_перегрузки.scn: общий источник +12 В, затем type=2
+    # KPA report.log: общий источник +12 В, затем type=3
     # подключает его поочерёдно к физическим каналам ИСД 1..88.
     base: 96
-    type: 2
+    type: 3
     bus: 0
     safe: off
   yalk_overload_negative:
     # Тот же маршрут для -12 В. Схема ИСД и ячейка ЯЛК одинаковы
     # при проверке БСИ и УБСИ; подтверждено оператором 04.09.2026.
     base: 95
-    type: 2
+    type: 3
     bus: 0
     safe: off
   yvp_gain:

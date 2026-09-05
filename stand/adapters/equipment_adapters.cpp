@@ -47,6 +47,8 @@ QHostAddress requiredAddress(const std::string& value, const char* name)
     return address;
 }
 
+void requireIsdSuccess(const QByteArray& body);
+
 QByteArray httpGet(const IsdHttpConfig& config, const QString& path)
 {
     if (config.host.empty()) throw std::invalid_argument("ISD host is empty");
@@ -80,6 +82,12 @@ QByteArray httpGet(const IsdHttpConfig& config, const QString& path)
     if (error == QNetworkReply::NoError) {
         if (status < 200 || status >= 300) {
             throw std::runtime_error("ISD HTTP status " + std::to_string(status));
+        }
+        if (path != QStringLiteral("/")) {
+            try { requireIsdSuccess(body); }
+            catch (const std::exception& failure) {
+                throw std::runtime_error(url.toString().toStdString() + ": " + failure.what());
+            }
         }
         return body;
     }

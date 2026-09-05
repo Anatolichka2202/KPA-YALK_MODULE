@@ -89,9 +89,8 @@ steps:
       - ulk.parameter_source
       - stand.switch_matrix
     args:
-      # Живой прогон 04.09.2026 показал: прямой type=1 допускает num 1..64.
-      # До подтверждения банка/команды 65..88 опасное воздействие не выполняем.
-      mapping_confirmed: false
+      # KPA report.log: ИСД ш = type=3, источники 95/96 и каналы 1..88.
+      mapping_confirmed: true
       physical_channel_count: 88
       observed_address_count: 88
       positive_overload_route: yalk_overload_positive

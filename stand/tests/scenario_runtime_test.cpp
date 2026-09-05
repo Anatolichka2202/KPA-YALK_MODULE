@@ -39,6 +39,9 @@ public:
                        const std::map<std::string, std::string>& arguments) override
     {
         operations.push_back(capability + ":" + operation);
+        if (capability == "stand.switch_matrix" && operation == "switch") {
+            switchArguments.push_back(arguments);
+        }
         if (capability == "orbita.parameter_source" && operation == "health") {
             return "status=ready\nframes_processed=12\nphrase_error_percent=0\n"
                    "group_error_percent=0\nchannel_count=8\n";
@@ -50,7 +53,7 @@ public:
             return "status=ready\nfirst_sequence=1\n";
         }
         if (capability == "ulk.parameter_source" && operation == "stats") {
-            return "status=ready\nlast_sequence=1\n";
+            return "status=ready\nlast_sequence=" + std::to_string(snapshotSequence) + "\n";
         }
         if (capability == "stand.switch_matrix" && operation == "yalk_set_voltage") {
             currentVoltage = std::stod(arguments.at("volts"));
@@ -76,6 +79,8 @@ public:
                 + "\nsample_count=16\nfirst_sequence=2\nlast_sequence=17\n";
         }
         if (capability == "ulk.parameter_source" && operation == "read_snapshot") {
+            snapshotAfterSequences.push_back(
+                static_cast<unsigned>(std::stoul(arguments.at("after_sequence"))));
             std::string words;
             for (unsigned index = 0; index < 100; ++index) {
                 if (index) words += ',';
@@ -138,6 +143,8 @@ public:
     void safeStopAll() noexcept override { stopped = true; }
     std::set<std::string> capabilities;
     std::vector<std::string> operations;
+    std::vector<std::map<std::string, std::string>> switchArguments;
+    std::vector<unsigned> snapshotAfterSequences;
     bool stopped = false;
     double currentResistance = 120.0;
     double currentVoltage = 0.0;
@@ -478,6 +485,14 @@ void yalkOverloadSequenceRegression()
     require(std::count(equipment.operations.begin(), equipment.operations.end(),
                 "ulk.parameter_source:read_snapshot") == 5,
             "YALK overload must save one baseline and read one fresh snapshot per impact");
+    require(equipment.snapshotAfterSequences
+                == std::vector<unsigned>({20, 21, 22, 23, 24}),
+            "Every YALK overload measurement must skip queued frames and start after the live latest sequence");
+    require(!equipment.switchArguments.empty(), "Overload must operate ISD switches");
+    for (const auto& args : equipment.switchArguments) {
+        require(args.count("type") && args.at("type") == "3",
+                "KPA overload requires type=3 for sources and channels");
+    }
 }
 
 void yalkOpenStateRegression()

@@ -845,9 +845,15 @@ std::vector<unsigned> commaSeparatedUnsigned(const std::string& text)
     return result;
 }
 
-std::vector<YalkSnapshotValue> readYalkSnapshot(
-    ProcedureContext& context, unsigned sampleCount, unsigned& sequence)
+std::vector<YalkSnapshotValue> readFreshYalkSnapshot(
+    ProcedureContext& context, unsigned sampleCount)
 {
+    // The adapter produces frames much faster than the overload procedure
+    // switches ISD routes.  Starting from the sequence returned by the
+    // previous impact therefore walks through old frames retained in the
+    // transport queue.  Anchor every measurement burst at the most recently
+    // received frame *after* the settling delay, then wait for new frames.
+    unsigned sequence = ulkLastSequence(context);
     std::vector<double> codeSums(100, 0.0);
     std::vector<unsigned> signalOnes(100, 0);
     for (unsigned sample = 0; sample < std::max(1u, sampleCount); ++sample) {
@@ -905,7 +911,9 @@ ProcedureResult yalkCheckOverload(const ScenarioNode& node, ProcedureContext& co
             {"channel", std::to_string(channel)}, {"code", std::to_string(code)},
             {"enabled", enabled ? "true" : "false"}});
     };
-    auto setSwitch = [&context](const std::map<std::string, std::string>& args) {
+    auto setSwitch = [&context](std::map<std::string, std::string> args) {
+        // KPA 'ИСД ш' uses type=3 for both source and channel switches.
+        args["type"] = "3";
         context.equipment.invoke("stand.switch_matrix", "switch", args);
     };
     auto sourceOff = [&]() {
@@ -922,8 +930,7 @@ ProcedureResult yalkCheckOverload(const ScenarioNode& node, ProcedureContext& co
             setAnalog(channel, analogCode(channel), true);
         }
         wait(context, natural(node, "baseline_settle_ms", 1000));
-        unsigned sequence = ulkLastSequence(context);
-        const auto baseline = readYalkSnapshot(context, samples, sequence);
+        const auto baseline = readFreshYalkSnapshot(context, samples);
 
         for (const auto& polarity : std::vector<std::pair<std::string, std::string>>{
                  {positiveRoute, "+12 В"}, {negativeRoute, "-12 В"}}) {
@@ -935,7 +942,7 @@ ProcedureResult yalkCheckOverload(const ScenarioNode& node, ProcedureContext& co
                     setSwitch({{"channel", std::to_string(target)}, {"enabled", "true"}});
                     targetConnected = true;
                     wait(context, settle);
-                    const auto current = readYalkSnapshot(context, samples, sequence);
+                    const auto current = readFreshYalkSnapshot(context, samples);
 
                     double maximumDelta = 0.0;
                     std::vector<unsigned> analogFailures;
