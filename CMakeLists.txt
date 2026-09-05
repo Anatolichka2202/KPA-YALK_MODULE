@@ -8,4 +8,5 @@ include(CTest)
 
 add_subdirectory(orbita)
 add_subdirectory(stand)
+add_subdirectory(registrar)
 add_subdirectory(desktop_orbita)

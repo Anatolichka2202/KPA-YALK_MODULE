@@ -118,6 +118,15 @@ foreach ($name in $pluginAllowList) {
 New-Item -ItemType Directory -Path (Join-Path $packageRoot 'records') -Force | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $packageRoot 'runs') -Force | Out-Null
 
+# Каноническая карта КТМА поставляется рядом с операторским README и не
+# участвует в выполнении сценария.
+$knowledgeSource = Join-Path $PSScriptRoot '..\docs\ktma'
+if (Test-Path -LiteralPath $knowledgeSource -PathType Container) {
+    $knowledgeTarget = Join-Path $packageRoot 'docs\ktma'
+    New-Item -ItemType Directory -Path $knowledgeTarget -Force | Out-Null
+    Get-ChildItem -LiteralPath $knowledgeSource | Copy-Item -Destination $knowledgeTarget -Recurse
+}
+
 & $deployTool --release --no-translations --dir $packageRoot $application
 if ($LASTEXITCODE -ne 0) {
     throw "windeployqt failed with exit code $LASTEXITCODE"

@@ -1,6 +1,17 @@
+add_library(orbita_stand_core STATIC
+    src/scenario.cpp
+)
+
+target_include_directories(orbita_stand_core
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+target_compile_features(orbita_stand_core PUBLIC cxx_std_17)
+add_library(stand_core ALIAS orbita_stand_core)
+
 add_library(orbita_stand_domain STATIC
     src/yalk_analog_procedure.cpp
-    src/scenario.cpp
     src/ubsi_procedures.cpp
     src/telemetry_procedures.cpp
 )
@@ -11,15 +22,30 @@ target_include_directories(orbita_stand_domain
 )
 
 target_compile_features(orbita_stand_domain PUBLIC cxx_std_17)
+target_link_libraries(orbita_stand_domain PUBLIC orbita_stand_core)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Network SerialPort Sql Gui)
 
-add_library(orbita_stand_runtime STATIC
+add_library(orbita_stand_catalog STATIC
     src/yaml_lite.cpp
-    src/config.cpp
     src/catalog.cpp
+)
+target_include_directories(orbita_stand_catalog PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_compile_features(orbita_stand_catalog PUBLIC cxx_std_17)
+target_link_libraries(orbita_stand_catalog PUBLIC Qt6::Core Qt6::Sql)
+add_library(stand_catalog ALIAS orbita_stand_catalog)
+
+add_library(orbita_stand_reporting STATIC
     src/run_store.cpp
     src/report_writer.cpp
+)
+target_include_directories(orbita_stand_reporting PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_compile_features(orbita_stand_reporting PUBLIC cxx_std_17)
+target_link_libraries(orbita_stand_reporting PUBLIC orbita_stand_core Qt6::Core Qt6::Sql Qt6::Gui)
+add_library(stand_reporting ALIAS orbita_stand_reporting)
+
+add_library(orbita_stand_runtime STATIC
+    src/config.cpp
     src/equipment_runtime.cpp
 )
 target_include_directories(orbita_stand_runtime PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
@@ -27,7 +53,9 @@ target_compile_features(orbita_stand_runtime PUBLIC cxx_std_17)
 # Это статическая библиотека: её внешние Qt-зависимости должны дойти до
 # исполняемых файлов тестов, утилит и плагинов, иначе Windows не сможет
 # загрузить требуемые Qt DLL рядом с ними.
-target_link_libraries(orbita_stand_runtime PUBLIC orbita_stand_domain Qt6::Core Qt6::Sql Qt6::Gui)
+target_link_libraries(orbita_stand_runtime PUBLIC
+    orbita_stand_domain orbita_stand_catalog orbita_stand_reporting
+    Qt6::Core Qt6::Sql Qt6::Gui)
 
 add_library(orbita_stand_adapters STATIC
     adapters/equipment_adapters.cpp
@@ -49,6 +77,7 @@ target_link_libraries(orbita_stand_adapters
 if(WIN32)
     target_link_libraries(orbita_stand_adapters PUBLIC ws2_32)
 endif()
+add_library(stand_io ALIAS orbita_stand_adapters)
 
 if(BUILD_TESTING)
     add_executable(yalk_analog_procedure_test

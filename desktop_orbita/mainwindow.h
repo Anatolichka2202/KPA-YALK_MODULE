@@ -22,6 +22,7 @@
 #include "orbita_stand/config.h"
 #include "orbita_stand/equipment_runtime.h"
 #include "orbita_stand/run_store.h"
+#include "registrar.h"
 
 #include "orbita.h"
 #include "metadata_service.h"
@@ -166,6 +167,7 @@ private:
     std::vector<std::shared_ptr<orbita::stand::EquipmentDevice>> equipmentDevices_;
     std::unique_ptr<orbita::stand::ScenarioEngine> scenarioEngine_;
     std::unique_ptr<orbita::stand::RunStore> runStore_;
+    std::unique_ptr<ktma::registrar::Registrar> registrar_;
     orbita::stand::StandProfile standProfile_;
     QHash<QString, orbita::stand::ScenarioDefinition> scenarios_;
     QHash<QString, QString> scenarioPaths_;

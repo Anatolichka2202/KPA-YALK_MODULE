@@ -50,12 +50,14 @@ add_executable(OrbitaDesktop
 target_include_directories(OrbitaDesktop PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}          # encoding_utils.h, plot_widget.h и т.д.
     ${CMAKE_SOURCE_DIR}/orbita/include   # orbita.h
+    ${CMAKE_SOURCE_DIR}/registrar/include
 )
 
 target_link_libraries(OrbitaDesktop PRIVATE
     orbita
     orbita_stand_adapters
     orbita_stand_runtime
+    ktma_registrar
     Qt6::Core
     Qt6::Widgets
     Qt6::PrintSupport

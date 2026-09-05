@@ -252,7 +252,10 @@ void configurationAndCatalog(const QString& root)
     require(engine.validate(bsiDiagnostic).empty(), "BSI diagnostic scenario must validate");
     require(bsiDiagnostic.publicationState == PublicationState::Published,
             "BSI diagnostic scenario must be published as a non-acceptance procedure");
-    require(engine.validate(ytpScenario).empty(), "Standalone YTP scenario must validate");
+    const auto ytpValidationErrors = engine.validate(ytpScenario);
+    require(ytpValidationErrors.empty(), ytpValidationErrors.empty()
+                ? "Standalone YTP scenario must validate"
+                : ytpValidationErrors.front());
     require(ytpScenario.publicationState == PublicationState::Published
                 && ytpScenario.steps.size() == 6,
             "YTP must be a published six-stage powered manual-reference scenario");
