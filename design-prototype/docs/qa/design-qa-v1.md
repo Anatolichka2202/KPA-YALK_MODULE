@@ -17,6 +17,9 @@ Branch: `design/station-shell-v1`
 - Manual Action имеет safety override: command bar остаётся доступной, обычные session-команды блокируются, Safe Stop остаётся интерактивным;
 - Acceptance flow в route orchestration соединён с отдельным ReportViewer;
 - Production flow соединён с отдельной production ledger, а не с acceptance report;
+- Production HMI содержит переключаемые prototype states: normal / NOT_NORMAL / stale data / stand error;
+- NOT_NORMAL канала сохраняется при переходе HMI → production ledger;
+- stale/error блокируют обычное продолжение, но не Safe Stop;
 - интерактивные prototype states созданы для `НЕ НОРМА`, stand error, stale data и busy resource;
 - создан single-product startup state;
 - создан permission-denied state, где F12 не является повышением прав;
@@ -38,8 +41,9 @@ Branch: `design/station-shell-v1`
 - specialized single-product startup;
 - multi-product loading/error variants;
 - Production queue;
-- 96-channel HMI: значения, selected channel, axis, secondary trends;
-- Production ledger;
+- 96-channel HMI: normal / NOT_NORMAL / stale / stand error;
+- selected channel, axis, actual value labels, secondary trends;
+- Production ledger normal и fault variants;
 - Acceptance steps 1–8;
 - Manual Action;
 - Acceptance ReportViewer;
@@ -68,6 +72,8 @@ Branch: `design/station-shell-v1`
 Ниже пункты остаются незакрытыми до фактического запуска прототипа в browser/runtime.
 
 - [ ] Station → КТМА → Production → Session → Production ledger.
+- [ ] HMI NOT_NORMAL → fault ledger сохраняет `НЕ НОРМА`.
+- [ ] stale/error HMI блокирует primary action, Safe Stop остаётся доступным.
 - [ ] Station → КТМА → Acceptance → Session → ReportViewer.
 - [ ] Station → КТМА → Administration → edit/confirmation.
 - [ ] Active Session row открывает соответствующий сеанс.
@@ -107,17 +113,16 @@ Branch: `design/station-shell-v1`
 
 ### P1
 
-1. Нужен `NOT_NORMAL` непосредственно внутри 96-channel overview, а не только в Recovery Lab.
-2. Нужен stand-error/stale overlay непосредственно поверх активного HMI.
-3. PermissionState требует подтверждения реальной модели ролей/эскалации; текущая кнопка запроса — только UX placeholder.
-4. Restart/reopen screen задаёт UX contract, но реальный persistence/resource restore mechanism не подтверждён и не должен выводиться из прототипа.
-5. Нужен multi-product empty state (нет доступных продуктов) отдельно от loading/error.
+1. PermissionState требует подтверждения реальной модели ролей/эскалации; текущая кнопка запроса — только UX placeholder.
+2. Restart/reopen screen задаёт UX contract, но реальный persistence/resource restore mechanism не подтверждён и не должен выводиться из прототипа.
+3. Нужен multi-product empty state (нет доступных продуктов) отдельно от loading/error.
+4. Нужен formal focus-management pattern для modal/dialog flows.
 
 ### P2
 
-6. Фактические labels над всеми 96 bars показываются полностью только на широком desktop; проверить читаемость на реальном 1920×1080.
-7. Нужна content-polish pass для сокращения длинных explanatory paragraphs в operator screens после проверки comprehension.
-8. UX SCENARIOS dock должен быть исключён из будущего Qt/operator shell; это только средство навигации React-прототипа.
+5. Фактические labels над всеми 96 bars показываются полностью только на широком desktop; проверить читаемость на реальном 1920×1080.
+6. Нужна content-polish pass для сокращения длинных explanatory paragraphs в operator screens после проверки comprehension.
+7. UX SCENARIOS dock должен быть исключён из будущего Qt/operator shell; это только средство навигации React-прототипа.
 
 ## 6. Build / test status
 
