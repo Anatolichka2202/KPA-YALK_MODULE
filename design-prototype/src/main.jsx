@@ -7,6 +7,7 @@ import "./station-v1-scenarios.css";
 import "./station-v1-workspaces.css";
 import "./station-v1-edge.css";
 import "./station-v1-hmi-states.css";
+import "./station-v1-empty.css";
 
 createRoot(document.getElementById("root")).render(
   <React.StrictMode>
