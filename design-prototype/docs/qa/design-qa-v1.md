@@ -2,20 +2,30 @@
 
 Дата начала: 07.09.2026  
 Branch: `design/station-shell-v1`  
-Статус: **implementation started / visual QA pending**.
+Статус: **implementation active / visual QA pending**.
 
 `design-qa.md` относится к предыдущему прототипу `App.jsx/styles.css` и не доказывает качество нового v1 entry point.
 
 ## 1. Что уже проверено на уровне репозитория
 
-- изменения изолированы внутри `design-prototype/`;
+- изменения проектируются только внутри `design-prototype/`;
 - старый `App.jsx/styles.css` сохранён;
 - entry point переведён на `AppV1.jsx`;
 - канонические UX-specs обновлены;
-- F12 больше не описан в specs как переключатель Production/Acceptance;
+- F12 больше не описан как переключатель Production/Acceptance;
 - demo values явно маркируются в новом UI;
-- для Manual Action добавлен safety override: нижняя command bar остаётся поверх dialog, обычные session-команды блокируются, Safe Stop остаётся интерактивным;
-- GitHub не запустил автоматический CI workflow для head commit после создания draft PR, поэтому build/test status нельзя считать подтверждённым.
+- Manual Action имеет safety override: command bar остаётся доступной, обычные session-команды блокируются, Safe Stop остаётся интерактивным;
+- Acceptance flow в route orchestration соединён с отдельным ReportViewer;
+- Production flow соединён с отдельной production ledger, а не с acceptance report;
+- интерактивные prototype states созданы для `НЕ НОРМА`, stand error, stale data и busy resource;
+- создан single-product startup state;
+- создан permission-denied state, где F12 не является повышением прав;
+- создан UX-state восстановления незавершённого сеанса после restart;
+- создан multi-product launcher с partial/loading/product-error состояниями;
+- Administration имеет edit-state и destructive composition confirmation;
+- GitHub не запускал автоматический CI workflow для PR head, поэтому build/test status нельзя считать подтверждённым.
+
+Все перечисленное выше — проверка структуры файлов и route/design contracts. Она **не заменяет** browser interaction QA.
 
 ## 2. Обязательный visual QA
 
@@ -25,11 +35,18 @@ Branch: `design/station-shell-v1`
 
 - Station Home без лишнего whitespace;
 - три карточки задач КТМА читаются как primary choices;
+- specialized single-product startup;
+- multi-product loading/error variants;
 - Production queue;
 - 96-channel HMI: значения, selected channel, axis, secondary trends;
+- Production ledger;
 - Acceptance steps 1–8;
 - Manual Action;
-- Administration;
+- Acceptance ReportViewer;
+- Administration workspace/edit/confirmation;
+- recovery lab: NOT_NORMAL / ERROR / STALE / BUSY;
+- permission denied;
+- session reopen/recovery;
 - F12 drawer на каждом основном route;
 - command bar и Safe Stop;
 - safety override во время Manual Action.
@@ -48,10 +65,13 @@ Branch: `design/station-shell-v1`
 
 ## 3. Interaction QA
 
-- [ ] Station → КТМА → Production → Session.
-- [ ] Station → КТМА → Acceptance → Session.
-- [ ] Station → КТМА → Administration.
+Ниже пункты остаются незакрытыми до фактического запуска прототипа в browser/runtime.
+
+- [ ] Station → КТМА → Production → Session → Production ledger.
+- [ ] Station → КТМА → Acceptance → Session → ReportViewer.
+- [ ] Station → КТМА → Administration → edit/confirmation.
 - [ ] Active Session row открывает соответствующий сеанс.
+- [ ] UX SCENARIOS dock открывает single-product / recovery / edge / report / admin-edit состояния.
 - [ ] F12 открывает engineering drawer, route не меняется.
 - [ ] повторный F12 закрывает drawer.
 - [ ] Escape закрывает engineering drawer.
@@ -61,16 +81,21 @@ Branch: `design/station-shell-v1`
 - [ ] Manual Action confirm disabled до checkbox.
 - [ ] Manual Action confirm переводит маршрут к следующему шагу.
 - [ ] во время Manual Action Safe Stop доступен, остальные commandbar actions недоступны.
+- [ ] destructive composition confirm disabled без причины/checkbox.
+- [ ] permission request prototype не меняет route/task автоматически.
+- [ ] session recovery prototype не предлагает молча начать новый RUN.
 - [ ] keyboard focus видим на всех интерактивных элементах.
 
 ## 4. Accessibility QA
 
-- [x] status = text + icon + color.
+- [x] status = text + icon + color в design-system contract/code.
 - [x] `:focus-visible` описан в CSS.
 - [x] Manual Action имеет `role=dialog` и `aria-modal=true`.
+- [x] destructive Administration dialog имеет `role=dialog` и `aria-modal=true`.
 - [x] channel bars имеют `title` с номером/отклонением.
 - [ ] focus trap для Manual Action.
-- [ ] focus return после закрытия Manual Action.
+- [ ] focus trap для destructive Administration dialog.
+- [ ] focus return после закрытия modal flows.
 - [ ] проверить контраст реальным инструментом.
 - [ ] проверить screen-reader labels для icon-only элементов (если появятся).
 
@@ -78,23 +103,32 @@ Branch: `design/station-shell-v1`
 
 ### P0 / safety
 
-Нет известных открытых P0 на уровне design spec. Safety mitigation для Manual Action реализован в CSS, но остаётся **неверифицированным визуально/интерактивно**, поэтому P0 нельзя считать закрытым для handoff до browser QA.
+Нет известных открытых P0 на уровне design spec/code review. Safety mitigation для Manual Action реализован, но остаётся **неверифицированным визуально/интерактивно**, поэтому P0 нельзя считать закрытым для handoff до browser QA.
 
 ### P1
 
-1. Нужен отдельный UI-пример `NOT_NORMAL` на channel overview.
-2. Stand-error recovery и отличие `НЕ НОРМА` / `ОШИБКА` уже описаны в `docs/specs/error-recovery-v1.md`, но ещё нужны интерактивные screen states.
-3. Equipment-conflict resolution flow описан в spec, но ещё нужен интерактивный screen state.
-4. Нужен специализированный single-product startup state.
-5. Administration пока является архитектурным prototype; edit forms и destructive confirmations нужно проектировать отдельным slice.
+1. Нужен `NOT_NORMAL` непосредственно внутри 96-channel overview, а не только в Recovery Lab.
+2. Нужен stand-error/stale overlay непосредственно поверх активного HMI.
+3. PermissionState требует подтверждения реальной модели ролей/эскалации; текущая кнопка запроса — только UX placeholder.
+4. Restart/reopen screen задаёт UX contract, но реальный persistence/resource restore mechanism не подтверждён и не должен выводиться из прототипа.
+5. Нужен multi-product empty state (нет доступных продуктов) отдельно от loading/error.
 
 ### P2
 
-6. Фактические labels над всеми 96 bars показываются полностью только на ≥1800 px; на меньшей ширине показываются разреженно + selected. Проверить читаемость на реальном 1920×1080.
+6. Фактические labels над всеми 96 bars показываются полностью только на широком desktop; проверить читаемость на реальном 1920×1080.
 7. Нужна content-polish pass для сокращения длинных explanatory paragraphs в operator screens после проверки comprehension.
+8. UX SCENARIOS dock должен быть исключён из будущего Qt/operator shell; это только средство навигации React-прототипа.
 
 ## 6. Build / test status
 
-Не подтверждён. В draft PR нет автоматического workflow run на момент создания файла.
+**Не подтверждён.** В draft PR нет автоматического workflow run на момент последней проверки.
 
-До отметки `passed` необходимо фактически выполнить build/tests и визуальный просмотр. Не переносить статус `passed` из legacy QA на v1 автоматически.
+До отметки `passed` необходимо фактически выполнить:
+
+1. `npm run build`;
+2. существующие Sites tests;
+3. browser interaction QA;
+4. visual screenshot QA на целевых viewport;
+5. keyboard/accessibility pass.
+
+Не переносить статус `passed` из legacy QA на v1 автоматически.
