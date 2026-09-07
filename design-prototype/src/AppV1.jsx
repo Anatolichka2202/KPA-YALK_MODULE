@@ -29,6 +29,7 @@ export function AppV1() {
     admin: "ktma",
     "production-session": "production",
     "production-ledger": "production-session",
+    "production-ledger-fault": "production-session",
     "acceptance-session": "acceptance",
     "single-product": "station",
     recovery: "ktma",
@@ -63,6 +64,7 @@ export function AppV1() {
   else if (route === "admin") screen = <AdminWorkspace go={go} back={back} engineering={engineering} toggleEngineering={toggleEngineering} />;
   else if (route === "production-session") screen = <ProductionSessionV2 go={go} back={back} engineering={engineering} toggleEngineering={toggleEngineering} />;
   else if (route === "production-ledger") screen = <ProductionLedger back={back} engineering={engineering} toggleEngineering={toggleEngineering} />;
+  else if (route === "production-ledger-fault") screen = <ProductionLedger fault back={back} engineering={engineering} toggleEngineering={toggleEngineering} />;
   else if (route === "acceptance-session") screen = <AcceptanceSessionV2 go={go} back={back} engineering={engineering} toggleEngineering={toggleEngineering} />;
   else if (route === "single-product") screen = <SingleProductStartup go={go} engineering={engineering} toggleEngineering={toggleEngineering} />;
   else if (route === "recovery") screen = <RecoveryLab back={back} engineering={engineering} toggleEngineering={toggleEngineering} />;
