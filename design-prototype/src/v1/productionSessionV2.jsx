@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { FileText, ShieldCheck, Warning } from "@phosphor-icons/react";
+import { FileText, Warning } from "@phosphor-icons/react";
 import {
   CommandButton,
   Footer,
@@ -66,25 +66,24 @@ export function ProductionSessionV2({ go, back, engineering, toggleEngineering }
           </aside>
         </div>
       </div>
-      <SessionCommandBar status={status} progress={stopped ? "Сеанс остановлен безопасно" : paused ? "Пауза · поток не считается текущим" : hmiMode === "not-normal" ? "Канал 57 · НЕ НОРМА · результат сохранён как DEMO" : hmiMode === "stale" ? "Ожидание свежих данных · продолжение заблокировано" : hmiMode === "error" ? "Ошибка стенда · нормативный результат не определён" : `Канал ${selected} / 96 · поток активен`} onPause={() => !stopped && !blocked && setPaused((value) => !value)} paused={paused} onStop={() => setStopped(true)} primaryLabel="ОТКРЫТЬ ВЕДОМОСТЬ" onPrimary={!stopped && !blocked ? () => go("production-ledger") : undefined} />
+      <SessionCommandBar status={status} progress={stopped ? "Сеанс остановлен безопасно" : paused ? "Пауза · поток не считается текущим" : hmiMode === "not-normal" ? "Канал 57 · НЕ НОРМА · результат сохранён как DEMO" : hmiMode === "stale" ? "Ожидание свежих данных · продолжение заблокировано" : hmiMode === "error" ? "Ошибка стенда · нормативный результат не определён" : `Канал ${selected} / 96 · поток активен`} onPause={() => !stopped && !blocked && setPaused((value) => !value)} paused={paused} onStop={() => setStopped(true)} primaryLabel="ОТКРЫТЬ ВЕДОМОСТЬ" onPrimary={!stopped && !blocked ? () => go(hmiMode === "not-normal" ? "production-ledger-fault" : "production-ledger") : undefined} />
     </div>
   </>;
 }
 
-const rows = [
-  ["ЯЛК · канал 57", "В7 + ЯЛК", "3,105 В · DEMO", "−0,032 % · DEMO", "NORMAL"],
-  ["Питание · 24 В", "АКИП · DEMO", "0,31 А · DEMO", "в пределах этапа · DEMO", "NORMAL"],
-  ["Шум выбранного канала", "ЯЛК · DEMO", "0,06 % FS · DEMO", "по сценарию · DEMO", "NORMAL"],
-  ["Замены состава", "карточка изделия", "нет", "—", "NORMAL"],
-];
-
-export function ProductionLedger({ back, engineering, toggleEngineering }) {
+export function ProductionLedger({ back, engineering, toggleEngineering, fault = false }) {
+  const rows = [
+    fault ? ["ЯЛК · канал 57", "В7 + ЯЛК", "3,122 В · DEMO", "+0,71 % при допуске ±0,50 % · DEMO", "NOT_NORMAL"] : ["ЯЛК · канал 57", "В7 + ЯЛК", "3,105 В · DEMO", "−0,032 % · DEMO", "NORMAL"],
+    ["Питание · 24 В", "АКИП · DEMO", "0,31 А · DEMO", "в пределах этапа · DEMO", "NORMAL"],
+    ["Шум выбранного канала", "ЯЛК · DEMO", "0,06 % FS · DEMO", "по сценарию · DEMO", "NORMAL"],
+    ["Замены состава", "карточка изделия", "нет", "—", "NORMAL"],
+  ];
   return <>
     <ProductHeader product="КТМА · ПРОИЗВОДСТВО" title="Ведомость этапа" subtitle="УБСИ-468157-009 · контроль после сборки · DEMO" engineering={engineering} onBack={back} onEngineering={toggleEngineering} />
     <div className="station-page"><div className="station-page__body">
-      <div className="hero-row"><div><span className="ds-eyebrow">ПРОИЗВОДСТВЕННАЯ ВЕДОМОСТЬ</span><h1>Этап 02 · нормальные условия</h1><p>Это производственная запись этапа, а не приёмо-сдаточный итог по ТУ.</p></div><StatusBadge status="NORMAL" label="ЭТАП ЗАВЕРШЁН" /></div>
+      <div className="hero-row"><div><span className="ds-eyebrow">ПРОИЗВОДСТВЕННАЯ ВЕДОМОСТЬ</span><h1>Этап 02 · нормальные условия</h1><p>Это производственная запись этапа, а не приёмо-сдаточный итог по ТУ.</p></div><StatusBadge status={fault ? "NOT_NORMAL" : "NORMAL"} label={fault ? "ЭТАП С ОТКЛОНЕНИЕМ" : "ЭТАП ЗАВЕРШЁН"} /></div>
       <Panel title="РЕЗУЛЬТАТЫ ЭТАПА" badge={<span className="ds-counter">4 ПРИМЕРА</span>}><div className="detail-ledger"><div className="detail-ledger__head"><span>ПРОВЕРКА</span><span>ИСТОЧНИК</span><span>ЗНАЧЕНИЕ</span><span>КРИТЕРИЙ</span><span>СТАТУС</span></div>{rows.map((row) => <div className="detail-ledger__row" key={row[0]}><b>{row[0]}</b><span>{row[1]}</span><span>{row[2]}</span><span>{row[3]}</span><StatusBadge status={row[4]} /></div>)}</div></Panel>
-      <div className="production-ledger-note"><FileText /><div><b>Граница отчётности</b><span>Эта ведомость фиксирует конкретный производственный этап. Она не должна отображаться как «Результат полной проверки по п. 5.6 ТУ».</span></div></div>
+      <div className="production-ledger-note"><FileText /><div><b>Граница отчётности</b><span>{fault ? "Отклонение сохранено в ведомости этапа и не скрывается переходом между экранами. " : ""}Эта ведомость фиксирует конкретный производственный этап и не является полным приёмо-сдаточным итогом по ТУ.</span></div></div>
       <div className="report-actions-v1"><CommandButton><FileText /> ЭКСПОРТ ЭТАПА · ПРОТОТИП</CommandButton></div>
     </div><Footer left="Production ledger v1 · отдельный артефакт от acceptance protocol." /></div>
   </>;
