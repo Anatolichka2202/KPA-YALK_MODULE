@@ -14,6 +14,7 @@ Branch: `design/station-shell-v1`
 - канонические UX-specs обновлены;
 - F12 больше не описан в specs как переключатель Production/Acceptance;
 - demo values явно маркируются в новом UI;
+- для Manual Action добавлен safety override: нижняя command bar остаётся поверх dialog, обычные session-команды блокируются, Safe Stop остаётся интерактивным;
 - GitHub не запустил автоматический CI workflow для head commit после создания draft PR, поэтому build/test status нельзя считать подтверждённым.
 
 ## 2. Обязательный visual QA
@@ -30,7 +31,8 @@ Branch: `design/station-shell-v1`
 - Manual Action;
 - Administration;
 - F12 drawer на каждом основном route;
-- command bar и Safe Stop.
+- command bar и Safe Stop;
+- safety override во время Manual Action.
 
 ### 1664×935 — regression
 
@@ -58,6 +60,7 @@ Branch: `design/station-shell-v1`
 - [ ] Pause/Continue не меняет route.
 - [ ] Manual Action confirm disabled до checkbox.
 - [ ] Manual Action confirm переводит маршрут к следующему шагу.
+- [ ] во время Manual Action Safe Stop доступен, остальные commandbar actions недоступны.
 - [ ] keyboard focus видим на всех интерактивных элементах.
 
 ## 4. Accessibility QA
@@ -75,20 +78,20 @@ Branch: `design/station-shell-v1`
 
 ### P0 / safety
 
-1. **Safe Stop во время Manual Action**: полноэкранный dialog перекрывает нижнюю command bar. До design sign-off нужно либо добавить Safe Stop внутрь Manual Action, либо спроектировать safety layer выше modal. Обычные session-команды при этом не должны становиться кликабельными поверх dialog.
+Нет известных открытых P0 на уровне design spec. Safety mitigation для Manual Action реализован в CSS, но остаётся **неверифицированным визуально/интерактивно**, поэтому P0 нельзя считать закрытым для handoff до browser QA.
 
 ### P1
 
-2. Нужен отдельный UI-пример `NOT_NORMAL` на channel overview.
-3. Нужен stand-error recovery flow с различием `НЕ НОРМА` и `ОШИБКА`.
-4. Нужен equipment-conflict resolution flow: кто владеет ресурсом и что оператор может сделать.
-5. Нужен специализированный single-product startup state.
-6. Administration пока является архитектурным prototype; edit forms и destructive confirmations нужно проектировать отдельным slice.
+1. Нужен отдельный UI-пример `NOT_NORMAL` на channel overview.
+2. Stand-error recovery и отличие `НЕ НОРМА` / `ОШИБКА` уже описаны в `docs/specs/error-recovery-v1.md`, но ещё нужны интерактивные screen states.
+3. Equipment-conflict resolution flow описан в spec, но ещё нужен интерактивный screen state.
+4. Нужен специализированный single-product startup state.
+5. Administration пока является архитектурным prototype; edit forms и destructive confirmations нужно проектировать отдельным slice.
 
 ### P2
 
-7. Фактические labels над всеми 96 bars показываются полностью только на ≥1800 px; на меньшей ширине показываются разреженно + selected. Проверить читаемость на реальном 1920×1080.
-8. Нужна content-polish pass для сокращения длинных explanatory paragraphs в operator screens после проверки comprehension.
+6. Фактические labels над всеми 96 bars показываются полностью только на ≥1800 px; на меньшей ширине показываются разреженно + selected. Проверить читаемость на реальном 1920×1080.
+7. Нужна content-polish pass для сокращения длинных explanatory paragraphs в operator screens после проверки comprehension.
 
 ## 6. Build / test status
 
