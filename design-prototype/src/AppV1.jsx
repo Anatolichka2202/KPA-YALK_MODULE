@@ -10,9 +10,10 @@ import {
   AdminEditor,
   RecoveryLab,
   ReportViewer,
-  ScenarioDock,
   SingleProductStartup,
 } from "./v1/scenarios.jsx";
+import { EdgeCaseLab } from "./v1/edgeCasesV2.jsx";
+import { ScenarioDockV2 } from "./v1/scenarioDockV2.jsx";
 import { AcceptanceSessionV2 } from "./v1/sessionsV2.jsx";
 import { ProductionLedger, ProductionSessionV2 } from "./v1/productionSessionV2.jsx";
 import { AdminWorkspace } from "./v1/workspaces.jsx";
@@ -31,6 +32,7 @@ export function AppV1() {
     "acceptance-session": "acceptance",
     "single-product": "station",
     recovery: "ktma",
+    "edge-cases": "station",
     report: "acceptance",
     "admin-editor": "admin",
   };
@@ -64,6 +66,7 @@ export function AppV1() {
   else if (route === "acceptance-session") screen = <AcceptanceSessionV2 go={go} back={back} engineering={engineering} toggleEngineering={toggleEngineering} />;
   else if (route === "single-product") screen = <SingleProductStartup go={go} engineering={engineering} toggleEngineering={toggleEngineering} />;
   else if (route === "recovery") screen = <RecoveryLab back={back} engineering={engineering} toggleEngineering={toggleEngineering} />;
+  else if (route === "edge-cases") screen = <EdgeCaseLab back={back} engineering={engineering} toggleEngineering={toggleEngineering} />;
   else if (route === "report") screen = <ReportViewer back={back} engineering={engineering} toggleEngineering={toggleEngineering} />;
   else if (route === "admin-editor") screen = <AdminEditor back={back} engineering={engineering} toggleEngineering={toggleEngineering} />;
   else screen = <StationHome go={go} engineering={engineering} toggleEngineering={toggleEngineering} />;
@@ -71,6 +74,6 @@ export function AppV1() {
   return <div className={`station-v1 ${engineering ? "station-v1--engineering" : ""}`}>
     {screen}
     <EngineeringDrawer open={engineering} route={route} onClose={() => setEngineering(false)} />
-    <ScenarioDock route={route} go={go} />
+    <ScenarioDockV2 route={route} go={go} />
   </div>;
 }
