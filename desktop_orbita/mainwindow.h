@@ -146,6 +146,7 @@ private:
 
     // Режимы
     enum Mode { ModeHome = 0, ModeTests = 1, ModeMain = 2, ModeDetail = 3, ModeConfig = 4, ModeDb = 5, ModeAdmin = 6 };
+    enum class Workflow { None, Production, Tu };
 
     // Для запоминания активного действия на панели
     QAction* actTests_ = nullptr;
@@ -180,6 +181,8 @@ private:
     QHash<QString, orbita::stand::ScenarioDefinition> scenarios_;
     QHash<QString, QString> scenarioPaths_;
     QFutureWatcher<orbita::stand::ScenarioRunResult>* scenarioWatcher_ = nullptr;
+    Workflow activeWorkflow_ = Workflow::None;
+    std::string pendingProductionStageAttemptId_;
     bool closeAfterScenario_ = false;
     bool standRuntimeReady_ = false;
 

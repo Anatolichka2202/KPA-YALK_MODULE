@@ -36,6 +36,18 @@ struct ComponentBinding
 
 enum class Stage
 {
+    // Текущая production-модель. Привязка попытки к запуску ScenarioEngine
+    // будет добавлена отдельным orchestration slice.
+    Primary,
+    ClimateNormal,
+    ClimateMinus,
+    ClimatePlus,
+    PottingClimateNormal,
+    PottingClimatePlus,
+    PottingClimateMinus,
+
+    // Legacy: значения уже могут находиться в registrar.db. Не удалять,
+    // чтобы история ранее выпущенных изделий оставалась читаемой.
     InitialElectrical,
     PostVibrationElectrical,
     PostClimateElectrical,

@@ -49,6 +49,13 @@ QString verdictValue(Verdict verdict)
 const char* toString(Stage stage)
 {
     switch (stage) {
+    case Stage::Primary: return "Primary";
+    case Stage::ClimateNormal: return "ClimateNormal";
+    case Stage::ClimateMinus: return "ClimateMinus";
+    case Stage::ClimatePlus: return "ClimatePlus";
+    case Stage::PottingClimateNormal: return "PottingClimateNormal";
+    case Stage::PottingClimatePlus: return "PottingClimatePlus";
+    case Stage::PottingClimateMinus: return "PottingClimateMinus";
     case Stage::InitialElectrical: return "InitialElectrical";
     case Stage::PostVibrationElectrical: return "PostVibrationElectrical";
     case Stage::PostClimateElectrical: return "PostClimateElectrical";
@@ -71,6 +78,15 @@ const char* toString(Verdict verdict)
 
 Stage stageFromString(const std::string& value)
 {
+    if (value == "Primary") return Stage::Primary;
+    if (value == "ClimateNormal") return Stage::ClimateNormal;
+    if (value == "ClimateMinus") return Stage::ClimateMinus;
+    if (value == "ClimatePlus") return Stage::ClimatePlus;
+    if (value == "PottingClimateNormal") return Stage::PottingClimateNormal;
+    if (value == "PottingClimatePlus") return Stage::PottingClimatePlus;
+    if (value == "PottingClimateMinus") return Stage::PottingClimateMinus;
+    // Legacy registrar.db records remain readable after the production model
+    // was changed. They must not become a policy for new products.
     if (value == "InitialElectrical") return Stage::InitialElectrical;
     if (value == "PostVibrationElectrical") return Stage::PostVibrationElectrical;
     if (value == "PostClimateElectrical") return Stage::PostClimateElectrical;
@@ -507,51 +523,11 @@ std::vector<StageAttempt> Registrar::listStageAttempts(const std::string& produc
 Verdict Registrar::productVerdict(const std::string& productId) const
 {
     ensureProduct(productId);
-    const auto bindings = listInstalledComponents(productId);
-    if (bindings.empty()) return Verdict::Incomplete;
-
-    const std::array<Stage, 4> requiredStages = {
-        Stage::InitialElectrical, Stage::PostVibrationElectrical,
-        Stage::PostClimateElectrical, Stage::FinalElectrical};
-    bool incomplete = false;
-    bool hasActiveComponent = false;
-    for (const auto& binding : bindings) {
-        if (!binding.active) continue;
-        hasActiveComponent = true;
-        for (const Stage stage : requiredStages) {
-            QSqlQuery query(database_);
-            query.prepare(QStringLiteral(
-                "SELECT verdict FROM stage_attempts WHERE product_id = ? "
-                "AND component_id = ? AND stage = ? ORDER BY opened_at DESC LIMIT 1"));
-            query.addBindValue(QString::fromStdString(productId));
-            query.addBindValue(QString::fromStdString(binding.componentId));
-            query.addBindValue(stageValue(stage));
-            if (!query.exec()) throwSql(query, "calculate product verdict");
-            if (!query.next()) {
-                // Совместимость с прежним агрегатным API: блоковый этап может
-                // быть принят как общий для всех активных ячеек, если для этой
-                // ячейки ещё нет отдельной попытки.
-                QSqlQuery aggregate(database_);
-                aggregate.prepare(QStringLiteral(
-                    "SELECT verdict FROM stage_attempts WHERE product_id = ? "
-                    "AND component_id IS NULL AND stage = ? "
-                    "ORDER BY opened_at DESC LIMIT 1"));
-                aggregate.addBindValue(QString::fromStdString(productId));
-                aggregate.addBindValue(stageValue(stage));
-                if (!aggregate.exec()) throwSql(aggregate, "calculate aggregate verdict");
-                if (!aggregate.next()) {
-                    incomplete = true;
-                    continue;
-                }
-                query = std::move(aggregate);
-            }
-            const Verdict verdict = verdictFromString(query.value(0).toString().toStdString());
-            if (verdict == Verdict::Fail) return Verdict::Fail;
-            if (verdict != Verdict::Ok) incomplete = true;
-        }
-    }
-    if (!hasActiveComponent) return Verdict::Incomplete;
-    return incomplete ? Verdict::Incomplete : Verdict::Ok;
+    // A production verdict requires the canonical verification policy and the
+    // run orchestration that attaches ScenarioEngine runs to new stages. Until
+    // those are connected, inferring a pass from the former four Electrical
+    // stages would be a false normative result.
+    return Verdict::Incomplete;
 }
 
 ProductReport Registrar::productReport(const std::string& productId) const

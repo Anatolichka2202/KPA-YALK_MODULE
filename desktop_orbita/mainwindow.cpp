@@ -195,9 +195,11 @@ void MainWindow::setupUi()
     logEdit_->setStyleSheet("QTextEdit { background: #0e1115; color: #aab4c0; border: 1px solid #2a313b; }");
 
     connect(homePage_, &HomePage::productionRequested, this, [this] {
+        activeWorkflow_ = Workflow::Production;
         setMode(ModeTests);
     });
     connect(homePage_, &HomePage::tuRequested, this, [this] {
+        activeWorkflow_ = Workflow::Tu;
         setMode(ModeTests);
     });
     connect(homePage_, &HomePage::administrationRequested, this, [this] {
@@ -890,8 +892,10 @@ void MainWindow::initializeStandRuntime()
             const auto result = scenarioWatcher_->result();
             QString tuReportPath;
             QString productionReportPath;
+            bool resultSaved = false;
             try {
                 runStore_->save(result);
+                resultSaved = true;
                 const QDir root(QCoreApplication::applicationDirPath());
                 const QString reportDir = root.filePath("runs/" + QString::fromStdString(result.runId));
                 const auto paths = orbita::stand::writeHtmlCsvReport(result, reportDir.toStdString());
@@ -901,6 +905,37 @@ void MainWindow::initializeStandRuntime()
                 log(QStringLiteral("Производственная ведомость: %1").arg(productionReportPath));
             } catch (const std::exception& error) {
                 log(QStringLiteral("Не удалось сохранить результат: %1").arg(QString::fromUtf8(error.what())));
+            }
+            if (!pendingProductionStageAttemptId_.empty()) {
+                try {
+                    if (resultSaved) {
+                        registrar_->attachRun(pendingProductionStageAttemptId_, result.runId);
+                        const auto stageVerdict = [&result] {
+                            using EngineVerdict = orbita::stand::RunVerdict;
+                            using RegistrarVerdict = ktma::registrar::Verdict;
+                            switch (result.verdict) {
+                            case EngineVerdict::Ok: return RegistrarVerdict::Ok;
+                            case EngineVerdict::Fail: return RegistrarVerdict::Fail;
+                            case EngineVerdict::Aborted: return RegistrarVerdict::Cancelled;
+                            case EngineVerdict::NotRun:
+                            case EngineVerdict::Incomplete:
+                            case EngineVerdict::Error: return RegistrarVerdict::Cancelled;
+                            }
+                            return RegistrarVerdict::Cancelled;
+                        }();
+                        registrar_->finishStage(pendingProductionStageAttemptId_, stageVerdict);
+                        log(QStringLiteral("Production run %1 привязан к этапу регистратора")
+                            .arg(QString::fromStdString(result.runId)));
+                    } else {
+                        registrar_->finishStage(pendingProductionStageAttemptId_,
+                                                ktma::registrar::Verdict::Cancelled);
+                        log(QStringLiteral("Production attempt отменён: run не удалось сохранить"));
+                    }
+                } catch (const std::exception& error) {
+                    log(QStringLiteral("Не удалось завершить production stage: %1")
+                        .arg(QString::fromUtf8(error.what())));
+                }
+                pendingProductionStageAttemptId_.clear();
             }
             testPage_->setRunResult(result, tuReportPath, productionReportPath);
             if (closeAfterScenario_) {
@@ -1223,6 +1258,28 @@ void MainWindow::onRunScenario(
         return;
     }
     const auto scenario = iterator.value();
+    std::string productionSerial;
+    if (activeWorkflow_ == Workflow::Production) {
+        const auto selection = registrarPage_->selectedProductionSelection();
+        if (!selection) {
+            testPage_->setRunInProgress(false);
+            QMessageBox::information(this, QStringLiteral("Производственный запуск"),
+                QStringLiteral("В администрировании выберите изделие, активную ячейку и этап производства."));
+            log(QStringLiteral("Production run не запущен: не выбраны изделие, ячейка или этап"));
+            return;
+        }
+        try {
+            pendingProductionStageAttemptId_ = registrar_->beginComponentStage(
+                selection->productId.toStdString(), selection->componentId.toStdString(), selection->stage);
+            productionSerial = selection->productSerial.toStdString();
+        } catch (const std::exception& error) {
+            testPage_->setRunInProgress(false);
+            QMessageBox::warning(this, QStringLiteral("Производственный запуск"),
+                QString::fromUtf8(error.what()));
+            log(QStringLiteral("Production stage не создан: %1").arg(QString::fromUtf8(error.what())));
+            return;
+        }
+    }
     if (scenarioCode != QStringLiteral("YALK_FULL_5_6")
         && scenarioCode != QStringLiteral("YALK_CONTACT_THRESHOLDS")
         && scenarioCode != QStringLiteral("YTP_FULL_5_6")
@@ -1233,7 +1290,7 @@ void MainWindow::onRunScenario(
         onStart();
     }
     scenarioEngine_->resetStop();
-    const std::string serial = objectSerial.toStdString();
+    const std::string serial = productionSerial.empty() ? objectSerial.toStdString() : productionSerial;
     const bool partial = allowPartial;
     testPage_->setRunInProgress(true, QStringLiteral("Выполняется: %1")
         .arg(QString::fromStdString(scenario.title)));

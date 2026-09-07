@@ -6,6 +6,7 @@
 #include <QTemporaryDir>
 
 #include <array>
+#include <algorithm>
 #include <functional>
 #include <iostream>
 #include <stdexcept>
@@ -29,14 +30,15 @@ void expectThrows(const std::function<void()>& action, const char* message)
     throw std::runtime_error(message);
 }
 
-void finishAllStages(Registrar& registrar,
+void finishProductionStages(Registrar& registrar,
                      const std::string& productId,
                      const std::string& componentId,
                      const std::string& runPrefix)
 {
-    const std::array<Stage, 4> stages = {
-        Stage::InitialElectrical, Stage::PostVibrationElectrical,
-        Stage::PostClimateElectrical, Stage::FinalElectrical};
+    const std::array<Stage, 7> stages = {
+        Stage::Primary, Stage::ClimateNormal, Stage::ClimateMinus,
+        Stage::ClimatePlus, Stage::PottingClimateNormal,
+        Stage::PottingClimatePlus, Stage::PottingClimateMinus};
     int index = 0;
     for (Stage stage : stages) {
         const auto attempt = registrar.beginComponentStage(productId, componentId, stage);
@@ -73,8 +75,8 @@ int main(int argc, char** argv)
                      "a terminal stage without run_id must be rejected");
         registrar.attachRun(failedAttempt, "run-failed");
         registrar.finishStage(failedAttempt, Verdict::Fail);
-        require(registrar.productVerdict(product) == Verdict::Fail,
-                "active failed cell must produce Fail");
+        require(registrar.productVerdict(product) == Verdict::Incomplete,
+                "legacy failed stage must not define a new production verdict");
 
         registrar.removeComponent(product, yalkOld, "контактный дефект");
         require(!registrar.listInstalledComponents(product).front().active,
@@ -83,10 +85,10 @@ int main(int argc, char** argv)
         require(registrar.productVerdict(product) == Verdict::Incomplete,
                 "replacement must restart the lifecycle");
 
-        finishAllStages(registrar, product, yalkNew, "run-yalk-");
-        finishAllStages(registrar, product, ytp, "run-ytp-");
-        require(registrar.productVerdict(product) == Verdict::Ok,
-                "all active cells and stages must produce Ok");
+        finishProductionStages(registrar, product, yalkNew, "run-yalk-");
+        finishProductionStages(registrar, product, ytp, "run-ytp-");
+        require(registrar.productVerdict(product) == Verdict::Incomplete,
+                "without a verification policy product verdict must not claim Ok");
 
         const auto report = registrar.productReport(product);
         const auto reportPath = writeProductReportHtml(
@@ -95,7 +97,10 @@ int main(int argc, char** argv)
                 "product report was not written");
 
         const auto attempts = registrar.listStageAttempts(product);
-        require(attempts.size() == 9, "history must contain failed and replacement attempts");
+        require(attempts.size() == 15, "history must contain legacy and production attempts");
+        require(std::any_of(attempts.begin(), attempts.end(), [](const StageAttempt& attempt) {
+            return attempt.stage == Stage::Primary && attempt.runId == "run-yalk-0";
+        }), "production stage must retain its attached run_id");
         require(registrar.listInstalledComponents(product).size() == 3,
                 "replacement must not delete the old binding");
         expectThrows([&] { registrar.attachRun(failedAttempt, "run-failed"); },
@@ -111,6 +116,10 @@ int main(int argc, char** argv)
         Registrar reopened(directory.filePath("registrar.db").toStdString());
         require(reopened.listProducts().size() == 2,
                 "products must persist in registrar.db for a new registrar instance");
+        require(stageFromString("InitialElectrical") == Stage::InitialElectrical,
+                "legacy stage values must remain readable");
+        require(stageFromString("PottingClimateMinus") == Stage::PottingClimateMinus,
+                "new production stage values must be readable");
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
         return 1;

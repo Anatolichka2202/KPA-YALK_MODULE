@@ -66,8 +66,9 @@ public:
     std::vector<StageAttempt> listStageAttempts(
         const std::string& productId) const;
 
-    // Итог вычисляется из текущего состава изделия и четырёх обязательных
-    // этапов каждой активной ячейки. История замен не удаляется.
+    // До подключения production verification policy агрегатный итог не
+    // утверждается: новые и legacy изделия возвращают Incomplete. История
+    // замен и отдельных попыток при этом доступна через productReport().
     Verdict productVerdict(const std::string& productId) const;
     ProductReport productReport(const std::string& productId) const;
 
