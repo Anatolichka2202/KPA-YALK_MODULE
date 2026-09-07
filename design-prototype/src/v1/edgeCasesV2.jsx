@@ -21,7 +21,7 @@ function DemoNotice() {
 
 function MultiProductState() {
   const [state, setState] = useState("partial");
-  const products = state === "loading" ? [
+  const products = state === "empty" ? [] : state === "loading" ? [
     ["КТМА", "загрузка", "RUNNING"], ["ППБ", "ожидание", "UNAVAILABLE"], ["СУС", "ожидание", "UNAVAILABLE"], ["ВОРОНЕЖ", "ожидание", "UNAVAILABLE"],
   ] : state === "error" ? [
     ["КТМА", "загружена", "READY"], ["ППБ", "не описан в текущей UX-спеке", "UNAVAILABLE"], ["СУС", "ошибка загрузки продукта · DEMO", "ERROR"], ["ВОРОНЕЖ", "не описан в текущей UX-спеке", "UNAVAILABLE"],
@@ -29,9 +29,11 @@ function MultiProductState() {
     ["КТМА", "загружена", "READY"], ["ППБ", "предметный контур не раскрыт", "UNAVAILABLE"], ["СУС", "предметный контур не раскрыт", "UNAVAILABLE"], ["ВОРОНЕЖ", "предметный контур не раскрыт", "UNAVAILABLE"],
   ];
   return <div>
-    <div className="edge-state-switch"><button className={state === "partial" ? "active" : ""} onClick={() => setState("partial")}>ЧАСТИЧНАЯ ПОСТАВКА</button><button className={state === "loading" ? "active" : ""} onClick={() => setState("loading")}>ЗАГРУЗКА</button><button className={state === "error" ? "active" : ""} onClick={() => setState("error")}>ОШИБКА ПРОДУКТА</button></div>
-    <Panel title="ПРОДУКТЫ СТАНЦИИ" badge={<span className="ds-counter">4 КОНТУРА</span>}><div className="edge-product-list">{products.map(([name, detail, status]) => <div key={name}><Circuitry /><div><b>{name}</b><span>{detail}</span></div><StatusBadge status={status} /></div>)}</div></Panel>
-    <div className="edge-rule"><ShieldCheck /><div><b>Shell продолжает работать при локальной ошибке продукта</b><span>Ошибка одной надстройки не должна автоматически маскировать состояние остальных продуктов или активных сеансов.</span></div></div>
+    <div className="edge-state-switch"><button className={state === "partial" ? "active" : ""} onClick={() => setState("partial")}>ЧАСТИЧНАЯ ПОСТАВКА</button><button className={state === "loading" ? "active" : ""} onClick={() => setState("loading")}>ЗАГРУЗКА</button><button className={state === "error" ? "active" : ""} onClick={() => setState("error")}>ОШИБКА ПРОДУКТА</button><button className={state === "empty" ? "active" : ""} onClick={() => setState("empty")}>НЕТ ПРОДУКТОВ</button></div>
+    <Panel title="ПРОДУКТЫ СТАНЦИИ" badge={<span className="ds-counter">{products.length} ДОСТУПНО В СЦЕНАРИИ</span>}>
+      {state === "empty" ? <div className="edge-empty-state"><Circuitry /><div><StatusBadge status="UNAVAILABLE" label="НЕТ ДОСТУПНЫХ ПРОДУКТОВ" /><h2>Рабочие продукты не загружены</h2><p>Station shell остаётся доступным для диагностики состояния установки, но оператору не показываются выдуманные рабочие задачи.</p><CommandButton>ОБНОВИТЬ СОСТОЯНИЕ · ПРОТОТИП</CommandButton></div></div> : <div className="edge-product-list">{products.map(([name, detail, status]) => <div key={name}><Circuitry /><div><b>{name}</b><span>{detail}</span></div><StatusBadge status={status} /></div>)}</div>}
+    </Panel>
+    <div className="edge-rule"><ShieldCheck /><div><b>{state === "empty" ? "Пустой launcher — отдельное состояние, а не ошибка каждого продукта" : "Shell продолжает работать при локальной ошибке продукта"}</b><span>{state === "empty" ? "Интерфейс сообщает отсутствие доступных продуктов и не создаёт фиктивные предметные функции." : "Ошибка одной надстройки не должна автоматически маскировать состояние остальных продуктов или активных сеансов."}</span></div></div>
   </div>;
 }
 
