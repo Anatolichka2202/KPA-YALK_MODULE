@@ -38,8 +38,8 @@
 - [x] F12 = engineering layer, independent from business task.
 - [x] route map.
 - [x] state matrix products/sessions/equipment.
-- [ ] specialized single-product startup state prototype.
-- [ ] multi-product error/loading variants.
+- [x] specialized single-product startup state prototype.
+- [ ] multi-product loading/error variants.
 
 ### B. Core task flows
 
@@ -47,14 +47,14 @@
 - [x] КТМА → Production.
 - [x] КТМА → Acceptance.
 - [x] КТМА → Administration.
-- [x] Production → active session.
-- [x] Acceptance → active session.
+- [x] Production → active session → production ledger.
+- [x] Acceptance → active session → acceptance ReportViewer.
 - [x] ManualAction in active Acceptance session.
 - [x] Safe Stop persistent control.
 - [x] F12 engineering drawer preserves route.
-- [ ] session recovery/reopen flow.
-- [ ] explicit equipment-conflict resolution flow.
-- [ ] stand-error recovery flow.
+- [ ] session recovery/reopen flow after application restart.
+- [x] explicit equipment-conflict resolution prototype.
+- [x] stand-error recovery prototype.
 
 ### C. Design system
 
@@ -70,9 +70,10 @@
 - [x] ChannelOverview anatomy.
 - [x] SelectedChannelTrend.
 - [x] ConsumptionTrend.
-- [ ] ReportViewer formal component spec.
-- [ ] EmptyState / ErrorState / PermissionState formal components.
-- [ ] field/input/edit patterns for Administration.
+- [x] ReportViewer prototype + report hierarchy.
+- [x] Error/recovery presentation pattern.
+- [ ] PermissionState formal component.
+- [x] field/input/edit patterns for Administration.
 
 ### D. HMI and data visualization
 
@@ -83,21 +84,22 @@
 - [x] selected-channel trend.
 - [x] consumption trend.
 - [x] no 96 independent line charts.
-- [ ] explicit NOT_NORMAL example on channel overview.
-- [ ] stand telemetry/error overlay example.
-- [ ] long-duration trend variant if method requires it.
+- [ ] explicit NOT_NORMAL example directly on channel overview.
+- [ ] stand telemetry/error overlay directly on active HMI.
+- [ ] long-duration trend variant if approved method requires it.
 
 ### E. Operator safety and clarity
 
 - [x] Safe Stop fixed in command bar.
 - [x] dangerous action visually separated.
+- [x] Safe Stop remains available while ManualAction blocks ordinary commands.
 - [x] manual action requires explicit confirmation.
 - [x] color duplicates text/icon.
-- [x] busy resources show owner/session.
+- [x] busy resources show owner/session in conflict scenario.
 - [x] demo data labeled.
-- [ ] confirmation pattern for irreversible configuration changes.
+- [x] confirmation pattern for composition-changing configuration action.
 - [ ] permission-denied pattern.
-- [ ] connection-lost / stale-data pattern.
+- [x] connection-lost / stale-data pattern.
 
 ### F. Content design
 
@@ -105,9 +107,9 @@
 - [x] standardized status labels.
 - [x] distinction between operator and engineering terminology.
 - [x] explicit wording that YALK/YTP-only demo does not prove full TU 5.6 compliance.
-- [ ] content glossary with approved Russian terms.
-- [ ] error-message grammar and remediation pattern.
-- [ ] confirmation/notification grammar.
+- [x] content glossary / approved wording baseline in `content-language-v1.md`.
+- [x] error-message grammar and remediation pattern.
+- [x] confirmation/notification grammar baseline.
 
 ### G. Responsive / target environments
 
@@ -122,11 +124,13 @@
 
 - [x] design-system Definition of Done.
 - [x] source-of-truth hierarchy documented.
-- [ ] run `npm build` for the branch.
+- [x] separate v1 QA plan created; legacy QA is not reused as proof.
+- [x] known defects recorded by P0/P1/P2 and tracked explicitly.
+- [ ] run `npm run build` for the branch.
 - [ ] run existing Sites tests.
 - [ ] visual QA against approved reference direction.
-- [ ] record defects by severity P0/P1/P2.
-- [ ] update `docs/qa/design-qa.md` only after verification.
+- [ ] accessibility focus-trap/return verification for modal flows.
+- [ ] update QA status to `passed` only after actual verification.
 
 ## 3. Current implementation slice
 
@@ -135,11 +139,20 @@ Branch: `design/station-shell-v1`.
 Implemented prototype files:
 
 - `src/AppV1.jsx` — route orchestration and F12 state;
-- `src/v1/designSystem.jsx` — reusable Station primitives;
-- `src/v1/screens.jsx` — Station/КТМА prototype screens;
+- `src/v1/designSystem.jsx` — reusable Station primitives and semantic statuses;
+- `src/v1/screens.jsx` — Station/КТМА base screens retained as the first v1 slice;
+- `src/v1/sessionsV2.jsx` — connected Acceptance session → ReportViewer;
+- `src/v1/productionSessionV2.jsx` — Production HMI → production ledger;
+- `src/v1/scenarios.jsx` — single-product, recovery, ReportViewer and Administration edit scenarios;
+- `src/v1/workspaces.jsx` — interactive Administration workspace;
 - `src/station-v1.css` — semantic industrial visual system;
+- `src/station-v1-safety.css` — safety-layer behavior around ManualAction;
+- `src/station-v1-scenarios.css` — scenario states;
+- `src/station-v1-workspaces.css` — operational Administration workspace;
 - `docs/specs/station-shell-v1.md` — IA and states;
-- `docs/specs/design-system-v1.md` — component/design-system contract.
+- `docs/specs/design-system-v1.md` — component/design-system contract;
+- `docs/specs/content-language-v1.md` — operator wording and message grammar;
+- `docs/specs/error-recovery-v1.md` — recovery semantics.
 
 Legacy `App.jsx` and `styles.css` are intentionally preserved for comparison/history; entry point is switched to v1 in this branch.
 
@@ -156,3 +169,11 @@ Decision: shell, status semantics, safe-stop command bar, manual-action anatomy 
 ### 07.09.2026 — data honesty
 
 Decision: prototype numeric values are labeled as demo values unless they are explicitly backed by an approved method/source. Prototype UI must not convert partial automation coverage into a full normative verdict.
+
+### 07.09.2026 — report separation
+
+Decision: Production ledger and TU Acceptance protocol are different UX artifacts. A completed production stage must not visually imply a full acceptance verdict.
+
+### 07.09.2026 — recovery semantics
+
+Decision: `НЕ НОРМА`, `ОШИБКА`, `ДАННЫЕ УСТАРЕЛИ` and `ЗАНЯТО` have different causes and different recovery actions; they must not be collapsed into one red warning state.
