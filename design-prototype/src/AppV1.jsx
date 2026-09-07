@@ -9,6 +9,13 @@ import {
   ProductionSession,
   StationHome,
 } from "./v1/screens.jsx";
+import {
+  AdminEditor,
+  RecoveryLab,
+  ReportViewer,
+  ScenarioDock,
+  SingleProductStartup,
+} from "./v1/scenarios.jsx";
 
 export function AppV1() {
   const [route, setRoute] = useState("station");
@@ -21,6 +28,10 @@ export function AppV1() {
     admin: "ktma",
     "production-session": "production",
     "acceptance-session": "acceptance",
+    "single-product": "station",
+    recovery: "ktma",
+    report: "acceptance",
+    "admin-editor": "admin",
   };
 
   const go = (next) => setRoute(next);
@@ -48,10 +59,16 @@ export function AppV1() {
   else if (route === "acceptance") screen = <AcceptanceHome go={go} back={back} engineering={engineering} toggleEngineering={toggleEngineering} />;
   else if (route === "admin") screen = <AdminHome back={back} engineering={engineering} toggleEngineering={toggleEngineering} />;
   else if (route === "production-session") screen = <ProductionSession back={back} engineering={engineering} toggleEngineering={toggleEngineering} />;
-  else screen = <AcceptanceSession back={back} engineering={engineering} toggleEngineering={toggleEngineering} />;
+  else if (route === "acceptance-session") screen = <AcceptanceSession back={back} engineering={engineering} toggleEngineering={toggleEngineering} />;
+  else if (route === "single-product") screen = <SingleProductStartup go={go} engineering={engineering} toggleEngineering={toggleEngineering} />;
+  else if (route === "recovery") screen = <RecoveryLab back={back} engineering={engineering} toggleEngineering={toggleEngineering} />;
+  else if (route === "report") screen = <ReportViewer back={back} engineering={engineering} toggleEngineering={toggleEngineering} />;
+  else if (route === "admin-editor") screen = <AdminEditor back={back} engineering={engineering} toggleEngineering={toggleEngineering} />;
+  else screen = <StationHome go={go} engineering={engineering} toggleEngineering={toggleEngineering} />;
 
   return <div className={`station-v1 ${engineering ? "station-v1--engineering" : ""}`}>
     {screen}
     <EngineeringDrawer open={engineering} route={route} onClose={() => setEngineering(false)} />
+    <ScenarioDock route={route} go={go} />
   </div>;
 }
