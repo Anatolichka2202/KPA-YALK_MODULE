@@ -64,7 +64,7 @@ MainWindow::MainWindow(QWidget* parent)
     m_statusBarLabel->setText("● сбор остановлен");
 
     // Теперь все элементы созданы — можно выставить начальный режим
-    setMode(ModeTests);
+    setMode(ModeHome);
 
     // Сначала читаем профиль: E20 подключён к разным входам в разных стойках.
     // Номер входа не должен быть скрыт в исходном коде приложения.
@@ -144,6 +144,9 @@ void MainWindow::setupUi()
     setCentralWidget(centralStack_);
 
     // --- Создаём страницы ---
+    homePage_ = new HomePage;
+    centralStack_->addWidget(homePage_);
+
     testPage_ = new TestPage;
     testPage_->setEquipmentInvoker([this](
         const std::string& capability, const std::string& operation,
@@ -178,6 +181,9 @@ void MainWindow::setupUi()
     dbLayout->addWidget(new QLabel("Загрузка базы параметров..."));
     dbLayout->setAlignment(Qt::AlignCenter);
     centralStack_->addWidget(dbPlaceholder);
+
+    registrarPage_ = new RegistrarPage;
+    centralStack_->addWidget(registrarPage_);
     // Начальный режим выставляется в конце конструктора — после setupToolBar()/setupDockWidgets(),
     // т.к. setMode() обращается к actMain_ и докам, которых здесь ещё нет.
 
@@ -187,6 +193,19 @@ void MainWindow::setupUi()
     logEdit_->setReadOnly(true);
     logEdit_->setFont(QFont("Courier New", 9));
     logEdit_->setStyleSheet("QTextEdit { background: #0e1115; color: #aab4c0; border: 1px solid #2a313b; }");
+
+    connect(homePage_, &HomePage::productionRequested, this, [this] {
+        setMode(ModeTests);
+    });
+    connect(homePage_, &HomePage::tuRequested, this, [this] {
+        setMode(ModeTests);
+    });
+    connect(homePage_, &HomePage::administrationRequested, this, [this] {
+        setMode(ModeAdmin);
+    });
+    connect(registrarPage_, &RegistrarPage::homeRequested, this, [this] {
+        setMode(ModeHome);
+    });
 }
 
 void MainWindow::setupDockWidgets()
@@ -759,6 +778,7 @@ void MainWindow::initializeStandRuntime()
         // остаются в RunStore.
         registrar_ = std::make_unique<ktma::registrar::Registrar>(
             root.filePath(QStringLiteral("registrar.db")).toStdString());
+        registrarPage_->setRegistrar(registrar_.get());
         standProfile_ = orbita::stand::loadStandProfile(
             root.filePath("profiles/stand_ktma.yaml").toStdString());
         const auto catalog = orbita::stand::importCatalogYaml(
@@ -1253,7 +1273,7 @@ void MainWindow::setEngineerMode(bool enabled)
         if (action) action->setVisible(enabled);
     }
     if (toolsMenu_) toolsMenu_->menuAction()->setVisible(enabled);
-    if (!enabled) setMode(ModeTests);
+    if (!enabled) setMode(ModeHome);
 }
 
 void MainWindow::setMode(int mode)
@@ -1276,7 +1296,7 @@ void MainWindow::setMode(int mode)
     if (actTests_)
         actTests_->setChecked(mode == ModeTests);
 
-    const bool telemetryControlsVisible = mode != ModeTests;
+    const bool telemetryControlsVisible = mode != ModeTests && mode != ModeHome && mode != ModeAdmin;
     statusBar()->setVisible(telemetryControlsVisible);
     configCombo_->setVisible(telemetryControlsVisible);
     startBtn_->setVisible(telemetryControlsVisible);

@@ -11,6 +11,10 @@ find_package(Qt6 REQUIRED COMPONENTS Core Widgets PrintSupport Sql Svg SerialPor
 add_executable(OrbitaDesktop
     main.cpp
     mainwindow.cpp
+    home_page.cpp
+    home_page.h
+    registrar_page.cpp
+    registrar_page.h
     test_page.cpp
     test_page.h
     plot_widget.cpp

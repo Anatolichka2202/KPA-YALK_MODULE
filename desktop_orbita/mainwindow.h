@@ -33,6 +33,8 @@
 #include "config_manager_widget.h"
 #include "watch_set_widget.h"
 #include "test_page.h"
+#include "home_page.h"
+#include "registrar_page.h"
 
 class QMenu;
 class QCloseEvent;
@@ -106,6 +108,8 @@ private:
     QStackedWidget* centralStack_;
 
     // Страницы
+    HomePage* homePage_ = nullptr;
+    RegistrarPage* registrarPage_ = nullptr;
     MainPage* mainPage_ = nullptr;
     TestPage* testPage_ = nullptr;
     DetailView* detailView_ = nullptr;
@@ -141,7 +145,7 @@ private:
     std::vector<orbita::ChannelSpec> currentSpecs_;
 
     // Режимы
-    enum Mode { ModeTests = 0, ModeMain = 1, ModeDetail = 2, ModeConfig = 3, ModeDb = 4 };
+    enum Mode { ModeHome = 0, ModeTests = 1, ModeMain = 2, ModeDetail = 3, ModeConfig = 4, ModeDb = 5, ModeAdmin = 6 };
 
     // Для запоминания активного действия на панели
     QAction* actTests_ = nullptr;

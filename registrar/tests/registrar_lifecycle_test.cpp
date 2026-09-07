@@ -107,6 +107,10 @@ int main(int argc, char** argv)
         registrar.removeComponent(removedOnlyProduct, removedOnlyComponent, "test removal");
         require(registrar.productVerdict(removedOnlyProduct) == Verdict::Incomplete,
                 "product without active components must remain incomplete");
+
+        Registrar reopened(directory.filePath("registrar.db").toStdString());
+        require(reopened.listProducts().size() == 2,
+                "products must persist in registrar.db for a new registrar instance");
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
         return 1;
