@@ -39,7 +39,8 @@
 - [x] route map.
 - [x] state matrix products/sessions/equipment.
 - [x] specialized single-product startup state prototype.
-- [ ] multi-product loading/error variants.
+- [x] multi-product loading/error variants.
+- [ ] explicit empty launcher state: no available products.
 
 ### B. Core task flows
 
@@ -52,7 +53,7 @@
 - [x] ManualAction in active Acceptance session.
 - [x] Safe Stop persistent control.
 - [x] F12 engineering drawer preserves route.
-- [ ] session recovery/reopen flow after application restart.
+- [x] session recovery/reopen UX prototype after UI restart.
 - [x] explicit equipment-conflict resolution prototype.
 - [x] stand-error recovery prototype.
 
@@ -72,7 +73,7 @@
 - [x] ConsumptionTrend.
 - [x] ReportViewer prototype + report hierarchy.
 - [x] Error/recovery presentation pattern.
-- [ ] PermissionState formal component.
+- [x] Permission-denied presentation pattern.
 - [x] field/input/edit patterns for Administration.
 
 ### D. HMI and data visualization
@@ -84,8 +85,9 @@
 - [x] selected-channel trend.
 - [x] consumption trend.
 - [x] no 96 independent line charts.
-- [ ] explicit NOT_NORMAL example directly on channel overview.
-- [ ] stand telemetry/error overlay directly on active HMI.
+- [x] explicit NOT_NORMAL example directly on channel overview.
+- [x] stand telemetry/error overlay directly on active HMI.
+- [x] stale-data overlay directly on active HMI.
 - [ ] long-duration trend variant if approved method requires it.
 
 ### E. Operator safety and clarity
@@ -98,8 +100,9 @@
 - [x] busy resources show owner/session in conflict scenario.
 - [x] demo data labeled.
 - [x] confirmation pattern for composition-changing configuration action.
-- [ ] permission-denied pattern.
+- [x] permission-denied pattern.
 - [x] connection-lost / stale-data pattern.
+- [x] restart/reopen UX does not silently create a new RUN.
 
 ### F. Content design
 
@@ -126,6 +129,7 @@
 - [x] source-of-truth hierarchy documented.
 - [x] separate v1 QA plan created; legacy QA is not reused as proof.
 - [x] known defects recorded by P0/P1/P2 and tracked explicitly.
+- [x] diff scope checked: current branch changes stay under `design-prototype/`.
 - [ ] run `npm run build` for the branch.
 - [ ] run existing Sites tests.
 - [ ] visual QA against approved reference direction.
@@ -142,17 +146,22 @@ Implemented prototype files:
 - `src/v1/designSystem.jsx` — reusable Station primitives and semantic statuses;
 - `src/v1/screens.jsx` — Station/КТМА base screens retained as the first v1 slice;
 - `src/v1/sessionsV2.jsx` — connected Acceptance session → ReportViewer;
-- `src/v1/productionSessionV2.jsx` — Production HMI → production ledger;
+- `src/v1/productionSessionV2.jsx` — Production HMI → production ledger + active HMI fault/stale states;
 - `src/v1/scenarios.jsx` — single-product, recovery, ReportViewer and Administration edit scenarios;
+- `src/v1/edgeCasesV2.jsx` — multi-product, permission and session-reopen edge cases;
+- `src/v1/scenarioDockV2.jsx` — React-prototype-only scenario navigator;
 - `src/v1/workspaces.jsx` — interactive Administration workspace;
 - `src/station-v1.css` — semantic industrial visual system;
 - `src/station-v1-safety.css` — safety-layer behavior around ManualAction;
 - `src/station-v1-scenarios.css` — scenario states;
 - `src/station-v1-workspaces.css` — operational Administration workspace;
+- `src/station-v1-edge.css` — Station-level edge cases;
+- `src/station-v1-hmi-states.css` — active HMI NOT_NORMAL / STALE / stand-error overlays;
 - `docs/specs/station-shell-v1.md` — IA and states;
 - `docs/specs/design-system-v1.md` — component/design-system contract;
 - `docs/specs/content-language-v1.md` — operator wording and message grammar;
-- `docs/specs/error-recovery-v1.md` — recovery semantics.
+- `docs/specs/error-recovery-v1.md` — recovery semantics;
+- `docs/specs/operational-scenarios-v1.md` — implemented scenario matrix.
 
 Legacy `App.jsx` and `styles.css` are intentionally preserved for comparison/history; entry point is switched to v1 in this branch.
 
@@ -177,3 +186,11 @@ Decision: Production ledger and TU Acceptance protocol are different UX artifact
 ### 07.09.2026 — recovery semantics
 
 Decision: `НЕ НОРМА`, `ОШИБКА`, `ДАННЫЕ УСТАРЕЛИ` and `ЗАНЯТО` have different causes and different recovery actions; they must not be collapsed into one red warning state.
+
+### 07.09.2026 — access semantics
+
+Decision: F12 changes engineering presentation/tools, but does not grant permissions. Permission denial is an independent state and must preserve the current working task.
+
+### 07.09.2026 — restart semantics
+
+Decision: after restart, an unfinished session must be surfaced explicitly. UI must not silently start a replacement RUN or treat pre-restart measurements as fresh data.
