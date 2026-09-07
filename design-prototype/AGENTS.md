@@ -14,6 +14,12 @@ Before making substantial visual changes, use the Product Design plugin's `get-c
 - The full KTMA scope includes UBSI, BSI, individual cells, intermediate measurements, and report automation.
 - Test mode uses a blue-black industrial theme. Administrative/engineering mode may use a dense engineering layout.
 - The operator can use a simplified puzzle-like scenario constructor. A full editor exists separately.
+- The two top-level product modes are «приёмо-сдаточный» and «производственный»; do not present them as user roles.
+- F12 switches these modes. Separate permission levels gate composition editing, address diagnostics, and full scenario editing.
+- Production users approved the dense minimal-supply visual direction: keep controls sparse, technical data compact, and status visibility high.
+- The production measurement view shows all channels at once, makes the channel plot primary, keeps the reference trace secondary, and surfaces live noise and supply current.
+- Never label a YALK/YTP-only result as full compliance with TU 5.6. The full verdict requires every mandatory check in the approved method.
+- `design-prototype/` is the only active prototype root. The former top-level `prototype/` is preserved under `archive/legacy-prototype-2026-09-05/`.
 
 When implementing from a selected generated mock, treat that image as the source of truth for layout, component anatomy, density, spacing, color, typography, visible content, and hierarchy.
 

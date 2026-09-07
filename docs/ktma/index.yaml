@@ -1,6 +1,6 @@
 schema: 1
 title: КТМА / стендовое ПО — машинный индекс
-updated: 2026-09-05
+updated: 2026-09-07
 source_priority:
   - tu_method
   - live_stand_kpa
@@ -36,7 +36,8 @@ cells:
     source: ulk.parameter_source
   - id: yvp8
     block: [ubsi, bsi]
-    status: production_control_or_unverified
+    status: implementation_skeleton_method_pending
+    docs: 10_yvp_method.md
   - id: ypp
     block: [ubsi]
     status: not_verified
@@ -60,7 +61,10 @@ capabilities:
   - power.dc_supply
   - catalog.parameter_resolver
   - operator.manual_input
-  scenarios:
+  - signal.generator
+  - measure.reference_ac_voltage
+  - measure.reference_frequency
+scenarios:
   - id: ubsi.468157.002.ulk.combined.check
     path: data/scenarios/ubsi_ulk_combined_check.yaml
     status: published_awaiting_full_live_run
