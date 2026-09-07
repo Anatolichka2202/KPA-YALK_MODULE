@@ -1,9 +1,8 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   CheckCircle,
   FileText,
   Gear,
-  ShieldCheck,
   Warning,
 } from "@phosphor-icons/react";
 import {
@@ -31,7 +30,43 @@ function Metric({ label, value, note }) {
 
 function ManualActionV2({ onClose, onConfirm }) {
   const [checked, setChecked] = useState(false);
-  return <div className="manual-overlay" role="dialog" aria-modal="true" aria-label="Ручное действие Р4831"><div className="manual-dialog">
+  const dialogRef = useRef(null);
+  const previousFocusRef = useRef(null);
+
+  useEffect(() => {
+    previousFocusRef.current = document.activeElement;
+    const dialog = dialogRef.current;
+    if (!dialog) return undefined;
+    const getFocusable = () => Array.from(dialog.querySelectorAll('button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])'));
+    getFocusable()[0]?.focus();
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        onClose();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusable = getFocusable();
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    dialog.addEventListener("keydown", onKeyDown);
+    return () => {
+      dialog.removeEventListener("keydown", onKeyDown);
+      previousFocusRef.current?.focus?.();
+    };
+  }, [onClose]);
+
+  return <div className="manual-overlay" role="dialog" aria-modal="true" aria-label="Ручное действие Р4831"><div className="manual-dialog" ref={dialogRef}>
     <header><div><span className="ds-eyebrow">MANUAL ACTION · Р4831</span><h2>Установите 120 Ω</h2><p>ЯТП · канал 01 / 30 · общий разъём X123 · DEMO</p></div><StatusBadge status="ACTION" /></header>
     <div className="manual-values"><Metric label="ЦЕЛЕВОЕ ЗНАЧЕНИЕ" value="120 Ω" /><Metric label="ФАКТИЧЕСКОЕ ЗНАЧЕНИЕ" value="120,34 Ω" note="DEMO" /><Metric label="ДОПУСК" value="±0,50 %" /></div>
     <div className="manual-instruction"><Warning weight="fill" /><div><b>Физически установите сопротивление на магазине.</b><span>Подтверждение действия не заменяет измерительный результат.</span></div></div>
