@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import {
   AcceptanceHome,
-  AcceptanceSession,
   EngineeringDrawer,
   KtmaHub,
   ProductionHome,
@@ -15,6 +14,7 @@ import {
   ScenarioDock,
   SingleProductStartup,
 } from "./v1/scenarios.jsx";
+import { AcceptanceSessionV2 } from "./v1/sessionsV2.jsx";
 import { AdminWorkspace } from "./v1/workspaces.jsx";
 
 export function AppV1() {
@@ -59,7 +59,7 @@ export function AppV1() {
   else if (route === "acceptance") screen = <AcceptanceHome go={go} back={back} engineering={engineering} toggleEngineering={toggleEngineering} />;
   else if (route === "admin") screen = <AdminWorkspace go={go} back={back} engineering={engineering} toggleEngineering={toggleEngineering} />;
   else if (route === "production-session") screen = <ProductionSession back={back} engineering={engineering} toggleEngineering={toggleEngineering} />;
-  else if (route === "acceptance-session") screen = <AcceptanceSession back={back} engineering={engineering} toggleEngineering={toggleEngineering} />;
+  else if (route === "acceptance-session") screen = <AcceptanceSessionV2 go={go} back={back} engineering={engineering} toggleEngineering={toggleEngineering} />;
   else if (route === "single-product") screen = <SingleProductStartup go={go} engineering={engineering} toggleEngineering={toggleEngineering} />;
   else if (route === "recovery") screen = <RecoveryLab back={back} engineering={engineering} toggleEngineering={toggleEngineering} />;
   else if (route === "report") screen = <ReportViewer back={back} engineering={engineering} toggleEngineering={toggleEngineering} />;
