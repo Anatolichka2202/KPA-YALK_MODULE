@@ -1,0 +1,16 @@
+
+> design-prototype@0.0.0 dev
+> vite --host 127.0.0.1 --port 4174
+
+
+  VITE v6.4.2  ready in 257 ms
+
+  ➜  Local:   http://127.0.0.1:4174/
+  ➜  press h + enter to show help
+09:29:51 [vite] (client) hmr update /src/styles.css
+09:31:43 [vite] (client) hmr update /src/App.jsx
+09:33:47 [vite] (client) hmr update /src/App.jsx
+09:34:02 [vite] (client) hmr update /src/styles.css
+09:37:20 [vite] (client) hmr update /src/App.jsx
+09:37:48 [vite] (client) hmr update /src/styles.css
+09:38:07 [vite] (client) hmr update /src/styles.css
