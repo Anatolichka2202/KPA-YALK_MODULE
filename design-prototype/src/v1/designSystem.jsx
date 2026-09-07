@@ -20,6 +20,7 @@ export const STATUS = {
   NORMAL: { label: "НОРМА", tone: "normal", icon: CheckCircle },
   NOT_NORMAL: { label: "НЕ НОРМА", tone: "danger", icon: XCircle },
   ERROR: { label: "ОШИБКА", tone: "danger", icon: Warning },
+  STALE: { label: "ДАННЫЕ УСТАРЕЛИ", tone: "action", icon: Clock },
   INCOMPLETE: { label: "НЕПОЛНАЯ", tone: "action", icon: Clock },
   STOPPED: { label: "ОСТАНОВЛЕНО", tone: "neutral", icon: Stop },
   UNAVAILABLE: { label: "НЕДОСТУПНО", tone: "neutral", icon: Lock },
