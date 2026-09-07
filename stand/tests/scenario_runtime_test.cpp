@@ -51,6 +51,9 @@ public:
         }
         if (capability == "ulk.parameter_source" && operation == "alive") {
             aliveSupplyVoltages.push_back(supplyVoltage);
+            if (simulateAdapterNeedsRestartAfterPowerCycle && !adapterModeReady) {
+                throw std::runtime_error("adapter has no selected ROKT mode");
+            }
             if (simulateAdapterOutAtSurvival
                 && (std::abs(supplyVoltage - 19.0) < 0.01
                     || std::abs(supplyVoltage - 37.0) < 0.01)) {
@@ -58,7 +61,13 @@ public:
             }
             return "status=ready\nsequence=1\n";
         }
+        if (capability == "ulk.parameter_source" && operation == "prepare_yalk_reference") {
+            ++adapterPrepareCount;
+            return "status=prepared\nprotocol=rokt_yalk\n";
+        }
         if (capability == "ulk.parameter_source" && operation == "start_prepared_yalk_reference") {
+            adapterModeReady = true;
+            ++adapterStartCount;
             return "status=ready\nfirst_sequence=1\n";
         }
         if (capability == "ulk.parameter_source" && operation == "stats") {
@@ -152,12 +161,20 @@ public:
         if (capability == "power.dc_supply" && operation == "set_voltage") {
             supplyVoltage = std::stod(arguments.at("volts"));
             supplyVoltages.push_back(supplyVoltage);
+            if (simulateAdapterNeedsRestartAfterPowerCycle
+                && (std::abs(supplyVoltage - 19.0) < 0.01
+                    || std::abs(supplyVoltage - 37.0) < 0.01)) {
+                adapterModeReady = false;
+            }
             return "status=ok\n";
         }
         if (capability == "power.dc_supply" && operation == "output") {
             supplyOutputEnabled = arguments.at("enabled") == "true";
             if (supplyOutputEnabled) ++supplyEnableCount;
-            else ++supplyDisableCount;
+            else {
+                ++supplyDisableCount;
+                if (simulateAdapterNeedsRestartAfterPowerCycle) adapterModeReady = false;
+            }
             return std::string("status=ok\noutput_enabled=")
                 + (supplyOutputEnabled ? "true\n" : "false\n");
         }
@@ -177,6 +194,10 @@ public:
     bool supplyOutputEnabled = true;
     double supplyVoltage = 27.0;
     bool simulateAdapterOutAtSurvival = false;
+    bool simulateAdapterNeedsRestartAfterPowerCycle = false;
+    bool adapterModeReady = true;
+    unsigned adapterPrepareCount = 0;
+    unsigned adapterStartCount = 0;
     unsigned supplyEnableCount = 0;
     unsigned supplyDisableCount = 0;
     unsigned snapshotSequence = 20;
@@ -615,12 +636,15 @@ void ubsiReadinessSuccessRegression()
     };
     FakeEquipment equipment;
     equipment.capabilities = {"power.dc_supply", "ulk.parameter_source"};
+    equipment.simulateAdapterNeedsRestartAfterPowerCycle = true;
     const auto run = engine.run(scenario, equipment, "p1", "", false);
     require(run.verdict == RunVerdict::Ok && run.steps.size() == 1
                 && run.steps.front().verdict == RunVerdict::Ok,
             "UBSI readiness must be OK when telemetry appears before 30 seconds");
     require(equipment.supplyDisableCount == 1 && equipment.supplyEnableCount == 1,
             "UBSI readiness must measure from a controlled cold power cycle");
+    require(equipment.adapterPrepareCount >= 1 && equipment.adapterStartCount >= 1,
+            "UBSI readiness must reinitialize the shared-supply adapter after power-on");
 }
 
 void ubsiSurvivalRecoveryRegression()
@@ -649,6 +673,7 @@ void ubsiSurvivalRecoveryRegression()
     FakeEquipment equipment;
     equipment.capabilities = {"power.dc_supply", "ulk.parameter_source"};
     equipment.simulateAdapterOutAtSurvival = true;
+    equipment.simulateAdapterNeedsRestartAfterPowerCycle = true;
     const auto run = engine.run(scenario, equipment, "test", "", false);
     require(run.verdict == RunVerdict::Ok,
             "Survival must be verified after nominal-voltage recovery, not while the shared-supply adapter is offline");
@@ -666,6 +691,8 @@ void ubsiSurvivalRecoveryRegression()
     };
     require(followedByNominal(19.0) && followedByNominal(37.0),
             "Each survival exposure must be followed by a return to nominal 27 V");
+    require(equipment.adapterStartCount >= 2,
+            "Each survival recovery must reinitialize the adapter ROKT stream");
 }
 
 void externalEvidenceRegression()

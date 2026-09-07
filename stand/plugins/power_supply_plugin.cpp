@@ -142,6 +142,7 @@ std::string stateText(Instance& instance)
     double measuredVoltage = 0.0;
     double measuredCurrent = 0.0;
     double setVoltage = 0.0;
+    double overvoltageLimit = 0.0;
     double setCurrent = 0.0;
     bool allOutputsEnabled = !instance.supplies.empty();
     std::ostringstream details;
@@ -150,17 +151,20 @@ std::string stateText(Instance& instance)
         const double voltage = supply.instrument->measuredVoltage();
         const double current = supply.instrument->measuredCurrent();
         const double voltageSetpoint = supply.instrument->voltageSetpoint();
+        const double voltageLimit = supply.instrument->overvoltageLimit();
         const double currentSetpoint = supply.instrument->currentSetpoint();
         const bool enabled = supply.instrument->outputEnabled();
         measuredVoltage += voltage;
         measuredCurrent += current;
         setVoltage += voltageSetpoint;
+        overvoltageLimit += voltageLimit;
         setCurrent += currentSetpoint;
         allOutputsEnabled = allOutputsEnabled && enabled;
         details << "port_" << supply.role << '=' << supply.instrument->portName() << '\n'
                 << "volts_" << supply.role << '=' << voltage << '\n'
                 << "amperes_" << supply.role << '=' << current << '\n'
                 << "set_volts_" << supply.role << '=' << voltageSetpoint << '\n'
+                << "ovp_volts_" << supply.role << '=' << voltageLimit << '\n'
                 << "set_amperes_" << supply.role << '=' << currentSetpoint << '\n'
                 << "output_" << supply.role << '=' << (enabled ? "on" : "off") << '\n';
     }
@@ -171,6 +175,7 @@ std::string stateText(Instance& instance)
            << "\nvolts=" << measuredVoltage / count
            << "\namperes=" << measuredCurrent
            << "\nset_volts=" << setVoltage / count
+           << "\novp_volts=" << overvoltageLimit / count
            << "\nset_amperes_total=" << setCurrent
            << "\noutput_enabled=" << (allOutputsEnabled ? "true" : "false") << '\n'
            << details.str();
@@ -240,13 +245,25 @@ orbita_plugin_status_v1 invoke(void* value, const char* capability, const char* 
             if (action == "set_voltage") {
                 const double target = plugin::doubleValue(args, "volts");
                 const double maximum = plugin::doubleValue(instance.config, "max_voltage_v", 60.0);
+                const double overvoltageLimit = plugin::doubleValue(
+                    instance.config, "overvoltage_limit_v", maximum);
                 if (!std::isfinite(target) || target < 0.0 || target > maximum) {
                     throw std::invalid_argument("Напряжение АКИП вне разрешённого профилем диапазона");
                 }
-                for (auto& supply : instance.supplies) supply.instrument->setVoltage(target);
+                if (!std::isfinite(overvoltageLimit) || overvoltageLimit < target
+                    || overvoltageLimit > maximum) {
+                    throw std::invalid_argument(
+                        "OVP АКИП должен быть не ниже уставки и не выше предела профиля");
+                }
                 const double tolerance = plugin::doubleValue(
                     instance.config, "setpoint_voltage_tolerance_v", 0.011);
                 for (auto& supply : instance.supplies) {
+                    // АКИП/SPE silently keeps VOLT at the OVP boundary when a
+                    // higher setpoint is requested. Arm and verify OVP first.
+                    supply.instrument->setOvervoltageLimit(overvoltageLimit);
+                    verifyNear(supply.instrument->overvoltageLimit(), overvoltageLimit,
+                        tolerance, "предел OVP " + supply.role);
+                    supply.instrument->setVoltage(target);
                     verifyNear(supply.instrument->voltageSetpoint(), target, tolerance,
                         "напряжение " + supply.role);
                 }

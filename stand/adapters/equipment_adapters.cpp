@@ -322,6 +322,7 @@ Akip1160Serial::Akip1160Serial(Akip1160SerialConfig config)
 Akip1160Serial::~Akip1160Serial() = default;
 std::string Akip1160Serial::identity() const { return impl_->exchange("*IDN?", true); }
 double Akip1160Serial::voltageSetpoint() const { return impl_->number("VOLT?", "voltage setpoint"); }
+double Akip1160Serial::overvoltageLimit() const { return impl_->number("VOLT:LIM?", "overvoltage limit"); }
 double Akip1160Serial::currentSetpoint() const { return impl_->number("CURR?", "current setpoint"); }
 double Akip1160Serial::measuredVoltage() const { return impl_->number("MEAS:VOLT?", "measured voltage"); }
 double Akip1160Serial::measuredCurrent() const { return impl_->number("MEAS:CURR?", "measured current"); }
@@ -338,6 +339,10 @@ void Akip1160Serial::setVoltage(double volts) const
 {
     impl_->exchange(voltageCommand(volts), false);
 }
+void Akip1160Serial::setOvervoltageLimit(double volts) const
+{
+    impl_->exchange(overvoltageLimitCommand(volts), false);
+}
 void Akip1160Serial::setCurrentLimit(double amperes) const
 {
     impl_->exchange(currentCommand(amperes), false);
@@ -353,6 +358,13 @@ std::string Akip1160Serial::voltageCommand(double volts)
         throw std::invalid_argument("AKIP-1160/6 voltage must be within 0..60 V");
     }
     return "VOLT " + akipFixed(volts) + "\n";
+}
+std::string Akip1160Serial::overvoltageLimitCommand(double volts)
+{
+    if (!std::isfinite(volts) || volts < 0.0 || volts > 60.0) {
+        throw std::invalid_argument("AKIP-1160/6 OVP must be within 0..60 V");
+    }
+    return "VOLT:LIM " + akipFixed(volts) + "\n";
 }
 std::string Akip1160Serial::currentCommand(double amperes)
 {

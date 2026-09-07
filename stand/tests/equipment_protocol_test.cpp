@@ -66,6 +66,8 @@ int main()
                 "legacy power-supply current command differs from Delphi reference");
         require(Akip1160Serial::voltageCommand(27.0) == "VOLT 27.000\n",
                 "AKIP-1160/6 voltage SCPI command is wrong");
+        require(Akip1160Serial::overvoltageLimitCommand(40.0) == "VOLT:LIM 40.000\n",
+                "AKIP-1160/6 OVP SCPI command is wrong");
         require(Akip1160Serial::currentCommand(0.6) == "CURR 0.600\n",
                 "AKIP-1160/6 current SCPI command is wrong");
         require(Akip1160Serial::outputCommand(true) == "OUTP ON\n"

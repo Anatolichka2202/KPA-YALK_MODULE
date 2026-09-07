@@ -136,6 +136,9 @@ devices:
       require_both: false
       current_limit_is_total: true
       max_voltage_v: 60
+      # OVP must exceed the 37 V survival point. The factory/display value
+      # observed for this instrument family is 31 V, which rejects 35/37 V.
+      overvoltage_limit_v: 40
       max_current_a: 10
       device.active_commands_confirmed: true
   - id: generator

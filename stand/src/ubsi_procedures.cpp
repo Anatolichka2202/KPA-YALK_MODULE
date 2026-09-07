@@ -276,6 +276,36 @@ ProcedureResult externalEvidence(const ScenarioNode& node, ProcedureContext& con
     return result;
 }
 
+bool restartYalkStream(ProcedureContext& context, unsigned timeoutMs)
+{
+    const auto started = std::chrono::steady_clock::now();
+    do {
+        if (context.stopRequested.load()) throw std::runtime_error("Остановлено оператором");
+        const auto elapsed = static_cast<unsigned>(std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - started).count());
+        if (elapsed >= timeoutMs) return false;
+        const unsigned attemptTimeout = std::max(1u, std::min(750u, timeoutMs - elapsed));
+        try {
+            // The UDP adapter is powered by the same AKIP as the UBSI. After a
+            // cold start or 19 V exposure it forgets the selected ROKT mode,
+            // so merely waiting for an old stream can never prove readiness.
+            context.equipment.invoke(
+                "ulk.parameter_source", "prepare_yalk_reference", {});
+            const auto response = responseValues(context.equipment.invoke(
+                "ulk.parameter_source", "start_prepared_yalk_reference", {
+                    {"timeout_ms", std::to_string(attemptTimeout)}}));
+            if (response.count("status") && response.at("status") == "ready") return true;
+        } catch (const std::exception&) {
+            // UDP sends before the adapter has booted are expected to time out;
+            // resend the complete ROKT initialization until the TU deadline.
+        }
+        const auto afterAttempt = static_cast<unsigned>(std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - started).count());
+        if (afterAttempt >= timeoutMs) return false;
+        wait(context, std::min(250u, timeoutMs - afterAttempt));
+    } while (true);
+}
+
 ProcedureResult readiness(const ScenarioNode& node, ProcedureContext& context)
 {
     // Начальный verdict должен позволять успешному измерению завершить шаг как
@@ -296,24 +326,13 @@ ProcedureResult readiness(const ScenarioNode& node, ProcedureContext& context)
     context.equipment.invoke("power.dc_supply", "set_voltage", {{"volts", std::to_string(voltage)}});
     const auto started = std::chrono::steady_clock::now();
     context.equipment.invoke("power.dc_supply", "output", {{"enabled", "true"}});
-    while (std::chrono::duration_cast<std::chrono::milliseconds>(
-               std::chrono::steady_clock::now() - started).count() <= timeoutMs) {
-        if (context.stopRequested.load()) throw std::runtime_error("Остановлено оператором");
-        try {
-            const auto status = responseValues(context.equipment.invoke(
-                "ulk.parameter_source", "alive", {}));
-            if (status.count("status") && status.at("status") == "ready") {
-                const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
-                append(result, measurement("ubsi.ready_time", "Время готовности", 0.0, seconds,
-                                           0.0, timeoutMs / 1000.0, "с"));
-                result.message = "УБСИ вышел на передачу данных";
-                return result;
-            }
-        } catch (const std::exception&) {
-            // Во время перезапуска адаптер закономерно недоступен. До истечения
-            // нормативных 30 секунд это состояние является ожиданием, не ошибкой.
-        }
-        wait(context, std::min(250u, timeoutMs));
+    if (restartYalkStream(context, timeoutMs)) {
+        const double seconds = std::chrono::duration<double>(
+            std::chrono::steady_clock::now() - started).count();
+        append(result, measurement("ubsi.ready_time", "Время готовности", 0.0, seconds,
+                                   0.0, timeoutMs / 1000.0, "с"));
+        result.message = "УБСИ вышел на передачу данных после запуска ROKT ЯЛК";
+        return result;
     }
     append(result, measurement("ubsi.ready_time", "Время готовности", 0.0,
                                timeoutMs / 1000.0 + 0.001, 0.0, timeoutMs / 1000.0, "с"));
@@ -478,7 +497,7 @@ ProcedureResult supplyRange(const ScenarioNode& node, ProcedureContext& context)
             // Работоспособность УБСИ оценивается после возврата к 27 В и
             // появления нового (не сохранённого до воздействия) кадра.
             restore();
-            const bool recovered = dataAvailable(recoveryTimeoutMs);
+            const bool recovered = restartYalkStream(context, recoveryTimeoutMs);
             const auto restoredState = context.equipment.invoke("power.dc_supply", "read_state", {});
             const double restoredActualVoltage = responseNumber(restoredState, "volts");
             const double restoredCurrent = responseNumber(restoredState, "amperes");
