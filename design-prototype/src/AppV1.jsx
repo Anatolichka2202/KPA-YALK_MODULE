@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import {
   AcceptanceHome,
   AcceptanceSession,
-  AdminHome,
   EngineeringDrawer,
   KtmaHub,
   ProductionHome,
@@ -16,6 +15,7 @@ import {
   ScenarioDock,
   SingleProductStartup,
 } from "./v1/scenarios.jsx";
+import { AdminWorkspace } from "./v1/workspaces.jsx";
 
 export function AppV1() {
   const [route, setRoute] = useState("station");
@@ -57,7 +57,7 @@ export function AppV1() {
   else if (route === "ktma") screen = <KtmaHub go={go} back={back} engineering={engineering} toggleEngineering={toggleEngineering} />;
   else if (route === "production") screen = <ProductionHome go={go} back={back} engineering={engineering} toggleEngineering={toggleEngineering} />;
   else if (route === "acceptance") screen = <AcceptanceHome go={go} back={back} engineering={engineering} toggleEngineering={toggleEngineering} />;
-  else if (route === "admin") screen = <AdminHome back={back} engineering={engineering} toggleEngineering={toggleEngineering} />;
+  else if (route === "admin") screen = <AdminWorkspace go={go} back={back} engineering={engineering} toggleEngineering={toggleEngineering} />;
   else if (route === "production-session") screen = <ProductionSession back={back} engineering={engineering} toggleEngineering={toggleEngineering} />;
   else if (route === "acceptance-session") screen = <AcceptanceSession back={back} engineering={engineering} toggleEngineering={toggleEngineering} />;
   else if (route === "single-product") screen = <SingleProductStartup go={go} engineering={engineering} toggleEngineering={toggleEngineering} />;
