@@ -33,8 +33,7 @@ const packages = [
   { id: "yvp", title: "ЯВП", note: "8 каналов · коэффициент и АЧХ", icon: Waveform },
 ];
 
-export function ProductionHomeV3({ go, back, engineering, toggleEngineering }) {
-  const [stage, setStage] = useState("Климат НУ");
+export function ProductionHomeV3({ go, back, engineering, toggleEngineering, stage, onStageChange }) {
   const [testPackage, setTestPackage] = useState("full");
   const selectedPackage = packages.find((item) => item.id === testPackage) || packages[0];
 
@@ -75,7 +74,7 @@ export function ProductionHomeV3({ go, back, engineering, toggleEngineering }) {
                 <button
                   key={item}
                   className={item === stage ? "active" : ""}
-                  onClick={() => setStage(item)}
+                  onClick={() => onStageChange(item)}
                 >
                   <span>{item}</span>
                   {item === stage && <StatusBadge status="READY" label="ВЫБРАН" />}
