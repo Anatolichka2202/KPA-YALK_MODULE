@@ -13,8 +13,15 @@ add_library(stand_core ALIAS orbita_stand_core)
 add_library(orbita_stand_domain STATIC
     src/yalk_analog_procedure.cpp
     src/ubsi_procedures.cpp
+    src/ubsi_procedures_current.cpp
     src/telemetry_procedures.cpp
 )
+
+# Сохраняем проверенную legacy-реализацию как источник старых callback-ов,
+# но её public registrar переименовываем. ubsi_procedures_current.cpp сначала
+# регистрирует legacy callback-и, затем заменяет только исправленные current ids.
+set_source_files_properties(src/ubsi_procedures.cpp PROPERTIES
+    COMPILE_DEFINITIONS "registerUbsiProcedures=registerLegacyUbsiProcedures")
 
 target_include_directories(orbita_stand_domain
     PUBLIC
@@ -98,6 +105,12 @@ if(BUILD_TESTING)
     target_link_libraries(scenario_runtime_test PRIVATE
         orbita_stand_runtime orbita_stand_adapters Qt6::Core Qt6::Sql)
     add_test(NAME stand.scenario_runtime COMMAND scenario_runtime_test)
+
+    add_executable(ubsi_backend_contract_test tests/ubsi_backend_contract_test.cpp)
+    target_compile_definitions(ubsi_backend_contract_test PRIVATE
+        ORBITA_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+    target_link_libraries(ubsi_backend_contract_test PRIVATE orbita_stand_domain)
+    add_test(NAME stand.ubsi_backend_contract COMMAND ubsi_backend_contract_test)
 
     # Qt DLL не копируются в каталог сборки автоматически. Для CTest добавляем
     # каталог Qt к PATH, не смешивая тестовые артефакты с release-пакетом.
