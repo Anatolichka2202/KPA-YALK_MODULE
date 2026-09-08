@@ -1,14 +1,15 @@
 schema: 1
 id: ubsi.468157.002.ulk.combined.check
 title: УБСИ · полная проверка по ТУ
-version: 2.1.0
+version: 2.1.1
 catalog_version: 2026.08.29-yalk-1
 object_type: UBSI_468157_002
 state: published
 
 # Канонический current TU backend. Не добавлять сюда 1.1.4.4, 1.1.4.6,
 # поканальный ток, sensor_supply 350/450 мА или external-evidence gates.
-# ЯВП-8 читает результат через ЯЛК 89..96 / word_index 88..95.
+# По уточнению 2026-09-08 тракт ЯВП относится к диапазону ЯЛК 88..96.
+# Точная восьмиканальная карта внутри диапазона — commissioning-конфигурация.
 steps:
   - id: readiness
     title: Готовность УБСИ после холодного включения не более 30 секунд
@@ -255,7 +256,7 @@ steps:
       full_voltage: 6.2
 
   - id: yvp_check
-    title: ЯВП-8 · коэффициенты усиления, АЧХ и затухание через ЯЛК 89–96
+    title: ЯВП-8 · коэффициенты усиления, АЧХ и затухание через диапазон ЯЛК 88–96
     tu: 1.1.4.1, 1.1.4.7, 1.1.4.8, 1.1.4.14
     procedure: ubsi.yvp
     requires:
@@ -268,6 +269,8 @@ steps:
     args:
       channel_count: 8
       parameter_group: yvp_fast
+      yalk_address_min: 88
+      yalk_address_max: 96
       frequencies_hz: 0.15,20,250,500,1800,2000,4000
       gains_mv_per_pcl: 0.25,0.5,1,2,4,8,32
       coupling_capacitance_pf: 1000
@@ -277,8 +280,8 @@ steps:
       working_high_frequency_hz: 2000
       input_route: yvp_input
       gain_route: yvp_gain
-      # Активный запуск остаётся fail-safe до commissioning физической
-      # кроссировки и подтверждения пересчёта слова ЯЛК в Uout.
+      # Активный запуск остаётся fail-safe до commissioning точной восьмиканальной
+      # карты внутри 88..96, физической кроссировки и пересчёта слова ЯЛК в Uout.
       routes_confirmed: false
       yalk_value_model_confirmed: false
       stimulus_tolerance_percent: 5
