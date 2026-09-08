@@ -1,0 +1,2 @@
+.us-operation-strip{grid-template-columns:repeat(12,minmax(0,1fr))}
+@media(max-width:900px){.us-operation-strip{grid-template-columns:repeat(12,90px)}}
