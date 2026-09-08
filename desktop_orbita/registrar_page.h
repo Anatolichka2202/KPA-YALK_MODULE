@@ -20,6 +20,8 @@ class RegistrarPage final : public QWidget
     Q_OBJECT
 
 public:
+    // Legacy component-level selection kept for history/compatibility. New
+    // Production orchestration must use ProductProductionSelection below.
     struct ProductionSelection {
         QString productId;
         QString productSerial;
@@ -29,10 +31,17 @@ public:
         ktma::registrar::Stage stage;
     };
 
+    struct ProductProductionSelection {
+        QString productId;
+        QString productSerial;
+        ktma::registrar::Stage stage;
+    };
+
     explicit RegistrarPage(QWidget* parent = nullptr);
 
     void setRegistrar(ktma::registrar::Registrar* registrar);
     std::optional<ProductionSelection> selectedProductionSelection() const;
+    std::optional<ProductProductionSelection> selectedProductionProduct() const;
 
 signals:
     void homeRequested();
