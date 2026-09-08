@@ -7,6 +7,7 @@
 build*/
 *-build-*/
 cmake-build-*/
+/out/
 
 # Qt Creator / CMake user files
 *.user

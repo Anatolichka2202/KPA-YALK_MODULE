@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://miltech.local/schemas/release-manifest-v1.json",
+  "title": "MilTech Station Release Manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "package_id",
+    "version",
+    "channel",
+    "git_sha",
+    "generated_utc",
+    "payload_root",
+    "files"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "package_id": { "type": "string", "minLength": 1 },
+    "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$" },
+    "channel": { "enum": ["internal", "pilot", "stable"] },
+    "git_sha": { "type": "string", "minLength": 1 },
+    "generated_utc": { "type": "string", "format": "date-time" },
+    "payload_root": { "const": "app" },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "size", "sha256"],
+        "properties": {
+          "path": { "type": "string", "minLength": 1 },
+          "size": { "type": "integer", "minimum": 0 },
+          "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+        }
+      }
+    }
+  }
+}
