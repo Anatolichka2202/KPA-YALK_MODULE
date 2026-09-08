@@ -10,14 +10,14 @@ UBSI application code may depend on:
 - ScenarioEngine-facing scenario codes;
 - generic stand capabilities (`ulk.parameter_source`, `stand.switch_matrix`, `power.dc_supply`, `signal.generator`, V7 measurement capabilities).
 
-It must not depend on the legacy Orbita/E20 product model:
+It must not depend on the Orbita/E20 product model:
 
 - no `orbita.parameter_source` in current UBSI scenarios or catalog bindings;
 - no requirement for an Orbita watch set;
-- no E20 startup as a prerequisite for Production or TU;
+- no E20 startup as a prerequisite for UBSI Production or TU;
 - no `orbita::Orbita` object in this application layer.
 
-The `orbita/` directory remains a legacy telemetry subsystem and can continue to support engineering/legacy screens while KTMA/UBSI migrates away from it.
+`orbita/` is **not deprecated and must not be deleted**. It remains a reusable telemetry/diagnostic subsystem for future product deliveries, including BSI, RPU and other equipment whose acceptance/diagnostic path requires the Orbita/E20 data model. The architectural rule is product isolation: UBSI must not depend on Orbita, while another product package may intentionally compose Orbita capabilities.
 
 ## Production invariant
 
@@ -36,7 +36,9 @@ Package effects:
 - `POWER_CONSUMPTION` -> `YP-P`;
 - `YALK` -> `YALK-96`;
 - `YTP` -> `YTP`;
-- `YVP` -> `YVP` plus linked `YALK-96` output path (YALK addresses 89..96).
+- `YVP` -> `YVP` plus the linked `YALK-96` output path.
+
+For YVP the corrected YALK address range is **88..96**. YVP-8 still has eight measuring channels, therefore the exact eight-address binding inside that nine-address range is commissioning data. Active generator output stays blocked until the catalog contains eight unique confirmed addresses inside 88..96 and the configured map includes the confirmed range endpoints. No address is guessed by the application layer.
 
 ## Persistent lifecycle
 
