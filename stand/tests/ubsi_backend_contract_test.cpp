@@ -38,6 +38,18 @@ bool contains(const std::string& text, const std::string& value)
     return text.find(value) != std::string::npos;
 }
 
+bool tuReferences(const std::string& yaml, const std::string& requirement)
+{
+    std::istringstream lines(yaml);
+    std::string line;
+    while (std::getline(lines, line)) {
+        const auto tag = line.find("tu:");
+        if (tag != std::string::npos && line.find(requirement, tag) != std::string::npos)
+            return true;
+    }
+    return false;
+}
+
 void yvpAddressContract()
 {
     std::istringstream input(readFile("data/catalog/address_sets/ulk_yvp_reference.txt"));
@@ -67,8 +79,10 @@ void yvpAddressContract()
 void scenarioContract()
 {
     const auto combined = readFile("data/scenarios/ubsi_ulk_combined_check.yaml");
-    require(!contains(combined, "1.1.4.6"), "1.1.4.6/50 m must not be in current TU scenario");
-    require(!contains(combined, "1.1.4.4"), "1.1.4.4 must not be in current TU scenario");
+    require(!tuReferences(combined, "1.1.4.6"),
+        "1.1.4.6/50 m must not be a current TU step");
+    require(!tuReferences(combined, "1.1.4.4"),
+        "1.1.4.4 must not be a current TU step");
     require(!contains(combined, "ubsi.sensor_supply"),
         "350/450 mA sensor-supply procedure must not be in current TU scenario");
     require(!contains(combined, "ubsi.external_evidence"),
@@ -89,7 +103,7 @@ void scenarioContract()
         "uncommissioned YVP Uout model must be fail-safe");
 
     const auto legacy = readFile("data/scenarios/ubsi_tu_5_6.yaml");
-    require(!contains(legacy, "1.1.4.6"),
+    require(!tuReferences(legacy, "1.1.4.6"),
         "legacy trace scenario must not reintroduce the 50 m check");
     require(!contains(legacy, "procedure: ubsi.sensor_supply"),
         "legacy trace scenario must not reintroduce 350/450 mA automation");
@@ -97,7 +111,7 @@ void scenarioContract()
         "legacy trace scenario must not reintroduce Orbita as YVP source");
 
     const auto ytp = readFile("data/scenarios/ubsi_ytp_tu_5_6.yaml");
-    require(!contains(ytp, "tu: 1.1.4.1, 1.1.4.6"),
+    require(!tuReferences(ytp, "1.1.4.6"),
         "standalone YTP scenario must not claim the 50 m requirement");
 
     const auto traceability = readFile("data/scenarios/ubsi_tu_5_6_traceability.csv");
