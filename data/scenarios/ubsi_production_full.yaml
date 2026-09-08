@@ -1,7 +1,7 @@
 schema: 1
 id: ktma.ubsi.production.full
 title: Производство УБСИ · полная проверка
-version: 1.0.0
+version: 1.0.1
 catalog_version: 2026.08.29-yalk-1
 object_type: UBSI_468157_002
 state: published
@@ -13,7 +13,9 @@ steps:
     title: Готовность после холодного включения
     tu: PRODUCTION / READINESS
     procedure: ubsi.readiness
-    requires: [power.dc_supply, ulk.parameter_source]
+    requires:
+      - power.dc_supply
+      - ulk.parameter_source
     args:
       voltage_v: 27
       current_limit_a: 0.6
@@ -24,7 +26,9 @@ steps:
     title: Питание / потребление / предельные напряжения
     tu: PRODUCTION / POWER_CONSUMPTION
     procedure: ubsi.supply_range
-    requires: [power.dc_supply, ulk.parameter_source]
+    requires:
+      - power.dc_supply
+      - ulk.parameter_source
     args:
       voltage_points_v: 24,27,35
       maximum_total_current_a: 0.4
@@ -40,28 +44,51 @@ steps:
     title: Запуск потока ЯЛК
     tu: PRODUCTION / YALK / STREAM
     procedure: yalk.start_stream
-    requires: [ulk.parameter_source, stand.switch_matrix]
-    args: {configure_settle_ms: 500, timeout_ms: 3000}
+    requires:
+      - ulk.parameter_source
+      - stand.switch_matrix
+    args:
+      configure_settle_ms: 500
+      timeout_ms: 3000
 
   - id: yalk_calibration
     title: Калибровка ЯЛК 97/99
     tu: PRODUCTION / YALK / CALIBRATION
     procedure: yalk.read_calibration
-    requires: [catalog.parameter_resolver, ulk.parameter_source, stand.switch_matrix, measure.reference_voltage]
-    args: {channel_count: 80, sample_count: 16, settle_ms: 150, full_voltage: 6.2}
+    requires:
+      - catalog.parameter_resolver
+      - ulk.parameter_source
+      - stand.switch_matrix
+      - measure.reference_voltage
+    args:
+      channel_count: 80
+      sample_count: 16
+      settle_ms: 150
+      full_voltage: 6.2
 
   - id: yalk_initial
     title: Исходное состояние ЯЛК
     tu: PRODUCTION / YALK / INITIAL
     procedure: yalk.check_initial_state
-    requires: [catalog.parameter_resolver, ulk.parameter_source, stand.switch_matrix]
-    args: {channel_count: 80, sample_count: 4, full_scale_v: 6.2, tolerance_percent_fs: 0.5}
+    requires:
+      - catalog.parameter_resolver
+      - ulk.parameter_source
+      - stand.switch_matrix
+    args:
+      channel_count: 80
+      sample_count: 4
+      full_scale_v: 6.2
+      tolerance_percent_fs: 0.5
 
   - id: yalk_channels
     title: Аналоговые каналы ЯЛК · 0 / 3,1 / 6,2 В
     tu: PRODUCTION / YALK / ANALOG
     procedure: yalk.check_channels
-    requires: [catalog.parameter_resolver, ulk.parameter_source, stand.switch_matrix, measure.reference_voltage]
+    requires:
+      - catalog.parameter_resolver
+      - ulk.parameter_source
+      - stand.switch_matrix
+      - measure.reference_voltage
     args:
       channel_count: 80
       point_volts: 0,3.1,6.2
@@ -75,7 +102,11 @@ steps:
     title: Контакты ЯЛК · 0 / 0,9 / 2,5 В
     tu: PRODUCTION / YALK / CONTACTS
     procedure: yalk.check_channels
-    requires: [catalog.parameter_resolver, ulk.parameter_source, stand.switch_matrix, measure.reference_voltage]
+    requires:
+      - catalog.parameter_resolver
+      - ulk.parameter_source
+      - stand.switch_matrix
+      - measure.reference_voltage
     args:
       channel_count: 80
       point_volts: 0,0.9,2.5
@@ -90,7 +121,9 @@ steps:
     title: ЯЛК · перегрузка ±12 В
     tu: PRODUCTION / YALK / OVERLOAD
     procedure: yalk.check_overload
-    requires: [ulk.parameter_source, stand.switch_matrix]
+    requires:
+      - ulk.parameter_source
+      - stand.switch_matrix
     args:
       mapping_confirmed: true
       physical_channel_count: 88
@@ -107,7 +140,10 @@ steps:
     title: Эталон 6,2 ±0,03 В по В7 и ЯЛК
     tu: PRODUCTION / YALK / REFERENCE_6V2
     procedure: ubsi.reference_voltage
-    requires: [measure.reference_voltage, catalog.parameter_resolver, ulk.parameter_source]
+    requires:
+      - measure.reference_voltage
+      - catalog.parameter_resolver
+      - ulk.parameter_source
     args:
       nominal_v: 6.2
       tolerance_v: 0.03
@@ -120,14 +156,24 @@ steps:
     title: Безопасный сброс ЯЛК
     tu: PRODUCTION / YALK / SAFE_CLEANUP
     procedure: yalk.safe_cleanup
-    requires: [ulk.parameter_source, stand.switch_matrix, catalog.parameter_resolver, measure.reference_voltage]
-    args: {channel_count: 80, maximum_residual_voltage_v: 0.2, settle_ms: 300, retry_settle_ms: 500}
+    requires:
+      - ulk.parameter_source
+      - stand.switch_matrix
+      - catalog.parameter_resolver
+      - measure.reference_voltage
+    args:
+      channel_count: 80
+      maximum_residual_voltage_v: 0.2
+      settle_ms: 300
+      retry_settle_ms: 500
 
   - id: ytp_stream
     title: Запуск потока ЯТП
     tu: PRODUCTION / YTP / STREAM
     procedure: ytp.start_stream
-    requires: [ulk.parameter_source, stand.switch_matrix]
+    requires:
+      - ulk.parameter_source
+      - stand.switch_matrix
     args:
       protocol: rokt_ytp68
       ytp_endpoint: 1
@@ -140,7 +186,9 @@ steps:
     title: Калибровка ЯТП 32/31
     tu: PRODUCTION / YTP / CALIBRATION
     procedure: ytp.read_calibration
-    requires: [catalog.parameter_resolver, ulk.parameter_source]
+    requires:
+      - catalog.parameter_resolver
+      - ulk.parameter_source
     args:
       calibration_zero_parameter: ytp_calibration_zero
       calibration_full_parameter: ytp_calibration_full
@@ -151,7 +199,10 @@ steps:
     title: ЯТП · 30 каналов · 0 / 120 / 240 Ом
     tu: PRODUCTION / YTP / CHANNELS
     procedure: ytp.check_channels
-    requires: [catalog.parameter_resolver, ulk.parameter_source, operator.manual_input]
+    requires:
+      - catalog.parameter_resolver
+      - ulk.parameter_source
+      - operator.manual_input
     args:
       channel_count: 30
       parameter_group: ytp_temperature
@@ -167,28 +218,50 @@ steps:
     title: Безопасная остановка ЯТП
     tu: PRODUCTION / YTP / SAFE_CLEANUP
     procedure: ytp.safe_cleanup
-    requires: [ulk.parameter_source, stand.switch_matrix]
-    args: {isd_switch_type: 7, isd_route_channels: "3,9,12,17"}
+    requires:
+      - ulk.parameter_source
+      - stand.switch_matrix
+    args:
+      isd_switch_type: 7
+      isd_route_channels: 3,9,12,17
 
   - id: yvp_yalk_stream
     title: Поток ЯЛК для ЯВП-8
     tu: PRODUCTION / YVP / YALK_STREAM
     procedure: yalk.start_stream
-    requires: [ulk.parameter_source, stand.switch_matrix]
-    args: {configure_settle_ms: 500, timeout_ms: 3000}
+    requires:
+      - ulk.parameter_source
+      - stand.switch_matrix
+    args:
+      configure_settle_ms: 500
+      timeout_ms: 3000
 
   - id: yvp_yalk_calibration
     title: Калибровка ЯЛК перед ЯВП
     tu: PRODUCTION / YVP / YALK_CALIBRATION
     procedure: yalk.read_calibration
-    requires: [catalog.parameter_resolver, ulk.parameter_source, stand.switch_matrix, measure.reference_voltage]
-    args: {channel_count: 80, sample_count: 16, settle_ms: 150, full_voltage: 6.2}
+    requires:
+      - catalog.parameter_resolver
+      - ulk.parameter_source
+      - stand.switch_matrix
+      - measure.reference_voltage
+    args:
+      channel_count: 80
+      sample_count: 16
+      settle_ms: 150
+      full_voltage: 6.2
 
   - id: yvp_check
     title: ЯВП-8 · коэффициенты, АЧХ, затухание · ЯЛК 89–96
     tu: PRODUCTION / YVP
     procedure: ubsi.yvp
-    requires: [catalog.parameter_resolver, ulk.parameter_source, stand.switch_matrix, signal.generator, measure.reference_ac_voltage, measure.reference_frequency]
+    requires:
+      - catalog.parameter_resolver
+      - ulk.parameter_source
+      - stand.switch_matrix
+      - signal.generator
+      - measure.reference_ac_voltage
+      - measure.reference_frequency
     args:
       channel_count: 8
       parameter_group: yvp_fast
@@ -211,11 +284,20 @@ steps:
     title: Безопасный сброс ЯВП / ЯЛК
     tu: PRODUCTION / YVP / SAFE_CLEANUP
     procedure: yalk.safe_cleanup
-    requires: [ulk.parameter_source, stand.switch_matrix, catalog.parameter_resolver, measure.reference_voltage]
-    args: {channel_count: 80, maximum_residual_voltage_v: 0.2, settle_ms: 300, retry_settle_ms: 500}
+    requires:
+      - ulk.parameter_source
+      - stand.switch_matrix
+      - catalog.parameter_resolver
+      - measure.reference_voltage
+    args:
+      channel_count: 80
+      maximum_residual_voltage_v: 0.2
+      settle_ms: 300
+      retry_settle_ms: 500
 
   - id: power_off
     title: Отключение питания
     tu: PRODUCTION / SAFE_CLEANUP
     procedure: ubsi.power_safe_off
-    requires: [power.dc_supply]
+    requires:
+      - power.dc_supply
