@@ -426,12 +426,16 @@ void configurationAndCatalog(const QString& root)
         db.toUtf8().toStdString(), "UBSI_468157_002", "ytp_calibration_zero", 0);
     require(ytpCalibration.locator == "32" && ytpCalibration.confirmed,
             "YTP lower calibration must use reference ULK address 32");
-    const auto yvp = resolveCatalogParameterBinding(
-        db.toUtf8().toStdString(), "UBSI_468157_002", "yvp_fast", 0);
-    require(yvp.source == "orbita.parameter_source"
-                && yvp.locator == "M16P1A11B21T21",
-            "YVP must resolve to an Orbita address from catalog");
-    require(yalk.confirmed && ytp.confirmed && !yvp.confirmed,
+    bool yvpBindingBlocked = false;
+    try {
+        (void)resolveCatalogParameterBinding(
+            db.toUtf8().toStdString(), "UBSI_468157_002", "yvp_fast", 0);
+    } catch (const std::runtime_error&) {
+        yvpBindingBlocked = true;
+    }
+    require(yvpBindingBlocked,
+            "UBSI YVP must not fall back to the obsolete Orbita/E20 binding");
+    require(yalk.confirmed && ytp.confirmed,
             "Live-confirmed YALK/YTP bindings must allow acceptance OK");
 
     FakeEquipment diagnosticEquipment;

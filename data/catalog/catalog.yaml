@@ -240,22 +240,10 @@ bindings:
     mask: 0xFFFF
     mode: 2
     confirmed: true
-  - block_type: UBSI_468157_002
-    slot: yvp_8
-    parameter_group: yvp_fast
-    source: orbita.parameter_source
-    address_key: address_set.ubsi_yvp_fast
-    locator_type: orbita_address
-    # Кандидаты перенесены из старой конфигурации «Быстрые»; confirmed=false
-    # запрещает приёмочный OK до проверки на живом потоке ЯВП-8.
-    address_file: address_sets/ubsi_yvp_fast.txt
-    address_offset: 0
-    count: 8
-    mask: 0xFFFF
-    mode: 0
-    stimulus_route: yvp_input
-    stimulus_offset_base: 0
-    confirmed: false
+  # У ЯВП пока нет подтверждённой привязки к 204-байтному потоку адаптера.
+  # Старые адреса Orbita/E20 намеренно не импортируются в УБСИ: они относятся
+  # к другой телеметрической ветке и не должны стать источником результатов.
+  # Запись yvp_fast добавляется только после commissioning маршрута ЯВП.
 
 instances:
   - id: ubsi-7-current

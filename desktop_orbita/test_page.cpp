@@ -457,6 +457,13 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
 
     auto* right = new QVBoxLayout;
     right->addWidget(makeSectionTitle(QStringLiteral("Ход и результат")));
+    productionDiagnosticsLabel_ = new QLabel(QStringLiteral(
+        "ПИТАНИЕ И СТАБИЛЬНОСТЬ: данные появятся после измерений."));
+    productionDiagnosticsLabel_->setWordWrap(true);
+    productionDiagnosticsLabel_->setStyleSheet(
+        "background:#0e1115; color:#8b95a3; border:1px solid #2c333d; "
+        "padding:7px 9px; border-radius:4px;");
+    right->addWidget(productionDiagnosticsLabel_);
     plot_ = new TestPlotWidget;
     right->addWidget(plot_);
     summaryTable_ = new QTableWidget(0, 4);
@@ -771,6 +778,8 @@ void TestPage::updateSelectionSummary()
     resultTable_->setRowCount(0);
     summaryTable_->setRowCount(0);
     plot_->clear();
+    productionDiagnosticsLabel_->setText(QStringLiteral(
+        "ПИТАНИЕ И СТАБИЛЬНОСТЬ: данные появятся после измерений."));
     progress_->setValue(0);
     progress_->setFormat(QStringLiteral("Проверка не запущена"));
     verdictLabel_->setText(QStringLiteral("ИТОГ НЕ СФОРМИРОВАН"));
@@ -1211,6 +1220,60 @@ void TestPage::setRunResult(const orbita::stand::ScenarioRunResult& result,
     resultTable_->setRowCount(0);
     summaryTable_->setRowCount(0);
     plot_->clear();
+
+    QStringList supplyReadings;
+    double maximumSampleSpan = -1.0;
+    QString maximumSampleChannel;
+    std::function<void(const orbita::stand::StepRunResult&)> collectDiagnostics;
+    collectDiagnostics = [&](const orbita::stand::StepRunResult& step) {
+        for (const auto& measurement : step.measurements) {
+            const auto attribute = [&measurement](const char* key) -> QString {
+                const auto found = measurement.attributes.find(key);
+                return found == measurement.attributes.end()
+                    ? QString() : QString::fromStdString(found->second);
+            };
+            if (measurement.parameterKey == "ubsi.supply_current"
+                || measurement.parameterKey == "ubsi.supply.current") {
+                const QString voltage = attribute("supply_voltage_v").isEmpty()
+                    ? attribute("setpoint_v") : attribute("supply_voltage_v");
+                supplyReadings << QStringLiteral("%1 В → %2 А")
+                    .arg(voltage, QString::number(measurement.measured, 'f', 3));
+            }
+            const QString samples = attribute("value_samples");
+            if (!samples.isEmpty()) {
+                double minimum = 0.0;
+                double maximum = 0.0;
+                bool hasValue = false;
+                for (const auto& token : samples.split(',', Qt::SkipEmptyParts)) {
+                    bool ok = false;
+                    const double value = token.toDouble(&ok);
+                    if (!ok) continue;
+                    if (!hasValue) minimum = maximum = value;
+                    else { minimum = qMin(minimum, value); maximum = qMax(maximum, value); }
+                    hasValue = true;
+                }
+                if (hasValue && maximum - minimum > maximumSampleSpan) {
+                    maximumSampleSpan = maximum - minimum;
+                    maximumSampleChannel = !attribute("ytp_channel").isEmpty()
+                        ? QStringLiteral("ЯТП %1").arg(attribute("ytp_channel"))
+                        : QStringLiteral("ЯЛК %1").arg(attribute("ulk_address"));
+                }
+            }
+        }
+        for (const auto& child : step.children) collectDiagnostics(child);
+    };
+    for (const auto& step : result.steps) collectDiagnostics(step);
+    QStringList diagnosticLines;
+    if (!supplyReadings.isEmpty())
+        diagnosticLines << QStringLiteral("ПИТАНИЕ: %1").arg(supplyReadings.join(QStringLiteral(" · ")));
+    if (maximumSampleSpan >= 0.0) {
+        diagnosticLines << QStringLiteral("СТАБИЛЬНОСТЬ ВЫБОРКИ: наибольший размах raw %1 у %2 "
+                                        "(индикатор, не отдельный допуск)")
+            .arg(QString::number(maximumSampleSpan, 'f', 3), maximumSampleChannel);
+    }
+    productionDiagnosticsLabel_->setText(diagnosticLines.isEmpty()
+        ? QStringLiteral("ПИТАНИЕ И СТАБИЛЬНОСТЬ: в этом прогоне нет соответствующих измерений.")
+        : diagnosticLines.join(QStringLiteral("\n")));
 
     std::function<void(const orbita::stand::StepRunResult&)> appendStep;
     appendStep = [this, &appendStep](const orbita::stand::StepRunResult& step) {

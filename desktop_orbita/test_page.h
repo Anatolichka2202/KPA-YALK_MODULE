@@ -108,6 +108,7 @@ private:
     QLabel* titleLabel_ = nullptr;
     QLabel* subtitleLabel_ = nullptr;
     QLabel* productionR4831Label_ = nullptr;
+    QLabel* productionDiagnosticsLabel_ = nullptr;
     TestPlotWidget* plot_ = nullptr;
     EquipmentControlWidget* advancedControl_ = nullptr;
     QWidget* advancedContainer_ = nullptr;
