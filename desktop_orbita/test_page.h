@@ -47,6 +47,16 @@ public:
                       const QString& productionReportPath = {});
     QString currentScenarioCode() const;
 
+    // Product integrations may add a device readiness row without taking over
+    // TestPage internals. Used by UBSI Production for the Rigol generator.
+    void registerEquipmentRow(const QString& code, const QString& name,
+                              const QString& connection, const QString& initialDetail,
+                              bool operatorConfirmation = false)
+    {
+        if (!equipmentRows_.contains(code))
+            addEquipment(code, name, connection, initialDetail, operatorConfirmation);
+    }
+
 signals:
     void equipmentCheckRequested();
     void runRequested(const QString& scenarioCode, const QString& objectSerial,
