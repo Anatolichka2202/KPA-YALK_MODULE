@@ -99,6 +99,58 @@
   color: #eef6fc;
 }
 
+.acceptance-body--v3 {
+  align-items: start;
+}
+
+.acceptance-main-v3 {
+  display: grid;
+  gap: 12px;
+}
+
+.procedure-route-v3 {
+  display: grid;
+  gap: 6px;
+}
+
+.procedure-route-v3__row {
+  min-height: 54px;
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid #263b4a;
+  background: #0d1922;
+}
+
+.procedure-route-v3__row.current {
+  border-color: #55aef2;
+  background: #133149;
+  box-shadow: inset 3px 0 0 #55aef2;
+}
+
+.procedure-route-v3__icon {
+  display: grid;
+  place-items: center;
+  color: #6ed8a0;
+}
+
+.procedure-route-v3__row.current .procedure-route-v3__icon {
+  color: #72bfff;
+}
+
+.procedure-route-v3__row b,
+.procedure-route-v3__row span {
+  display: block;
+}
+
+.procedure-route-v3__row span {
+  margin-top: 3px;
+  color: #8fa9bd;
+  font-size: 12px;
+}
+
 @media (max-width: 1280px) {
   .package-choice-v3 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
