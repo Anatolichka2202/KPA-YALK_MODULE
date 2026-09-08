@@ -7,7 +7,7 @@ object_type: UBSI_468157_002
 state: published
 
 # Отдельная длительная опция. Не входит в обязательный совмещённый прогон:
-# ИСД задаёт 1,0 и 2,4 В, В7 подтверждает фактическое воздействие, а поток
+# ИСД задаёт 0 / 0,9 / 2,5 В, В7 подтверждает фактическое воздействие, а поток
 # адаптера подтверждает контактное состояние каждого из 80 адресов ЯЛК.
 steps:
   - id: supply_status
@@ -51,7 +51,7 @@ steps:
       full_voltage: 6.2
 
   - id: yalk_contact_thresholds
-    title: Контактные пороги всех адресов: 0 при 1,0 В и 1 при 2,4 В
+    title: Контактные пороги всех адресов: 0 при 0,0 В, 0 при 0,9 В и 1 при 2,5 В
     tu: 1.1.4.1
     procedure: yalk.check_channels
     requires:
@@ -61,8 +61,8 @@ steps:
       - measure.reference_voltage
     args:
       channel_count: 80
-      point_volts: 1.0,2.4
-      signal_expectations: 0,1
+      point_volts: 0,0.9,2.5
+      signal_expectations: 0,0,1
       sample_count: 16
       settle_ms: 150
       channel_off_settle_ms: 1000

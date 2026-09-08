@@ -4,7 +4,9 @@ title: УБСИ ЛВРМ.468157.002 — функционирование в но
 version: 1.4.1
 catalog_version: 2026.08.29-yalk-1
 object_type: UBSI_468157_002
-state: published
+# Legacy orchestration retained only for traceability.  It contains superseded
+# sensor-supply and Orbita/YVP assumptions and must never be offered as TU.
+state: draft
 
 steps:
   - id: power_and_readiness
@@ -141,7 +143,7 @@ steps:
           channel_count: 30
           require_stimulus_route: true
       - id: ytp_channels
-        title: Диапазон 0–240 Ом, линия 50 м и погрешность
+        title: Ручные точки Р4831 0 / 120 / 240 Ом и погрешность
         tu: 1.1.4.1, 1.1.4.6, 1.1.4.14
         procedure: ubsi.ytp
         requires:
@@ -152,7 +154,7 @@ steps:
         args:
           channel_count: 30
           parameter_group: ytp_temperature
-          resistance_points_ohm: 0,100,240
+          resistance_points_ohm: 0,120,240
           full_scale_ohm: 240
           calibration_zero_parameter: ytp_calibration_zero
           calibration_full_parameter: ytp_calibration_full

@@ -24,6 +24,8 @@ public:
         QString productId;
         QString productSerial;
         QString componentId;
+        QString componentType;
+        QString componentSerial;
         ktma::registrar::Stage stage;
     };
 

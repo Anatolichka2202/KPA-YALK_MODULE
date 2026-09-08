@@ -14,7 +14,9 @@ struct ReportPaths {
     std::string tuHtml;
     std::string productionHtml;
 };
+struct ProductionReportMetadata { std::string productSerial, componentType, componentSerial, stage; };
 
-ReportPaths writeHtmlCsvReport(const ScenarioRunResult& run, const std::string& directory);
+ReportPaths writeHtmlCsvReport(const ScenarioRunResult& run, const std::string& directory,
+                               const ProductionReportMetadata& production = {});
 
 } // namespace orbita::stand

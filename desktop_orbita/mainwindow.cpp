@@ -196,10 +196,12 @@ void MainWindow::setupUi()
 
     connect(homePage_, &HomePage::productionRequested, this, [this] {
         activeWorkflow_ = Workflow::Production;
+        testPage_->setProductionMode(true);
         setMode(ModeTests);
     });
     connect(homePage_, &HomePage::tuRequested, this, [this] {
         activeWorkflow_ = Workflow::Tu;
+        testPage_->setProductionMode(false);
         setMode(ModeTests);
     });
     connect(homePage_, &HomePage::administrationRequested, this, [this] {
@@ -898,7 +900,8 @@ void MainWindow::initializeStandRuntime()
                 resultSaved = true;
                 const QDir root(QCoreApplication::applicationDirPath());
                 const QString reportDir = root.filePath("runs/" + QString::fromStdString(result.runId));
-                const auto paths = orbita::stand::writeHtmlCsvReport(result, reportDir.toStdString());
+                const auto paths = orbita::stand::writeHtmlCsvReport(
+                    result, reportDir.toStdString(), pendingProductionReportMetadata_);
                 tuReportPath = QString::fromStdString(paths.tuHtml);
                 productionReportPath = QString::fromStdString(paths.productionHtml);
                 log(QStringLiteral("Краткий протокол ТУ: %1").arg(tuReportPath));
@@ -936,6 +939,7 @@ void MainWindow::initializeStandRuntime()
                         .arg(QString::fromUtf8(error.what())));
                 }
                 pendingProductionStageAttemptId_.clear();
+                pendingProductionReportMetadata_ = {};
             }
             testPage_->setRunResult(result, tuReportPath, productionReportPath);
             if (closeAfterScenario_) {
@@ -1259,6 +1263,27 @@ void MainWindow::onRunScenario(
     }
     const auto scenario = iterator.value();
     std::string productionSerial;
+    if (activeWorkflow_ == Workflow::Tu) {
+        if (!registrar_ || objectSerial.trimmed().isEmpty()) {
+            testPage_->setRunInProgress(false);
+            QMessageBox::information(this, QStringLiteral("Проверка по ТУ"),
+                QStringLiteral("Введите заводской номер уже зарегистрированного изделия."));
+            return;
+        }
+        try {
+            const auto product = registrar_->findProductBySerial(objectSerial.trimmed().toStdString());
+            if (!product) {
+                testPage_->setRunInProgress(false);
+                QMessageBox::information(this, QStringLiteral("Проверка по ТУ"),
+                    QStringLiteral("Изделие с таким заводским номером не зарегистрировано. Создание из TU-экрана не выполняется."));
+                return;
+            }
+        } catch (const std::exception& error) {
+            testPage_->setRunInProgress(false);
+            QMessageBox::warning(this, QStringLiteral("Проверка по ТУ"), QString::fromUtf8(error.what()));
+            return;
+        }
+    }
     if (activeWorkflow_ == Workflow::Production) {
         const auto selection = registrarPage_->selectedProductionSelection();
         if (!selection) {
@@ -1272,6 +1297,9 @@ void MainWindow::onRunScenario(
             pendingProductionStageAttemptId_ = registrar_->beginComponentStage(
                 selection->productId.toStdString(), selection->componentId.toStdString(), selection->stage);
             productionSerial = selection->productSerial.toStdString();
+            pendingProductionReportMetadata_ = {productionSerial,
+                selection->componentType.toStdString(), selection->componentSerial.toStdString(),
+                ktma::registrar::toString(selection->stage)};
         } catch (const std::exception& error) {
             testPage_->setRunInProgress(false);
             QMessageBox::warning(this, QStringLiteral("Производственный запуск"),
@@ -1365,6 +1393,8 @@ void MainWindow::setMode(int mode)
     statusLabel_->setVisible(telemetryControlsVisible);
     errPhraseLabel_->setVisible(telemetryControlsVisible);
     errGroupLabel_->setVisible(telemetryControlsVisible);
+
+    if (mode == ModeTests && !testPage_->isEngineerMode()) onCheckTestEquipment();
 
     // Доки пользователь сам показывает/прячет через меню «Вид» — не навязываем по режиму.
 

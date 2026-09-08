@@ -1,5 +1,6 @@
 #include "registrar.h"
 #include "report.h"
+#include "replacement_policy.h"
 
 #include <QCoreApplication>
 #include <QFileInfo>
@@ -59,6 +60,15 @@ int main(int argc, char** argv)
         Registrar registrar(directory.filePath("registrar.db").toStdString());
 
         const auto product = registrar.createProduct("UBSI", "UBSI-001");
+        require(registrar.findProductBySerial("UBSI-001")->id == product,
+                "TU lookup must find an existing product without creating it");
+        require(!registrar.findProductBySerial("UNKNOWN-SN"),
+                "TU lookup must not create an unknown product");
+        require(replacementVerificationPackages("YALK-96") == std::vector<std::string>{"PROD_YALK_FULL"}
+                    && replacementVerificationPackages("YTP") == std::vector<std::string>{"PROD_YTP_FULL"}
+                    && replacementVerificationPackages("YVP") == std::vector<std::string>{"PROD_YVP_FULL", "PROD_YALK_89_96"}
+                    && replacementVerificationPackages("YP-P") == std::vector<std::string>{"PROD_POWER_CONSUMPTION"},
+                "replacement verification policy must cover each current cell type");
         const auto yalkOld = registrar.createComponent("YALK-96", "YALK-001");
         const auto yalkNew = registrar.createComponent("YALK-96", "YALK-002");
         const auto ytp = registrar.createComponent("YTP", "YTP-001");
@@ -95,6 +105,12 @@ int main(int argc, char** argv)
             report, directory.filePath("reports/ktma.html").toStdString());
         require(QFileInfo::exists(QString::fromStdString(reportPath)),
                 "product report was not written");
+        QFile productHtml(QString::fromStdString(reportPath));
+        require(productHtml.open(QIODevice::ReadOnly), "product report was not readable");
+        const auto productHtmlText = productHtml.readAll();
+        require(productHtmlText.contains("Заливка · климат −")
+                    && !productHtmlText.contains("После вибрации"),
+                "product report must show the current production stages, not legacy Electrical stages");
 
         const auto attempts = registrar.listStageAttempts(product);
         require(attempts.size() == 15, "history must contain legacy and production attempts");

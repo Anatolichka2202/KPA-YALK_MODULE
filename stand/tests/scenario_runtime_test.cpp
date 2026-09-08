@@ -297,7 +297,25 @@ void configurationAndCatalog(const QString& root)
     registerTelemetryProcedures(engine);
     const auto errors = engine.validate(scenario);
     require(errors.empty(), errors.empty() ? "" : errors.front());
-    require(scenario.publicationState == PublicationState::Published, "UBSI scenario must be published");
+    require(scenario.publicationState == PublicationState::Draft,
+            "superseded UBSI orchestration must not be published as canonical TU");
+    const ScenarioNode* canonicalYtpChannels = nullptr;
+    std::function<void(const ScenarioNode&)> findCanonicalYtpChannels =
+        [&canonicalYtpChannels, &findCanonicalYtpChannels](const ScenarioNode& node) {
+            if (node.id == "ytp_channels" && node.procedure == "ubsi.ytp") {
+                canonicalYtpChannels = &node;
+                return;
+            }
+            for (const auto& child : node.children) {
+                if (!canonicalYtpChannels) findCanonicalYtpChannels(child);
+            }
+        };
+    for (const auto& step : scenario.steps) {
+        if (!canonicalYtpChannels) findCanonicalYtpChannels(step);
+    }
+    require(canonicalYtpChannels
+                && canonicalYtpChannels->arguments.at("resistance_points_ohm") == "0,120,240",
+            "Canonical TU YTP must request manual R4831 points 0 / 120 / 240 ohm");
     require(engine.validate(bsiDiagnostic).empty(), "BSI diagnostic scenario must validate");
     require(bsiDiagnostic.publicationState == PublicationState::Published,
             "BSI diagnostic scenario must be published as a non-acceptance procedure");
@@ -310,8 +328,25 @@ void configurationAndCatalog(const QString& root)
             "YTP must be a published six-stage powered manual-reference scenario");
     require(engine.validate(ytp120).empty() && ytp120.steps.size() == 6,
             "Fixed 120-ohm YTP scenario must validate");
-    require(engine.validate(combined).empty() && combined.steps.size() == 19,
-            "Full UBSI delivery scenario must validate as nineteen traceable stages");
+    require(engine.validate(combined).empty() && combined.steps.size() == 15,
+            "Canonical TU scenario must contain only the accepted fifteen stages");
+    const auto combinedStep = [&combined](const std::string& id) -> const ScenarioNode* {
+        const auto iterator = std::find_if(combined.steps.begin(), combined.steps.end(),
+            [&id](const ScenarioNode& step) { return step.id == id; });
+        return iterator == combined.steps.end() ? nullptr : &*iterator;
+    };
+    const auto* contactThresholds = combinedStep("yalk_contact_thresholds");
+    require(contactThresholds
+                && contactThresholds->arguments.at("point_volts") == "0,0.9,2.5"
+                && contactThresholds->arguments.at("signal_expectations") == "0,0,1",
+            "Canonical TU contacts must use 0 / 0.9 / 2.5 V");
+    const auto* referenceVoltage = combinedStep("yalk_reference_voltage");
+    require(referenceVoltage && referenceVoltage->procedure == "ubsi.reference_voltage",
+            "TU 1.1.4.9 must be measured by V7 and YALK, not external evidence");
+    for (const auto& step : combined.steps) {
+        require(step.procedure != "ubsi.external_evidence",
+            "Canonical TU must not contain excluded external evidence");
+    }
     require(engine.validate(contacts).empty() && contacts.steps.size() == 6,
             "Optional YALK contact-threshold scenario must validate as six stages");
     require(profile.id == "ktma-main" && profile.activeOutputsConfirmed,
@@ -530,8 +565,8 @@ void yalkOverloadSequenceRegression()
          {"ulk.parameter_source", "stand.switch_matrix"},
          {{"mapping_confirmed", "true"}, {"physical_channel_count", "2"},
           {"observed_address_count", "2"}, {"sample_count", "1"},
-          {"baseline_settle_ms", "1"}, {"settle_ms", "1"},
-          {"full_scale_v", "6.2"}, {"tolerance_percent_fs", "0.5"}}, {}}
+          {"baseline_settle_ms", "1"}, {"overload_settle_ms", "1"},
+          {"cleanup_settle_ms", "1"}, {"maximum_code_delta", "2"}}, {}}
     };
     FakeEquipment equipment;
     equipment.capabilities = {"ulk.parameter_source", "stand.switch_matrix",
@@ -551,6 +586,42 @@ void yalkOverloadSequenceRegression()
         require(args.count("type") && args.at("type") == "3",
                 "KPA overload requires type=3 for sources and channels");
     }
+    const auto& measurement = run.steps.back().measurements.front();
+    require(measurement.unit == "код" && measurement.lowerLimit == 499.0
+                && measurement.upperLimit == 503.0
+                && measurement.attributes.at("stressed_channel") == "1"
+                && measurement.attributes.at("observed_channel") == "2"
+                && measurement.attributes.at("lower_delta_code") == "-2"
+                && measurement.attributes.at("upper_delta_code") == "2",
+            "Overload report must retain the per-observed-channel ±2-code evidence");
+    require(std::count(equipment.operations.begin(), equipment.operations.end(),
+                "stand.switch_matrix:full_reset") >= 6,
+            "Overload must return ISD to its safe state before and after every impact");
+}
+
+void yvpUnconfirmedBindingRegression()
+{
+    ScenarioEngine engine;
+    registerUbsiProcedures(engine);
+    ScenarioDefinition scenario;
+    scenario.id = "yvp-unconfirmed";
+    scenario.title = "YVP safe binding gate";
+    scenario.version = "1";
+    scenario.catalogVersion = "1";
+    scenario.objectType = "UBSI_468157_002";
+    scenario.publicationState = PublicationState::Published;
+    scenario.steps = {{"yvp", "ЯВП", "1.1.4.7", "ubsi.yvp",
+        {"signal.generator", "stand.switch_matrix", "catalog.parameter_resolver"},
+        {{"channel_count", "1"}, {"parameter_group", "yvp_yalk"},
+         {"frequencies_hz", "20"}, {"gains_mv_per_pcl", "1"}}, {}}};
+    FakeEquipment equipment;
+    equipment.capabilities = {"signal.generator", "stand.switch_matrix", "catalog.parameter_resolver"};
+    const auto run = engine.run(scenario, equipment, "p1", "", false);
+    require(run.verdict == RunVerdict::Incomplete,
+        "Unconfirmed YVP-to-YALK binding must not become a product failure");
+    require(std::count(equipment.operations.begin(), equipment.operations.end(),
+                "signal.generator:output") == 0,
+        "YVP must not enable Rigol before confirmed YALK 89–96 bindings");
 }
 
 void yalkOpenStateRegression()
@@ -768,16 +839,25 @@ void persistenceAndReport()
     run.steps.push_back(step);
     RunStore store(QDir(temporary.path()).filePath(QStringLiteral("runs.db")).toUtf8().toStdString());
     store.save(run);
-    const auto report = writeHtmlCsvReport(run, temporary.path().toUtf8().toStdString());
+    const auto report = writeHtmlCsvReport(run, temporary.path().toUtf8().toStdString(),
+        {"UBSI-001", "YALK-96", "YALK-001", "Первичная"});
     require(QFile::exists(QString::fromUtf8(report.html))
                 && QFile::exists(QString::fromUtf8(report.productionHtml))
                 && QFile::exists(QString::fromUtf8(report.csv)),
             "TU HTML, production HTML and CSV reports were not created");
-    QFile html(QString::fromUtf8(report.html));
-    require(html.open(QIODevice::ReadOnly), "Cannot open HTML report");
+    QFile html(QString::fromUtf8(report.tuHtml));
+    require(html.open(QIODevice::ReadOnly), "Cannot open TU HTML report");
     const auto htmlText = html.readAll();
-    require(htmlText.contains("НЕ НОРМА") && htmlText.contains("Измерений не в норме"),
-            "TU report must use the operator-facing НОРМА / НЕ НОРМА wording and counts");
+    require(htmlText.contains("Дата") && htmlText.contains("Блок")
+                && htmlText.contains("Оператор") && htmlText.contains("Результат")
+                && htmlText.contains("НЕ НОРМА")
+                && !htmlText.contains("Измерений не в норме"),
+            "TU report must use only the four accepted operator-facing fields");
+    QFile productionHtml(QString::fromUtf8(report.productionHtml));
+    require(productionHtml.open(QIODevice::ReadOnly), "Cannot open production HTML report");
+    const auto productionText = productionHtml.readAll();
+    require(productionText.contains("YALK-001") && productionText.contains("Первичная"),
+            "production report must retain selected component and stage metadata");
 
     ScenarioRunResult ytpRun = run;
     ytpRun.runId = "ytp-run-1";
@@ -822,9 +902,11 @@ void persistenceAndReport()
     QFile evidenceHtml(QString::fromUtf8(evidenceReport.tuHtml));
     require(evidenceHtml.open(QIODevice::ReadOnly), "Cannot open external evidence report");
     const auto evidenceText = evidenceHtml.readAll();
-    require(evidenceText.contains("PR-42") && evidenceText.contains("tester")
-                && evidenceText.contains("Внешние подтверждающие документы"),
-            "TU report must print the actual external evidence reference and operator");
+    require(evidenceText.contains("Дата") && evidenceText.contains("Блок")
+                && evidenceText.contains("Оператор") && evidenceText.contains("Результат")
+                && evidenceText.contains("tester") && evidenceText.contains("НОРМА")
+                && !evidenceText.contains("Внешние подтверждающие документы"),
+            "TU report must contain only the four operator-facing fields");
 }
 
 } // namespace
@@ -843,6 +925,7 @@ int main(int argc, char** argv)
         ubsiSurvivalRecoveryRegression();
         externalEvidenceRegression();
         yalkOverloadSequenceRegression();
+        yvpUnconfirmedBindingRegression();
         waveformDecoder();
         pluginContracts();
         persistenceAndReport();

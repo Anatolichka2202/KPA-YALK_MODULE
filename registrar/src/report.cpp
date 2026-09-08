@@ -53,19 +53,22 @@ std::string writeProductReportHtml(
            : report.verdict == Verdict::Fail ? QStringLiteral("fail")
                                              : QStringLiteral("incomplete"))
         + QStringLiteral("\">") + verdict + QStringLiteral("</b></p>");
-    html += QStringLiteral("<h2>Состав и этапы</h2><table><thead><tr><th>Тип</th><th>SN</th>"
-                           "<th>Состояние</th><th>Входная</th><th>После вибрации</th>"
-                           "<th>После климата</th><th>Финальная</th><th>Причина снятия</th>"
+    html += QStringLiteral("<h2>Состав, замены и production stages</h2><table><thead><tr><th>Тип</th><th>SN</th>"
+                           "<th>Состояние</th><th>Первичная</th><th>Климат НУ</th><th>Климат −</th><th>Климат +</th>"
+                           "<th>Заливка · климат НУ</th><th>Заливка · климат +</th><th>Заливка · климат −</th><th>Причина снятия</th>"
                            "</tr></thead><tbody>");
     for (const auto& component : report.components) {
         html += QStringLiteral("<tr><td>") + escape(component.componentType)
             + QStringLiteral("</td><td>") + escape(component.serialNumber)
             + QStringLiteral("</td><td>") + (component.active ? QStringLiteral("ACTIVE")
                                                                     : QStringLiteral("REMOVED"))
-            + QStringLiteral("</td><td>") + stageCell(report, component.componentId, Stage::InitialElectrical)
-            + QStringLiteral("</td><td>") + stageCell(report, component.componentId, Stage::PostVibrationElectrical)
-            + QStringLiteral("</td><td>") + stageCell(report, component.componentId, Stage::PostClimateElectrical)
-            + QStringLiteral("</td><td>") + stageCell(report, component.componentId, Stage::FinalElectrical)
+            + QStringLiteral("</td><td>") + stageCell(report, component.componentId, Stage::Primary)
+            + QStringLiteral("</td><td>") + stageCell(report, component.componentId, Stage::ClimateNormal)
+            + QStringLiteral("</td><td>") + stageCell(report, component.componentId, Stage::ClimateMinus)
+            + QStringLiteral("</td><td>") + stageCell(report, component.componentId, Stage::ClimatePlus)
+            + QStringLiteral("</td><td>") + stageCell(report, component.componentId, Stage::PottingClimateNormal)
+            + QStringLiteral("</td><td>") + stageCell(report, component.componentId, Stage::PottingClimatePlus)
+            + QStringLiteral("</td><td>") + stageCell(report, component.componentId, Stage::PottingClimateMinus)
             + QStringLiteral("</td><td>") + escape(component.removalReason)
             + QStringLiteral("</td></tr>");
     }

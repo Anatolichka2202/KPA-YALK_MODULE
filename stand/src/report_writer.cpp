@@ -50,7 +50,8 @@ void commit(QSaveFile& file)
 
 } // namespace
 
-ReportPaths writeHtmlCsvReport(const ScenarioRunResult& run, const std::string& directoryPath)
+ReportPaths writeHtmlCsvReport(const ScenarioRunResult& run, const std::string& directoryPath,
+                               const ProductionReportMetadata& production)
 {
     QDir directory(QString::fromUtf8(directoryPath));
     if (!directory.exists() && !directory.mkpath(QStringLiteral("."))) {
@@ -181,6 +182,13 @@ ReportPaths writeHtmlCsvReport(const ScenarioRunResult& run, const std::string& 
            << QStringLiteral("</b></div><div class=\"card\"><div>Измерений в норме</div><b>")
            << normalCount << QStringLiteral("</b></div><div class=\"card\"><div>Измерений не в норме</div><b>")
            << abnormalCount << QStringLiteral("</b></div></div>");
+    if (!production.componentSerial.empty()) {
+        output << QStringLiteral("<h2>Production context</h2><table><tbody><tr><th>Изделие</th><td>")
+               << escape(production.productSerial) << QStringLiteral("</td></tr><tr><th>Ячейка</th><td>")
+               << escape(production.componentType) << QStringLiteral(" · SN ") << escape(production.componentSerial)
+               << QStringLiteral("</td></tr><tr><th>Этап</th><td>") << escape(production.stage)
+               << QStringLiteral("</td></tr></tbody></table>");
+    }
 
     std::map<QString, std::vector<const MeasurementResult*>> chartGroups;
     for (const auto& [step, value] : measurements) {
@@ -291,6 +299,22 @@ ReportPaths writeHtmlCsvReport(const ScenarioRunResult& run, const std::string& 
     output.flush();
     commit(html);
 
+    // The operator-facing TU protocol is deliberately independent from the
+    // technical channel sheet above.  It is issued only for a normative
+    // outcome and contains exactly the four fields accepted for this delivery.
+    if (run.verdict != RunVerdict::Ok && run.verdict != RunVerdict::Fail) {
+        return {tuPath.toUtf8().toStdString(), csvPath.toUtf8().toStdString(),
+                std::string(), htmlPath.toUtf8().toStdString()};
+    }
+    QString operatorName = QStringLiteral("не указан");
+    for (const auto& [step, value] : measurements) {
+        Q_UNUSED(step);
+        const auto found = value->attributes.find("operator");
+        if (found != value->attributes.end() && !found->second.empty()) {
+            operatorName = escape(found->second);
+            break;
+        }
+    }
     QSaveFile tu(tuPath);
     if (!tu.open(QIODevice::WriteOnly | QIODevice::Text)) {
         throw std::runtime_error(tu.errorString().toUtf8().toStdString());
@@ -298,70 +322,11 @@ ReportPaths writeHtmlCsvReport(const ScenarioRunResult& run, const std::string& 
     QTextStream brief(&tu);
     brief.setEncoding(QStringConverter::Utf8);
     brief << QStringLiteral("<!doctype html><html lang=\"ru\"><head><meta charset=\"utf-8\"><title>Протокол ТУ</title><style>")
-          << QStringLiteral("body{font:14px 'Segoe UI',sans-serif;color:#17202a;margin:24px;max-width:1100px}h1{margin-bottom:4px}.meta{color:#4b5563}.verdict{font-size:26px;font-weight:700}.OK{color:#167548}.FAIL,.ERROR{color:#b3261e}.INCOMPLETE,.ABORTED{color:#9a6700}.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:18px 0}.card{border:1px solid #ccd3da;padding:10px;border-radius:6px}table{width:100%;border-collapse:collapse;margin-top:16px}th,td{border:1px solid #ccd3da;padding:6px 8px;text-align:left}th{background:#edf1f5}.note{border-left:4px solid #9a6700;background:#fff8df;padding:10px;margin:14px 0}@media print{body{margin:10mm}.no-print{display:none}}</style></head><body>")
-          << QStringLiteral("<h1>Протокол проверки по требованиям ТУ</h1><p class=\"meta\">")
-          << scenarioTitle.toHtmlEscaped() << QStringLiteral("</p><div class=\"cards\"><div class=\"card\"><div>Итог проверенного объёма</div><div class=\"verdict ")
-          << QString::fromLatin1(toString(run.verdict)) << QStringLiteral("\">")
-          << localVerdict(run.verdict) << QStringLiteral("</div></div><div class=\"card\"><div>Заводской номер</div><b>")
-          << (run.objectSerial.empty() ? QStringLiteral("не указан") : escape(run.objectSerial))
-          << QStringLiteral("</b></div><div class=\"card\"><div>Начало</div><b>") << iso(run.startedAt)
-          << QStringLiteral("</b><div>Окончание</div><b>") << iso(run.finishedAt)
-          << QStringLiteral("</b></div><div class=\"card\"><div>Профиль / сценарий</div><b>")
-          << escape(run.profileVersion) << QStringLiteral(" / ") << escape(run.scenarioVersion)
-          << QStringLiteral("</b></div></div><p><b>Измерений в норме:</b> ") << normalCount
-          << QStringLiteral(" &nbsp; <b>Измерений не в норме:</b> ") << abnormalCount
-          << QStringLiteral("</p><div class=\"note\"><b>Граница результата.</b> Итог относится только к этапам, перечисленным ниже. ");
-    if (combinedTu) {
-        brief << QStringLiteral("ЯВП-8 стендом не измеряется и может быть зачтена только по отдельному производственному протоколу. ")
-              << QStringLiteral("Для ЯЛК проверяются аналоговые значения, контактные состояния 0/1, признак обрыва и устойчивость остальных каналов при перегрузке ±12 В.");
-    } else if (formalTu) {
-        brief << QStringLiteral("Это отдельная проверка выбранной ячейки ЯЛК-96 или ЯТП, а не заключение по УБСИ в целом.");
-    } else {
-        brief << QStringLiteral("Контрольный прогон не является проверкой по полному объёму ТУ.");
-    }
-    brief << QStringLiteral("</div><h2>Результаты по пунктам ТУ</h2><table><thead><tr><th>Этап</th><th>Пункт ТУ</th><th>Норма</th><th>Не норма</th><th>Итог</th><th>Примечание</th></tr></thead><tbody>");
-
-    std::function<void(const StepRunResult&)> writeBriefStep = [&](const StepRunResult& step) {
-        int ok = 0;
-        int fail = 0;
-        for (const auto& value : step.measurements) {
-            if (value.verdict == RunVerdict::Ok) ++ok;
-            else if (value.verdict == RunVerdict::Fail) ++fail;
-        }
-        brief << QStringLiteral("<tr><td>") << escape(step.title)
-              << QStringLiteral("</td><td>") << escape(step.tuRequirement)
-              << QStringLiteral("</td><td>") << ok
-              << QStringLiteral("</td><td>") << fail
-              << QStringLiteral("</td><td><b>") << localVerdict(step.verdict)
-              << QStringLiteral("</b></td><td>") << escape(step.message)
-              << QStringLiteral("</td></tr>");
-        for (const auto& child : step.children) writeBriefStep(child);
-    };
-    for (const auto& step : run.steps) writeBriefStep(step);
-    brief << QStringLiteral("</tbody></table>");
-    if (combinedTu) {
-        brief << QStringLiteral("<h2>Внешние подтверждающие документы</h2>")
-              << QStringLiteral("<table><thead><tr><th>Требование</th><th>Пункт ТУ</th><th>Тип документа</th><th>Номер и дата</th><th>Оператор</th><th>Время</th></tr></thead><tbody>");
-        for (const auto& [step, value] : measurements) {
-            const auto reference = value->attributes.find("evidence_reference");
-            if (reference == value->attributes.end()) continue;
-            const auto attribute = [value](const char* key) {
-                const auto found = value->attributes.find(key);
-                return found == value->attributes.end() ? QString() : escape(found->second);
-            };
-            brief << QStringLiteral("<tr><td>") << escape(step->title)
-                  << QStringLiteral("</td><td>") << escape(step->tuRequirement)
-                  << QStringLiteral("</td><td>") << attribute("evidence_type")
-                  << QStringLiteral("</td><td>") << attribute("evidence_reference")
-                  << QStringLiteral("</td><td>") << attribute("operator")
-                  << QStringLiteral("</td><td>") << attribute("timestamp")
-                  << QStringLiteral("</td></tr>");
-        }
-        brief << QStringLiteral("</tbody></table>");
-    }
-    brief << QStringLiteral("<p class=\"no-print\"><a href=\"") << stem
-          << QStringLiteral(".html\">Открыть подробную ведомость каналов</a> · <a href=\"")
-          << stem << QStringLiteral(".csv\">Скачать CSV</a></p></body></html>");
+          << QStringLiteral("body{font:14px sans-serif;margin:24px;color:#000}table{border-collapse:collapse;width:100%;max-width:680px}th,td{border:1px solid #000;padding:10px;text-align:left}th{width:32%}@media print{body{margin:10mm}}</style></head><body><h1>Протокол ТУ</h1><table>")
+          << QStringLiteral("<tr><th>Дата</th><td>") << iso(run.finishedAt) << QStringLiteral("</td></tr>")
+          << QStringLiteral("<tr><th>Блок</th><td>") << (run.objectSerial.empty() ? QStringLiteral("не указан") : escape(run.objectSerial)) << QStringLiteral("</td></tr>")
+          << QStringLiteral("<tr><th>Оператор</th><td>") << operatorName << QStringLiteral("</td></tr>")
+          << QStringLiteral("<tr><th>Результат</th><td><b>") << localVerdict(run.verdict) << QStringLiteral("</b></td></tr></table></body></html>");
     brief.flush();
     commit(tu);
     return {tuPath.toUtf8().toStdString(), csvPath.toUtf8().toStdString(),

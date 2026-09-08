@@ -1043,17 +1043,15 @@ ProcedureResult yalkCheckOverload(const ScenarioNode& node, ProcedureContext& co
             "Маршруты обрыва и ±12 В ещё не подтверждены на УБСИ; опасное воздействие не выполнялось", {}};
     }
 
-    // Буквальный перенос 10_ЯЛК_перегрузки.scn: создаётся пилообразный фон
-    // на физических каналах ИСД 1..88, сохраняется весь кадр ЯЛК, затем
-    // маршруты 96 (+12 В) и 95 (-12 В) поочерёдно подключаются к каждому
-    // каналу. Проверяются все остальные слова, как в исходном -кромеN.
+    // Точно восстановлено из 10_ЯЛК_перегрузки.scn KPA: пилообразный фон на
+    // физических каналах ИСД 1..88. Это не калибровочная лесенка ЯЛК и не
+    // может заменяться произвольными точками 0/3.1/6.2 В.
     const unsigned physicalCount = natural(node, "physical_channel_count", 88);
     const unsigned observedCount = natural(node, "observed_address_count", 88);
     const unsigned samples = natural(node, "sample_count", 4);
-    const unsigned settle = natural(node, "settle_ms", 150);
-    const double fullScale = number(node, "full_scale_v", 6.2);
-    const double tolerancePercent = number(node, "tolerance_percent_fs", 0.5);
-    const double toleranceVolts = fullScale * tolerancePercent / 100.0;
+    const unsigned overloadSettle = natural(node, "overload_settle_ms", 10000);
+    const unsigned cleanupSettle = natural(node, "cleanup_settle_ms", 300);
+    const unsigned maximumCodeDelta = natural(node, "maximum_code_delta", 2);
     const std::string positiveRoute = argument(
         node, "positive_overload_route", "yalk_overload_positive");
     const std::string negativeRoute = argument(
@@ -1078,86 +1076,91 @@ ProcedureResult yalkCheckOverload(const ScenarioNode& node, ProcedureContext& co
             try { setSwitch({{"route", route}, {"enabled", "false"}}); } catch (...) {}
         }
     };
-
-    ProcedureResult result{RunVerdict::Ok,
-        "Проверена устойчивость остальных каналов ЯЛК при перегрузке ±12 В", {}};
-    context.equipment.invoke("stand.switch_matrix", "full_reset", {});
-    try {
+    auto dacOff = [&]() {
+        for (unsigned channel = 1; channel <= physicalCount; ++channel) {
+            try { setAnalog(channel, 0, false); } catch (...) {}
+        }
+    };
+    auto makeSafe = [&]() {
+        sourceOff();
+        context.equipment.invoke("stand.switch_matrix", "full_reset", {});
+        dacOff();
+        wait(context, cleanupSettle);
+        // `full_reset` is the confirmed ISD safe-state command (type=4).
+        // A failed acknowledgement is a station error and must stop the run,
+        // rather than become a product nonconformity.
+    };
+    auto applyReferenceStaircase = [&]() {
         for (unsigned channel = 1; channel <= physicalCount; ++channel) {
             setAnalog(channel, analogCode(channel), true);
         }
+    };
+
+    ProcedureResult result{RunVerdict::Ok,
+        "Проверена устойчивость остальных каналов ЯЛК при перегрузке ±12 В", {}};
+    try {
+        makeSafe();
+        applyReferenceStaircase();
         wait(context, natural(node, "baseline_settle_ms", 1000));
         const auto baseline = readFreshYalkSnapshot(context, samples);
 
+        // The baseline must be immediately followed by reset, DAC-off and a
+        // pause before the first +12 V impact.
+        makeSafe();
+
         for (const auto& polarity : std::vector<std::pair<std::string, std::string>>{
                  {positiveRoute, "+12 В"}, {negativeRoute, "-12 В"}}) {
-            setSwitch({{"route", polarity.first}, {"enabled", "true"}});
             for (unsigned target = 1; target <= physicalCount; ++target) {
                 bool targetConnected = false;
                 try {
+                    // The preceding iteration ended in the confirmed type=4
+                    // safe state. Restore the recovered background only now.
+                    applyReferenceStaircase();
+                    setSwitch({{"route", polarity.first}, {"enabled", "true"}});
                     setAnalog(target, 0, false);
                     setSwitch({{"channel", std::to_string(target)}, {"enabled", "true"}});
                     targetConnected = true;
-                    wait(context, settle);
+                    wait(context, overloadSettle);
                     const auto current = readFreshYalkSnapshot(context, samples);
 
-                    double maximumDelta = 0.0;
-                    std::vector<unsigned> analogFailures;
-                    std::vector<unsigned> signalFailures;
                     for (unsigned address = 1;
                          address <= std::min<unsigned>(observedCount, current.size()); ++address) {
                         if (address == target) continue;
-                        const double baselineVolts = yalkCodeToVolts(baseline[address - 1].code, context);
-                        const double currentVolts = yalkCodeToVolts(current[address - 1].code, context);
-                        const double delta = std::abs(currentVolts - baselineVolts);
-                        maximumDelta = std::max(maximumDelta, delta);
-                        if (delta > toleranceVolts) analogFailures.push_back(address);
-                        if (current[address - 1].signal != baseline[address - 1].signal) {
-                            signalFailures.push_back(address);
-                        }
+                        const double baselineCode = baseline[address - 1].code;
+                        const double currentCode = current[address - 1].code;
+                        const double delta = currentCode - baselineCode;
+                        auto value = measurement(
+                            "ubsi.yalk.overload." + polarity.first + "."
+                                + std::to_string(target) + "." + std::to_string(address),
+                            "ЯЛК: " + polarity.second + " на " + std::to_string(target)
+                                + ", наблюдаемый канал " + std::to_string(address),
+                            baselineCode, currentCode,
+                            baselineCode - maximumCodeDelta, baselineCode + maximumCodeDelta, "код");
+                        value.attributes = {{"polarity", polarity.second},
+                            {"stressed_channel", std::to_string(target)},
+                            {"observed_channel", std::to_string(address)},
+                            {"baseline_code", std::to_string(baseline[address - 1].code)},
+                            {"current_code", std::to_string(current[address - 1].code)},
+                            {"delta_code", std::to_string(delta)},
+                            {"lower_delta_code", std::to_string(-static_cast<int>(maximumCodeDelta))},
+                            {"upper_delta_code", std::to_string(maximumCodeDelta)}};
+                        append(result, std::move(value));
                     }
-                    auto value = measurement(
-                        "ubsi.yalk.overload." + polarity.first + "." + std::to_string(target),
-                        "ЯЛК канал " + std::to_string(target) + ", перегрузка " + polarity.second,
-                        0.0, maximumDelta, 0.0, toleranceVolts, "В");
-                    auto join = [](const std::vector<unsigned>& items) {
-                        std::ostringstream out;
-                        for (std::size_t index = 0; index < items.size(); ++index) {
-                            if (index) out << ',';
-                            out << items[index];
-                        }
-                        return out.str();
-                    };
-                    value.attributes = {{"overload", polarity.second},
-                        {"target_isd_channel", std::to_string(target)},
-                        {"maximum_delta_v", std::to_string(maximumDelta)},
-                        {"tolerance_percent_fs", std::to_string(tolerancePercent)},
-                        {"analog_failure_addresses", join(analogFailures)},
-                        {"signal_failure_addresses", join(signalFailures)}};
-                    if (!signalFailures.empty()) {
-                        value.verdict = RunVerdict::Fail;
-                        value.message = "Изменились сигнальные признаки остальных каналов";
-                    }
-                    append(result, std::move(value));
-                    setSwitch({{"channel", std::to_string(target)}, {"enabled", "false"}});
                     targetConnected = false;
-                    setAnalog(target, analogCode(target), true);
+                    makeSafe();
                 } catch (...) {
                     if (targetConnected) {
                         try { setSwitch({{"channel", std::to_string(target)}, {"enabled", "false"}}); }
                         catch (...) {}
                     }
-                    try { setAnalog(target, analogCode(target), true); } catch (...) {}
+                    try { makeSafe(); } catch (...) {}
                     throw;
                 }
             }
-            setSwitch({{"route", polarity.first}, {"enabled", "false"}});
         }
-        sourceOff();
-        context.equipment.invoke("stand.switch_matrix", "full_reset", {});
+        makeSafe();
     } catch (...) {
-        sourceOff();
-        try { context.equipment.invoke("stand.switch_matrix", "full_reset", {}); } catch (...) {}
+        try { makeSafe(); } catch (...) {}
         throw;
     }
     return result;
@@ -1576,15 +1579,35 @@ ProcedureResult yvp(const ScenarioNode& node, ProcedureContext& context)
     const unsigned channels = natural(node, "channel_count", 8);
     const auto frequencies = numbers(node, "frequencies_hz");
     const auto gains = numbers(node, "gains_mv_per_pcl");
-    const std::string parameterGroup = argument(node, "parameter_group", "yvp_fast");
+    const std::string parameterGroup = argument(node, "parameter_group", "yvp_yalk");
     if (frequencies.empty() || gains.empty()) throw std::invalid_argument("Не заданы частоты и коэффициенты ЯВП");
     if (!bindingsReady(context, parameterGroup, channels, true)) {
         return {RunVerdict::Incomplete,
-            "Адреса Орбиты/маршруты ЯВП-8 не подтверждены; генератор не включался", {}};
+            "Адреса ЯЛК 89–96/маршруты ЯВП-8 не подтверждены; генератор не включался", {}};
+    }
+    for (unsigned channel = 0; channel < channels; ++channel) {
+        const auto binding = resolveLogicalBinding(context, parameterGroup, channel);
+        if (binding.source != "ulk.parameter_source" || binding.locatorType != "ulk_address"
+            || std::stoul(binding.locator) != 89 + channel) {
+            return {RunVerdict::Incomplete,
+                "ЯВП должен читаться через подтверждённые адреса ЯЛК 89–96; генератор не включался", {}};
+        }
     }
     const double amplitude = number(node, "amplitude_vpp", 0.3875);
+    const std::string inputRoute = argument(node, "input_route", "yvp_input");
+    const std::string gainRoute = argument(node, "gain_route", "yvp_gain");
+    auto cleanup = [&]() {
+        try { context.equipment.invoke("signal.generator", "output", {{"channel", "1"}, {"enabled", "false"}}); } catch (...) {}
+        for (unsigned channel = 0; channel < channels; ++channel) {
+            try { context.equipment.invoke("stand.switch_matrix", "switch", {{"route", inputRoute}, {"offset", std::to_string(channel)}, {"enabled", "false"}}); } catch (...) {}
+        }
+        for (std::size_t index = 0; index < channels * gains.size(); ++index) {
+            try { context.equipment.invoke("stand.switch_matrix", "switch", {{"route", gainRoute}, {"offset", std::to_string(index)}, {"enabled", "false"}}); } catch (...) {}
+        }
+        try { context.equipment.invoke("stand.switch_matrix", "full_reset", {}); } catch (...) {}
+    };
+    try {
     for (unsigned channel = 1; channel <= channels; ++channel) {
-        const std::string inputRoute = argument(node, "input_route", "yvp_input");
         context.equipment.invoke("stand.switch_matrix", "switch", {
             {"route", inputRoute}, {"offset", std::to_string(channel - 1)}, {"enabled", "true"}});
         for (const double frequency : frequencies) {
@@ -1620,13 +1643,13 @@ ProcedureResult yvp(const ScenarioNode& node, ProcedureContext& context)
             // Выбор усиления выполняется внешней кроссировкой ИСД; профиль задаёт
             // базовый канал и один шаг на значение ряда.
             context.equipment.invoke("stand.switch_matrix", "switch", {
-                {"route", argument(node, "gain_route", "yvp_gain")},
+                {"route", gainRoute},
                  {"offset", std::to_string((channel - 1) * gains.size() + gainIndex)}, {"enabled", "true"}});
             // Формула будет включена только вместе с подтверждённым преобразованием
             // конкретного адреса Орбиты; до этого ветка недоступна из published YAML.
             throw std::runtime_error("Для коэффициентов ЯВП не задан подтверждённый пересчёт");
             context.equipment.invoke("stand.switch_matrix", "switch", {
-                {"route", argument(node, "gain_route", "yvp_gain")},
+                {"route", gainRoute},
                  {"offset", std::to_string((channel - 1) * gains.size() + gainIndex)}, {"enabled", "false"}});
             }
         } else {
@@ -1637,7 +1660,11 @@ ProcedureResult yvp(const ScenarioNode& node, ProcedureContext& context)
         context.equipment.invoke("stand.switch_matrix", "switch", {
             {"route", inputRoute}, {"offset", std::to_string(channel - 1)}, {"enabled", "false"}});
     }
-    context.equipment.invoke("signal.generator", "output", {{"channel", "1"}, {"enabled", "false"}});
+    cleanup();
+    } catch (...) {
+        cleanup();
+        throw;
+    }
     return result;
 }
 

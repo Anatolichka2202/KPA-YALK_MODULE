@@ -22,6 +22,7 @@
 #include "orbita_stand/config.h"
 #include "orbita_stand/equipment_runtime.h"
 #include "orbita_stand/run_store.h"
+#include "orbita_stand/report_writer.h"
 #include "registrar.h"
 
 #include "orbita.h"
@@ -183,6 +184,7 @@ private:
     QFutureWatcher<orbita::stand::ScenarioRunResult>* scenarioWatcher_ = nullptr;
     Workflow activeWorkflow_ = Workflow::None;
     std::string pendingProductionStageAttemptId_;
+    orbita::stand::ProductionReportMetadata pendingProductionReportMetadata_;
     bool closeAfterScenario_ = false;
     bool standRuntimeReady_ = false;
 

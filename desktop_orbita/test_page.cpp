@@ -280,16 +280,16 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
     root->setContentsMargins(18, 14, 18, 14);
     root->setSpacing(10);
 
-    auto* title = new QLabel(QStringLiteral("Проверка УБСИ · ЯЛК-96 + ЯТП"));
-    title->setStyleSheet("font-size:25px; font-weight:700; color:#f1f5f9;");
-    root->addWidget(title);
+    titleLabel_ = new QLabel(QStringLiteral("Проверка УБСИ · ЯЛК-96 + ЯТП"));
+    titleLabel_->setStyleSheet("font-size:25px; font-weight:700; color:#f1f5f9;");
+    root->addWidget(titleLabel_);
 
-    auto* subtitle = new QLabel(QStringLiteral(
+    subtitleLabel_ = new QLabel(QStringLiteral(
         "Выберите ЯЛК или ЯТП. Во время проверки видны значения каждого канала, "
         "состояние тракта и итоговый отчёт."));
-    subtitle->setWordWrap(true);
-    subtitle->setStyleSheet("color:#8b95a3; font-size:13px;");
-    root->addWidget(subtitle);
+    subtitleLabel_->setWordWrap(true);
+    subtitleLabel_->setStyleSheet("color:#8b95a3; font-size:13px;");
+    root->addWidget(subtitleLabel_);
 
     auto* selectors = new QHBoxLayout;
     auto addSelector = [&](const QString& caption, QComboBox*& combo, int stretch) {
@@ -386,6 +386,13 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
     runOptions->addWidget(contactThresholdCheck_);
     runOptions->addStretch(1);
     root->addLayout(runOptions);
+
+    productionR4831Label_ = new QLabel(QStringLiteral(
+        "Р4831: перед запуском ЯТП вручную установите указанную точку и подтвердите её в следующем шаге сценария."));
+    productionR4831Label_->setWordWrap(true);
+    productionR4831Label_->setStyleSheet("background:#38290d; color:#ffda83; border:2px solid #d7a95b; padding:14px; font-size:16px; font-weight:700;");
+    productionR4831Label_->setVisible(false);
+    root->addWidget(productionR4831Label_);
 
     scopeLabel_ = new QLabel;
     scopeLabel_->setWordWrap(true);
@@ -1087,11 +1094,29 @@ void TestPage::setEngineerMode(bool enabled)
     engineerMode_ = enabled;
     if (modeCombo_ && modeCombo_->parentWidget()) modeCombo_->parentWidget()->setVisible(enabled);
     partialCheck_->setVisible(enabled);
+    // Operator TU flow has no technical equipment table. Readiness is checked
+    // automatically by MainWindow; diagnostics remain available under F12.
+    equipmentTable_->setVisible(enabled);
+    checkButton_->setVisible(enabled);
+    detailsButton_->setVisible(enabled);
     for (const int column : {1, 2, 4}) equipmentTable_->setColumnHidden(column, !enabled);
     diagnosticLabel_->setVisible(enabled);
     if (advancedContainer_) advancedContainer_->setVisible(enabled);
     detailsButton_->setText(enabled ? QStringLiteral("Скрыть подробности")
                                     : QStringLiteral("Открыть подробности"));
+}
+
+void TestPage::setProductionMode(bool enabled)
+{
+    productionMode_ = enabled;
+    titleLabel_->setText(enabled ? QStringLiteral("ПРОИЗВОДСТВО · УБСИ")
+                                 : QStringLiteral("Проверка УБСИ · ЯЛК-96 + ЯТП"));
+    subtitleLabel_->setText(enabled
+        ? QStringLiteral("Выберите пакет проверки. Изделие, активная ячейка и этап выбираются в Администрировании; запуск будет привязан к ним.")
+        : QStringLiteral("Выберите ЯЛК или ЯТП. Во время проверки видны значения каждого канала, состояние тракта и итоговый отчёт."));
+    productionR4831Label_->setVisible(enabled && selectedScopeCode() == QStringLiteral("ЯТП"));
+    startButton_->setText(enabled ? QStringLiteral("НАЧАТЬ ПРОИЗВОДСТВЕННУЮ ПРОВЕРКУ")
+                                  : QStringLiteral("Запустить проверку"));
 }
 
 void TestPage::setRunInProgress(bool running, const QString& stage)

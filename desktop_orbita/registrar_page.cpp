@@ -1,8 +1,13 @@
 #include "registrar_page.h"
+#include "replacement_policy.h"
 
 #include <QHeaderView>
 #include <QHBoxLayout>
 #include <QDialog>
+#include <QCoreApplication>
+#include <QDesktopServices>
+#include <QDir>
+#include <QFileInfo>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
@@ -10,6 +15,7 @@
 #include <QComboBox>
 #include <QTableWidget>
 #include <QTableWidgetItem>
+#include <QUrl>
 #include <QVBoxLayout>
 
 #include "registrar.h"
@@ -223,6 +229,8 @@ RegistrarPage::selectedProductionSelection() const
             productId,
             productItem->text(),
             typeItem->data(Qt::UserRole).toString(),
+            typeItem->data(Qt::UserRole + 1).toString(),
+            compositionTable_->item(row, 1)->text(),
             ktma::registrar::stageFromString(
                 stageCombo_->currentData().toString().toStdString())};
     } catch (const std::exception&) {
@@ -411,8 +419,17 @@ void RegistrarPage::replaceComponent()
         replacementReasonEdit_->clear();
         refreshComposition();
         refreshProducts();
-        statusLabel_->setText(QStringLiteral("Ячейка %1 заменена; прежняя SN сохранена в истории.")
-            .arg(componentTypeText(type)));
+        const auto packages = ktma::registrar::replacementVerificationPackages(type.toStdString());
+        QStringList packageText;
+        for (const auto& package : packages) {
+            if (package == "PROD_YALK_FULL") packageText << QStringLiteral("полная ЯЛК");
+            else if (package == "PROD_YTP_FULL") packageText << QStringLiteral("полная ЯТП");
+            else if (package == "PROD_YVP_FULL") packageText << QStringLiteral("ЯВП");
+            else if (package == "PROD_YALK_89_96") packageText << QStringLiteral("ЯЛК 89–96");
+            else if (package == "PROD_POWER_CONSUMPTION") packageText << QStringLiteral("питание / потребление");
+        }
+        statusLabel_->setText(QStringLiteral("Ячейка %1 заменена; прежняя SN сохранена в истории. Рекомендуемая проверка: %2.")
+            .arg(componentTypeText(type), packageText.join(QStringLiteral(" + "))));
     } catch (const std::exception& error) {
         QMessageBox::warning(this, QStringLiteral("Замена ячейки"),
             QString::fromUtf8(error.what()));
@@ -473,9 +490,41 @@ void RegistrarPage::showStageHistory()
         table->horizontalHeader()->setStretchLastSection(true);
         layout->addWidget(table);
 
+        auto* actions = new QHBoxLayout;
+        actions->addStretch();
+        auto* openReportButton = new QPushButton(QStringLiteral("ОТКРЫТЬ ОТЧЁТ"), &dialog);
         auto* closeButton = new QPushButton(QStringLiteral("ЗАКРЫТЬ"), &dialog);
+        actions->addWidget(openReportButton);
+        actions->addWidget(closeButton);
         connect(closeButton, &QPushButton::clicked, &dialog, &QDialog::accept);
-        layout->addWidget(closeButton, 0, Qt::AlignRight);
+        connect(openReportButton, &QPushButton::clicked, &dialog, [table, &dialog] {
+            const int row = table->currentRow();
+            const auto* runItem = row < 0 ? nullptr : table->item(row, 4);
+            const QString runId = runItem ? runItem->text() : QString();
+            if (runId.isEmpty()) {
+                QMessageBox::information(&dialog, QStringLiteral("Отчёт"),
+                    QStringLiteral("У выбранной попытки нет сохранённого run_id."));
+                return;
+            }
+            const QDir root(QCoreApplication::applicationDirPath());
+            const QDir runDirectory(root.filePath(QStringLiteral("runs/") + runId));
+            const QString productionReport = runDirectory.filePath(
+                QStringLiteral("Ведомость_каналов_%1.html").arg(runId));
+            const QString tuReport = runDirectory.filePath(
+                QStringLiteral("Протокол_ТУ_%1.html").arg(runId));
+            const QString reportPath = QFileInfo::exists(productionReport) ? productionReport
+                : QFileInfo::exists(tuReport) ? tuReport : QString();
+            if (reportPath.isEmpty()) {
+                QMessageBox::information(&dialog, QStringLiteral("Отчёт"),
+                    QStringLiteral("Файл отчёта для run %1 не найден.").arg(runId));
+                return;
+            }
+            if (!QDesktopServices::openUrl(QUrl::fromLocalFile(reportPath))) {
+                QMessageBox::warning(&dialog, QStringLiteral("Отчёт"),
+                    QStringLiteral("Не удалось открыть %1").arg(reportPath));
+            }
+        });
+        layout->addLayout(actions);
         dialog.exec();
     } catch (const std::exception& error) {
         QMessageBox::warning(this, QStringLiteral("История прогонов"),

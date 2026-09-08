@@ -530,6 +530,19 @@ Verdict Registrar::productVerdict(const std::string& productId) const
     return Verdict::Incomplete;
 }
 
+std::optional<Product> Registrar::findProductBySerial(const std::string& serialNumber) const
+{
+    QSqlQuery query(database_);
+    query.prepare(QStringLiteral(
+        "SELECT id, product_type, serial_number FROM products WHERE serial_number = ? ORDER BY created_at, id LIMIT 1"));
+    query.addBindValue(QString::fromStdString(serialNumber));
+    if (!query.exec()) throwSql(query, "find product by serial");
+    if (!query.next()) return std::nullopt;
+    return Product{query.value(0).toString().toStdString(),
+                   query.value(1).toString().toStdString(),
+                   query.value(2).toString().toStdString()};
+}
+
 ProductReport Registrar::productReport(const std::string& productId) const
 {
     ensureProduct(productId);

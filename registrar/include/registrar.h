@@ -7,6 +7,7 @@
 #include <QString>
 
 #include <string>
+#include <optional>
 #include <vector>
 
 namespace ktma::registrar {
@@ -60,6 +61,7 @@ public:
         Verdict verdict);
 
     std::vector<Product> listProducts() const;
+    std::optional<Product> findProductBySerial(const std::string& serialNumber) const;
     std::vector<Component> listComponents() const;
     std::vector<ComponentBinding> listInstalledComponents(
         const std::string& productId) const;

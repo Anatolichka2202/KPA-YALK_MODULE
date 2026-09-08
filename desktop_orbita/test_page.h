@@ -38,6 +38,8 @@ public:
                          const QStringList& requiredEquipment,
                          const QString& detail);
     void setEngineerMode(bool enabled);
+    bool isEngineerMode() const { return engineerMode_; }
+    void setProductionMode(bool enabled);
     void setRunInProgress(bool running, const QString& stage = {});
     void setRunEvent(const orbita::stand::RunEvent& event);
     void setRunResult(const orbita::stand::ScenarioRunResult& result,
@@ -103,6 +105,9 @@ private:
     QLineEdit* serialEdit_ = nullptr;
     QCheckBox* partialCheck_ = nullptr;
     QCheckBox* contactThresholdCheck_ = nullptr;
+    QLabel* titleLabel_ = nullptr;
+    QLabel* subtitleLabel_ = nullptr;
+    QLabel* productionR4831Label_ = nullptr;
     TestPlotWidget* plot_ = nullptr;
     EquipmentControlWidget* advancedControl_ = nullptr;
     QWidget* advancedContainer_ = nullptr;
@@ -113,6 +118,7 @@ private:
     int demoStep_ = 0;
     bool runInProgress_ = false;
     bool engineerMode_ = false;
+    bool productionMode_ = false;
     int completedSteps_ = 0;
     QString tuReportPath_;
     QString productionReportPath_;
