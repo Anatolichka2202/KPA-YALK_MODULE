@@ -15,7 +15,7 @@ add_executable(OrbitaDesktop
     home_page.h
     registrar_page.cpp
     registrar_page.h
-    test_page.cpp
+    test_page_live.cpp
     test_page.h
     plot_widget.cpp
     plot_widget.h
@@ -139,7 +139,7 @@ add_dependencies(OrbitaRuntimeResources OrbitaDesktop orbita_equipment_plugins
 if(BUILD_TESTING)
     add_executable(test_page_smoke_test
         tests/test_page_smoke_test.cpp
-        test_page.cpp
+        test_page_live.cpp
         test_page.h
         equipment_control_widget.cpp
         equipment_control_widget.h
