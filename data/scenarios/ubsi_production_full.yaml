@@ -1,7 +1,7 @@
 schema: 1
 id: ktma.ubsi.production.full
 title: Производство УБСИ · полная проверка
-version: 1.0.1
+version: 1.0.2
 catalog_version: 2026.08.29-yalk-1
 object_type: UBSI_468157_002
 state: published
@@ -252,7 +252,7 @@ steps:
       full_voltage: 6.2
 
   - id: yvp_check
-    title: ЯВП-8 · коэффициенты, АЧХ, затухание · ЯЛК 89–96
+    title: ЯВП-8 · коэффициенты, АЧХ, затухание · диапазон ЯЛК 88–96
     tu: PRODUCTION / YVP
     procedure: ubsi.yvp
     requires:
@@ -265,6 +265,8 @@ steps:
     args:
       channel_count: 8
       parameter_group: yvp_fast
+      yalk_address_min: 88
+      yalk_address_max: 96
       frequencies_hz: 0.15,20,250,500,1800,2000,4000
       gains_mv_per_pcl: 0.25,0.5,1,2,4,8,32
       coupling_capacitance_pf: 1000
