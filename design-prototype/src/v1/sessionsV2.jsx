@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import {
   CheckCircle,
-  FileText,
   Gear,
+  ShieldCheck,
   Warning,
 } from "@phosphor-icons/react";
 import {
@@ -13,15 +13,13 @@ import {
   StatusBadge,
 } from "./designSystem.jsx";
 
-const steps = [
-  ["01", "Назначение", "изделие и методика"],
-  ["02", "Готовность", "оборудование и безопасное состояние"],
-  ["03", "Калибровка", "ЯЛК · адреса 97 / 99"],
-  ["04", "Каналы ЯЛК", "измерения по методике"],
-  ["05", "ЯТП · 0 Ω", "30 каналов"],
-  ["06", "ЯТП · 120 Ω", "ручное действие Р4831"],
-  ["07", "ЯТП · 240 Ω", "30 каналов"],
-  ["08", "Итог", "безопасный сброс и отчёт"],
+const routeChecks = [
+  ["Подготовка стенда", "готовность и safe state", "NORMAL"],
+  ["Питание / потребление", "24 / 27 / 35 В; выдержки 19 / 37 В", "NORMAL"],
+  ["ЯЛК-96", "каналы, контакты, обрыв, ±12 В", "RUNNING"],
+  ["ЯТП", "30 каналов · 0 / 120 / 240 Ω", "READY"],
+  ["ЯВП-8", "коэффициенты и АЧХ", "READY"],
+  ["Безопасный сброс", "cleanup после завершения/Stop", "READY"],
 ];
 
 function Metric({ label, value, note }) {
@@ -67,42 +65,98 @@ function ManualActionV2({ onClose, onConfirm }) {
   }, [onClose]);
 
   return <div className="manual-overlay" role="dialog" aria-modal="true" aria-label="Ручное действие Р4831"><div className="manual-dialog" ref={dialogRef}>
-    <header><div><span className="ds-eyebrow">MANUAL ACTION · Р4831</span><h2>Установите 120 Ω</h2><p>ЯТП · канал 01 / 30 · общий разъём X123 · DEMO</p></div><StatusBadge status="ACTION" /></header>
-    <div className="manual-values"><Metric label="ЦЕЛЕВОЕ ЗНАЧЕНИЕ" value="120 Ω" /><Metric label="ФАКТИЧЕСКОЕ ЗНАЧЕНИЕ" value="120,34 Ω" note="DEMO" /><Metric label="ДОПУСК" value="±0,50 %" /></div>
+    <header><div><span className="ds-eyebrow">РУЧНОЕ ДЕЙСТВИЕ · Р4831</span><h2>Установите 120 Ω</h2><p>ЯТП · общий разъём X123 · DEMO</p></div><StatusBadge status="ACTION" /></header>
+    <div className="manual-values"><Metric label="ТРЕБУЕТСЯ" value="120 Ω" /><Metric label="ФАКТИЧЕСКОЕ" value="120,34 Ω" note="DEMO" /><Metric label="СОСТОЯНИЕ" value="ожидает подтверждения" /></div>
     <div className="manual-instruction"><Warning weight="fill" /><div><b>Физически установите сопротивление на магазине.</b><span>Подтверждение действия не заменяет измерительный результат.</span></div></div>
     <label className="manual-confirm"><input type="checkbox" checked={checked} onChange={(event) => setChecked(event.target.checked)} /><span>Р4831 физически установлен на 120 Ω</span></label>
     <div className="manual-audit"><span>Оператор: <b>Иванов И.И. · DEMO</b></span><span>Сеанс: <b>RUN-DEMO-005184</b></span></div>
-    <footer><CommandButton onClick={onClose}>ОТМЕНА</CommandButton><CommandButton primary disabled={!checked} onClick={onConfirm}>ПОДТВЕРДИТЬ ДЕЙСТВИЕ</CommandButton></footer>
+    <footer><CommandButton onClick={onClose}>ОТМЕНА</CommandButton><CommandButton primary disabled={!checked} onClick={onConfirm}>ПОДТВЕРДИТЬ</CommandButton></footer>
   </div></div>;
 }
 
-function StepContent({ step, openManual }) {
-  if (step === 0) return <Panel title="НАЗНАЧЕНИЕ И МЕТОДИКА" badge={<StatusBadge status="READY" label="ПОДТВЕРЖДЕНО" />}><div className="form-readonly"><label><span>ИЗДЕЛИЕ</span><b>УБСИ-468157-012 · DEMO</b></label><label><span>МЕТОДИКА</span><b>ПСИ · утверждённая версия</b></label><label><span>СОСТАВ</span><b>ЯЛК-96 № 96-00431 · ЯТП № ТП-00192 · DEMO</b></label><label><span>ПРОФИЛЬ СТЕНДА</span><b>Станция 01 · DEMO</b></label></div></Panel>;
-  if (step === 1) return <Panel title="ГОТОВНОСТЬ ОБОРУДОВАНИЯ" badge={<StatusBadge status="READY" />}><div className="check-list-v1">{["Адаптер УБСИ", "ИСД", "В7-78/1", "Р4831", "Безопасное состояние выходов"].map((item) => <div key={item}><CheckCircle weight="fill" /><span>{item}</span><b>ГОТОВО</b></div>)}</div></Panel>;
-  if (step === 2) return <Panel title="КАЛИБРОВКА ЯЛК-96" badge={<StatusBadge status="NORMAL" />}><div className="summary-strip"><Metric label="АДРЕС 97" value="0,512 В" note="DEMO" /><Metric label="АДРЕС 99" value="5,986 В" note="DEMO" /><Metric label="ИТОГ" value="НОРМА" /></div></Panel>;
-  if (step === 3) return <Panel title="КАНАЛЫ ЯЛК-96" badge={<StatusBadge status="NORMAL" />}><div className="summary-strip"><Metric label="КАНАЛЫ" value="80 / 80" /><Metric label="МАКС. ОТКЛОНЕНИЕ" value="0,31 %" note="DEMO" /><Metric label="ИТОГ" value="НОРМА" /></div></Panel>;
-  if (step === 4) return <Panel title="ЯТП · ТОЧКА 0 Ω" badge={<StatusBadge status="NORMAL" />}><div className="summary-strip"><Metric label="КАНАЛЫ" value="30 / 30" /><Metric label="МАКС. ОТКЛОНЕНИЕ" value="0,28 %" note="DEMO" /><Metric label="ИТОГ" value="НОРМА" /></div></Panel>;
-  if (step === 5) return <Panel title="ЯТП · ТОЧКА 120 Ω" badge={<StatusBadge status="ACTION" />}><div className="required-action"><Warning weight="fill" /><div><b>Требуется ручное действие оператора</b><p>Установите 120 Ω на Р4831 и подтвердите физическое действие в отдельном диалоге.</p></div><CommandButton primary onClick={openManual}><Gear /> ОТКРЫТЬ MANUAL ACTION</CommandButton></div></Panel>;
-  if (step === 6) return <Panel title="ЯТП · ТОЧКА 240 Ω" badge={<StatusBadge status="NORMAL" />}><div className="summary-strip"><Metric label="КАНАЛЫ" value="30 / 30" /><Metric label="МАКС. ОТКЛОНЕНИЕ" value="0,24 %" note="DEMO" /><Metric label="ИТОГ" value="НОРМА" /></div></Panel>;
-  return <Panel title="ИТОГ И БЕЗОПАСНЫЙ СБРОС" badge={<StatusBadge status="INCOMPLETE" />}><div className="result-summary"><FileText /><div><span>РЕЗУЛЬТАТ ДЕМОНСТРАЦИОННОГО МАРШРУТА</span><h2>ЯЛК-96 И ЯТП — НОРМА</h2><p>Полный нормативный итог не определяется этим демонстрационным маршрутом. ReportViewer покажет, какие обязательные проверки отсутствуют, вместо ложного итогового НОРМА.</p></div></div></Panel>;
-}
-
 export function AcceptanceSessionV2({ go, back, engineering, toggleEngineering }) {
-  const [step, setStep] = useState(0);
   const [manual, setManual] = useState(false);
   const [stopped, setStopped] = useState(false);
-  const next = () => setStep((value) => Math.min(7, value + 1));
-  const status = stopped ? "STOPPED" : step === 5 ? "ACTION" : step === 7 ? "INCOMPLETE" : "RUNNING";
+  const [manualConfirmed, setManualConfirmed] = useState(false);
+  const status = stopped ? "STOPPED" : manual ? "ACTION" : "RUNNING";
+
   return <>
-    <ProductHeader product="КТМА · ПСИ ПО ТУ" title="УБСИ-468157-012 · активный сеанс" subtitle={`шаг ${step + 1} из 8 · DEMO`} engineering={engineering} onBack={back} onEngineering={toggleEngineering} />
+    <ProductHeader
+      product="КТМА · ПСИ ПО ТУ"
+      title="УБСИ-468157-012 · активный прогон"
+      subtitle="единый нормативный маршрут · без production stage"
+      engineering={engineering}
+      onBack={back}
+      onEngineering={toggleEngineering}
+    />
     <div className="session-page">
       <div className="session-page__body">
-        <div className="hero-row hero-row--compact"><div><span className="ds-eyebrow">ПРИЁМО-СДАТОЧНЫЙ МАРШРУТ</span><h1>{steps[step][1]}</h1><p>{steps[step][2]}</p></div><StatusBadge status={status} /></div>
-        <div className="step-rail">{steps.map(([num, title, note], index) => <button key={num} className={`${index === step ? "current" : ""} ${index < step ? "done" : ""}`} onClick={() => !stopped && !manual && setStep(index)}><span>{index < step ? <CheckCircle weight="fill" /> : num}</span><b>{title}</b><small>{note}</small></button>)}</div>
-        <div className="acceptance-body"><StepContent step={step} openManual={() => setManual(true)} /><Panel title="ХОД ПРОЦЕДУРЫ"><div className="progress-v1"><strong>{Math.round(((step + 1) / 8) * 100)}%</strong><div><i style={{ width: `${((step + 1) / 8) * 100}%` }} /></div></div><dl className="session-meta"><dt>Изделие</dt><dd>УБСИ-012 · DEMO</dd><dt>Стенд</dt><dd>Станция 01 · DEMO</dd><dt>Ошибки стенда</dt><dd>0</dd><dt>F12</dt><dd>{engineering ? "инженерный" : "обычный"}</dd></dl></Panel></div>
+        <div className="hero-row hero-row--compact">
+          <div>
+            <span className="ds-eyebrow">ПРИЁМО-СДАТОЧНАЯ ПРОВЕРКА</span>
+            <h1>{stopped ? "Проверка остановлена" : manual ? "Требуется действие оператора" : "Выполняется ЯЛК-96"}</h1>
+            <p>{stopped ? "Стенд переведён в безопасное состояние." : manual ? "После подтверждения Р4831 движок продолжит тот же run." : "Текущая операция: канал 48 / 80. Внутренние операции сценария не являются производственными этапами."}</p>
+          </div>
+          <StatusBadge status={status} />
+        </div>
+
+        <div className="acceptance-body acceptance-body--v3">
+          <div className="acceptance-main-v3">
+            <Panel title="НАЗНАЧЕНИЕ" badge={<StatusBadge status="READY" label="ПОДТВЕРЖДЕНО" />}>
+              <div className="form-readonly">
+                <label><span>БЛОК</span><b>УБСИ-468157-012 · DEMO</b></label>
+                <label><span>МЕТОДИКА</span><b>ПСИ · текущая утверждённая методика</b></label>
+                <label><span>СОСТАВ</span><b>ЯЛК-96 · ЯТП · ЯВП-8 · ЯП-П · DEMO</b></label>
+                <label><span>PRODUCTION STAGE</span><b>не применяется к ПСИ</b></label>
+              </div>
+            </Panel>
+
+            <Panel title="ХОД ПРОВЕРКИ" badge={<span className="ds-counter">ЕДИНЫЙ RUN</span>}>
+              <div className="procedure-route-v3">
+                {routeChecks.map(([title, detail, itemStatus]) => {
+                  const shownStatus = stopped && itemStatus === "RUNNING" ? "STOPPED" : itemStatus;
+                  return <div className={`procedure-route-v3__row ${itemStatus === "RUNNING" ? "current" : ""}`} key={title}>
+                    <div className="procedure-route-v3__icon">{itemStatus === "NORMAL" ? <CheckCircle weight="fill" /> : <ShieldCheck />}</div>
+                    <div><b>{title}</b><span>{detail}</span></div>
+                    <StatusBadge status={shownStatus} />
+                  </div>;
+                })}
+              </div>
+            </Panel>
+
+            <Panel title="РУЧНЫЕ ДЕЙСТВИЯ">
+              <div className="required-action">
+                <Gear />
+                <div>
+                  <b>Р4831 появляется только когда его запросит ЯТП</b>
+                  <p>{manualConfirmed ? "DEMO: действие 120 Ω уже подтверждено и сохранено в run." : "Это не отдельный экран этапа. Движок приостанавливает текущую процедуру и ждёт подтверждение оператора."}</p>
+                </div>
+                <CommandButton disabled={stopped || manualConfirmed} onClick={() => setManual(true)}>DEMO · ПОКАЗАТЬ 120 Ω</CommandButton>
+              </div>
+            </Panel>
+          </div>
+
+          <Panel title="ХОД ПРОЦЕДУРЫ">
+            <div className="progress-v1"><strong>{stopped ? "—" : "58%"}</strong><div><i style={{ width: stopped ? "58%" : "58%" }} /></div></div>
+            <dl className="session-meta">
+              <dt>Изделие</dt><dd>УБСИ-012 · DEMO</dd>
+              <dt>Текущая операция</dt><dd>{stopped ? "остановлено" : manual ? "Р4831 · 120 Ω" : "ЯЛК · 48 / 80"}</dd>
+              <dt>Стенд</dt><dd>Станция 01 · DEMO</dd>
+              <dt>Ошибки стенда</dt><dd>0</dd>
+              <dt>Этап производства</dt><dd>не применяется</dd>
+            </dl>
+          </Panel>
+        </div>
       </div>
-      <SessionCommandBar status={status} progress={stopped ? "Сеанс остановлен безопасно" : `Шаг ${step + 1} / 8`} onBack={step > 0 && !stopped ? () => setStep((value) => Math.max(0, value - 1)) : undefined} onStop={() => { setStopped(true); setManual(false); }} primaryLabel={step === 7 ? "ОТКРЫТЬ ПРОТОКОЛ" : "СЛЕДУЮЩИЙ ШАГ"} onPrimary={!stopped ? (step === 7 ? () => go("report") : next) : undefined} />
+
+      <SessionCommandBar
+        status={status}
+        progress={stopped ? "Сеанс остановлен безопасно" : manual ? "Ожидается подтверждение Р4831" : "ЯЛК · канал 48 / 80"}
+        onStop={() => { setStopped(true); setManual(false); }}
+        primaryLabel="ПРОТОКОЛ ПОСЛЕ ЗАВЕРШЕНИЯ"
+        onPrimary={undefined}
+      />
     </div>
-    {manual && <ManualActionV2 onClose={() => setManual(false)} onConfirm={() => { setManual(false); next(); }} />}
+    {manual && <ManualActionV2 onClose={() => setManual(false)} onConfirm={() => { setManual(false); setManualConfirmed(true); }} />}
   </>;
 }
