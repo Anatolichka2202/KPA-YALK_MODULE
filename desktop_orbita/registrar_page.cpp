@@ -46,10 +46,10 @@ QString componentTypeText(const QString& type)
 
 QString stageText(const QString& stage)
 {
-    if (stage == QStringLiteral("Primary")) return QStringLiteral("Первичная");
+    if (stage == QStringLiteral("Primary")) return QStringLiteral("Первичное");
     if (stage == QStringLiteral("ClimateNormal")) return QStringLiteral("Климат НУ");
-    if (stage == QStringLiteral("ClimateMinus")) return QStringLiteral("Климат −");
     if (stage == QStringLiteral("ClimatePlus")) return QStringLiteral("Климат +");
+    if (stage == QStringLiteral("ClimateMinus")) return QStringLiteral("Климат −");
     if (stage == QStringLiteral("PottingClimateNormal")) return QStringLiteral("Заливка · климат НУ");
     if (stage == QStringLiteral("PottingClimatePlus")) return QStringLiteral("Заливка · климат +");
     if (stage == QStringLiteral("PottingClimateMinus")) return QStringLiteral("Заливка · климат −");
@@ -102,13 +102,13 @@ RegistrarPage::RegistrarPage(QWidget* parent)
     stageLabel->setStyleSheet(QStringLiteral("font-weight:700; color:#c5d3e0;"));
     stageCombo_ = new QComboBox(this);
     for (const auto& stage : {QStringLiteral("Primary"), QStringLiteral("ClimateNormal"),
-                              QStringLiteral("ClimateMinus"), QStringLiteral("ClimatePlus"),
+                              QStringLiteral("ClimatePlus"), QStringLiteral("ClimateMinus"),
                               QStringLiteral("PottingClimateNormal"), QStringLiteral("PottingClimatePlus"),
                               QStringLiteral("PottingClimateMinus")}) {
         stageCombo_->addItem(stageText(stage), stage);
     }
     stageCombo_->setToolTip(QStringLiteral(
-        "Этап будет использован при подключении production-run orchestration."));
+        "Этап — metadata production-run; он не является шагом измерительной процедуры."));
     stageRow->addWidget(stageLabel);
     stageRow->addWidget(stageCombo_, 1);
     layout->addLayout(stageRow);
