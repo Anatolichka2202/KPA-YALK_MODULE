@@ -112,8 +112,8 @@ export function useOperatorTelemetry({ running, operation, fault = "normal", sel
   }, [fault, tick]);
 
   useEffect(() => {
-    if (!running || !operation?.yalk || fault === "stale" || fault === "stand-error") return;
-    if (operation.overload) {
+    if (!running || fault === "stale" || fault === "stand-error") return;
+    if (operation?.overload) {
       setHistory((rows) => Array.from({ length: 88 }, (_, index) => [...(rows[index] || []).slice(-79), overload[index].volts]));
     } else {
       setHistory((rows) => current.map((item, index) => [...(rows[index] || []).slice(-79), item.volts]));
