@@ -25,6 +25,14 @@ void verifyNode(const ScenarioNode& node)
         require(capability != "orbita.parameter_source",
             "Production scenario must not require legacy Orbita/E20");
     }
+    if (node.procedure == "ubsi.yvp") {
+        const auto low = node.arguments.find("yalk_address_min");
+        const auto high = node.arguments.find("yalk_address_max");
+        require(low != node.arguments.end() && low->second == "88",
+            "YVP scenario must parse yalk_address_min=88");
+        require(high != node.arguments.end() && high->second == "96",
+            "YVP scenario must parse yalk_address_max=96");
+    }
     for (const auto& child : node.children) verifyNode(child);
 }
 
