@@ -11,9 +11,13 @@ find_package(Qt6 REQUIRED COMPONENTS Core Widgets PrintSupport Sql Svg SerialPor
 add_executable(OrbitaDesktop
     main.cpp
     mainwindow.cpp
+    mainwindow.h
+    ktma_mainwindow.cpp
+    ktma_mainwindow.h
     home_page.cpp
     home_page.h
     registrar_page.cpp
+    registrar_page_production.cpp
     registrar_page.h
     test_page_live.cpp
     test_page.h
@@ -62,6 +66,8 @@ target_link_libraries(OrbitaDesktop PRIVATE
     orbita_stand_adapters
     orbita_stand_runtime
     ktma_registrar
+    ktma_ubsi
+    ktma_ubsi_reporting
     Qt6::Core
     Qt6::Widgets
     Qt6::PrintSupport
