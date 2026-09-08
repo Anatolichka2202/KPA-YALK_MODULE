@@ -1,5 +1,5 @@
 #include <QApplication>
-#include "mainwindow.h"
+#include "ktma_mainwindow.h"
 #include <QFile>
 #include <QPalette>
 #include <QStyleFactory>
@@ -27,14 +27,15 @@ int main(int argc, char *argv[])
     palette.setColor(QPalette::Disabled, QPalette::ButtonText, QColor("#5b6573"));
     app.setPalette(palette);
 
-    // Тему применяем ТОЛЬКО после создания QApplication (иначе qApp == nullptr → падение)
     QFile styleFile(":/styles.qss");
     if (styleFile.open(QFile::ReadOnly)) {
         QString style = QLatin1String(styleFile.readAll());
         app.setStyleSheet(style);
     }
 
-    MainWindow w;
+    // MainWindow remains the reusable Station/Orbita shell. KtmaMainWindow
+    // composes the current UBSI Production/TU product package on top of it.
+    KtmaMainWindow w;
     w.show();
     return app.exec();
 }
