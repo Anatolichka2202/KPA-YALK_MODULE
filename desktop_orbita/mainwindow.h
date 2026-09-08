@@ -51,6 +51,44 @@ public:
 protected:
     void closeEvent(QCloseEvent* event) override;
 
+    // Narrow integration surface for product packages layered on top of the
+    // reusable Station/Orbita shell. It intentionally exposes stand services,
+    // not Orbita telemetry internals. UBSI uses this from KtmaMainWindow while
+    // future BSI/RPU packages may compose Orbita intentionally.
+    bool integrationProductionWorkflowActive() const
+    {
+        return activeWorkflow_ == Workflow::Production;
+    }
+    bool integrationTuWorkflowActive() const
+    {
+        return activeWorkflow_ == Workflow::Tu;
+    }
+    TestPage* integrationTestPage() const { return testPage_; }
+    HomePage* integrationHomePage() const { return homePage_; }
+    RegistrarPage* integrationRegistrarPage() const { return registrarPage_; }
+    ktma::registrar::Registrar* integrationRegistrar() const { return registrar_.get(); }
+    orbita::stand::ScenarioEngine* integrationScenarioEngine() const { return scenarioEngine_.get(); }
+    orbita::stand::EquipmentRegistry* integrationEquipmentRegistry() const { return equipmentRegistry_.get(); }
+    orbita::stand::EquipmentPluginManager* integrationEquipmentPlugins() const { return equipmentPlugins_.get(); }
+    std::vector<std::shared_ptr<orbita::stand::EquipmentDevice>>& integrationEquipmentDevices()
+    {
+        return equipmentDevices_;
+    }
+    orbita::stand::StandProfile& integrationStandProfile() { return standProfile_; }
+    QHash<QString, orbita::stand::ScenarioDefinition>& integrationScenarios() { return scenarios_; }
+    QHash<QString, QString>& integrationScenarioPaths() { return scenarioPaths_; }
+    QFutureWatcher<orbita::stand::ScenarioRunResult>* integrationScenarioWatcher() const
+    {
+        return scenarioWatcher_;
+    }
+    bool integrationStandRuntimeReady() const { return standRuntimeReady_; }
+    void integrationEnsureStandRuntime()
+    {
+        if (!standRuntimeReady_) initializeStandRuntime();
+    }
+    void integrationLegacyEquipmentCheck() { onCheckTestEquipment(); }
+    void integrationLog(const QString& message) { log(message); }
+
 private slots:
     // Управление сбором
     void onStart();
