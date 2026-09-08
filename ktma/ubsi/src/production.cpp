@@ -46,17 +46,25 @@ const char* toString(ProductionRunStatus status) noexcept
 
 ProductionPackage productionPackageFromCode(const std::string& code)
 {
-    if (code == "PROD_FULL" || code == "FULL_UBSI") return ProductionPackage::FullUbsi;
-    if (code == "PROD_POWER" || code == "POWER_CONSUMPTION") return ProductionPackage::PowerConsumption;
-    if (code == "PROD_YALK" || code == "YALK") return ProductionPackage::Yalk;
-    if (code == "PROD_YTP" || code == "YTP") return ProductionPackage::Ytp;
-    if (code == "PROD_YVP" || code == "YVP") return ProductionPackage::Yvp;
+    if (code == "PROD_FULL" || code == "FULL_UBSI" || code == "ULK_COMBINED_CHECK")
+        return ProductionPackage::FullUbsi;
+    if (code == "PROD_POWER" || code == "POWER_CONSUMPTION")
+        return ProductionPackage::PowerConsumption;
+    if (code == "PROD_YALK" || code == "YALK" || code == "YALK_FULL_5_6")
+        return ProductionPackage::Yalk;
+    if (code == "PROD_YTP" || code == "YTP" || code == "YTP_FULL_5_6")
+        return ProductionPackage::Ytp;
+    if (code == "PROD_YVP" || code == "YVP")
+        return ProductionPackage::Yvp;
     throw std::invalid_argument("unknown UBSI production package: " + code);
 }
 
 std::string scenarioCodeForPackage(ProductionPackage package)
 {
     switch (package) {
+    // Full/YALK/YTP currently reuse the verified published measurement routes.
+    // Lifecycle/report semantics are supplied by ProductionRunContext, not by
+    // treating those runs as TU. Power and YVP now have dedicated Production scenarios.
     case ProductionPackage::FullUbsi: return "ULK_COMBINED_CHECK";
     case ProductionPackage::PowerConsumption: return "PROD_POWER";
     case ProductionPackage::Yalk: return "YALK_FULL_5_6";
