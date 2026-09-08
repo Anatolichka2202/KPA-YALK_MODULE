@@ -89,7 +89,7 @@ void compositionContract()
         report, registrar::Stage::Primary, ubsi::ProductionPackage::Yvp);
     require(yvp.scenarioCode == "PROD_YVP", "YVP must use Production scenario");
     require(affected(yvp, "YVP"), "YVP package must affect YVP");
-    require(affected(yvp, "YALK-96"), "YVP package must include linked YALK 89..96 path");
+    require(affected(yvp, "YALK-96"), "YVP package must include linked YALK 88..96 path");
     require(!affected(yvp, "YTP") && !affected(yvp, "YP-P"),
         "YVP package must not claim unrelated cells");
 
@@ -100,9 +100,6 @@ void compositionContract()
     require(!affected(power, "YALK-96") && !affected(power, "YTP") && !affected(power, "YVP"),
         "power package affected set is wrong");
 
-    // Compatibility while the current Qt selector is migrated: its historical
-    // scenario codes still resolve to a package, but the planner returns a
-    // dedicated Production scenario for actual execution.
     require(ubsi::productionPackageFromCode("YALK_FULL_5_6") == ubsi::ProductionPackage::Yalk,
         "legacy Qt YALK code must resolve to Production YALK package");
     require(ubsi::productionPackageFromCode("YTP_FULL_5_6") == ubsi::ProductionPackage::Ytp,
@@ -174,6 +171,11 @@ void separationContract()
             std::string("Production scenario depends on Orbita/E20: ") + file);
     }
 
+    const auto yvpScenario = readFile("data/scenarios/ubsi_production_yvp.yaml");
+    require(yvpScenario.find("yalk_address_min: 88") != std::string::npos
+        && yvpScenario.find("yalk_address_max: 96") != std::string::npos,
+        "YVP production scenario must lock corrected YALK range 88..96");
+
     const auto catalog = readFile("data/catalog/catalog.yaml");
     const auto yvp = catalog.find("parameter_group: yvp_fast", catalog.find("bindings:"));
     require(yvp != std::string::npos, "YVP binding missing");
@@ -183,10 +185,18 @@ void separationContract()
         "YVP production data must come from YALK/ULK");
     require(yvpBlock.find("orbita.parameter_source") == std::string::npos,
         "YVP production binding must not return to Orbita/E20");
+    require(yvpBlock.find("confirmed: false") != std::string::npos,
+        "stale eight-address YVP binding must remain fail-safe until 88..96 mapping is commissioned");
 
     const auto rootCmake = readFile("CMakeLists.txt");
     require(rootCmake.find("project(MilTechStation") != std::string::npos,
         "root build identity must be MilTech Station, not OrbitaSystem");
+    require(rootCmake.find("add_subdirectory(orbita)") != std::string::npos,
+        "Orbita subsystem must remain available for future BSI/RPU product deliveries");
+
+    const auto readme = readFile("ktma/ubsi/README.md");
+    require(readme.find("BSI, RPU") != std::string::npos,
+        "UBSI boundary documentation must preserve Orbita future-product role");
 }
 
 } // namespace
