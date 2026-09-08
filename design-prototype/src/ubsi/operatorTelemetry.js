@@ -50,9 +50,16 @@ export const FULL_ROUTE = [
 export function routeForSelection(full, selectedGroups) {
   if (full) return FULL_ROUTE;
   const selected = new Set(selectedGroups);
-  const route = FULL_ROUTE.filter((item) => selected.has(item.group));
-  if (route.length && !route.some((item) => item.id === "cleanup")) route.push(FULL_ROUTE[FULL_ROUTE.length - 1]);
-  return route;
+  const route = [];
+  if (selected.has("power")) route.push(FULL_ROUTE.find((item) => item.id === "power"));
+  const anyYalk = selectedGroups.some((id) => id.startsWith("yalk-"));
+  if (anyYalk) route.push(FULL_ROUTE.find((item) => item.id === "yalk-cal"));
+  for (const item of FULL_ROUTE) {
+    if (item.id === "power" || item.id === "yalk-cal" || item.id === "cleanup") continue;
+    if (selected.has(item.group)) route.push(item);
+  }
+  if (route.length) route.push(FULL_ROUTE[FULL_ROUTE.length - 1]);
+  return route.filter(Boolean);
 }
 
 function noise(channel, tick, scale) {
