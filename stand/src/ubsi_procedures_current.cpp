@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <set>
 #include <sstream>
 #include <stdexcept>
 #include <thread>
@@ -331,21 +332,35 @@ ProcedureResult yvpCurrent(const ScenarioNode& node, ProcedureContext& context)
     const auto gains = numbers(node, "gains_mv_per_pcl");
     const auto frequencies = numbers(node, "frequencies_hz");
     const std::string group = argument(node, "parameter_group", "yvp_fast");
+    const unsigned addressMin = natural(node, "yalk_address_min", 88);
+    const unsigned addressMax = natural(node, "yalk_address_max", 96);
     if (channels != 8 || sampleCount < 16 || gains.empty() || frequencies.empty())
         throw std::invalid_argument("ЯВП: требуется 8 каналов, >=16 свежих кадров, ряд коэффициентов и частот");
+    if (addressMin > addressMax)
+        throw std::invalid_argument("ЯВП: yalk_address_min больше yalk_address_max");
 
+    std::vector<YvpBinding> bindings;
+    std::set<unsigned> addresses;
+    bindings.reserve(channels);
     for (unsigned channel = 0; channel < channels; ++channel) {
         const auto binding = resolveYvpBinding(context, group, channel);
         if (!binding.confirmed || binding.source != "ulk.parameter_source"
-            || binding.locatorType != "ulk_address" || binding.address != 89 + channel) {
+            || binding.locatorType != "ulk_address"
+            || binding.address < addressMin || binding.address > addressMax
+            || !addresses.insert(binding.address).second) {
             return {RunVerdict::Incomplete,
-                "ЯВП-8 должен читаться из ЯЛК по адресам 89–96 (word_index 88–95); генератор не включался", {}};
+                "ЯВП-8 должен читаться по восьми уникальным адресам ЯЛК внутри подтверждённого диапазона 88–96; генератор не включался", {}};
         }
+        bindings.push_back(binding);
+    }
+    if (!addresses.count(addressMin) || !addresses.count(addressMax)) {
+        return {RunVerdict::Incomplete,
+            "Диапазон ЯВП исправлен на ЯЛК 88–96, но точная восьмиканальная карта внутри диапазона ещё не подтверждена каталогом; генератор не включался", {}};
     }
 
     if (!flag(node, "routes_confirmed") || !flag(node, "yalk_value_model_confirmed")) {
         return {RunVerdict::Incomplete,
-            "Адреса ЯВП подтверждены, но активная кроссировка/модель Uout ещё не подтверждены на стенде; генератор не включался", {}};
+            "Адресный диапазон ЯВП 88–96 подтверждён, но активная кроссировка/модель Uout ещё не подтверждены на стенде; генератор не включался", {}};
     }
 
     const double gainTestFrequency = number(node, "gain_test_frequency_hz");
@@ -374,7 +389,7 @@ ProcedureResult yvpCurrent(const ScenarioNode& node, ProcedureContext& context)
     if (gainOne == gains.end()) throw std::invalid_argument("В ряду ЯВП отсутствует X1 = 1 мВ/пКл");
     const std::size_t gainOneIndex = static_cast<std::size_t>(gainOne - gains.begin());
 
-    ProcedureResult result{RunVerdict::Ok, "Проверены ЯВП-8 через адреса ЯЛК 89–96", {}};
+    ProcedureResult result{RunVerdict::Ok, "Проверены ЯВП-8 по настроенной карте в диапазоне ЯЛК 88–96", {}};
     auto cleanup = [&] {
         try { context.equipment.invoke("signal.generator", "output", {{"channel", "1"}, {"enabled", "false"}}); } catch (...) {}
         for (unsigned channel = 0; channel < channels; ++channel) {
@@ -416,7 +431,7 @@ ProcedureResult yvpCurrent(const ScenarioNode& node, ProcedureContext& context)
 
     try {
         for (unsigned channel = 0; channel < channels; ++channel) {
-            const unsigned address = 89 + channel;
+            const unsigned address = bindings[channel].address;
             context.equipment.invoke("stand.switch_matrix", "switch", {
                 {"route", inputRoute}, {"offset", std::to_string(channel)}, {"enabled", "true"}});
 
