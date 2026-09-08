@@ -7,6 +7,7 @@
 
 #include <cmath>
 #include <functional>
+#include <initializer_list>
 #include <stdexcept>
 #include <utility>
 #include <vector>
@@ -16,7 +17,7 @@ namespace {
 
 QString q(const std::string& value)
 {
-    return QString::fromUtf8(value);
+    return QString::fromUtf8(value.c_str(), static_cast<qsizetype>(value.size()));
 }
 
 QString html(const std::string& value)
@@ -152,7 +153,7 @@ ProductionReportPaths writeProductionReport(
     const ProductionRunContext& context,
     const std::string& directoryPath)
 {
-    QDir directory(QString::fromUtf8(directoryPath));
+    QDir directory(q(directoryPath));
     if (!directory.exists() && !directory.mkpath(QStringLiteral(".")))
         throw std::runtime_error("cannot create UBSI production report directory");
 
