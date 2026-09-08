@@ -21,13 +21,14 @@ export const YVP_FREQUENCIES = [0.15, 20, 250, 500, 1800, 2000, 4000];
 
 export const RUN_OPERATIONS = [
   { id: "power", title: "Питание / потребление", short: "ПИТАНИЕ" },
-  { id: "yalk-cal", title: "ЯЛК · калибровка 97 / 99", short: "КАЛИБРОВКА" },
+  { id: "yalk-cal", title: "ЯЛК · калибровка 97 / 99", short: "КАЛИБРОВКА", point: 6.2 },
   { id: "yalk-zero", title: "ЯЛК · аналоговые входы · 0 В", short: "ЯЛК 0 В", point: 0 },
   { id: "yalk-mid", title: "ЯЛК · аналоговые входы · 3,1 В", short: "ЯЛК 3,1 В", point: 3.1 },
   { id: "yalk-full", title: "ЯЛК · аналоговые входы · 6,2 В", short: "ЯЛК 6,2 В", point: 6.2 },
-  { id: "yalk-contact", title: "ЯЛК · контактные пороги", short: "КОНТАКТЫ" },
-  { id: "yalk-open", title: "ЯЛК · обрыв", short: "ОБРЫВ" },
+  { id: "yalk-contact", title: "ЯЛК · контактные пороги 0 / 0,9 / 2,5 В", short: "КОНТАКТЫ" },
+  { id: "yalk-open", title: "ЯЛК · обрыв", short: "ОБРЫВ", point: 0 },
   { id: "yalk-overload", title: "ЯЛК · перегрузка ±12 В", short: "±12 В", overload: true },
+  { id: "yalk-ref", title: "ЯЛК · эталон 6,2 ±0,03 В", short: "ЭТАЛОН 6,2", point: 6.2 },
   { id: "ytp", title: "ЯТП · 0 / 120 / 240 Ω", short: "ЯТП", manual: true },
   { id: "yvp", title: "ЯВП-8 · коэффициент / АЧХ", short: "ЯВП", commissioning: true },
   { id: "cleanup", title: "Безопасный сброс", short: "СБРОС" },
@@ -39,7 +40,11 @@ function deterministicNoise(index, tick, span = 1) {
   return (a + b) * span;
 }
 
-function pointForOperation(operation) {
+function pointForOperation(operation, tick) {
+  if (operation?.id === "yalk-contact") {
+    const points = [0, 0.9, 2.5];
+    return points[Math.floor(tick / 12) % points.length];
+  }
   if (typeof operation?.point === "number") return operation.point;
   return 3.1;
 }
@@ -61,8 +66,8 @@ export function useDemoTelemetry({ running, operation, faultMode = "normal", sel
     return () => window.clearInterval(timer);
   }, [faultMode]);
 
+  const stimulusPoint = pointForOperation(operation, tick);
   const channels = useMemo(() => {
-    const point = pointForOperation(operation);
     return YALK_ADDRESSES.map((address, index) => {
       const baseDeviation = deterministicNoise(index, tick, 0.055);
       const drift = Math.sin(tick * 0.035 + index * 0.17) * 0.018;
@@ -72,18 +77,18 @@ export function useDemoTelemetry({ running, operation, faultMode = "normal", sel
         deviation = 0.62 + Math.sin(tick * 0.2) * 0.04;
         isFault = true;
       }
-      const actual = point + (deviation / 100) * 6.2;
+      const actual = stimulusPoint + (deviation / 100) * 6.2;
       return {
         address,
         actual,
         deviation,
-        signal: point >= 2.5,
+        signal: stimulusPoint >= 2.5,
         raw: Math.round(510 + actual / 6.2 * 510 + deterministicNoise(index, tick, 1.2)),
         code: Math.round(actual / 6.2 * 1023),
         isFault,
       };
     });
-  }, [faultMode, operation, selectedAddress, tick]);
+  }, [faultMode, selectedAddress, stimulusPoint, tick]);
 
   const overload = useMemo(() => {
     const stressed = ((tick >> 2) % 88) + 1;
@@ -124,5 +129,5 @@ export function useDemoTelemetry({ running, operation, faultMode = "normal", sel
     setConsumption([]);
   };
 
-  return { tick, channels, overload, history, background, consumption, reset };
+  return { tick, stimulusPoint, channels, overload, history, background, consumption, reset };
 }
