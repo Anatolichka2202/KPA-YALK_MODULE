@@ -14,7 +14,7 @@ import {
 import { EdgeCaseLab } from "./v1/edgeCasesV2.jsx";
 import { ScenarioDockV2 } from "./v1/scenarioDockV2.jsx";
 import { AcceptanceSessionV2 } from "./v1/sessionsV2.jsx";
-import { ProductionLedger, ProductionSessionV2 } from "./v1/productionSessionV2.jsx";
+import { ProductionLedgerV3, ProductionSessionV3 } from "./v1/productionSessionV3.jsx";
 import { ProductionHomeV3 } from "./v1/productionHomeV3.jsx";
 import { AdminWorkspace } from "./v1/workspaces.jsx";
 import "./production-stage-v3.css";
@@ -22,6 +22,7 @@ import "./production-stage-v3.css";
 export function AppV1() {
   const [route, setRoute] = useState("station");
   const [engineering, setEngineering] = useState(false);
+  const [productionStage, setProductionStage] = useState("Климат НУ");
   const history = {
     station: null,
     ktma: "station",
@@ -60,12 +61,12 @@ export function AppV1() {
   let screen;
   if (route === "station") screen = <StationHome go={go} engineering={engineering} toggleEngineering={toggleEngineering} />;
   else if (route === "ktma") screen = <KtmaHub go={go} back={back} engineering={engineering} toggleEngineering={toggleEngineering} />;
-  else if (route === "production") screen = <ProductionHomeV3 go={go} back={back} engineering={engineering} toggleEngineering={toggleEngineering} />;
+  else if (route === "production") screen = <ProductionHomeV3 go={go} back={back} engineering={engineering} toggleEngineering={toggleEngineering} stage={productionStage} onStageChange={setProductionStage} />;
   else if (route === "acceptance") screen = <AcceptanceHome go={go} back={back} engineering={engineering} toggleEngineering={toggleEngineering} />;
   else if (route === "admin") screen = <AdminWorkspace go={go} back={back} engineering={engineering} toggleEngineering={toggleEngineering} />;
-  else if (route === "production-session") screen = <ProductionSessionV2 go={go} back={back} engineering={engineering} toggleEngineering={toggleEngineering} />;
-  else if (route === "production-ledger") screen = <ProductionLedger back={back} engineering={engineering} toggleEngineering={toggleEngineering} />;
-  else if (route === "production-ledger-fault") screen = <ProductionLedger fault back={back} engineering={engineering} toggleEngineering={toggleEngineering} />;
+  else if (route === "production-session") screen = <ProductionSessionV3 go={go} back={back} engineering={engineering} toggleEngineering={toggleEngineering} stage={productionStage} />;
+  else if (route === "production-ledger") screen = <ProductionLedgerV3 back={back} engineering={engineering} toggleEngineering={toggleEngineering} stage={productionStage} />;
+  else if (route === "production-ledger-fault") screen = <ProductionLedgerV3 fault back={back} engineering={engineering} toggleEngineering={toggleEngineering} stage={productionStage} />;
   else if (route === "acceptance-session") screen = <AcceptanceSessionV2 go={go} back={back} engineering={engineering} toggleEngineering={toggleEngineering} />;
   else if (route === "single-product") screen = <SingleProductStartup go={go} engineering={engineering} toggleEngineering={toggleEngineering} />;
   else if (route === "recovery") screen = <RecoveryLab back={back} engineering={engineering} toggleEngineering={toggleEngineering} />;
