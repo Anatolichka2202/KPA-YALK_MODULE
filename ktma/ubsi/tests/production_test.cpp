@@ -71,13 +71,23 @@ void compositionContract()
         report, registrar::Stage::ClimatePlus, ubsi::ProductionPackage::FullUbsi);
     require(full.productSerial == "УБСИ-0001", "product serial lost");
     require(full.composition.size() == 4, "production snapshot must contain four active cells");
-    require(full.scenarioCode == "ULK_COMBINED_CHECK", "full package scenario mismatch");
+    require(full.scenarioCode == "PROD_FULL", "full package must use Production scenario");
     for (const auto& item : full.composition)
         require(item.affected, "full UBSI run must affect every installed cell");
 
+    const auto yalk = ubsi::buildProductionRunContext(
+        report, registrar::Stage::Primary, ubsi::ProductionPackage::Yalk);
+    require(yalk.scenarioCode == "PROD_YALK", "YALK must use Production scenario");
+    require(affected(yalk, "YALK-96"), "YALK package must affect YALK");
+
+    const auto ytp = ubsi::buildProductionRunContext(
+        report, registrar::Stage::Primary, ubsi::ProductionPackage::Ytp);
+    require(ytp.scenarioCode == "PROD_YTP", "YTP must use Production scenario");
+    require(affected(ytp, "YTP"), "YTP package must affect YTP");
+
     const auto yvp = ubsi::buildProductionRunContext(
         report, registrar::Stage::Primary, ubsi::ProductionPackage::Yvp);
-    require(yvp.scenarioCode == "PROD_YVP", "YVP must use dedicated production scenario");
+    require(yvp.scenarioCode == "PROD_YVP", "YVP must use Production scenario");
     require(affected(yvp, "YVP"), "YVP package must affect YVP");
     require(affected(yvp, "YALK-96"), "YVP package must include linked YALK 89..96 path");
     require(!affected(yvp, "YTP") && !affected(yvp, "YP-P"),
@@ -85,17 +95,20 @@ void compositionContract()
 
     const auto power = ubsi::buildProductionRunContext(
         report, registrar::Stage::ClimateNormal, ubsi::ProductionPackage::PowerConsumption);
-    require(power.scenarioCode == "PROD_POWER", "power must use dedicated production scenario");
+    require(power.scenarioCode == "PROD_POWER", "power must use Production scenario");
     require(affected(power, "YP-P"), "power package must affect YP-P");
     require(!affected(power, "YALK-96") && !affected(power, "YTP") && !affected(power, "YVP"),
         "power package affected set is wrong");
 
+    // Compatibility while the current Qt selector is migrated: its historical
+    // scenario codes still resolve to a package, but the planner returns a
+    // dedicated Production scenario for actual execution.
     require(ubsi::productionPackageFromCode("YALK_FULL_5_6") == ubsi::ProductionPackage::Yalk,
-        "current Qt YALK code must resolve to Production YALK package");
+        "legacy Qt YALK code must resolve to Production YALK package");
     require(ubsi::productionPackageFromCode("YTP_FULL_5_6") == ubsi::ProductionPackage::Ytp,
-        "current Qt YTP code must resolve to Production YTP package");
+        "legacy Qt YTP code must resolve to Production YTP package");
     require(ubsi::productionPackageFromCode("ULK_COMBINED_CHECK") == ubsi::ProductionPackage::FullUbsi,
-        "current Qt combined code must resolve to full Production package");
+        "legacy Qt combined code must resolve to full Production package");
 }
 
 void mandatoryCompositionContract()
@@ -147,17 +160,21 @@ void ledgerContract()
 
 void separationContract()
 {
-    const auto combined = readFile("data/scenarios/ubsi_ulk_combined_check.yaml");
-    const auto productionPower = readFile("data/scenarios/ubsi_production_power.yaml");
-    const auto productionYvp = readFile("data/scenarios/ubsi_production_yvp.yaml");
-    const auto catalog = readFile("data/catalog/catalog.yaml");
-    require(combined.find("orbita.parameter_source") == std::string::npos,
-        "current UBSI scenario must not depend on Orbita/E20 parameter source");
-    require(productionPower.find("orbita.parameter_source") == std::string::npos,
-        "Production POWER must not depend on Orbita/E20");
-    require(productionYvp.find("orbita.parameter_source") == std::string::npos,
-        "Production YVP must not depend on Orbita/E20");
+    const char* productionFiles[] = {
+        "data/scenarios/ubsi_production_full.yaml",
+        "data/scenarios/ubsi_production_power.yaml",
+        "data/scenarios/ubsi_production_yalk.yaml",
+        "data/scenarios/ubsi_production_ytp.yaml",
+        "data/scenarios/ubsi_production_yvp.yaml"};
+    for (const auto* file : productionFiles) {
+        const auto scenario = readFile(file);
+        require(scenario.find("id: ktma.ubsi.production.") != std::string::npos,
+            std::string("not a dedicated Production scenario: ") + file);
+        require(scenario.find("orbita.parameter_source") == std::string::npos,
+            std::string("Production scenario depends on Orbita/E20: ") + file);
+    }
 
+    const auto catalog = readFile("data/catalog/catalog.yaml");
     const auto yvp = catalog.find("parameter_group: yvp_fast", catalog.find("bindings:"));
     require(yvp != std::string::npos, "YVP binding missing");
     const auto yvpEnd = catalog.find("\ninstances:", yvp);

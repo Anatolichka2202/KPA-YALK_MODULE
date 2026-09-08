@@ -73,13 +73,10 @@ ProductionPackage productionPackageFromCode(const std::string& code)
 std::string scenarioCodeForPackage(ProductionPackage package)
 {
     switch (package) {
-    // Full/YALK/YTP currently reuse the verified published measurement routes.
-    // Lifecycle/report semantics are supplied by ProductionRunContext, not by
-    // treating those runs as TU. Power and YVP have dedicated Production scenarios.
-    case ProductionPackage::FullUbsi: return "ULK_COMBINED_CHECK";
+    case ProductionPackage::FullUbsi: return "PROD_FULL";
     case ProductionPackage::PowerConsumption: return "PROD_POWER";
-    case ProductionPackage::Yalk: return "YALK_FULL_5_6";
-    case ProductionPackage::Ytp: return "YTP_FULL_5_6";
+    case ProductionPackage::Yalk: return "PROD_YALK";
+    case ProductionPackage::Ytp: return "PROD_YTP";
     case ProductionPackage::Yvp: return "PROD_YVP";
     }
     throw std::invalid_argument("unknown UBSI production package");
@@ -97,8 +94,6 @@ std::vector<std::string> affectedComponentTypes(ProductionPackage package)
     case ProductionPackage::Ytp:
         return {"YTP"};
     case ProductionPackage::Yvp:
-        // ЯВП measured output is read through YALK 89..96, therefore both
-        // cells belong to the affected snapshot even though YVP is the DUT.
         return {"YVP", "YALK-96"};
     }
     throw std::invalid_argument("unknown UBSI production package");
@@ -109,26 +104,22 @@ ProductionRunContext buildProductionRunContext(
     registrar::Stage stage,
     ProductionPackage package)
 {
-    if (report.product.id.empty() || report.product.serialNumber.empty()) {
+    if (report.product.id.empty() || report.product.serialNumber.empty())
         throw std::invalid_argument("production requires a registered UBSI product");
-    }
-    if (report.product.productType != "UBSI") {
+    if (report.product.productType != "UBSI")
         throw std::invalid_argument("production context supports UBSI only");
-    }
 
     std::map<std::string, registrar::ComponentBinding> active;
     for (const auto& component : report.components) {
         if (!component.active) continue;
-        if (active.count(component.componentType)) {
+        if (active.count(component.componentType))
             throw std::logic_error("multiple active components of type " + component.componentType);
-        }
         active.emplace(component.componentType, component);
     }
 
     std::vector<std::string> missing;
-    for (const auto* type : kRequiredComposition) {
+    for (const auto* type : kRequiredComposition)
         if (!active.count(type)) missing.emplace_back(type);
-    }
     if (!missing.empty()) {
         std::string message = "production composition incomplete; missing: ";
         for (std::size_t index = 0; index < missing.size(); ++index) {
@@ -145,14 +136,10 @@ ProductionRunContext buildProductionRunContext(
     context.stage = stage;
     context.package = package;
     context.scenarioCode = scenarioCodeForPackage(package);
-
     for (const auto* type : kRequiredComposition) {
         const auto& component = active.at(type);
-        context.composition.push_back({
-            component.componentId,
-            component.componentType,
-            component.serialNumber,
-            contains(affected, component.componentType)});
+        context.composition.push_back({component.componentId, component.componentType,
+            component.serialNumber, contains(affected, component.componentType)});
     }
     return context;
 }

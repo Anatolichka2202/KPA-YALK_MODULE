@@ -1,0 +1,156 @@
+schema: 1
+id: ktma.ubsi.production.yalk
+title: Производство УБСИ · ЯЛК-96
+version: 1.0.0
+catalog_version: 2026.08.29-yalk-1
+object_type: UBSI_468157_002
+state: published
+
+steps:
+  - id: supply_status
+    title: Включение и контроль питания перед проверкой ЯЛК
+    tu: PRODUCTION / YALK / POWER
+    procedure: ubsi.supply_status
+    requires:
+      - power.dc_supply
+    args:
+      nominal_voltage_v: 27
+      minimum_voltage_v: 24
+      maximum_voltage_v: 35
+      maximum_current_a: 0.4
+      startup_current_limit_a: 0.6
+      startup_settle_ms: 500
+
+  - id: yalk_stream
+    title: Запуск потока ЯЛК
+    tu: PRODUCTION / YALK / STREAM
+    procedure: yalk.start_stream
+    requires:
+      - ulk.parameter_source
+      - stand.switch_matrix
+    args:
+      configure_settle_ms: 500
+      timeout_ms: 3000
+
+  - id: yalk_calibration
+    title: Калибровка ЯЛК по адресам 97 и 99
+    tu: PRODUCTION / YALK / CALIBRATION
+    procedure: yalk.read_calibration
+    requires:
+      - catalog.parameter_resolver
+      - ulk.parameter_source
+      - stand.switch_matrix
+      - measure.reference_voltage
+    args:
+      channel_count: 80
+      sample_count: 16
+      settle_ms: 150
+      full_voltage: 6.2
+
+  - id: yalk_initial
+    title: Исходное отключённое состояние 80 входов ЯЛК
+    tu: PRODUCTION / YALK / INITIAL
+    procedure: yalk.check_initial_state
+    requires:
+      - catalog.parameter_resolver
+      - ulk.parameter_source
+      - stand.switch_matrix
+    args:
+      channel_count: 80
+      sample_count: 4
+      full_scale_v: 6.2
+      tolerance_percent_fs: 0.5
+
+  - id: yalk_channels
+    title: Аналоговые сигналы 80 адресов · 0 / 3,1 / 6,2 В
+    tu: PRODUCTION / YALK / ANALOG
+    procedure: yalk.check_channels
+    requires:
+      - catalog.parameter_resolver
+      - ulk.parameter_source
+      - stand.switch_matrix
+      - measure.reference_voltage
+    args:
+      channel_count: 80
+      point_volts: 0,3.1,6.2
+      sample_count: 16
+      settle_ms: 150
+      channel_off_settle_ms: 1000
+      full_scale_v: 6.2
+      tolerance_percent_fs: 0.5
+
+  - id: yalk_contacts
+    title: Контакты · 0 В → 0, 0,9 В → 0, 2,5 В → 1
+    tu: PRODUCTION / YALK / CONTACTS
+    procedure: yalk.check_channels
+    requires:
+      - catalog.parameter_resolver
+      - ulk.parameter_source
+      - stand.switch_matrix
+      - measure.reference_voltage
+    args:
+      channel_count: 80
+      point_volts: 0,0.9,2.5
+      signal_expectations: 0,0,1
+      sample_count: 16
+      settle_ms: 150
+      channel_off_settle_ms: 1000
+      full_scale_v: 6.2
+      tolerance_percent_fs: 0.5
+
+  - id: yalk_overload
+    title: Устойчивость остальных каналов при перегрузке ±12 В
+    tu: PRODUCTION / YALK / OVERLOAD
+    procedure: yalk.check_overload
+    requires:
+      - ulk.parameter_source
+      - stand.switch_matrix
+    args:
+      mapping_confirmed: true
+      physical_channel_count: 88
+      observed_address_count: 88
+      positive_overload_route: yalk_overload_positive
+      negative_overload_route: yalk_overload_negative
+      sample_count: 4
+      baseline_settle_ms: 1000
+      overload_settle_ms: 10000
+      cleanup_settle_ms: 300
+      maximum_code_delta: 2
+
+  - id: yalk_reference_voltage
+    title: Эталон 6,2 ±0,03 В по В7 и данным ЯЛК
+    tu: PRODUCTION / YALK / REFERENCE_6V2
+    procedure: ubsi.reference_voltage
+    requires:
+      - measure.reference_voltage
+      - catalog.parameter_resolver
+      - ulk.parameter_source
+    args:
+      nominal_v: 6.2
+      tolerance_v: 0.03
+      adapter_parameter_group: yalk_reference_supply
+      calibration_zero_parameter: yalk_calibration_zero
+      calibration_full_parameter: yalk_calibration_full
+      sample_count: 16
+
+  - id: yalk_cleanup
+    title: Безопасный сброс ЯЛК
+    tu: PRODUCTION / YALK / SAFE_CLEANUP
+    procedure: yalk.safe_cleanup
+    requires:
+      - ulk.parameter_source
+      - stand.switch_matrix
+      - catalog.parameter_resolver
+      - measure.reference_voltage
+    args:
+      channel_count: 80
+      maximum_residual_voltage_v: 0.2
+      settle_ms: 300
+      retry_settle_ms: 500
+
+  - id: power_off
+    title: Отключение питания
+    tu: PRODUCTION / SAFE_CLEANUP
+    procedure: ubsi.power_safe_off
+    requires:
+      - power.dc_supply
