@@ -7,7 +7,6 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
-#include <QFileInfo>
 #include <QMessageBox>
 #include <QMetaObject>
 #include <QSet>
@@ -125,7 +124,8 @@ void KtmaMainWindow::loadProductionScenarios()
 {
     auto* page = integrationTestPage();
     auto* engine = integrationScenarioEngine();
-    if (!page || !engine || !integrationStandRuntimeReady()) {
+    if (!page) return;
+    if (!engine || !integrationStandRuntimeReady()) {
         const QString detail = QStringLiteral(
             "Production scenarios недоступны: стендовый runtime не инициализирован");
         for (const auto& code : {QStringLiteral("PROD_FULL"), QStringLiteral("PROD_POWER"),
@@ -249,10 +249,12 @@ void KtmaMainWindow::restoreTuSelector()
     auto* page = integrationTestPage();
     if (!page || !integrationTuWorkflowActive()) return;
     QMetaObject::invokeMethod(page, "rebuildScopes", Qt::DirectConnection);
-    if (auto* scope = page->findChild<QComboBox*>(QStringLiteral("testScope")))
+    if (auto* scope = page->findChild<QComboBox*>(QStringLiteral("testScope"))) {
         if (scope->parentWidget()) scope->parentWidget()->setVisible(false);
-    if (auto* test = page->findChild<QComboBox*>(QStringLiteral("testType")))
+    }
+    if (auto* test = page->findChild<QComboBox*>(QStringLiteral("testType"))) {
         if (test->parentWidget()) test->parentWidget()->setVisible(false);
+    }
 }
 
 void KtmaMainWindow::runScenario(
@@ -304,10 +306,11 @@ void KtmaMainWindow::runScenario(
         }
 
         const auto iterator = integrationScenarios().constFind(effectiveCode);
-        if (iterator == integrationScenarios().cend())
+        if (iterator == integrationScenarios().cend()) {
             throw std::runtime_error(
                 QStringLiteral("Сценарий %1 не загружен").arg(effectiveCode)
                     .toUtf8().toStdString());
+        }
         const auto scenario = iterator.value();
 
         if (productionContext) {
@@ -319,7 +322,7 @@ void KtmaMainWindow::runScenario(
         page->setRunInProgress(true, QStringLiteral("Выполняется: %1")
             .arg(QString::fromStdString(scenario.title)));
         integrationLog(QStringLiteral("Запуск %1 · объект %2")
-            .arg(QString::fromStdString(scenario.id), QString::fromUtf8(serial)));
+            .arg(QString::fromStdString(scenario.id), QString::fromUtf8(serial.c_str())));
 
         const std::string profileVersion = integrationStandProfile().version;
         watcher->setFuture(QtConcurrent::run(
