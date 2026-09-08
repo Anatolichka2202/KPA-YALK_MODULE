@@ -44,6 +44,17 @@ const char* toString(ProductionRunStatus status) noexcept
     return "STAND_ERROR";
 }
 
+ProductionRunStatus productionRunStatusFromString(const std::string& value)
+{
+    if (value == "IN_PROGRESS") return ProductionRunStatus::InProgress;
+    if (value == "NORM") return ProductionRunStatus::Norm;
+    if (value == "NOT_NORM") return ProductionRunStatus::NotNorm;
+    if (value == "STAND_ERROR") return ProductionRunStatus::StandError;
+    if (value == "INCOMPLETE") return ProductionRunStatus::Incomplete;
+    if (value == "STOPPED") return ProductionRunStatus::Stopped;
+    throw std::invalid_argument("unknown UBSI production run status: " + value);
+}
+
 ProductionPackage productionPackageFromCode(const std::string& code)
 {
     if (code == "PROD_FULL" || code == "FULL_UBSI" || code == "ULK_COMBINED_CHECK")
@@ -64,7 +75,7 @@ std::string scenarioCodeForPackage(ProductionPackage package)
     switch (package) {
     // Full/YALK/YTP currently reuse the verified published measurement routes.
     // Lifecycle/report semantics are supplied by ProductionRunContext, not by
-    // treating those runs as TU. Power and YVP now have dedicated Production scenarios.
+    // treating those runs as TU. Power and YVP have dedicated Production scenarios.
     case ProductionPackage::FullUbsi: return "ULK_COMBINED_CHECK";
     case ProductionPackage::PowerConsumption: return "PROD_POWER";
     case ProductionPackage::Yalk: return "YALK_FULL_5_6";

@@ -21,7 +21,7 @@ The `orbita/` directory remains a legacy telemetry subsystem and can continue to
 
 ## Production invariant
 
-Every production run starts from a registered UBSI product and one production stage. Before the first and every subsequent production run, the active composition must contain exactly one cell of each required type:
+Every production run starts from a registered UBSI product and one production stage. Before every production run, the active composition must contain exactly one cell of each required type:
 
 - `YALK-96`;
 - `YTP`;
@@ -37,3 +37,20 @@ Package effects:
 - `YALK` -> `YALK-96`;
 - `YTP` -> `YTP`;
 - `YVP` -> `YVP` plus linked `YALK-96` output path (YALK addresses 89..96).
+
+## Persistent lifecycle
+
+`ProductionLedger` stores product-level production attempts in the same persistent SQLite data root (it can use `registrar.db`) without abusing a selected component as the owner of a full-block run.
+
+Each record stores:
+
+- product id and serial;
+- one production stage;
+- package and scenario code;
+- immutable four-cell composition snapshot including SNs;
+- affected-cell flags;
+- ScenarioEngine `run_id` when available;
+- timestamps;
+- exact production status: `NORM`, `NOT_NORM`, `STAND_ERROR`, `INCOMPLETE`, `STOPPED`.
+
+The dedicated status model prevents a technical stand failure or an incomplete run from being rewritten as a product failure or generic `Cancelled` state.

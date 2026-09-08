@@ -47,6 +47,7 @@ struct ProductionRunContext
 const char* toString(ProductionPackage package) noexcept;
 const char* toString(ProductionRunStatus status) noexcept;
 ProductionPackage productionPackageFromCode(const std::string& code);
+ProductionRunStatus productionRunStatusFromString(const std::string& value);
 std::string scenarioCodeForPackage(ProductionPackage package);
 std::vector<std::string> affectedComponentTypes(ProductionPackage package);
 

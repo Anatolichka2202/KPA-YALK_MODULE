@@ -1,6 +1,10 @@
+find_package(Qt6 REQUIRED COMPONENTS Core Sql)
+
 add_library(ktma_ubsi STATIC
     include/ktma/ubsi/production.h
+    include/ktma/ubsi/production_ledger.h
     src/production.cpp
+    src/production_ledger.cpp
 )
 
 target_include_directories(ktma_ubsi
@@ -9,7 +13,7 @@ target_include_directories(ktma_ubsi
 )
 
 target_compile_features(ktma_ubsi PUBLIC cxx_std_17)
-target_link_libraries(ktma_ubsi PUBLIC ktma_registrar)
+target_link_libraries(ktma_ubsi PUBLIC ktma_registrar Qt6::Core Qt6::Sql)
 
 if(BUILD_TESTING)
     add_executable(ktma_ubsi_production_test

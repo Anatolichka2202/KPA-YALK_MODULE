@@ -1,4 +1,7 @@
 #include "ktma/ubsi/production.h"
+#include "ktma/ubsi/production_ledger.h"
+
+#include <QTemporaryDir>
 
 #include <fstream>
 #include <iostream>
@@ -110,6 +113,38 @@ void mandatoryCompositionContract()
         "even a component package must be blocked until the four-cell UBSI composition exists");
 }
 
+void ledgerContract()
+{
+    QTemporaryDir directory;
+    require(directory.isValid(), "temporary directory unavailable");
+    ubsi::ProductionLedger ledger(
+        directory.filePath(QStringLiteral("registrar.db")).toStdString());
+
+    const auto context = ubsi::buildProductionRunContext(
+        completeProduct(), registrar::Stage::PottingClimatePlus,
+        ubsi::ProductionPackage::Yvp);
+    const auto id = ledger.begin(context);
+    auto record = ledger.get(id);
+    require(record.status == ubsi::ProductionRunStatus::InProgress,
+        "new production run must be IN_PROGRESS");
+    require(record.context.composition.size() == 4,
+        "ledger must persist complete composition snapshot");
+    require(affected(record.context, "YVP") && affected(record.context, "YALK-96"),
+        "ledger lost affected YVP/YALK cells");
+
+    ledger.attachRun(id, "scenario-run-1");
+    ledger.finish(id, ubsi::ProductionRunStatus::StandError);
+    record = ledger.get(id);
+    require(record.runId == "scenario-run-1", "ScenarioEngine run_id not persisted");
+    require(record.status == ubsi::ProductionRunStatus::StandError,
+        "STAND_ERROR must not collapse to Cancelled/Incomplete");
+    require(!record.finishedAt.empty(), "finished timestamp missing");
+
+    const auto history = ledger.listForProduct("p1");
+    require(history.size() == 1 && history.front().id == id,
+        "product production history is incomplete");
+}
+
 void separationContract()
 {
     const auto combined = readFile("data/scenarios/ubsi_ulk_combined_check.yaml");
@@ -144,6 +179,7 @@ int main()
     try {
         compositionContract();
         mandatoryCompositionContract();
+        ledgerContract();
         separationContract();
         std::cout << "KTMA UBSI production contract OK\n";
         return 0;
