@@ -240,10 +240,22 @@ bindings:
     mask: 0xFFFF
     mode: 2
     confirmed: true
-  # У ЯВП пока нет подтверждённой привязки к 204-байтному потоку адаптера.
-  # Старые адреса Orbita/E20 намеренно не импортируются в УБСИ: они относятся
-  # к другой телеметрической ветке и не должны стать источником результатов.
-  # Запись yvp_fast добавляется только после commissioning маршрута ЯВП.
+  - block_type: UBSI_468157_002
+    slot: yvp_8
+    parameter_group: yvp_fast
+    source: ulk.parameter_source
+    address_key: address_set.ulk_yvp_reference
+    locator_type: ulk_address
+    # Каноническая карта 2026-09-08: ЯВП-8 читается с логических адресов
+    # ЯЛК 89..96. Catalog преобразует их в word_index 88..95.
+    address_file: address_sets/ulk_yvp_reference.txt
+    address_offset: 0
+    count: 8
+    mask: 0x03FF
+    conversion: yalk_two_point_6v2
+    # Здесь подтверждён только источник данных. Физическая кроссировка
+    # yvp_input/yvp_gain подтверждается отдельно на живом стенде.
+    confirmed: true
 
 instances:
   - id: ubsi-7-current
