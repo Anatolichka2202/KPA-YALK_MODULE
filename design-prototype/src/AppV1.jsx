@@ -3,7 +3,6 @@ import {
   AcceptanceHome,
   EngineeringDrawer,
   KtmaHub,
-  ProductionHome,
   StationHome,
 } from "./v1/screens.jsx";
 import {
@@ -16,7 +15,9 @@ import { EdgeCaseLab } from "./v1/edgeCasesV2.jsx";
 import { ScenarioDockV2 } from "./v1/scenarioDockV2.jsx";
 import { AcceptanceSessionV2 } from "./v1/sessionsV2.jsx";
 import { ProductionLedger, ProductionSessionV2 } from "./v1/productionSessionV2.jsx";
+import { ProductionHomeV3 } from "./v1/productionHomeV3.jsx";
 import { AdminWorkspace } from "./v1/workspaces.jsx";
+import "./production-stage-v3.css";
 
 export function AppV1() {
   const [route, setRoute] = useState("station");
@@ -59,7 +60,7 @@ export function AppV1() {
   let screen;
   if (route === "station") screen = <StationHome go={go} engineering={engineering} toggleEngineering={toggleEngineering} />;
   else if (route === "ktma") screen = <KtmaHub go={go} back={back} engineering={engineering} toggleEngineering={toggleEngineering} />;
-  else if (route === "production") screen = <ProductionHome go={go} back={back} engineering={engineering} toggleEngineering={toggleEngineering} />;
+  else if (route === "production") screen = <ProductionHomeV3 go={go} back={back} engineering={engineering} toggleEngineering={toggleEngineering} />;
   else if (route === "acceptance") screen = <AcceptanceHome go={go} back={back} engineering={engineering} toggleEngineering={toggleEngineering} />;
   else if (route === "admin") screen = <AdminWorkspace go={go} back={back} engineering={engineering} toggleEngineering={toggleEngineering} />;
   else if (route === "production-session") screen = <ProductionSessionV2 go={go} back={back} engineering={engineering} toggleEngineering={toggleEngineering} />;
