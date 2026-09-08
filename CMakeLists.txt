@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(OrbitaSystem VERSION 1.0.0 LANGUAGES CXX)
+project(MilTechStation VERSION 1.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -38,8 +38,11 @@ configure_file(
 
 include(CTest)
 
+# Legacy Orbita telemetry remains a separate subsystem. KTMA/UBSI application
+# code lives under ktma/ and must not depend on the Orbita/E20 product model.
 add_subdirectory(orbita)
 add_subdirectory(stand)
 add_subdirectory(registrar)
+add_subdirectory(ktma/ubsi)
 add_subdirectory(desktop_orbita)
 add_subdirectory(release)
