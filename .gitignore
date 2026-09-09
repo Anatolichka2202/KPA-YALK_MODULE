@@ -36,3 +36,11 @@ Thumbs.db
 # Локальный архив исходных документов и референсных программ.
 # В Git храним только производные требования и нормализованные данные.
 /docs/по ктма/
+
+# Personal Obsidian workspace state
+docs/.obsidian/workspace.json
+docs/.obsidian/workspace-mobile.json
+
+# Personal Obsidian workspace state
+docs/.obsidian/workspace.json
+docs/.obsidian/workspace-mobile.json
