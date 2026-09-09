@@ -1,6 +1,6 @@
-﻿schema: 1
-id: ktma.ubsi.production.yalk
-title: РџСЂРѕРёР·РІРѕРґСЃС‚РІРѕ РЈР‘РЎР В· РЇР›Рљ-96
+schema: 1
+id: ubsi.468157.002.yalk.tu5_6
+title: УБСИ · полная проверка ЯЛК-96 по ТУ 5.6
 version: 1.0.0
 catalog_version: 2026.08.29-yalk-1
 object_type: UBSI_468157_002
@@ -8,8 +8,8 @@ state: published
 
 steps:
   - id: supply_status
-    title: Р’РєР»СЋС‡РµРЅРёРµ Рё РєРѕРЅС‚СЂРѕР»СЊ РїРёС‚Р°РЅРёСЏ РїРµСЂРµРґ РїСЂРѕРІРµСЂРєРѕР№ РЇР›Рљ
-    tu: PRODUCTION / YALK / POWER
+    title: Включение и контроль питания УБСИ перед проверкой
+    tu: 1.1.4.3, 1.1.4.5
     procedure: ubsi.supply_status
     requires:
       - power.dc_supply
@@ -22,8 +22,8 @@ steps:
       startup_settle_ms: 500
 
   - id: yalk_stream
-    title: Р—Р°РїСѓСЃРє РїРѕС‚РѕРєР° РЇР›Рљ
-    tu: 5.6 / РЇР›Рљ
+    title: Запуск потока ЯЛК
+    tu: 5.6 / ЯЛК
     procedure: yalk.start_stream
     requires:
       - ulk.parameter_source
@@ -34,7 +34,7 @@ steps:
       technical_retries: 3
 
   - id: yalk_calibration
-    title: РљР°Р»РёР±СЂРѕРІРєР° РЇР›Рљ РїРѕ Р°РґСЂРµСЃР°Рј 97 Рё 99
+    title: Калибровка ЯЛК по адресам 97 и 99
     tu: 1.1.4.1, 1.1.4.14
     procedure: yalk.read_calibration
     requires:
@@ -49,7 +49,7 @@ steps:
       full_voltage: 6.2
 
   - id: yalk_initial
-    title: РћР±СЂС‹РІ Рё РёСЃС…РѕРґРЅРѕРµ РѕС‚РєР»СЋС‡С‘РЅРЅРѕРµ СЃРѕСЃС‚РѕСЏРЅРёРµ 80 РІС…РѕРґРѕРІ РЇР›Рљ
+    title: Обрыв и исходное отключённое состояние 80 входов ЯЛК
     tu: 1.1.4.10
     procedure: yalk.check_initial_state
     requires:
@@ -63,7 +63,7 @@ steps:
       tolerance_percent_fs: 0.5
 
   - id: yalk_channels
-    title: РђРЅР°Р»РѕРіРѕРІС‹Рµ Рё РєРѕРЅС‚Р°РєС‚РЅС‹Рµ СЃРёРіРЅР°Р»С‹ 80 Р°РґСЂРµСЃРѕРІ РЇР›Рљ
+    title: Аналоговые и контактные сигналы 80 адресов ЯЛК
     tu: 1.1.4.1, 1.1.4.14
     procedure: yalk.check_channels
     requires:
@@ -81,7 +81,7 @@ steps:
       tolerance_percent_fs: 0.5
 
   - id: yalk_contact_thresholds
-    title: "онтактные пороги всех адресов: 0 при 0,0 , 0 при 0,9  и 1 при 2,5 "
+    title: Контактные пороги всех адресов: 0 при 0,0 В, 0 при 0,9 В и 1 при 2,5 В
     tu: 1.1.4.1
     procedure: yalk.check_channels
     requires:
@@ -100,14 +100,14 @@ steps:
       tolerance_percent_fs: 0.5
 
   - id: yalk_overload
-    title: РЈСЃС‚РѕР№С‡РёРІРѕСЃС‚СЊ РѕСЃС‚Р°Р»СЊРЅС‹С… РєР°РЅР°Р»РѕРІ РїСЂРё РїРµСЂРµРіСЂСѓР·РєРµ В±12 Р’
+    title: Устойчивость остальных каналов при перегрузке ±12 В
     tu: 1.1.4.10, 1.1.4.11
     procedure: yalk.check_overload
     requires:
       - ulk.parameter_source
       - stand.switch_matrix
     args:
-      # KPA report.log: РРЎР” С€ = type=3, РёСЃС‚РѕС‡РЅРёРєРё 95/96 Рё РєР°РЅР°Р»С‹ 1..88.
+      # KPA report.log: ИСД ш = type=3, источники 95/96 и каналы 1..88.
       mapping_confirmed: true
       physical_channel_count: 88
       observed_address_count: 88
@@ -120,7 +120,7 @@ steps:
       maximum_code_delta: 2
 
   - id: yalk_reference_voltage
-    title: Р­С‚Р°Р»РѕРЅ 6,2 В±0,03 Р’ РїРѕ Р’7 Рё Р°РґСЂРµСЃСѓ РЇР›Рљ
+    title: Эталон 6,2 ±0,03 В по В7 и адресу ЯЛК
     tu: 1.1.4.9
     procedure: ubsi.reference_voltage
     requires:
@@ -136,8 +136,8 @@ steps:
       sample_count: 16
 
   - id: yalk_cleanup
-    title: РЎР±СЂРѕСЃ РЇР›Рљ Рё РєРѕРЅС‚СЂРѕР»СЊ РѕС‚СЃСѓС‚СЃС‚РІРёСЏ РІРѕР·РґРµР№СЃС‚РІРёСЏ
-    tu: 5.6 / РЇР›Рљ В· Р·Р°РІРµСЂС€РµРЅРёРµ
+    title: Сброс ЯЛК и контроль отсутствия воздействия
+    tu: 5.6 / ЯЛК · завершение
     procedure: yalk.safe_cleanup
     requires:
       - ulk.parameter_source
@@ -151,8 +151,8 @@ steps:
       retry_settle_ms: 500
 
   - id: power_off
-    title: РћС‚РєР»СЋС‡РµРЅРёРµ РїРёС‚Р°РЅРёСЏ
-    tu: PRODUCTION / SAFE_CLEANUP
+    title: Отключение питания УБСИ после проверки
+    tu: 5.6 / безопасное завершение
     procedure: ubsi.power_safe_off
     requires:
       - power.dc_supply

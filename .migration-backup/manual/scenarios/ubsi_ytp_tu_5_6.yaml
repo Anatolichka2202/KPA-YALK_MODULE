@@ -1,0 +1,96 @@
+schema: 1
+id: ubsi.468157.002.ytp.tu5_6
+title: УБСИ · полная проверка ЯТП по ТУ 5.6
+version: 1.0.1
+catalog_version: 2026.08.29-yalk-1
+object_type: UBSI_468157_002
+state: published
+
+# На живом стенде 02.09.2026 при общем сопротивлении 120 Ом подтверждены:
+# ROKT 0A 02 00 01 00, кадр 01 00 34 00 + 32 words, каналы 1..30, верхняя
+# калибровка в слове 31 (4000), нижняя в слове 32 (330) и двухточечный
+# пересчёт в диапазоне 0..240 Ом. Магазин подключён к общему X123 и
+# переставляется оператором. Коммутация ИСД type=7, каналов 3/9/12/17,
+# присутствует в полном сценарии KPA и исследуется отдельно от запуска потока.
+# Пункт 1.1.4.6 (50-метровая линия) в current backend НЕ ПРОВЕРЯЕТСЯ и к
+# этой ЯТП-процедуре не привязывается.
+steps:
+  - id: supply_status
+    title: Включение и контроль питания УБСИ перед проверкой
+    tu: 1.1.4.3, 1.1.4.5
+    procedure: ubsi.supply_status
+    requires:
+      - power.dc_supply
+    args:
+      nominal_voltage_v: 27
+      minimum_voltage_v: 24
+      maximum_voltage_v: 35
+      maximum_current_a: 0.4
+      startup_current_limit_a: 0.6
+      startup_settle_ms: 500
+
+  - id: ytp_stream
+    title: Активный запуск ROKT и запись сырого потока ЯТП
+    tu: 5.6 / ЯТП · commissioning
+    procedure: ytp.start_stream
+    requires:
+      - ulk.parameter_source
+      - stand.switch_matrix
+    args:
+      protocol: rokt_ytp68
+      ytp_endpoint: 1
+      isd_switch_type: 7
+      isd_route_channels: 3,9,12,17
+      stream_settle_ms: 1000
+      timeout_ms: 3000
+      technical_retries: 3
+
+  - id: ytp_calibration
+    title: Калибровка ЯТП по словам 32 и 31
+    tu: 1.1.4.1, 1.1.4.14
+    procedure: ytp.read_calibration
+    requires:
+      - catalog.parameter_resolver
+      - ulk.parameter_source
+    args:
+      calibration_zero_parameter: ytp_calibration_zero
+      calibration_full_parameter: ytp_calibration_full
+      calibration_mapping_confirmed: true
+      sample_count: 16
+
+  - id: ytp_channels
+    title: Проверка 30 каналов ручным магазином Р4831
+    tu: 1.1.4.1, 1.1.4.14
+    procedure: ytp.check_channels
+    requires:
+      - catalog.parameter_resolver
+      - ulk.parameter_source
+      - operator.manual_input
+    args:
+      channel_count: 30
+      parameter_group: ytp_temperature
+      resistance_points_ohm: 0,120,240
+      full_scale_ohm: 240
+      tolerance_percent_fs: 0.5
+      sample_count: 16
+      settle_ms: 1500
+      conversion_confirmed: true
+      criteria_confirmed: true
+
+  - id: ytp_cleanup
+    title: Безопасная остановка потока и raw-записи ЯТП
+    tu: 5.6 / завершение проверки
+    procedure: ytp.safe_cleanup
+    requires:
+      - ulk.parameter_source
+      - stand.switch_matrix
+    args:
+      isd_switch_type: 7
+      isd_route_channels: 3,9,12,17
+
+  - id: power_off
+    title: Отключение питания УБСИ после проверки
+    tu: 5.6 / безопасное завершение
+    procedure: ubsi.power_safe_off
+    requires:
+      - power.dc_supply

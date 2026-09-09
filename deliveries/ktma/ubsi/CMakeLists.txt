@@ -49,3 +49,15 @@ if(BUILD_TESTING)
     target_link_libraries(ktma_ubsi_production_report_test PRIVATE ktma_ubsi_reporting)
     add_test(NAME ktma.ubsi.production_report COMMAND ktma_ubsi_production_report_test)
 endif()
+if(WIN32 AND BUILD_TESTING)
+    get_filename_component(_ktma_mingw_bin "${CMAKE_CXX_COMPILER}" DIRECTORY)
+
+    set_tests_properties(
+        ktma.ubsi.production
+        ktma.ubsi.production_scenarios
+        ktma.ubsi.production_report
+        PROPERTIES
+        ENVIRONMENT_MODIFICATION
+            "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>;PATH=path_list_prepend:${_ktma_mingw_bin}"
+    )
+endif()

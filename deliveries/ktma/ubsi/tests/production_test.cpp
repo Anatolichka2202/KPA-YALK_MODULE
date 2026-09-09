@@ -1,4 +1,4 @@
-#include "ktma/ubsi/production.h"
+﻿#include "ktma/ubsi/production.h"
 #include "ktma/ubsi/production_ledger.h"
 
 #include <QTemporaryDir>
@@ -38,12 +38,12 @@ registrar::ComponentBinding component(
 registrar::ProductReport completeProduct()
 {
     registrar::ProductReport report;
-    report.product = {"p1", "UBSI", "УБСИ-0001"};
+    report.product = {"p1", "UBSI", "РЈР‘РЎР-0001"};
     report.components = {
-        component("c-yalk", "YALK-96", "ЯЛК-001"),
-        component("c-ytp", "YTP", "ЯТП-001"),
-        component("c-yvp", "YVP", "ЯВП-001"),
-        component("c-power", "YP-P", "ЯПП-001")};
+        component("c-yalk", "YALK-96", "РЇР›Рљ-001"),
+        component("c-ytp", "YTP", "РЇРўРџ-001"),
+        component("c-yvp", "YVP", "РЇР’Рџ-001"),
+        component("c-power", "YP-P", "РЇРџРџ-001")};
     return report;
 }
 
@@ -70,7 +70,7 @@ void compositionContract()
     const auto report = completeProduct();
     const auto full = ubsi::buildProductionRunContext(
         report, registrar::Stage::ClimatePlus, ubsi::ProductionPackage::FullUbsi);
-    require(full.productSerial == "УБСИ-0001", "product serial lost");
+    require(full.productSerial == "РЈР‘РЎР-0001", "product serial lost");
     require(full.composition.size() == 4, "production snapshot must contain four active cells");
     require(full.scenarioCode == "PROD_FULL", "full package must use Production scenario");
     for (const auto& item : full.composition)
@@ -195,7 +195,7 @@ void separationContract()
     require(rootCmake.find("add_subdirectory(orbita)") != std::string::npos,
         "Orbita subsystem must remain available for future BSI/RPU product deliveries");
 
-    const auto readme = readFile("ktma/ubsi/README.md");
+    const auto readme = readFile("deliveries/ktma/ubsi/README.md");
     require(readme.find("BSI, RPU") != std::string::npos,
         "UBSI boundary documentation must preserve Orbita future-product role");
 }
@@ -217,3 +217,4 @@ int main(int argc, char** argv)
         return 1;
     }
 }
+

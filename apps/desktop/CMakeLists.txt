@@ -1,14 +1,14 @@
-cmake_minimum_required(VERSION 3.20)
-project(OrbitaDesktop)
+﻿cmake_minimum_required(VERSION 3.20)
+project(MilTechStationDesktop)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
-set(CMAKE_AUTORCC ON)   # без этого resources.qrc (styles.qss) не попадает в бинарник → тема не грузится
+set(CMAKE_AUTORCC ON)   # Р±РµР· СЌС‚РѕРіРѕ resources.qrc (styles.qss) РЅРµ РїРѕРїР°РґР°РµС‚ РІ Р±РёРЅР°СЂРЅРёРє в†’ С‚РµРјР° РЅРµ РіСЂСѓР·РёС‚СЃСЏ
 
 find_package(Qt6 REQUIRED COMPONENTS Core Widgets PrintSupport Sql Svg SerialPort Concurrent)
 
-add_executable(OrbitaDesktop
+add_executable(MilTechStation
     main.cpp
     mainwindow.cpp
     mainwindow.h
@@ -55,13 +55,13 @@ add_executable(OrbitaDesktop
 )
 
 
-target_include_directories(OrbitaDesktop PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}          # encoding_utils.h, plot_widget.h и т.д.
+target_include_directories(MilTechStation PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}          # encoding_utils.h, plot_widget.h Рё С‚.Рґ.
     ${CMAKE_SOURCE_DIR}/orbita/include   # orbita.h
-    ${CMAKE_SOURCE_DIR}/registrar/include
+    ${CMAKE_SOURCE_DIR}/deliveries/ktma/registrar/include
 )
 
-target_link_libraries(OrbitaDesktop PRIVATE
+target_link_libraries(MilTechStation PRIVATE
     orbita
     orbita_stand_adapters
     orbita_stand_runtime
@@ -80,66 +80,63 @@ target_link_libraries(OrbitaDesktop PRIVATE
 if(WIN32)
     set(LUSBAPI_DLL ${CMAKE_SOURCE_DIR}/third_party/lusbapi/Lusbapi64.dll)
     if(EXISTS ${LUSBAPI_DLL})
-        add_custom_command(TARGET OrbitaDesktop POST_BUILD
+        add_custom_command(TARGET MilTechStation POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                ${LUSBAPI_DLL} $<TARGET_FILE_DIR:OrbitaDesktop>
+                ${LUSBAPI_DLL} $<TARGET_FILE_DIR:MilTechStation>
         )
     endif()
 endif()
 
-# --- Копируем ресурсы рядом с exe ---
+# --- РљРѕРїРёСЂСѓРµРј СЂРµСЃСѓСЂСЃС‹ СЂСЏРґРѕРј СЃ exe ---
 set(ADDR_SRC ${CMAKE_SOURCE_DIR}/orbita/config/address)
 
-# Ресурсы рабочего каталога обновляются при каждом запуске сборки. Это важно:
-# изменение БД или адресных списков не обязано приводить к перелинковке exe.
+# Р РµСЃСѓСЂСЃС‹ СЂР°Р±РѕС‡РµРіРѕ РєР°С‚Р°Р»РѕРіР° РѕР±РЅРѕРІР»СЏСЋС‚СЃСЏ РїСЂРё РєР°Р¶РґРѕРј Р·Р°РїСѓСЃРєРµ СЃР±РѕСЂРєРё. Р­С‚Рѕ РІР°Р¶РЅРѕ:
+# РёР·РјРµРЅРµРЅРёРµ Р‘Р” РёР»Рё Р°РґСЂРµСЃРЅС‹С… СЃРїРёСЃРєРѕРІ РЅРµ РѕР±СЏР·Р°РЅРѕ РїСЂРёРІРѕРґРёС‚СЊ Рє РїРµСЂРµР»РёРЅРєРѕРІРєРµ exe.
 add_custom_target(OrbitaRuntimeResources ALL
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         $<TARGET_FILE:Qt6::SerialPort>
-        $<TARGET_FILE_DIR:OrbitaDesktop>
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_SOURCE_DIR}/resources/stand.ini
-        $<TARGET_FILE_DIR:OrbitaDesktop>/stand.ini
+        $<TARGET_FILE_DIR:MilTechStation>
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         ${ADDR_SRC}/parameters.db
-        $<TARGET_FILE_DIR:OrbitaDesktop>/parameters.db
+        $<TARGET_FILE_DIR:MilTechStation>/parameters.db
     COMMAND ${CMAKE_COMMAND} -E make_directory
-        $<TARGET_FILE_DIR:OrbitaDesktop>/address
+        $<TARGET_FILE_DIR:MilTechStation>/address
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${ADDR_SRC}
-        $<TARGET_FILE_DIR:OrbitaDesktop>/address
+        $<TARGET_FILE_DIR:MilTechStation>/address
     COMMAND ${CMAKE_COMMAND} -E make_directory
-        $<TARGET_FILE_DIR:OrbitaDesktop>/records
+        $<TARGET_FILE_DIR:MilTechStation>/records
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_SOURCE_DIR}/data/catalog
-        $<TARGET_FILE_DIR:OrbitaDesktop>/catalog
+        $<TARGET_FILE_DIR:MilTechStation>/catalog
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_SOURCE_DIR}/data/profiles
-        $<TARGET_FILE_DIR:OrbitaDesktop>/profiles
+        $<TARGET_FILE_DIR:MilTechStation>/profiles
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_SOURCE_DIR}/data/scenarios
-        $<TARGET_FILE_DIR:OrbitaDesktop>/scenarios
+        $<TARGET_FILE_DIR:MilTechStation>/scenarios
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_BINARY_DIR}/plugins
-        $<TARGET_FILE_DIR:OrbitaDesktop>/plugins
+        $<TARGET_FILE_DIR:MilTechStation>/plugins
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         $<TARGET_FILE:orbita_equipment_probe>
-        $<TARGET_FILE_DIR:OrbitaDesktop>
+        $<TARGET_FILE_DIR:MilTechStation>
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         $<TARGET_FILE:orbita_telemetry_probe>
-        $<TARGET_FILE_DIR:OrbitaDesktop>
+        $<TARGET_FILE_DIR:MilTechStation>
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         $<TARGET_FILE:orbita_ubsi_udp_probe>
-        $<TARGET_FILE_DIR:OrbitaDesktop>
+        $<TARGET_FILE_DIR:MilTechStation>
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         $<TARGET_FILE:visa_discover>
-        $<TARGET_FILE_DIR:OrbitaDesktop>
-    COMMENT "Updating OrbitaDesktop runtime database and address files"
+        $<TARGET_FILE_DIR:MilTechStation>
+    COMMENT "Updating MilTechStation runtime database and address files"
 )
 
 if(WIN32)
-    set_target_properties(OrbitaDesktop PROPERTIES WIN32_EXECUTABLE TRUE)
+    set_target_properties(MilTechStation PROPERTIES WIN32_EXECUTABLE TRUE)
 endif()
-add_dependencies(OrbitaRuntimeResources OrbitaDesktop orbita_equipment_plugins
+add_dependencies(OrbitaRuntimeResources MilTechStation orbita_equipment_plugins
     orbita_equipment_probe orbita_telemetry_probe orbita_ubsi_udp_probe visa_discover)
 
 if(BUILD_TESTING)
@@ -175,3 +172,5 @@ if(BUILD_TESTING)
         )
     endif()
 endif()
+
+

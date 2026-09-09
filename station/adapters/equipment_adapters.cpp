@@ -1,4 +1,4 @@
-#include "orbita_stand/equipment_adapters.h"
+﻿#include "orbita_stand/equipment_adapters.h"
 #include "orbita_stand/visa_instrument.h"
 
 #ifdef _WIN32
@@ -111,11 +111,11 @@ void requireIsdSuccess(const QByteArray& body)
     const QByteArray trimmed = body.trimmed();
     const QString utf8 = QString::fromUtf8(body);
     const QString local = QString::fromLocal8Bit(body);
-    // Фактическая прошивка стенда на 192.168.0.101 отвечает коротким "OK".
-    // В старой Delphi-конфигурации встречается развёрнутое «успешно».
+    // Р¤Р°РєС‚РёС‡РµСЃРєР°СЏ РїСЂРѕС€РёРІРєР° СЃС‚РµРЅРґР° РЅР° 192.168.0.101 РѕС‚РІРµС‡Р°РµС‚ РєРѕСЂРѕС‚РєРёРј "OK".
+    // Р’ СЃС‚Р°СЂРѕР№ Delphi-РєРѕРЅС„РёРіСѓСЂР°С†РёРё РІСЃС‚СЂРµС‡Р°РµС‚СЃСЏ СЂР°Р·РІС‘СЂРЅСѓС‚РѕРµ В«СѓСЃРїРµС€РЅРѕВ».
     if (trimmed.compare("OK", Qt::CaseInsensitive) != 0
-        && !utf8.contains(QStringLiteral("успешно"), Qt::CaseInsensitive)
-        && !local.contains(QStringLiteral("успешно"), Qt::CaseInsensitive)) {
+        && !utf8.contains(QStringLiteral("СѓСЃРїРµС€РЅРѕ"), Qt::CaseInsensitive)
+        && !local.contains(QStringLiteral("СѓСЃРїРµС€РЅРѕ"), Qt::CaseInsensitive)) {
         throw std::runtime_error("ISD did not confirm command: " + body.left(160).toStdString());
     }
 }
@@ -135,8 +135,8 @@ IsdHttpRouter::~IsdHttpRouter() = default;
 std::string IsdHttpRouter::probe() { return httpGet(impl_->config, QStringLiteral("/")).left(200).toStdString(); }
 void IsdHttpRouter::reset()
 {
-    // Референсная Delphi-программа и KPA выполняют «сброс полный» одной
-    // штатной командой type=4. Перебор каналов type=2 не эквивалентен ей.
+    // Р РµС„РµСЂРµРЅСЃРЅР°СЏ Delphi-РїСЂРѕРіСЂР°РјРјР° Рё KPA РІС‹РїРѕР»РЅСЏСЋС‚ В«СЃР±СЂРѕСЃ РїРѕР»РЅС‹Р№В» РѕРґРЅРѕР№
+    // С€С‚Р°С‚РЅРѕР№ РєРѕРјР°РЅРґРѕР№ type=4. РџРµСЂРµР±РѕСЂ РєР°РЅР°Р»РѕРІ type=2 РЅРµ СЌРєРІРёРІР°Р»РµРЅС‚РµРЅ РµР№.
     requireIsdSuccess(httpGet(impl_->config, QString::fromStdString(fullResetPath())));
 }
 void IsdHttpRouter::connectChannel(unsigned channel) { setSwitch(impl_->config.switchType, channel, true); }
@@ -152,8 +152,8 @@ void IsdHttpRouter::setAnalog(unsigned channel, unsigned value, bool enabled)
 void IsdHttpRouter::prepareYalk()
 {
     reset();
-    // Рабочая KPA выдерживает около 400 мс между type=4 и type=7.
-    // ИСД не всегда принимает следующую HTTP-команду без этой паузы.
+    // Р Р°Р±РѕС‡Р°СЏ KPA РІС‹РґРµСЂР¶РёРІР°РµС‚ РѕРєРѕР»Рѕ 400 РјСЃ РјРµР¶РґСѓ type=4 Рё type=7.
+    // РРЎР” РЅРµ РІСЃРµРіРґР° РїСЂРёРЅРёРјР°РµС‚ СЃР»РµРґСѓСЋС‰СѓСЋ HTTP-РєРѕРјР°РЅРґСѓ Р±РµР· СЌС‚РѕР№ РїР°СѓР·С‹.
     std::this_thread::sleep_for(std::chrono::milliseconds(400));
     requireIsdSuccess(httpGet(impl_->config, QString::fromStdString(yalkPreparePath())));
 }
@@ -418,7 +418,7 @@ struct LegacyUdpPowerSupply::Impl {
     void send(const QByteArray& command)
     {
         if (!config.allowLegacyCommands && command != "GETD\r") {
-            throw std::runtime_error("legacy power-supply commands are not enabled in stand.ini");
+            throw std::runtime_error("legacy power-supply commands are not enabled by station configuration");
         }
         QUdpSocket socket;
         if (socket.writeDatagram(command, host, config.commandPort) != command.size()) {
@@ -471,3 +471,4 @@ std::string LegacyUdpPowerSupply::currentCommand(double amperes)
 }
 
 } // namespace orbita::stand
+
