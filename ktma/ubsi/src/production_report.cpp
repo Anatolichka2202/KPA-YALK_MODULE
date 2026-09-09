@@ -3,8 +3,10 @@
 #include <QDateTime>
 #include <QDir>
 #include <QSaveFile>
+#include <QStringList>
 #include <QTextStream>
 
+#include <algorithm>
 #include <cmath>
 #include <functional>
 #include <initializer_list>
@@ -125,6 +127,92 @@ QString errorValue(const orbita::stand::MeasurementResult& measurement)
     return QStringLiteral("—");
 }
 
+QString measurementChart(const std::vector<Row>& measurements)
+{
+    struct Value { double error = 0.0; bool passed = false; };
+    std::vector<Value> values;
+    double extent = 0.65;
+    for (const auto& row : measurements) {
+        bool ok = false;
+        const double error = field(*row.measurement,
+            {"reduced_error_percent", "gain_error_percent", "relative_error_percent"}).toDouble(&ok);
+        if (!ok || !std::isfinite(error)) continue;
+        values.push_back({error, row.measurement->verdict == orbita::stand::RunVerdict::Ok});
+        extent = std::max(extent, std::abs(error) * 1.15);
+    }
+    if (values.empty()) return {};
+    constexpr double width = 1200.0;
+    constexpr double height = 250.0;
+    constexpr double left = 52.0;
+    constexpr double top = 18.0;
+    constexpr double plotWidth = width - left - 14.0;
+    constexpr double plotHeight = height - top - 34.0;
+    const auto y = [extent](double value) {
+        return top + plotHeight / 2.0 - value / extent * plotHeight / 2.0;
+    };
+    QString svg = QStringLiteral("<h2>Отклонения измерений</h2><svg viewBox='0 0 1200 250' role='img' aria-label='Отклонения измерений в процентах шкалы' style='width:100%;height:auto;background:#fafafa;border:1px solid #aaa'>");
+    for (const double tick : {-0.5, 0.0, 0.5}) {
+        const double yy = y(tick);
+        svg += QStringLiteral("<line x1='%1' y1='%2' x2='%3' y2='%2' stroke='%4' stroke-dasharray='%5'/><text x='4' y='%6' font-size='12'>%7%</text>")
+            .arg(left).arg(yy).arg(width - 14.0)
+            .arg(tick == 0.0 ? QStringLiteral("#777") : QStringLiteral("#c48a24"))
+            .arg(tick == 0.0 ? QString() : QStringLiteral("5 4"))
+            .arg(yy + 4.0).arg(tick, 0, 'f', 1);
+    }
+    const double step = plotWidth / static_cast<double>(values.size());
+    for (std::size_t index = 0; index < values.size(); ++index) {
+        const double x = left + index * step + step * 0.15;
+        const double zero = y(0.0);
+        const double valueY = y(values[index].error);
+        svg += QStringLiteral("<rect x='%1' y='%2' width='%3' height='%4' fill='%5'/>")
+            .arg(x).arg(std::min(zero, valueY)).arg(std::max(1.0, step * 0.7))
+            .arg(std::max(1.0, std::abs(zero - valueY)))
+            .arg(values[index].passed ? QStringLiteral("#238b67") : QStringLiteral("#c94747"));
+    }
+    return svg + QStringLiteral("</svg><p class='muted'>X — последовательность измерений ведомости; Y — отклонение в % шкалы. Пунктир: ±0,5 %.</p>");
+}
+
+QString supplyChart(const std::vector<orbita::stand::RunEvent>& events)
+{
+    struct Point { double volts = 0.0; double milliamperes = 0.0; };
+    std::vector<Point> points;
+    for (const auto& event : events) {
+        if (event.stage != "SUPPLY") continue;
+        const auto volts = event.data.find("volts");
+        const auto amperes = event.data.find("amperes");
+        if (volts == event.data.end() || amperes == event.data.end()) continue;
+        points.push_back({QString::fromStdString(volts->second).toDouble(),
+                          QString::fromStdString(amperes->second).toDouble() * 1000.0});
+    }
+    if (points.empty()) return {};
+    constexpr double width = 1200.0, height = 220.0, left = 52.0, top = 18.0;
+    constexpr double plotWidth = width - left - 14.0, plotHeight = height - top - 34.0;
+    const auto y = [](double milliamperes) {
+        return top + plotHeight - std::clamp(milliamperes / 500.0, 0.0, 1.0) * plotHeight;
+    };
+    QString polyline;
+    for (std::size_t index = 0; index < points.size(); ++index) {
+        const double x = left + (points.size() == 1 ? plotWidth / 2.0
+            : plotWidth * index / static_cast<double>(points.size() - 1));
+        polyline += QStringLiteral("%1,%2 ").arg(x).arg(y(points[index].milliamperes));
+    }
+    const double limitY = y(400.0);
+    return QStringLiteral("<h2>Потребление</h2><svg viewBox='0 0 1200 220' role='img' aria-label='Общий ток УБСИ в миллиамперах по времени' style='width:100%;height:auto;background:#fafafa;border:1px solid #aaa'><line x1='%1' y1='%2' x2='%3' y2='%2' stroke='#c48a24' stroke-dasharray='5 4'/><text x='4' y='%4' font-size='12'>400 мА</text><polyline points='%5' fill='none' stroke='#238b67' stroke-width='2'/></svg><p class='muted'>Фактические точки: %6</p>")
+        .arg(left).arg(limitY).arg(width - 14.0).arg(limitY + 4.0)
+        .arg(polyline)
+        .arg([&points] {
+            QStringList labels;
+            double previous = -1.0;
+            for (const auto& point : points) {
+                if (std::abs(point.volts - previous) < 0.01) continue;
+                labels << QStringLiteral("%1 В → %2 мА")
+                    .arg(point.volts, 0, 'f', 1).arg(point.milliamperes, 0, 'f', 1);
+                previous = point.volts;
+            }
+            return labels.join(QStringLiteral(" · ")).toHtmlEscaped();
+        }());
+}
+
 void commit(QSaveFile& file)
 {
     if (!file.commit())
@@ -212,6 +300,7 @@ ProductionReportPaths writeProductionReport(
         << QStringLiteral("<tr><th>Окончание</th><td>") << iso(run.finishedAt) << QStringLiteral("</td></tr>")
         << QStringLiteral("<tr><th>Итог</th><td><b>") << verdictText(run.verdict) << QStringLiteral("</b></td></tr></tbody></table>");
 
+    out << supplyChart(run.events) << measurementChart(measurements);
     out << QStringLiteral("<h2>Состав изделия на момент запуска</h2><table><thead><tr><th>Ячейка</th><th>SN</th><th>Входит в пакет</th></tr></thead><tbody>");
     for (const auto& component : context.composition) {
         out << QStringLiteral("<tr><td>") << html(component.componentType)

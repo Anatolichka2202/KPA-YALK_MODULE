@@ -22,7 +22,7 @@ steps:
       startup_settle_ms: 500
 
   - id: yalk_stream
-    title: Режим ЯЛК 8 кГц и запись сырого потока
+    title: Запуск потока ЯЛК
     tu: 5.6 / ЯЛК
     procedure: yalk.start_stream
     requires:
@@ -31,9 +31,10 @@ steps:
     args:
       configure_settle_ms: 500
       timeout_ms: 3000
+      technical_retries: 3
 
   - id: yalk_calibration
-    title: Калибровка ЯЛК по адресам УЛК 97 и 99
+    title: Калибровка ЯЛК по адресам 97 и 99
     tu: 1.1.4.1, 1.1.4.14
     procedure: yalk.read_calibration
     requires:
@@ -62,7 +63,7 @@ steps:
       tolerance_percent_fs: 0.5
 
   - id: yalk_channels
-    title: Аналоговые и контактные сигналы ЯЛК в состояниях 0 и 1
+    title: Аналоговые и контактные сигналы 80 адресов ЯЛК
     tu: 1.1.4.1, 1.1.4.14
     procedure: yalk.check_channels
     requires:
@@ -73,6 +74,25 @@ steps:
     args:
       channel_count: 80
       point_volts: 0,3.1,6.2
+      sample_count: 16
+      settle_ms: 150
+      channel_off_settle_ms: 1000
+      full_scale_v: 6.2
+      tolerance_percent_fs: 0.5
+
+  - id: yalk_contact_thresholds
+    title: Контактные пороги всех адресов: 0 при 0,0 В, 0 при 0,9 В и 1 при 2,5 В
+    tu: 1.1.4.1
+    procedure: yalk.check_channels
+    requires:
+      - catalog.parameter_resolver
+      - ulk.parameter_source
+      - stand.switch_matrix
+      - measure.reference_voltage
+    args:
+      channel_count: 80
+      point_volts: 0,0.9,2.5
+      signal_expectations: 0,0,1
       sample_count: 16
       settle_ms: 150
       channel_off_settle_ms: 1000
@@ -95,13 +115,29 @@ steps:
       negative_overload_route: yalk_overload_negative
       sample_count: 4
       baseline_settle_ms: 1000
-      settle_ms: 150
-      full_scale_v: 6.2
-      tolerance_percent_fs: 0.5
+      overload_settle_ms: 10000
+      cleanup_settle_ms: 300
+      maximum_code_delta: 2
+
+  - id: yalk_reference_voltage
+    title: Эталон 6,2 ±0,03 В по В7 и адресу ЯЛК
+    tu: 1.1.4.9
+    procedure: ubsi.reference_voltage
+    requires:
+      - measure.reference_voltage
+      - catalog.parameter_resolver
+      - ulk.parameter_source
+    args:
+      nominal_v: 6.2
+      tolerance_v: 0.03
+      adapter_parameter_group: yalk_reference_supply
+      calibration_zero_parameter: yalk_calibration_zero
+      calibration_full_parameter: yalk_calibration_full
+      sample_count: 16
 
   - id: yalk_cleanup
-    title: Безопасный сброс ЯЛК и контроль отсутствия воздействия
-    tu: 5.6 / завершение проверки
+    title: Сброс ЯЛК и контроль отсутствия воздействия
+    tu: 5.6 / ЯЛК · завершение
     procedure: yalk.safe_cleanup
     requires:
       - ulk.parameter_source

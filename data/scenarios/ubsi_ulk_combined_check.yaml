@@ -23,6 +23,7 @@ steps:
       current_limit_a: 0.6
       off_settle_ms: 500
       timeout_ms: 30000
+      technical_retries: 3
 
   - id: supply_range
     title: Работа при 24 / 27 / 35 В, общий ток до 400 мА и выдержки 19 / 37 В
@@ -53,6 +54,7 @@ steps:
     args:
       configure_settle_ms: 500
       timeout_ms: 3000
+      technical_retries: 3
 
   - id: yalk_calibration
     title: Калибровка ЯЛК по адресам 97 и 99
@@ -185,6 +187,7 @@ steps:
       isd_route_channels: 3,9,12,17
       stream_settle_ms: 1000
       timeout_ms: 3000
+      technical_retries: 3
 
   - id: ytp_calibration
     title: Калибровка ЯТП по словам 32 и 31

@@ -178,6 +178,10 @@ void Registrar::initializeSchema()
         ")"), "create stage_runs");
 
     execOrThrow(database_, QStringLiteral(
+        "CREATE TABLE IF NOT EXISTS tu_run_links(product_id TEXT NOT NULL REFERENCES products(id),"
+        "run_id TEXT PRIMARY KEY,verdict TEXT NOT NULL,finished_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"),
+        "create TU run links");
+    execOrThrow(database_, QStringLiteral(
         "CREATE INDEX IF NOT EXISTS idx_product_components_active "
         "ON product_components(product_id, active)"), "index product_components");
     execOrThrow(database_, QStringLiteral(
@@ -557,6 +561,71 @@ ProductReport Registrar::productReport(const std::string& productId) const
     report.stageAttempts = listStageAttempts(productId);
     report.verdict = productVerdict(productId);
     return report;
+}
+
+void Registrar::attachTuRun(const std::string& productId,const std::string& runId,const std::string& verdict)
+{
+    ensureProduct(productId);
+    if(runId.empty()) throw std::invalid_argument("TU run id is empty");
+    QSqlQuery query(database_);
+    query.prepare("INSERT INTO tu_run_links(product_id,run_id,verdict) VALUES(?,?,?)");
+    query.addBindValue(QString::fromStdString(productId));query.addBindValue(QString::fromStdString(runId));query.addBindValue(QString::fromStdString(verdict));
+    if(!query.exec()) throwSql(query,"attach TU run");
+}
+std::vector<TuRunLink> Registrar::listTuRuns(const std::string& productId) const
+{
+    QSqlQuery query(database_);query.prepare("SELECT run_id,verdict,finished_at FROM tu_run_links WHERE product_id=? ORDER BY finished_at DESC");
+    query.addBindValue(QString::fromStdString(productId));if(!query.exec())throwSql(query,"list TU runs");
+    std::vector<TuRunLink> rows;while(query.next())rows.push_back({query.value(0).toString().toStdString(),query.value(1).toString().toStdString(),query.value(2).toString().toStdString()});return rows;
+}
+std::string Registrar::replaceComponent(const std::string& productId,const std::string& componentId,
+    const std::string& type,const std::string& serial,const std::string& reason)
+{
+    if(type.empty() || serial.empty() || reason.empty())
+        throw std::invalid_argument("replacement type, serial and reason are required");
+    ensureProduct(productId);
+    ensureComponent(componentId);
+    ensureActiveBinding(productId,componentId);
+    QSqlQuery oldType(database_);
+    oldType.prepare("SELECT component_type FROM components WHERE id=?");
+    oldType.addBindValue(QString::fromStdString(componentId));
+    if(!oldType.exec()) throwSql(oldType,"read replaced component type");
+    if(!oldType.next() || oldType.value(0).toString()!=QString::fromStdString(type))
+        throw std::invalid_argument("replacement component type does not match installed cell");
+
+    if(!database_.transaction())throw std::runtime_error("Cannot begin replacement transaction");
+    try {
+        const auto replacement=makeId();
+        const auto timestamp=nowUtc();
+        QSqlQuery create(database_);
+        create.prepare("INSERT INTO components(id,component_type,serial_number,created_at) VALUES(?,?,?,?)");
+        create.addBindValue(QString::fromStdString(replacement));
+        create.addBindValue(QString::fromStdString(type));
+        create.addBindValue(QString::fromStdString(serial));
+        create.addBindValue(timestamp);
+        if(!create.exec()) throwSql(create,"create replacement component");
+
+        QSqlQuery remove(database_);
+        remove.prepare("UPDATE product_components SET active=0,removed_at=?,removal_reason=? "
+                       "WHERE product_id=? AND component_id=? AND active=1");
+        remove.addBindValue(timestamp);
+        remove.addBindValue(QString::fromStdString(reason));
+        remove.addBindValue(QString::fromStdString(productId));
+        remove.addBindValue(QString::fromStdString(componentId));
+        if(!remove.exec()) throwSql(remove,"remove replaced component");
+        if(remove.numRowsAffected()!=1) throw std::logic_error("component was removed concurrently");
+
+        QSqlQuery install(database_);
+        install.prepare("INSERT INTO product_components(id,product_id,component_id,installed_at,active) "
+                        "VALUES(?,?,?,?,1)");
+        install.addBindValue(QString::fromStdString(makeId()));
+        install.addBindValue(QString::fromStdString(productId));
+        install.addBindValue(QString::fromStdString(replacement));
+        install.addBindValue(timestamp);
+        if(!install.exec()) throwSql(install,"install replacement component");
+        if(!database_.commit())throw std::runtime_error("Cannot commit replacement");
+        return replacement;
+    }catch(...){database_.rollback();throw;}
 }
 
 } // namespace ktma::registrar

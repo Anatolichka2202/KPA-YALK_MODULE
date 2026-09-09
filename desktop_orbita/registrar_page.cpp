@@ -19,6 +19,7 @@
 #include <QVBoxLayout>
 
 #include "registrar.h"
+#include "ktma/ubsi/production_ledger.h"
 
 namespace {
 
@@ -60,6 +61,17 @@ QString stageText(const QString& stage)
     return stage;
 }
 
+QString runVerdictText(const QString& verdict)
+{
+    if (verdict == QStringLiteral("OK") || verdict == QStringLiteral("NORM")) return QStringLiteral("НОРМА");
+    if (verdict == QStringLiteral("FAIL") || verdict == QStringLiteral("NOT_NORM")) return QStringLiteral("НЕ НОРМА");
+    if (verdict == QStringLiteral("ERROR") || verdict == QStringLiteral("STAND_ERROR")) return QStringLiteral("ОШИБКА СТЕНДА");
+    if (verdict == QStringLiteral("ABORTED") || verdict == QStringLiteral("STOPPED")) return QStringLiteral("ОСТАНОВЛЕНО");
+    if (verdict == QStringLiteral("INCOMPLETE")) return QStringLiteral("НЕПОЛНАЯ ПРОВЕРКА");
+    if (verdict == QStringLiteral("IN_PROGRESS")) return QStringLiteral("В РАБОТЕ");
+    return verdict;
+}
+
 } // namespace
 
 RegistrarPage::RegistrarPage(QWidget* parent)
@@ -82,12 +94,18 @@ RegistrarPage::RegistrarPage(QWidget* parent)
     layout->setSpacing(14);
 
     auto* headerRow = new QHBoxLayout;
-    auto* title = new QLabel(QStringLiteral("АДМИНИСТРИРОВАНИЕ · ИЗДЕЛИЯ"), this);
+    auto* title = new QLabel(QStringLiteral("УБСИ · ИЗДЕЛИЕ И СОСТАВ"), this);
     title->setStyleSheet(QStringLiteral("font-size:26px; font-weight:700; color:#f2f6fa;"));
     auto* homeButton = new QPushButton(QStringLiteral("НА ГЛАВНУЮ"), this);
     auto* historyButton = new QPushButton(QStringLiteral("ИСТОРИЯ ПРОГОНОВ"), this);
     headerRow->addWidget(title);
     headerRow->addStretch();
+    auto* productionButton=new QPushButton(QStringLiteral("ВЫБРАТЬ ПРОВЕРКУ"),this);
+    headerRow->addWidget(productionButton);
+    connect(productionButton,&QPushButton::clicked,this,[this]{
+        if(!selectedProductionProduct()) {statusLabel_->setText(QStringLiteral("Выберите изделие и этап."));return;}
+        emit productionRequested();
+    });
     headerRow->addWidget(historyButton);
     headerRow->addWidget(homeButton);
     layout->addLayout(headerRow);
@@ -411,10 +429,8 @@ void RegistrarPage::replaceComponent()
     try {
         // Create first: an error such as a duplicate component SN must not
         // remove a currently working cell from the product.
-        const auto replacementId = registrar_->createComponent(
-            type.toStdString(), serial.toStdString());
-        registrar_->removeComponent(productId.toStdString(), componentId.toStdString(), reason.toStdString());
-        registrar_->installComponent(productId.toStdString(), replacementId);
+        registrar_->replaceComponent(productId.toStdString(), componentId.toStdString(),
+            type.toStdString(), serial.toStdString(), reason.toStdString());
         replacementSerialEdit_->clear();
         replacementReasonEdit_->clear();
         refreshComposition();
@@ -454,12 +470,12 @@ void RegistrarPage::showStageHistory()
         }
 
         QDialog dialog(this);
-        dialog.setWindowTitle(QStringLiteral("История production runs · УБСИ № %1")
+        dialog.setWindowTitle(QStringLiteral("История проверок · УБСИ № %1")
             .arg(QString::fromStdString(report.product.serialNumber)));
         dialog.resize(1040, 420);
         auto* layout = new QVBoxLayout(&dialog);
         auto* caption = new QLabel(
-            QStringLiteral("Этапы, сохранённые в registrar.db. Legacy-записи доступны только для просмотра."),
+            QStringLiteral("Production, ПСИ по ТУ и legacy-этапы, сохранённые в registrar.db."),
             &dialog);
         caption->setStyleSheet(QStringLiteral("color:#9aa7b5;"));
         layout->addWidget(caption);
@@ -469,15 +485,21 @@ void RegistrarPage::showStageHistory()
         table->setHorizontalHeaderLabels({QStringLiteral("Этап"), QStringLiteral("Ячейка"),
             QStringLiteral("SN"), QStringLiteral("Итог"), QStringLiteral("run_id"),
             QStringLiteral("Завершено")});
-        table->setRowCount(static_cast<int>(report.stageAttempts.size()));
+        const auto tuRuns = registrar_->listTuRuns(productId.toStdString());
+        const auto productionRuns = productionLedger_
+            ? productionLedger_->listForProduct(productId.toStdString())
+            : std::vector<ktma::ubsi::ProductionRunRecord>{};
+        table->setRowCount(static_cast<int>(report.stageAttempts.size() + tuRuns.size()
+                                            + productionRuns.size()));
         table->setEditTriggers(QAbstractItemView::NoEditTriggers);
         table->setSelectionBehavior(QAbstractItemView::SelectRows);
         table->verticalHeader()->setVisible(false);
-        for (int row = 0; row < table->rowCount(); ++row) {
-            const auto& attempt = report.stageAttempts[static_cast<std::size_t>(row)];
+        int row = 0;
+        for (const auto& attempt : report.stageAttempts) {
             const QString componentId = QString::fromStdString(attempt.componentId);
             const QStringList values = {
-                stageText(QString::fromUtf8(ktma::registrar::toString(attempt.stage))),
+                QStringLiteral("Legacy / ячейка · %1").arg(
+                    stageText(QString::fromUtf8(ktma::registrar::toString(attempt.stage)))),
                 componentId.isEmpty() ? QStringLiteral("Весь блок") : componentId,
                 componentSerials.value(componentId, QStringLiteral("—")),
                 verdictText(attempt.verdict),
@@ -485,6 +507,28 @@ void RegistrarPage::showStageHistory()
                 QString::fromStdString(attempt.finishedAt)};
             for (int column = 0; column < values.size(); ++column)
                 table->setItem(row, column, new QTableWidgetItem(values[column]));
+            ++row;
+        }
+        for (const auto& production : productionRuns) {
+            const QStringList values = {
+                QStringLiteral("Production · %1 · %2")
+                    .arg(QString::fromUtf8(ktma::ubsi::toString(production.context.package)),
+                         stageText(QString::fromUtf8(ktma::registrar::toString(production.context.stage)))),
+                QStringLiteral("Весь блок"), QStringLiteral("—"),
+                runVerdictText(QString::fromUtf8(ktma::ubsi::toString(production.status))),
+                QString::fromStdString(production.runId),
+                QString::fromStdString(production.finishedAt)};
+            for (int column = 0; column < values.size(); ++column)
+                table->setItem(row, column, new QTableWidgetItem(values[column]));
+            ++row;
+        }
+        for (const auto& tu : tuRuns) {
+            const QStringList values = {QStringLiteral("ПСИ по ТУ"), QStringLiteral("Весь блок"),
+                QStringLiteral("—"), runVerdictText(QString::fromStdString(tu.verdict)),
+                QString::fromStdString(tu.runId), QString::fromStdString(tu.finishedAt)};
+            for (int column = 0; column < values.size(); ++column)
+                table->setItem(row, column, new QTableWidgetItem(values[column]));
+            ++row;
         }
         table->resizeColumnsToContents();
         table->horizontalHeader()->setStretchLastSection(true);
@@ -509,11 +553,14 @@ void RegistrarPage::showStageHistory()
             const QDir root(QCoreApplication::applicationDirPath());
             const QDir runDirectory(root.filePath(QStringLiteral("runs/") + runId));
             const QString productionReport = runDirectory.filePath(
+                QStringLiteral("Производственный_отчет_%1.html").arg(runId));
+            const QString channelReport = runDirectory.filePath(
                 QStringLiteral("Ведомость_каналов_%1.html").arg(runId));
             const QString tuReport = runDirectory.filePath(
                 QStringLiteral("Протокол_ТУ_%1.html").arg(runId));
             const QString reportPath = QFileInfo::exists(productionReport) ? productionReport
-                : QFileInfo::exists(tuReport) ? tuReport : QString();
+                : QFileInfo::exists(tuReport) ? tuReport
+                : QFileInfo::exists(channelReport) ? channelReport : QString();
             if (reportPath.isEmpty()) {
                 QMessageBox::information(&dialog, QStringLiteral("Отчёт"),
                     QStringLiteral("Файл отчёта для run %1 не найден.").arg(runId));

@@ -15,6 +15,7 @@
 #include <QtConcurrent/QtConcurrentRun>
 
 #include <functional>
+#include <algorithm>
 #include <stdexcept>
 
 namespace {
@@ -61,8 +62,10 @@ bool enabledFlag(const std::map<std::string, std::string>& config,
 KtmaMainWindow::KtmaMainWindow(QWidget* parent)
     : MainWindow(parent)
 {
+    setWindowTitle(QStringLiteral("MilTech Station · КТМА / УБСИ · 2.0"));
     auto* page = integrationTestPage();
     if (!page) return;
+    integrationUseUbsiEngineering();
 
     page->registerEquipmentRow(QStringLiteral("RIGOL"),
         QStringLiteral("Rigol DG-1022Z / ДГ10.2"), QStringLiteral("USB / VISA"),
@@ -70,11 +73,16 @@ KtmaMainWindow::KtmaMainWindow(QWidget* parent)
 
     integrationEnsureStandRuntime();
     loadProductionScenarios();
+    connect(integrationRegistrarPage(), &RegistrarPage::productionRequested,this,[this]{
+        integrationOpenTests();configureProductionSelector();
+    });
 
     try {
         const QDir root(QCoreApplication::applicationDirPath());
         productionLedger_ = std::make_unique<ktma::ubsi::ProductionLedger>(
             root.filePath(QStringLiteral("registrar.db")).toStdString());
+        if (auto* registrarPage = integrationRegistrarPage())
+            registrarPage->setProductionLedger(productionLedger_.get());
     } catch (const std::exception& error) {
         integrationLog(QStringLiteral("ProductionLedger не готов: %1")
             .arg(QString::fromUtf8(error.what())));
@@ -98,6 +106,7 @@ KtmaMainWindow::KtmaMainWindow(QWidget* parent)
         connect(home, &HomePage::productionRequested, this, [this] {
             QTimer::singleShot(0, this, [this] {
                 configureProductionSelector();
+                integrationOpenRegistrar();
                 checkRigolGenerator();
             });
         });
@@ -299,6 +308,7 @@ void KtmaMainWindow::runScenario(
             }
             if (auto* registrar = integrationRegistrar()) {
                 const auto product = registrar->findProductBySerial(serial);
+                pendingTuProductId_ = product ? product->id : std::string();
                 integrationLog(product
                     ? QStringLiteral("ТУ: изделие найдено в Registrar; production lifecycle не изменяется")
                     : QStringLiteral("ТУ: изделие в Registrar не найдено; прогон продолжен без создания записи"));
@@ -311,7 +321,18 @@ void KtmaMainWindow::runScenario(
                 QStringLiteral("Сценарий %1 не загружен").arg(effectiveCode)
                     .toUtf8().toStdString());
         }
-        const auto scenario = iterator.value();
+        auto scenario = iterator.value();
+        const bool omitYvp = !page->includeYvp() && effectiveCode != QStringLiteral("PROD_YVP");
+        bool yvpExcluded = false;
+        if (omitYvp) {
+            auto& steps = scenario.steps;
+            const auto originalCount = steps.size();
+            steps.erase(std::remove_if(steps.begin(), steps.end(), [](const auto& node) {
+                return node.id.rfind("yvp_", 0) == 0;
+            }), steps.end());
+            yvpExcluded = steps.size() != originalCount;
+            if (yvpExcluded) { scenario.title += " · без ЯВП"; scenario.version += "+without-yvp"; }
+        }
 
         if (productionContext) {
             pendingProductionContext_ = *productionContext;
@@ -326,14 +347,18 @@ void KtmaMainWindow::runScenario(
 
         const std::string profileVersion = integrationStandProfile().version;
         watcher->setFuture(QtConcurrent::run(
-            [this, engine, registry, scenario, profileVersion, serial, allowPartial]() {
-                return engine->run(scenario, *registry, profileVersion, serial, allowPartial,
+            [this, engine, registry, scenario, profileVersion, serial, allowPartial, yvpExcluded]() {
+                auto result = engine->run(scenario, *registry, profileVersion, serial, allowPartial,
                     [this](const orbita::stand::RunEvent& event) {
                         QMetaObject::invokeMethod(this, [this, event] {
                             if (auto* testPage = integrationTestPage())
                                 testPage->setRunEvent(event);
                         }, Qt::QueuedConnection);
                     });
+                if (yvpExcluded) result.events.insert(result.events.begin(), {
+                    result.startedAt, "scope", "SCOPE", "ЯВП исключена оператором; результат относится к выбранному объёму",
+                    orbita::stand::RunVerdict::NotRun, {{"yvp_included", "false"}}});
+                return result;
             }));
     } catch (const std::exception& error) {
         if (!pendingProductionRunId_.empty() && productionLedger_) {
@@ -343,6 +368,7 @@ void KtmaMainWindow::runScenario(
             } catch (...) {
             }
         }
+        pendingTuProductId_.clear();
         clearPendingProduction();
         page->setRunInProgress(false);
         QMessageBox::warning(this,
@@ -357,6 +383,15 @@ void KtmaMainWindow::runScenario(
 
 void KtmaMainWindow::finalizeProductionRun()
 {
+    if (!pendingTuProductId_.empty()) {
+        try {
+            if (integrationResultSaved()) {
+                const auto result=integrationScenarioWatcher()->result();
+                integrationRegistrar()->attachTuRun(pendingTuProductId_,result.runId,orbita::stand::toString(result.verdict));
+            }
+        } catch(const std::exception& error) { integrationLog(QString::fromUtf8(error.what())); }
+        pendingTuProductId_.clear();
+    }
     if (pendingProductionRunId_.empty() || !pendingProductionContext_
         || !productionLedger_) return;
     auto* watcher = integrationScenarioWatcher();
@@ -364,9 +399,9 @@ void KtmaMainWindow::finalizeProductionRun()
     if (!watcher || !page) return;
 
     const auto result = watcher->result();
-    const auto status = ktma::ubsi::productionStatusFromScenarioVerdict(result.verdict);
+    const auto status = integrationResultSaved() ? ktma::ubsi::productionStatusFromScenarioVerdict(result.verdict) : ktma::ubsi::ProductionRunStatus::StandError;
 
-    if (!result.runId.empty()) {
+    if (integrationResultSaved() && !result.runId.empty()) {
         try {
             productionLedger_->attachRun(pendingProductionRunId_, result.runId);
         } catch (const std::exception& error) {

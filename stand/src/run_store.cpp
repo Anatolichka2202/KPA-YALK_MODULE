@@ -95,6 +95,11 @@ RunStore::RunStore(std::string sqlitePath) : impl_(std::make_unique<Impl>())
              "CREATE TABLE IF NOT EXISTS run_events(run_id TEXT NOT NULL REFERENCES test_runs(run_id) ON DELETE CASCADE,sort_order INTEGER NOT NULL,timestamp_ms INTEGER NOT NULL,node_id TEXT NOT NULL,stage TEXT NOT NULL,message TEXT NOT NULL,verdict TEXT NOT NULL,PRIMARY KEY(run_id,sort_order))"}) {
         execute(query, QString::fromLatin1(sql));
     }
+    std::set<QString> eventColumns;
+    execute(query, QStringLiteral("PRAGMA table_info(run_events)"));
+    while (query.next()) eventColumns.insert(query.value(1).toString());
+    if (!eventColumns.count(QStringLiteral("attributes"))) execute(query,
+        QStringLiteral("ALTER TABLE run_events ADD COLUMN attributes TEXT NOT NULL DEFAULT ''"));
     std::set<QString> measurementColumns;
     execute(query, QStringLiteral("PRAGMA table_info(run_measurements)"));
     while (query.next()) measurementColumns.insert(query.value(1).toString());
@@ -127,13 +132,14 @@ void RunStore::save(const ScenarioRunResult& run)
             saveStep(impl_->database, run.runId, {}, run.steps[index], static_cast<unsigned>(index));
         }
         query.prepare(QStringLiteral(
-            "INSERT INTO run_events(run_id,sort_order,timestamp_ms,node_id,stage,message,verdict) VALUES(?,?,?,?,?,?,?)"));
+            "INSERT INTO run_events(run_id,sort_order,timestamp_ms,node_id,stage,message,verdict,attributes) VALUES(?,?,?,?,?,?,?,?)"));
         for (std::size_t index = 0; index < run.events.size(); ++index) {
             const auto& event = run.events[index];
             query.bindValue(0, QString::fromUtf8(run.runId)); query.bindValue(1, static_cast<unsigned>(index));
             query.bindValue(2, milliseconds(event.timestamp)); query.bindValue(3, QString::fromUtf8(event.nodeId));
             query.bindValue(4, QString::fromUtf8(event.stage)); query.bindValue(5, QString::fromUtf8(event.message));
-            query.bindValue(6, QString::fromLatin1(toString(event.verdict))); executePrepared(query); query.finish();
+            query.bindValue(6, QString::fromLatin1(toString(event.verdict)));
+            query.bindValue(7, attributesText(event.data)); executePrepared(query); query.finish();
         }
         if (!impl_->database.commit()) throw std::runtime_error(impl_->database.lastError().text().toUtf8().toStdString());
     } catch (...) {

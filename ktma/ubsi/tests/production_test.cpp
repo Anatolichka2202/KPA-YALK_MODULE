@@ -5,6 +5,7 @@
 
 #include <fstream>
 #include <iostream>
+#include <QCoreApplication>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -201,8 +202,9 @@ void separationContract()
 
 } // namespace
 
-int main()
+int main(int argc, char** argv)
 {
+    QCoreApplication app(argc, argv);
     try {
         compositionContract();
         mandatoryCompositionContract();

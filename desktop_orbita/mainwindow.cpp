@@ -895,9 +895,11 @@ void MainWindow::initializeStandRuntime()
             QString tuReportPath;
             QString productionReportPath;
             bool resultSaved = false;
+            lastResultSaved_ = false;
             try {
                 runStore_->save(result);
                 resultSaved = true;
+                lastResultSaved_ = true;
                 const QDir root(QCoreApplication::applicationDirPath());
                 const QString reportDir = root.filePath("runs/" + QString::fromStdString(result.runId));
                 const auto paths = orbita::stand::writeHtmlCsvReport(
@@ -1355,10 +1357,14 @@ void MainWindow::setEngineerMode(bool enabled)
     if (mainToolbar_) mainToolbar_->setVisible(enabled);
     if (menuBar()) menuBar()->setVisible(enabled);
     for (auto* action : {actMain_, actDetail_, actConfig_, actDb_}) {
-        if (action) action->setVisible(enabled);
+        if (action) action->setVisible(enabled && !ubsiEngineering_);
     }
     if (toolsMenu_) toolsMenu_->menuAction()->setVisible(enabled);
-    if (!enabled) setMode(ModeHome);
+    if (ubsiEngineering_) {
+        for (auto* dock : {configDock_, paramDock_, watchSetDock_}) if (dock) dock->hide();
+        for (auto* menuAction : menuBar()->actions())
+            if (menuAction->menu() && menuAction->menu() != toolsMenu_) menuAction->setVisible(false);
+    } else if (!enabled) setMode(ModeHome);
 }
 
 void MainWindow::setMode(int mode)

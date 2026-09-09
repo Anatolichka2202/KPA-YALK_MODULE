@@ -35,5 +35,6 @@ private:
 
     std::unique_ptr<ktma::ubsi::ProductionLedger> productionLedger_;
     std::string pendingProductionRunId_;
+    std::string pendingTuProductId_;
     std::optional<ktma::ubsi::ProductionRunContext> pendingProductionContext_;
 };

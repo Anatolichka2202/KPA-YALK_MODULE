@@ -43,6 +43,7 @@ steps:
       isd_route_channels: 3,9,12,17
       stream_settle_ms: 1000
       timeout_ms: 3000
+      technical_retries: 3
 
   - id: ytp_calibration
     title: Калибровка ЯТП по словам 32 и 31

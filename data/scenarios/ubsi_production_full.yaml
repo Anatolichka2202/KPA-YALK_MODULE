@@ -21,6 +21,7 @@ steps:
       current_limit_a: 0.6
       off_settle_ms: 500
       timeout_ms: 30000
+      technical_retries: 3
 
   - id: supply_range
     title: Питание / потребление / предельные напряжения
@@ -50,6 +51,7 @@ steps:
     args:
       configure_settle_ms: 500
       timeout_ms: 3000
+      technical_retries: 3
 
   - id: yalk_calibration
     title: Калибровка ЯЛК 97/99
@@ -181,6 +183,7 @@ steps:
       isd_route_channels: 3,9,12,17
       stream_settle_ms: 1000
       timeout_ms: 3000
+      technical_retries: 3
 
   - id: ytp_calibration
     title: Калибровка ЯТП 32/31

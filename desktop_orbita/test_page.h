@@ -18,6 +18,7 @@ class QCheckBox;
 class QTableWidget;
 class QTimer;
 class TestPlotWidget;
+class SupplyPlotWidget;
 class EquipmentControlWidget;
 
 class TestPage final : public QWidget
@@ -46,6 +47,7 @@ public:
                       const QString& tuReportPath = {},
                       const QString& productionReportPath = {});
     QString currentScenarioCode() const;
+    bool includeYvp() const;
 
     // Product integrations may add a device readiness row without taking over
     // TestPage internals. Used by UBSI Production for the Rigol generator.
@@ -114,12 +116,14 @@ private:
     QPushButton* productionReportButton_ = nullptr;
     QLineEdit* serialEdit_ = nullptr;
     QCheckBox* partialCheck_ = nullptr;
+    QCheckBox* yvpCheck_ = nullptr;
     QCheckBox* contactThresholdCheck_ = nullptr;
     QLabel* titleLabel_ = nullptr;
     QLabel* subtitleLabel_ = nullptr;
     QLabel* productionR4831Label_ = nullptr;
     QLabel* productionDiagnosticsLabel_ = nullptr;
     TestPlotWidget* plot_ = nullptr;
+    SupplyPlotWidget* supplyPlot_ = nullptr;
     EquipmentControlWidget* advancedControl_ = nullptr;
     QWidget* advancedContainer_ = nullptr;
     EquipmentInvoke equipmentInvoke_;

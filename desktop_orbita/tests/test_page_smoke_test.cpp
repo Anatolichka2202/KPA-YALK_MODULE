@@ -1,6 +1,7 @@
 #include "test_page.h"
 
 #include <QApplication>
+#include <QCheckBox>
 #include <QComboBox>
 #include <QPixmap>
 #include <QPushButton>
@@ -41,7 +42,11 @@ int main(int argc, char** argv)
     auto* mode = page.findChild<QComboBox*>(QStringLiteral("testMode"));
     auto* equipment = page.findChild<QTableWidget*>(QStringLiteral("equipmentTable"));
     auto* summary = page.findChild<QTableWidget*>(QStringLiteral("cellSummaryTable"));
-    require(object && scope && test && mode && equipment && summary, "test page controls not found");
+    auto* includeYvp = page.findChild<QCheckBox*>(QStringLiteral("includeYvp"));
+    auto* histogram = page.findChild<QWidget*>(QStringLiteral("channelHistogram"));
+    require(object && scope && test && mode && equipment && summary && includeYvp && histogram,
+            "test page controls not found");
+    require(!includeYvp->isChecked(), "YVP must be disabled by default in minimal delivery 2.0");
     require(equipment->columnCount() == 5,
             "equipment table must distinguish PC link, control type, status and diagnostics");
     require(object->count() == 1, "delivery UI must contain only ULK");
@@ -105,6 +110,8 @@ int main(int argc, char** argv)
             "YTP must show the adapter and manual resistance reference");
 
     page.setEngineerMode(false);
+    require(equipment->isVisibleTo(&page),
+            "operator must retain the equipment readiness table");
     require(equipment->isColumnHidden(1) && equipment->isColumnHidden(4),
             "operator mode must hide transport and plugin diagnostics");
     page.setEngineerMode(true);

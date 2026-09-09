@@ -7,6 +7,7 @@
 
 #include <chrono>
 #include <iostream>
+#include <QCoreApplication>
 #include <stdexcept>
 #include <string>
 
@@ -61,15 +62,20 @@ orbita::stand::ScenarioRunResult run()
     measurement.verdict = orbita::stand::RunVerdict::Error;
     measurement.message = "generator unavailable";
     measurement.attributes["yalk_address"] = "88";
+    measurement.attributes["reduced_error_percent"] = "-0.25";
     step.measurements.push_back(measurement);
     value.steps.push_back(step);
+    value.events.push_back({value.startedAt, "supply", "SUPPLY", "current",
+        orbita::stand::RunVerdict::NotRun,
+        {{"setpoint_v", "27"}, {"volts", "26.98"}, {"amperes", "0.21"}}});
     return value;
 }
 
 } // namespace
 
-int main()
+int main(int argc, char** argv)
 {
+    QCoreApplication app(argc, argv);
     try {
         require(ktma::ubsi::productionStatusFromScenarioVerdict(
                     orbita::stand::RunVerdict::Ok)
@@ -110,6 +116,9 @@ int main()
         const QByteArray body = html.readAll();
         require(body.contains("STAND_ERROR") || body.contains("ОШИБКА СТЕНДА"),
             "production report lost stand-error semantics");
+        require(body.contains("<svg") && body.contains("400 мА")
+                    && body.contains("Отклонения измерений"),
+            "production report must contain current and measurement charts");
 
         std::cout << "KTMA UBSI production report contract OK\n";
         return 0;

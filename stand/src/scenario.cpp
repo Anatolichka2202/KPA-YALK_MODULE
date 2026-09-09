@@ -26,6 +26,18 @@ bool isTerminalError(RunVerdict verdict)
     return verdict == RunVerdict::Error || verdict == RunVerdict::Aborted;
 }
 
+int technicalRetryLimit(const ScenarioNode& node)
+{
+    const auto found = node.arguments.find("technical_retries");
+    if (found == node.arguments.end()) return 0;
+    try {
+        const auto parsed = std::stoll(found->second);
+        return static_cast<int>(std::clamp<long long>(parsed, 0, 3));
+    } catch (...) {
+        return 0;
+    }
+}
+
 void validateNode(
     const ScenarioNode& node,
     const std::map<std::string, ProcedureFunction>& procedures,
@@ -150,27 +162,45 @@ StepRunResult ScenarioEngine::runNode(
             result.message = message.str();
             if (!allowPartial) stopTraversal = true;
         } else {
-            try {
-                const auto procedure = procedures_.find(node.procedure);
-                if (procedure == procedures_.end()) {
-                    result.verdict = RunVerdict::Incomplete;
-                    result.message = "Процедура не зарегистрирована: " + node.procedure;
-                    if (!allowPartial) stopTraversal = true;
-                } else {
-                    auto procedureResult = procedure->second(node, context);
-                    result.verdict = procedureResult.verdict;
-                    result.message = std::move(procedureResult.message);
-                    result.measurements = std::move(procedureResult.measurements);
-                    if (isTerminalError(result.verdict)) stopTraversal = true;
+            const auto procedure = procedures_.find(node.procedure);
+            if (procedure == procedures_.end()) {
+                result.verdict = RunVerdict::Incomplete;
+                result.message = "Процедура не зарегистрирована: " + node.procedure;
+                if (!allowPartial) stopTraversal = true;
+            } else {
+                const int retryLimit = technicalRetryLimit(node);
+                for (int attempt = 0; attempt <= retryLimit; ++attempt) {
+                    try {
+                        auto procedureResult = procedure->second(node, context);
+                        result.verdict = procedureResult.verdict;
+                        result.message = std::move(procedureResult.message);
+                        result.measurements = std::move(procedureResult.measurements);
+                    } catch (const std::exception& error) {
+                        result.verdict = RunVerdict::Error;
+                        result.message = error.what();
+                    } catch (...) {
+                        result.verdict = RunVerdict::Error;
+                        result.message = "Неизвестная ошибка процедуры";
+                    }
+
+                    if (context.stopRequested.load()) {
+                        break;
+                    }
+                    if (result.verdict != RunVerdict::Error || attempt == retryLimit) break;
+
+                    // A technical retry starts only after every plugin has
+                    // returned to its safe state. Product deviations and
+                    // incomplete commissioning steps are never retried here.
+                    context.equipment.safeStopAll();
+                    context.eventSink({std::chrono::system_clock::now(), node.id, "RETRY",
+                        "Техническая ошибка; безопасный сброс выполнен, повтор "
+                            + std::to_string(attempt + 1) + " из " + std::to_string(retryLimit),
+                        RunVerdict::Error,
+                        {{"attempt", std::to_string(attempt + 2)},
+                         {"max_retries", std::to_string(retryLimit)},
+                         {"error", result.message}}});
                 }
-            } catch (const std::exception& error) {
-                result.verdict = RunVerdict::Error;
-                result.message = error.what();
-                stopTraversal = true;
-            } catch (...) {
-                result.verdict = RunVerdict::Error;
-                result.message = "Неизвестная ошибка процедуры";
-                stopTraversal = true;
+                if (isTerminalError(result.verdict)) stopTraversal = true;
             }
         }
     }

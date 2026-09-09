@@ -119,6 +119,26 @@ std::vector<YalkSample> decodeYalk(const Instance& instance,
         : decodeYalkSlowFrame(payload);
 }
 
+struct MonitorWindow {
+    std::vector<double> sum, low, high;
+    std::vector<unsigned> count;
+    explicit MonitorWindow(unsigned n):sum(n,0),low(n,65536),high(n,0),count(n,0) {}
+    void add(unsigned i, double value) { sum[i]+=value; low[i]=std::min(low[i],value); high[i]=std::max(high[i],value); ++count[i]; }
+    std::string text() const {
+        std::ostringstream out;
+        for (const auto* field : {"mean", "min", "max"}) {
+            out << "background_" << field << "=";
+            for (unsigned i=0;i<count.size();++i) {
+                if(i) out << ',';
+                if(!count[i]) out << "nan";
+                else out << (std::string(field)=="mean" ? sum[i]/count[i] : std::string(field)=="min" ? low[i] : high[i]);
+            }
+            out << '\n';
+        }
+        return out.str();
+    }
+};
+
 std::string readChannel(Instance& instance, const std::map<std::string, std::string>& args)
 {
     const unsigned address = plugin::unsignedValue(args, "ulk_address");
@@ -127,6 +147,7 @@ std::string readChannel(Instance& instance, const std::map<std::string, std::str
     std::uint64_t sequence = plugin::unsignedValue(args, "after_sequence",
                                                     static_cast<unsigned>(instance.transport->stats().lastSequence));
     std::uint64_t firstSequence = 0;
+    MonitorWindow background(100);
     double rawSum = 0.0;
     double codeSum = 0.0;
     unsigned signalOnes = 0;
@@ -137,6 +158,7 @@ std::string readChannel(Instance& instance, const std::map<std::string, std::str
         if (!firstSequence) firstSequence = frame.sequence;
         sequence = frame.sequence;
         const auto words = decodeYalk(instance, frame.payload);
+        for(unsigned i=0;i<words.size();++i) background.add(i,words[i].analogCode);
         const auto& value = words[address - 1];
         rawSum += value.rawWord;
         codeSum += value.analogCode;
@@ -157,6 +179,7 @@ std::string readChannel(Instance& instance, const std::map<std::string, std::str
         << "\nanalog_code_samples=" << codeSamples.str()
         << "\nfirst_sequence=" << firstSequence
         << "\nlast_sequence=" << sequence << '\n';
+    out << background.text();
     return out.str();
 }
 
@@ -174,6 +197,7 @@ std::string readYtpChannel(Instance& instance,
     std::uint64_t sequence = plugin::unsignedValue(args, "after_sequence",
         static_cast<unsigned>(instance.transport->stats().lastSequence));
     std::uint64_t firstSequence = 0;
+    MonitorWindow background(30);
     double rawSum = 0.0;
     unsigned validSamples = 0;
     unsigned invalidSamples = 0;
@@ -188,6 +212,7 @@ std::string readYtpChannel(Instance& instance,
         std::uint16_t raw = 0;
         if (instance.ytpRokt68) {
             const auto decoded = decodeYtpRokt68Frame(frame.payload);
+            for(unsigned i=0;i<30;++i) if(!isYtpNoMeasurementRaw(decoded.channelRaw[i])) background.add(i,decoded.channelRaw[i]);
             if (address <= decoded.channelRaw.size()) raw = decoded.channelRaw[address - 1];
             else if (address == 31) raw = decoded.calibrationCandidate31Raw;
             else raw = decoded.calibrationCandidate32Raw;
@@ -220,6 +245,7 @@ std::string readYtpChannel(Instance& instance,
         << "\nraw_samples=" << rawSamples.str()
         << "\nfirst_sequence=" << firstSequence
         << "\nlast_sequence=" << sequence << '\n';
+    out << background.text();
     return out.str();
 }
 

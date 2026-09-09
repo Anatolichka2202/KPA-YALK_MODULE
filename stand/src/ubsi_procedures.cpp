@@ -675,6 +675,24 @@ unsigned ulkLastSequence(ProcedureContext& context)
         "ulk.parameter_source", "stats", {}), "last_sequence");
 }
 
+void publishBackground(ProcedureContext& context, const std::map<std::string,std::string>& values, bool ytp)
+{
+    if(!values.count("background_mean")) return;
+    const std::string zeroKey=ytp ? "ytp.calibration_zero_raw" : "yalk.zero_code";
+    const std::string fullKey=ytp ? "ytp.calibration_full_raw" : "yalk.full_code";
+    if(!context.state.count(zeroKey) || !context.state.count(fullKey)) return;
+    const double zero=std::stod(context.state.at(zeroKey)), full=std::stod(context.state.at(fullKey));
+    if(!(full>zero)) return;
+    std::map<std::string,std::string> data{{"section",ytp ? "YTP":"YALK"}};
+    for(const auto* key:{"background_mean","background_min","background_max"}) {
+        if(!values.count(key)) return;
+        std::istringstream input(values.at(key)); std::ostringstream output; std::string token; bool first=true;
+        while(std::getline(input,token,',')) { if(!first)output<<',';first=false;output<<(std::stod(token)-zero)*(ytp ? 240.0:6.2)/(full-zero); }
+        data[key]=output.str();
+    }
+    context.eventSink({std::chrono::system_clock::now(), "monitor", "BACKGROUND", "Колебания всех каналов; диагностическая выборка", RunVerdict::NotRun, data});
+}
+
 UlkChannelValue readUlkChannel(
     ProcedureContext& context, unsigned address, unsigned samples, unsigned afterSequence)
 {
@@ -684,6 +702,7 @@ UlkChannelValue readUlkChannel(
         {"after_sequence", std::to_string(afterSequence)},
         {"timeout_ms", "3000"}});
     const auto values = responseValues(response);
+    publishBackground(context, values, false);
     return {
         responseNumber(response, "raw_mean"),
         responseNumber(response, "analog_code_mean"),
@@ -1215,6 +1234,15 @@ ProcedureResult referenceVoltage(const ScenarioNode& node, ProcedureContext& con
     ProcedureResult result{RunVerdict::Ok, "Проверено эталонное напряжение", {}};
     const double nominal = number(node, "nominal_v", 6.2);
     const double tolerance = number(node, "tolerance_v", 0.03);
+    if (argument(node, "adapter_parameter_group") == "yalk_voltage") {
+        ScenarioNode check = node;
+        check.arguments["channel_count"] = "1";
+        check.arguments["point_volts"] = std::to_string(nominal);
+        check.arguments["signal_expectations"] = "1";
+        check.arguments["full_scale_v"] = "6.2";
+        check.arguments["tolerance_percent_fs"] = std::to_string(tolerance / 6.2 * 100.0);
+        return yalkCheckChannels(check, context);
+    }
     const double v7 = readReferenceVoltage(context);
     append(result, measurement("ubsi.reference_6v2", "Эталонное напряжение по В7", nominal,
         v7, nominal - tolerance, nominal + tolerance, "В"));
@@ -1271,6 +1299,7 @@ YtpRawValue readYtpRaw(ProcedureContext& context, const std::string& parameterGr
             {"parameter_group", parameterGroup},
             {"sample_count", std::to_string(samples)}});
     const auto values = responseValues(response);
+    publishBackground(context, values, true);
     const double rawMean = responseNumber(response, "raw_mean");
     const double raw = binding.mask == 0xFFFF && binding.shift == 0
         ? rawMean

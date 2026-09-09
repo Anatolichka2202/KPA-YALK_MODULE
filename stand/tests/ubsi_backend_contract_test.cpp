@@ -202,6 +202,7 @@ ScenarioDefinition oneStep(std::string procedure,
     ScenarioNode node;
     node.id = "step";
     node.title = "step";
+    node.tuRequirement = "5.6";
     node.procedure = std::move(procedure);
     node.arguments = std::move(arguments);
     scenario.steps.push_back(std::move(node));
@@ -248,7 +249,7 @@ void procedureRuntimeContract()
         {"settle_ms", "0"}, {"restore_voltage_v", "27"}}),
         supplyEquipment, "p", "", false);
     require(supplyEquipment.hardwareCurrentLimit == 0.6,
-        "hardware current limit must be configured independently at 0.6 A");
+        "hardware current limit must be configured independently at 0.6 A: " + supplyRun.steps.front().message);
     require(supplyRun.verdict == RunVerdict::Fail,
         "0.41 A whole-block consumption at 35 V must fail the 0.4 A criterion");
     require(!supplyRun.steps.empty(), "supply contract must produce a step result");

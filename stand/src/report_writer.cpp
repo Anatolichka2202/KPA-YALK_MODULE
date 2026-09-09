@@ -315,6 +315,13 @@ ReportPaths writeHtmlCsvReport(const ScenarioRunResult& run, const std::string& 
             break;
         }
     }
+    const bool yvpExcluded = std::any_of(run.events.begin(), run.events.end(),
+        [](const RunEvent& event) {
+            const auto found = event.data.find("yvp_included");
+            return found != event.data.end() && found->second == "false";
+        });
+    const QString resultText = localVerdict(run.verdict)
+        + (yvpExcluded ? QStringLiteral(" · ЯВП не выполнялась") : QString());
     QSaveFile tu(tuPath);
     if (!tu.open(QIODevice::WriteOnly | QIODevice::Text)) {
         throw std::runtime_error(tu.errorString().toUtf8().toStdString());
@@ -326,7 +333,7 @@ ReportPaths writeHtmlCsvReport(const ScenarioRunResult& run, const std::string& 
           << QStringLiteral("<tr><th>Дата</th><td>") << iso(run.finishedAt) << QStringLiteral("</td></tr>")
           << QStringLiteral("<tr><th>Блок</th><td>") << (run.objectSerial.empty() ? QStringLiteral("не указан") : escape(run.objectSerial)) << QStringLiteral("</td></tr>")
           << QStringLiteral("<tr><th>Оператор</th><td>") << operatorName << QStringLiteral("</td></tr>")
-          << QStringLiteral("<tr><th>Результат</th><td><b>") << localVerdict(run.verdict) << QStringLiteral("</b></td></tr></table></body></html>");
+          << QStringLiteral("<tr><th>Результат</th><td><b>") << resultText << QStringLiteral("</b></td></tr></table></body></html>");
     brief.flush();
     commit(tu);
     return {tuPath.toUtf8().toStdString(), csvPath.toUtf8().toStdString(),

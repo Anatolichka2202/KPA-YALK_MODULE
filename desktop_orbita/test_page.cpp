@@ -13,6 +13,10 @@
 #include <QButtonGroup>
 #include <QPainter>
 #include <QPainterPath>
+#include <QMouseEvent>
+#include <QToolTip>
+#include <algorithm>
+#include <cmath>
 #include <QProgressBar>
 #include <QPushButton>
 #include <QScrollArea>
@@ -50,189 +54,162 @@ class Plot : public QWidget
 public:
     explicit Plot(QWidget* parent = nullptr) : QWidget(parent)
     {
-        setMinimumHeight(300);
+        setMinimumHeight(480);
+        setMouseTracking(true);
+        setObjectName("channelHistogram");
     }
-
-    void clear()
-    {
-        points_.clear();
-        selectedChannel_.clear();
-        selectedPoint_.clear();
-        update();
-    }
-
+    void clear() { points_.clear(); selectedChannel_.clear(); selectedPoint_.clear(); update(); }
     void addPoint(double reference, double measured, const QString& label = {})
-    {
-        addMeasurement(label, QString(), reference, measured, 0.0, false, true, {});
-    }
-
-    void addMeasurement(const QString& channel, const QString& point,
-                        double reference, double measured, double raw,
-                        bool signal, bool passed, const QString& sampleText,
-                        double sampleScale = 1.0)
+    { addMeasurement(label, {}, reference, measured, 0, false, true, {}); }
+    void addMeasurement(const QString& channel, const QString& point, double reference,
+                        double measured, double raw, bool signal, bool passed,
+                        const QString& sampleText, double sampleScale = 1.0)
     {
         Sample item{channel, point, reference, measured, raw, signal, passed, {}};
-        for (const auto& token : sampleText.split(',', Qt::SkipEmptyParts))
-            item.samples.push_back(token.toDouble() * sampleScale);
-        points_.push_back(item);
-        if (!channel.isEmpty()) selectedChannel_ = channel;
+        for (const auto& token : sampleText.split(',', Qt::SkipEmptyParts)) {
+            bool ok = false; const double v = token.toDouble(&ok) * sampleScale;
+            if (ok && std::isfinite(v)) item.samples.push_back(v);
+        }
+        bool replaced = false;
+        for (auto& old : points_) if (old.channel == channel && old.point == point) {
+            old = item; replaced = true; break;
+        }
+        if (!replaced) points_.push_back(item);
+        if (!pinned_ || selectedChannel_.isEmpty()) selectedChannel_ = channel;
         if (!point.isEmpty()) selectedPoint_ = point;
         update();
     }
-
-    void selectChannel(const QString& channel)
-    {
-        if (!channel.isEmpty()) selectedChannel_ = channel;
+    void setBackground(const orbita::stand::RunEvent& event) {
+        auto& window = background_[QString::fromStdString(event.data.at("section"))];
+        window.clear();
+        for(const auto* key:{"background_mean","background_min","background_max"}) {
+            QVector<double> values;
+            const auto it=event.data.find(key); if(it==event.data.end()) return;
+            for(const auto& token:QString::fromStdString(it->second).split(',')) values.push_back(token.toDouble());
+            window.push_back(values);
+        }
         update();
     }
-
-    void configure(double minimum, double maximum, const QString& maximumLabel,
-                   const QString& minimumLabel, const QString& axisText,
-                   const QString& referenceLegend, const QString& measuredLegend)
-    {
-        minimum_ = minimum;
-        maximum_ = maximum;
-        maximumLabel_ = maximumLabel;
-        minimumLabel_ = minimumLabel;
-        axisText_ = axisText;
-        referenceLegend_ = referenceLegend;
-        measuredLegend_ = measuredLegend;
-        clear();
-    }
-
+    void selectChannel(const QString& channel) { selectedChannel_ = channel; pinned_ = true; update(); }
+    void configure(double, double, const QString&, const QString&, const QString&,
+                   const QString&, const QString&) { pinned_ = false; clear(); }
 protected:
-    void paintEvent(QPaintEvent*) override
-    {
-        QPainter painter(this);
-        painter.setRenderHint(QPainter::Antialiasing);
-        painter.fillRect(rect(), QColor("#0e1115"));
-
-        if (points_.isEmpty()) {
-            painter.setPen(QColor("#7e8a98"));
-            painter.drawText(rect(), Qt::AlignCenter,
-                QStringLiteral("Во время проверки появятся:\n"
-                               "динамика выбранного канала и обзор отклонений по каналам"));
-            return;
-        }
-
-        const QRectF trace = QRectF(50, 28, width() - 70, height() * 0.52);
-        const QRectF overview = QRectF(50, trace.bottom() + 42, width() - 70,
-                                       height() - trace.bottom() - 68);
-        painter.setPen(QColor("#2c333d"));
-        painter.drawRect(trace);
-        painter.drawRect(overview);
-
-        QVector<const Sample*> selected;
-        for (const auto& item : points_)
-            if (item.channel == selectedChannel_) selected.push_back(&item);
-        if (selected.isEmpty()) selected.push_back(&points_.back());
-
-        QVector<double> referenceTrace;
-        QVector<double> measuredTrace;
-        QVector<int> boundaries;
-        for (const auto* item : selected) {
-            const int count = qMax(1, item->samples.size());
-            for (int i = 0; i < count; ++i) {
-                referenceTrace.push_back(item->reference);
-                measuredTrace.push_back(item->samples.isEmpty() ? item->measured : item->samples[i]);
-            }
-            boundaries.push_back(measuredTrace.size());
-        }
-
-        auto yFor = [&](double value) {
-            const double span = qMax(0.000001, maximum_ - minimum_);
-            return trace.bottom() - qBound(0.0, (value - minimum_) / span, 1.0) * trace.height();
-        };
-        auto drawTrace = [&](const QVector<double>& values, const QColor& color, Qt::PenStyle style) {
-            if (values.isEmpty()) return;
-            QPainterPath path;
-            for (int i = 0; i < values.size(); ++i) {
-                const double x = trace.left() + (values.size() == 1 ? trace.width() / 2.0
-                    : trace.width() * i / static_cast<double>(values.size() - 1));
-                const double y = yFor(values[i]);
-                if (i == 0) path.moveTo(x, y); else path.lineTo(x, y);
-            }
-            painter.setPen(QPen(color, 2.0, style));
-            painter.drawPath(path);
-        };
-        drawTrace(referenceTrace, QColor("#55b7ff"), Qt::DashLine);
-        drawTrace(measuredTrace, QColor("#70d79b"), Qt::SolidLine);
-
-        painter.setPen(QColor("#e6eaf0"));
-        painter.drawText(QRectF(trace.left(), 4, trace.width(), 20), Qt::AlignLeft,
-            QStringLiteral("Канал %1 · динамика 16 свежих кадров на каждой точке")
-                .arg(selectedChannel_.isEmpty() ? QStringLiteral("—") : selectedChannel_));
-        painter.setPen(QColor("#8b95a3"));
-        painter.drawText(5, static_cast<int>(trace.top()) + 5, maximumLabel_);
-        painter.drawText(12, static_cast<int>(trace.bottom()), minimumLabel_);
-        int previous = 0;
-        for (int i = 0; i < selected.size(); ++i) {
-            const int end = boundaries.value(i);
-            const double centerIndex = (previous + end - 1) / 2.0;
-            const double x = trace.left() + (referenceTrace.size() <= 1 ? trace.width() / 2.0
-                : trace.width() * centerIndex / (referenceTrace.size() - 1));
-            painter.drawText(QRectF(x - 42, trace.bottom() + 3, 84, 18),
-                             Qt::AlignCenter, selected[i]->point);
-            previous = end;
-        }
-        painter.setPen(QColor("#55b7ff"));
-        painter.drawText(static_cast<int>(trace.right()) - 190, 20, referenceLegend_);
-        painter.setPen(QColor("#70d79b"));
-        painter.drawText(static_cast<int>(trace.right()) - 92, 20, measuredLegend_);
-
-        QVector<const Sample*> overviewItems;
-        for (const auto& item : points_)
-            if (item.point == selectedPoint_) overviewItems.push_back(&item);
-        const int count = overviewItems.size();
-        double maxError = 0.001;
-        for (const auto* item : overviewItems)
-            maxError = qMax(maxError, qAbs(item->measured - item->reference));
-        painter.setPen(QColor("#e6eaf0"));
-        painter.drawText(QRectF(overview.left(), trace.bottom() + 23, overview.width(), 18),
-            Qt::AlignLeft, QStringLiteral("Все каналы · точка %1 · отклонение от эталона")
-                .arg(selectedPoint_.isEmpty() ? QStringLiteral("—") : selectedPoint_));
-        if (count > 0) {
-            const double barWidth = qMax(2.0, overview.width() / count - 2.0);
-            for (int i = 0; i < count; ++i) {
-                const auto* item = overviewItems[i];
-                const double error = qAbs(item->measured - item->reference);
-                const double h = qMax(2.0, error / maxError * (overview.height() - 16));
-                const double x = overview.left() + i * overview.width() / count + 1;
-                painter.fillRect(QRectF(x, overview.bottom() - h, barWidth, h),
-                                 item->passed ? QColor("#20a567") : QColor("#e05252"));
-                if (i % qMax(1, count / 10) == 0) {
-                    painter.setPen(QColor("#8b95a3"));
-                    painter.drawText(QRectF(x - 7, overview.bottom() + 2, 28, 16),
-                                     Qt::AlignCenter, item->channel);
-                }
-            }
-        }
-        painter.setPen(QColor("#8b95a3"));
-        painter.drawText(QRectF(overview.right() - 230, trace.bottom() + 23, 230, 18),
-            Qt::AlignRight, QStringLiteral("зелёный — норма · красный — не норма"));
+    void mousePressEvent(QMouseEvent* e) override {
+        for (const auto& hit : hits_) if (hit.first.contains(e->position())) { selectChannel(hit.second); break; }
     }
-
+    void mouseMoveEvent(QMouseEvent* e) override {
+        for (const auto& hit : hits_) if (hit.first.contains(e->position())) {
+            for (const auto& p : points_) if (p.channel == hit.second && p.point == selectedPoint_) {
+                const auto mm = limits(p);
+                QToolTip::showText(e->globalPosition().toPoint(), QStringLiteral(
+                    "Канал %1 · %2\nЭталон: %3 · измерено: %4\nОтклонение: %5 % шкалы\nmin %6 · max %7 · размах %8\nКолебания — диагностика, без отдельного вердикта")
+                    .arg(p.channel, p.point, QString::number(p.reference,'f',5), QString::number(p.measured,'f',5),
+                         QString::number(error(p),'f',4), QString::number(mm.first,'f',5),
+                         QString::number(mm.second,'f',5), QString::number(mm.second-mm.first,'f',5)), this);
+                return;
+            }
+        }
+        QToolTip::hideText();
+    }
+    void paintEvent(QPaintEvent*) override {
+        QPainter p(this); p.setRenderHint(QPainter::Antialiasing);
+        p.fillRect(rect(), QColor("#0e1115")); hits_.clear();
+        p.setPen(QColor("#aab8c5"));
+        if (points_.isEmpty()) {
+            p.drawText(rect(), Qt::AlignCenter, QStringLiteral("Все каналы · отклонение от эталона\nЗначения и колебания появятся при измерении")); return;
+        }
+        const bool ytp = selectedPoint_.contains(QStringLiteral("Ом"));
+        const QString unit = ytp ? QStringLiteral("Ом") : QStringLiteral("В");
+        // Small detail trace; each section retains its own physical units.
+        const QRectF trace(55, 25, width()-80, 60);
+        QVector<double> values;
+        for (const auto& item : points_) if (item.channel == selectedChannel_ && item.point == selectedPoint_) {
+            values = item.samples; if (values.isEmpty()) values.push_back(item.measured);
+        }
+        p.drawText(QRectF(55,2,width()-80,20), QStringLiteral("%1 · канал %2 · свежие отсчёты, %3")
+            .arg(ytp ? QStringLiteral("ЯТП") : QStringLiteral("ЯЛК"), selectedChannel_,unit));
+        if (!values.isEmpty()) {
+            const auto mm = std::minmax_element(values.begin(),values.end());
+            const double pad = qMax(0.001, (*mm.second-*mm.first)*0.2);
+            const double low=*mm.first-pad, high=*mm.second+pad;
+            p.setPen(QColor("#34404c")); p.drawRect(trace);
+            p.setPen(QColor("#91a0af"));
+            p.drawText(0,38,QString::number(high,'f',3)); p.drawText(0,85,QString::number(low,'f',3));
+            QPainterPath line;
+            for (int i=0;i<values.size();++i) {
+                const QPointF q(trace.left()+trace.width()*i/qMax(1,values.size()-1), trace.bottom()-(values[i]-low)/(high-low)*trace.height());
+                if (i==0) line.moveTo(q); else line.lineTo(q);
+            }
+            p.setPen(QPen(QColor("#6bdbb4"),1.5));p.drawPath(line);
+        }
+        QVector<QString> channels;
+        if (ytp) { for (int i=1;i<=30;++i) channels.push_back(QString::number(i)); }
+        else { for(int i=1;i<=87;++i) if(i<=28 || (i>=32&&i<=43) || (i>=45&&i<=70) || i>=74) channels.push_back(QString::number(i)); }
+        p.setPen(QColor("#dce6ef"));
+        p.drawText(QRectF(55,99,width()-80,22), QStringLiteral("ВСЕ КАНАЛЫ · %1 · γ, % шкалы · допуск ±0,5 %").arg(selectedPoint_));
+        p.setPen(QColor("#95a5b4"));
+        p.drawText(QRectF(55,122,width()-80,20),QStringLiteral("Над столбцом: измерено, %1 · фоновая полоса: min…max выборки · клик: выбрать канал").arg(unit));
+        const int rows=ytp ? 1 : 2, perRow=ytp ? 30 : 40;
+        const double rowHeight=(height()-188.0)/rows;
+        double extent=0.65;
+        for(const auto& item:points_) if(item.point==selectedPoint_) {
+            auto mm=limits(item); const double fs=ytp ? 240 : 6.2;
+            extent=qMax(extent,qMax(std::abs((mm.first-item.reference)/fs*100),std::abs((mm.second-item.reference)/fs*100))*1.2);
+            extent=qMax(extent,std::abs(error(item))*1.2);
+        }
+        const auto bg=background_.value(ytp ? "YTP":"YALK");
+        double maxSpan=0.000001;
+        if(bg.size()==3) for(int i=0;i<bg[0].size();++i) if(std::isfinite(bg[1][i])&&std::isfinite(bg[2][i])) maxSpan=qMax(maxSpan,bg[2][i]-bg[1][i]);
+        p.setPen(QColor("#90b7d2"));
+        p.drawText(QRectF(55,height()-24,width()-80,20),QStringLiteral("Фоновый контроль всех каналов · максимальный размах окна: %1 %2 · без отдельного допуска").arg(QString::number(maxSpan,'f',5),unit));
+        for(int row=0;row<rows;++row) {
+            const QRectF area(55,151+row*rowHeight,width()-80,rowHeight-28);
+            const auto y=[&](double v){return area.center().y()-v/extent*(area.height()/2-26);};
+            for(double tick:{-0.5,0.0,0.5}) {
+                p.setPen(QPen(QColor(tick==0 ? "#8493a0" : "#5b6170"),1,tick==0 ? Qt::SolidLine : Qt::DashLine));
+                p.drawLine(QPointF(area.left(),y(tick)),QPointF(area.right(),y(tick)));
+                p.drawText(QRectF(0,y(tick)-8,50,16),Qt::AlignRight,QString::number(tick,'f',1));
+            }
+            const int n=qMin(perRow,channels.size()-row*perRow); const double dx=area.width()/n;
+            for(int i=0;i<n;++i) {
+                const QString channel=channels[row*perRow+i]; const double x=area.left()+i*dx;
+                const Sample* item=nullptr;
+                for(const auto& candidate:points_) if(candidate.channel==channel && candidate.point==selectedPoint_) item=&candidate;
+                hits_.push_back({QRectF(x,area.top(),dx,area.height()+22),channel});
+                if(channel==selectedChannel_) p.fillRect(QRectF(x,area.top(),dx,area.height()),QColor("#1c2b37"));
+                p.setPen(QColor("#a7b6c5"));p.setFont(QFont("Segoe UI",8));
+                p.drawText(QRectF(x,area.bottom()+3,dx,18),Qt::AlignCenter,channel);
+                const int bi=channel.toInt()-1;
+                if(bg.size()==3 && bi>=0 && bi<bg[0].size() && std::isfinite(bg[0][bi])) {
+                    const double h=qMax(1.0,(bg[2][bi]-bg[1][bi])/maxSpan*16);
+                    p.fillRect(QRectF(x+2,area.bottom()-h,dx-4,h),QColor(85,156,209,65));
+                }
+                if(!item) {p.setPen(QColor("#586572"));p.drawText(QRectF(x,y(0)-18,dx,16),Qt::AlignCenter,QStringLiteral("·"));continue;}
+                const double e=error(*item), yy=y(e), zero=y(0);
+                const auto mm=limits(*item);const double fs=ytp ? 240:6.2;
+                const double top=y((mm.second-item->reference)/fs*100), bottom=y((mm.first-item->reference)/fs*100);
+                p.fillRect(QRectF(x+2,top,dx-4,qMax(2.0,bottom-top)),QColor(102,169,222,95));
+                p.fillRect(QRectF(x+dx*.25,qMin(yy,zero),dx*.5,qMax(2.0,std::abs(yy-zero))),QColor(item->passed ? "#27b586":"#e96769"));
+                p.setPen(QColor("#dbe8ef"));p.setFont(QFont("Segoe UI",7));
+                p.save();p.translate(x+dx/2,area.top()+20);p.rotate(-45);
+                p.drawText(QRectF(-10,-13,55,15),QString::number(item->measured,'f',3));p.restore();
+                p.setPen(QColor("#9aafbf"));
+                p.drawText(QRectF(x-5,area.bottom()-14,dx+10,14),Qt::AlignCenter,QString::number(e,'f',2));
+            }
+        }
+    }
 private:
-    struct Sample {
-        QString channel;
-        QString point;
-        double reference = 0.0;
-        double measured = 0.0;
-        double raw = 0.0;
-        bool signal = false;
-        bool passed = true;
-        QVector<double> samples;
-    };
+    struct Sample {QString channel,point;double reference,measured,raw;bool signal,passed;QVector<double> samples;};
+    static double error(const Sample& p) { return (p.measured-p.reference)/(p.point.contains(QStringLiteral("Ом"))?240.0:6.2)*100; }
+    static std::pair<double,double> limits(const Sample& p) {
+        if(p.samples.isEmpty()) return {p.measured,p.measured};
+        auto mm=std::minmax_element(p.samples.begin(),p.samples.end());return {*mm.first,*mm.second};
+    }
+    QHash<QString,QVector<QVector<double>>> background_;
     QVector<Sample> points_;
-    QString selectedChannel_;
-    QString selectedPoint_;
-    double minimum_ = 0.0;
-    double maximum_ = 6.2;
-    QString maximumLabel_ = QStringLiteral("6,2 В");
-    QString minimumLabel_ = QStringLiteral("0 В");
-    QString axisText_ = QStringLiteral("Точки воздействия: 0 · 3,1 · 6,2 В");
-    QString referenceLegend_ = QStringLiteral("— В7-78/1");
-    QString measuredLegend_ = QStringLiteral("— ЯЛК");
+    QVector<QPair<QRectF,QString>> hits_;
+    QString selectedChannel_,selectedPoint_;
+    bool pinned_=false;
 };
 
 QLabel* makeSectionTitle(const QString& text)
@@ -261,6 +238,72 @@ class TestPlotWidget final : public Plot
 {
 public:
     using Plot::Plot;
+};
+
+class SupplyPlotWidget final : public QWidget
+{
+public:
+    explicit SupplyPlotWidget(QWidget* parent = nullptr) : QWidget(parent)
+    {
+        setObjectName(QStringLiteral("supplyCurrentPlot"));
+        setMinimumHeight(92);
+        setMaximumHeight(115);
+    }
+    void clear() { points_.clear(); update(); }
+    void addEvent(const orbita::stand::RunEvent& event)
+    {
+        const auto value = [&event](const char* key) {
+            const auto found = event.data.find(key);
+            return found == event.data.end() ? 0.0 : QString::fromStdString(found->second).toDouble();
+        };
+        points_.push_back({value("setpoint_v"), value("volts"), value("amperes") * 1000.0});
+        update();
+    }
+protected:
+    void paintEvent(QPaintEvent*) override
+    {
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing);
+        painter.fillRect(rect(), QColor("#0e1115"));
+        const QRectF area(55, 23, width() - 75, height() - 42);
+        painter.setPen(QColor("#9fb0bf"));
+        painter.drawText(QRectF(55, 2, width() - 75, 18),
+            QStringLiteral("ПОТРЕБЛЕНИЕ · мА × время · фактическое напряжение над точкой"));
+        painter.setPen(QPen(QColor("#2d3945"), 1));
+        painter.drawRect(area);
+        const double maximum = 500.0;
+        const auto y = [&](double milliamperes) {
+            return area.bottom() - qBound(0.0, milliamperes / maximum, 1.0) * area.height();
+        };
+        painter.setPen(QPen(QColor("#d7a95b"), 1, Qt::DashLine));
+        painter.drawLine(QPointF(area.left(), y(400)), QPointF(area.right(), y(400)));
+        painter.drawText(QRectF(2, y(400) - 9, 48, 18), Qt::AlignRight, QStringLiteral("400"));
+        painter.setPen(QColor("#758594"));
+        painter.drawText(QRectF(2, area.bottom() - 9, 48, 18), Qt::AlignRight, QStringLiteral("0"));
+        if (points_.isEmpty()) {
+            painter.drawText(area, Qt::AlignCenter, QStringLiteral("Данные появятся при проверке питания"));
+            return;
+        }
+        QPainterPath line;
+        for (int index = 0; index < points_.size(); ++index) {
+            const double x = area.left() + (points_.size() == 1 ? area.width() / 2.0
+                : area.width() * index / static_cast<double>(points_.size() - 1));
+            const QPointF point(x, y(points_[index].milliamperes));
+            if (index == 0) line.moveTo(point); else line.lineTo(point);
+            painter.setPen(QColor("#9fb0bf"));
+            painter.drawText(QRectF(x - 34, area.top(), 68, 16), Qt::AlignCenter,
+                QStringLiteral("%1 В").arg(QString::number(points_[index].actualVolts, 'f', 1)));
+            painter.setBrush(QColor("#55c59d"));
+            painter.setPen(Qt::NoPen);
+            painter.drawEllipse(point, 3.5, 3.5);
+        }
+        painter.setBrush(Qt::NoBrush);
+        painter.setPen(QPen(QColor("#55c59d"), 2));
+        painter.drawPath(line);
+    }
+private:
+    struct Point { double setpointVolts; double actualVolts; double milliamperes; };
+    QVector<Point> points_;
 };
 
 TestPage::TestPage(QWidget* parent) : QWidget(parent)
@@ -384,6 +427,11 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
     contactThresholdCheck_->setVisible(false);
     runOptions->addSpacing(16);
     runOptions->addWidget(contactThresholdCheck_);
+    yvpCheck_ = new QCheckBox(QStringLiteral("Включить ЯВП (опция)"));
+    yvpCheck_->setObjectName("includeYvp");
+    yvpCheck_->setToolTip(QStringLiteral("Без отметки ЯВП исключена из объёма запуска и отчёта. Включение требует готового генератора и подтверждённой карты."));
+    runOptions->addWidget(yvpCheck_);
+    connect(yvpCheck_, &QCheckBox::toggled, this, &TestPage::updateStartAvailability);
     runOptions->addStretch(1);
     root->addLayout(runOptions);
 
@@ -464,6 +512,8 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
         "background:#0e1115; color:#8b95a3; border:1px solid #2c333d; "
         "padding:7px 9px; border-radius:4px;");
     right->addWidget(productionDiagnosticsLabel_);
+    supplyPlot_ = new SupplyPlotWidget;
+    right->addWidget(supplyPlot_);
     plot_ = new TestPlotWidget;
     right->addWidget(plot_);
     summaryTable_ = new QTableWidget(0, 4);
@@ -778,6 +828,7 @@ void TestPage::updateSelectionSummary()
     resultTable_->setRowCount(0);
     summaryTable_->setRowCount(0);
     plot_->clear();
+    supplyPlot_->clear();
     productionDiagnosticsLabel_->setText(QStringLiteral(
         "ПИТАНИЕ И СТАБИЛЬНОСТЬ: данные появятся после измерений."));
     progress_->setValue(0);
@@ -883,7 +934,9 @@ QStringList TestPage::requiredEquipment() const
     }
     const auto scenario = scenarios_.constFind(test);
     if (scenario != scenarios_.cend()) {
-        return scenario->requiredEquipment;
+        auto roles = scenario->requiredEquipment;
+        if (!includeYvp() && selectedTestCode() != QStringLiteral("PROD_YVP")) roles.removeAll(QStringLiteral("RIGOL"));
+        return roles;
     }
     return {"RS485"};
 }
@@ -953,6 +1006,7 @@ void TestPage::resetResults()
     resultTable_->setRowCount(0);
     summaryTable_->setRowCount(0);
     plot_->clear();
+    supplyPlot_->clear();
     progress_->setValue(0);
     verdictLabel_->setText(QStringLiteral("ВЫПОЛНЯЕТСЯ…"));
     verdictLabel_->setStyleSheet(
@@ -1105,7 +1159,7 @@ void TestPage::setEngineerMode(bool enabled)
     partialCheck_->setVisible(enabled);
     // Operator TU flow has no technical equipment table. Readiness is checked
     // automatically by MainWindow; diagnostics remain available under F12.
-    equipmentTable_->setVisible(enabled);
+    equipmentTable_->setVisible(true);
     checkButton_->setVisible(enabled);
     detailsButton_->setVisible(enabled);
     for (const int column : {1, 2, 4}) equipmentTable_->setColumnHidden(column, !enabled);
@@ -1145,6 +1199,8 @@ void TestPage::setRunInProgress(bool running, const QString& stage)
 void TestPage::setRunEvent(const orbita::stand::RunEvent& event)
 {
     if (!runInProgress_) return;
+    if (event.stage == "BACKGROUND") { plot_->setBackground(event); return; }
+    if (event.stage == "SUPPLY") { supplyPlot_->addEvent(event); return; }
     if (event.stage == "START") {
         const int row = summaryTable_->rowCount();
         summaryTable_->insertRow(row);
@@ -1183,7 +1239,7 @@ void TestPage::setRunEvent(const orbita::stand::RunEvent& event)
         };
         if (!value("ytp_channel").isEmpty()) {
             const bool combined = selectedTestCode() == QStringLiteral("ULK_COMBINED_CHECK");
-            const double scale = combined ? 100.0 / 240.0 : 1.0;
+            const double scale = 1.0;
             plot_->addMeasurement(value("ytp_channel"),
                 value("actual_reference_ohm") + QStringLiteral(" Ом"),
                 value("actual_reference_ohm").toDouble() * scale,
@@ -1198,8 +1254,7 @@ void TestPage::setRunEvent(const orbita::stand::RunEvent& event)
         } else {
             const double reference = value("v7_v").toDouble();
             const double measured = value("yalk_v").toDouble();
-            const double scale = selectedTestCode() == QStringLiteral("ULK_COMBINED_CHECK")
-                ? 100.0 / 6.2 : 1.0;
+            const double scale = 1.0;
             plot_->addMeasurement(value("ulk_address"),
                 value("command_v") + QStringLiteral(" В"), reference * scale,
                 measured * scale, value("analog_code").toDouble(),
@@ -1220,6 +1275,9 @@ void TestPage::setRunResult(const orbita::stand::ScenarioRunResult& result,
     resultTable_->setRowCount(0);
     summaryTable_->setRowCount(0);
     plot_->clear();
+    supplyPlot_->clear();
+    for (const auto& event : result.events)
+        if (event.stage == "SUPPLY") supplyPlot_->addEvent(event);
 
     QStringList supplyReadings;
     double maximumSampleSpan = -1.0;
@@ -1340,10 +1398,9 @@ void TestPage::setRunResult(const orbita::stand::ScenarioRunResult& result,
                 }
                 resultTable_->setItem(row, column, item);
             }
-            if (measurement.unit == "V" || measurement.unit == "Ом") {
+            if ((measurement.unit == "V" || measurement.unit == "В" || measurement.unit == "Ом") && !attribute("value_samples").isEmpty()) {
                 double scale = 1.0;
-                if (selectedTestCode() == QStringLiteral("ULK_COMBINED_CHECK"))
-                    scale = measurement.unit == "Ом" ? 100.0 / 240.0 : 100.0 / 6.2;
+
                 const QString channel = ytp ? attribute("ytp_channel") : attribute("ulk_address");
                 const QString point = ytp
                     ? attribute("actual_reference_ohm") + QStringLiteral(" Ом")
@@ -1417,10 +1474,10 @@ void TestPage::setRunResult(const orbita::stand::ScenarioRunResult& result,
     progress_->setRange(0, 100);
     progress_->setValue(100);
     progress_->setFormat(QStringLiteral("Проверка завершена: %1").arg(verdict));
-    if (!tuReportPath.isEmpty()) {
+    if (!tuReportPath.isEmpty() || !productionReportPath.isEmpty()) {
         tuReportPath_ = tuReportPath;
         productionReportPath_ = productionReportPath;
-        tuReportButton_->setEnabled(true);
+        tuReportButton_->setEnabled(!tuReportPath_.isEmpty());
         productionReportButton_->setEnabled(!productionReportPath_.isEmpty());
         diagnosticLabel_->setText(QStringLiteral("Протокол ТУ: %1\nВедомость каналов: %2")
             .arg(tuReportPath_, productionReportPath_));
@@ -1428,3 +1485,5 @@ void TestPage::setRunResult(const orbita::stand::ScenarioRunResult& result,
     }
     updateStartAvailability();
 }
+
+bool TestPage::includeYvp() const { return yvpCheck_ && yvpCheck_->isChecked(); }

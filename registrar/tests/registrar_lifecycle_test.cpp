@@ -64,6 +64,10 @@ int main(int argc, char** argv)
                 "TU lookup must find an existing product without creating it");
         require(!registrar.findProductBySerial("UNKNOWN-SN"),
                 "TU lookup must not create an unknown product");
+        registrar.attachTuRun(product, "run-tu-1", "OK");
+        require(registrar.listTuRuns(product).size() == 1
+                    && registrar.listTuRuns(product).front().runId == "run-tu-1",
+                "TU run link must be visible in product history");
         require(replacementVerificationPackages("YALK-96") == std::vector<std::string>{"PROD_YALK_FULL"}
                     && replacementVerificationPackages("YTP") == std::vector<std::string>{"PROD_YTP_FULL"}
                     && replacementVerificationPackages("YVP") == std::vector<std::string>{"PROD_YVP_FULL", "PROD_YALK_89_96"}
@@ -119,6 +123,16 @@ int main(int argc, char** argv)
         }), "production stage must retain its attached run_id");
         require(registrar.listInstalledComponents(product).size() == 3,
                 "replacement must not delete the old binding");
+        const auto replacementYtp = registrar.replaceComponent(
+            product, ytp, "YTP", "YTP-002", "плановая замена");
+        const auto afterAtomicReplacement = registrar.listInstalledComponents(product);
+        require(std::count_if(afterAtomicReplacement.begin(), afterAtomicReplacement.end(),
+                    [](const ComponentBinding& binding) { return binding.active; }) == 2
+                    && std::any_of(afterAtomicReplacement.begin(), afterAtomicReplacement.end(),
+                        [&replacementYtp](const ComponentBinding& binding) {
+                            return binding.componentId == replacementYtp && binding.active;
+                        }),
+                "atomic replacement must preserve one active cell of each installed type");
         expectThrows([&] { registrar.attachRun(failedAttempt, "run-failed"); },
                      "a run must not be attached twice");
 
@@ -132,6 +146,8 @@ int main(int argc, char** argv)
         Registrar reopened(directory.filePath("registrar.db").toStdString());
         require(reopened.listProducts().size() == 2,
                 "products must persist in registrar.db for a new registrar instance");
+        require(reopened.listTuRuns(product).size() == 1,
+                "TU run links must persist after restart");
         require(stageFromString("InitialElectrical") == Stage::InitialElectrical,
                 "legacy stage values must remain readable");
         require(stageFromString("PottingClimateMinus") == Stage::PottingClimateMinus,

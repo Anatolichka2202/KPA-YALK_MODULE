@@ -9,6 +9,7 @@ namespace ktma::registrar {
 class Registrar;
 enum class Stage;
 }
+namespace ktma::ubsi { class ProductionLedger; }
 
 class QLineEdit;
 class QLabel;
@@ -40,11 +41,13 @@ public:
     explicit RegistrarPage(QWidget* parent = nullptr);
 
     void setRegistrar(ktma::registrar::Registrar* registrar);
+    void setProductionLedger(ktma::ubsi::ProductionLedger* ledger) { productionLedger_ = ledger; }
     std::optional<ProductionSelection> selectedProductionSelection() const;
     std::optional<ProductProductionSelection> selectedProductionProduct() const;
 
 signals:
     void homeRequested();
+    void productionRequested();
 
 private slots:
     void refreshProducts();
@@ -58,6 +61,7 @@ private:
     QString selectedProductId() const;
 
     ktma::registrar::Registrar* registrar_ = nullptr;
+    ktma::ubsi::ProductionLedger* productionLedger_ = nullptr;
     QLineEdit* searchEdit_ = nullptr;
     QLineEdit* serialEdit_ = nullptr;
     QTableWidget* productsTable_ = nullptr;

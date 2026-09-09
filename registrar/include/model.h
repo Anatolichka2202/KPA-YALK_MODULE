@@ -75,6 +75,8 @@ struct StageAttempt
     std::string runId;
 };
 
+struct TuRunLink { std::string runId, verdict, finishedAt; };
+
 struct ProductReport
 {
     Product product;

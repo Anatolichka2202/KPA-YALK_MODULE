@@ -258,6 +258,23 @@ void engineSemantics()
     const auto errorRun = errorEngine.run(errorScenario, equipment, "p1", "", false);
     require(errorRun.verdict == RunVerdict::Error, "Equipment error must stop the scenario with ERROR");
 
+    ScenarioEngine retryEngine;
+    int retryAttempts = 0;
+    retryEngine.registerProcedure("flaky", [&retryAttempts](const ScenarioNode&, ProcedureContext&) {
+        ++retryAttempts;
+        if (retryAttempts < 3) return ProcedureResult{RunVerdict::Error, "temporary link loss", {}};
+        return ProcedureResult{RunVerdict::Ok, "recovered", {}};
+    });
+    auto retryScenario = smallScenario();
+    retryScenario.steps = {{"retry", "Retry", "1.1", "flaky", {"a"},
+                            {{"technical_retries", "3"}}, {}}};
+    const auto retryRun = retryEngine.run(retryScenario, equipment, "p1", "", false);
+    require(retryRun.verdict == RunVerdict::Ok && retryAttempts == 3,
+            "Technical ERROR must be retried up to the configured safe limit");
+    require(std::count_if(retryRun.events.begin(), retryRun.events.end(),
+                [](const RunEvent& event) { return event.stage == "RETRY"; }) == 2,
+            "Every technical retry must be persisted as a run event");
+
     ScenarioEngine abortEngine;
     abortEngine.registerProcedure("stop", [&abortEngine](const ScenarioNode&, ProcedureContext&) {
         abortEngine.requestStop();
@@ -302,7 +319,7 @@ void configurationAndCatalog(const QString& root)
     const ScenarioNode* canonicalYtpChannels = nullptr;
     std::function<void(const ScenarioNode&)> findCanonicalYtpChannels =
         [&canonicalYtpChannels, &findCanonicalYtpChannels](const ScenarioNode& node) {
-            if (node.id == "ytp_channels" && node.procedure == "ubsi.ytp") {
+            if (node.id == "ytp_channels" && node.procedure == "ytp.check_channels") {
                 canonicalYtpChannels = &node;
                 return;
             }
@@ -328,7 +345,7 @@ void configurationAndCatalog(const QString& root)
             "YTP must be a published six-stage powered manual-reference scenario");
     require(engine.validate(ytp120).empty() && ytp120.steps.size() == 6,
             "Fixed 120-ohm YTP scenario must validate");
-    require(engine.validate(combined).empty() && combined.steps.size() == 15,
+    require(engine.validate(combined).empty() && combined.steps.size() == 19,
             "Canonical TU scenario must contain only the accepted fifteen stages");
     const auto combinedStep = [&combined](const std::string& id) -> const ScenarioNode* {
         const auto iterator = std::find_if(combined.steps.begin(), combined.steps.end(),
@@ -426,15 +443,10 @@ void configurationAndCatalog(const QString& root)
         db.toUtf8().toStdString(), "UBSI_468157_002", "ytp_calibration_zero", 0);
     require(ytpCalibration.locator == "32" && ytpCalibration.confirmed,
             "YTP lower calibration must use reference ULK address 32");
-    bool yvpBindingBlocked = false;
-    try {
-        (void)resolveCatalogParameterBinding(
-            db.toUtf8().toStdString(), "UBSI_468157_002", "yvp_fast", 0);
-    } catch (const std::runtime_error&) {
-        yvpBindingBlocked = true;
-    }
-    require(yvpBindingBlocked,
-            "UBSI YVP must not fall back to the obsolete Orbita/E20 binding");
+    const auto yvp = resolveCatalogParameterBinding(
+        db.toUtf8().toStdString(), "UBSI_468157_002", "yvp_fast", 0);
+    require(yvp.source == "ulk.parameter_source" && !yvp.confirmed,
+            "YVP must use unconfirmed adapter mapping, never Orbita/E20");
     require(yalk.confirmed && ytp.confirmed,
             "Live-confirmed YALK/YTP bindings must allow acceptance OK");
 
@@ -616,7 +628,7 @@ void yvpUnconfirmedBindingRegression()
     scenario.publicationState = PublicationState::Published;
     scenario.steps = {{"yvp", "ЯВП", "1.1.4.7", "ubsi.yvp",
         {"signal.generator", "stand.switch_matrix", "catalog.parameter_resolver"},
-        {{"channel_count", "1"}, {"parameter_group", "yvp_yalk"},
+        {{"channel_count", "8"}, {"parameter_group", "yvp_fast"},
          {"frequencies_hz", "20"}, {"gains_mv_per_pcl", "1"}}, {}}};
     FakeEquipment equipment;
     equipment.capabilities = {"signal.generator", "stand.switch_matrix", "catalog.parameter_resolver"};
@@ -838,6 +850,8 @@ void persistenceAndReport()
     run.runId = "run-1"; run.scenarioId = "s"; run.scenarioVersion = "1";
     run.catalogVersion = "c"; run.profileVersion = "p";
     run.startedAt = run.finishedAt = std::chrono::system_clock::now(); run.verdict = RunVerdict::Fail;
+    run.events.push_back({run.startedAt, "scope", "SCOPE", "ЯВП исключена оператором",
+                          RunVerdict::NotRun, {{"yvp_included", "false"}}});
     MeasurementResult value{"p", "Параметр", 1, 2, 0.9, 1.1, "В", RunVerdict::Fail, "вне допуска"};
     StepRunResult step{"x", "Измерение", "1.1", RunVerdict::Fail, "вне допуска", {value}, {}};
     run.steps.push_back(step);
@@ -855,6 +869,7 @@ void persistenceAndReport()
     require(htmlText.contains("Дата") && htmlText.contains("Блок")
                 && htmlText.contains("Оператор") && htmlText.contains("Результат")
                 && htmlText.contains("НЕ НОРМА")
+                && htmlText.contains("ЯВП не выполнялась")
                 && !htmlText.contains("Измерений не в норме"),
             "TU report must use only the four accepted operator-facing fields");
     QFile productionHtml(QString::fromUtf8(report.productionHtml));

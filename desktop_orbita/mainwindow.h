@@ -88,6 +88,10 @@ protected:
     }
     void integrationLegacyEquipmentCheck() { onCheckTestEquipment(); }
     void integrationLog(const QString& message) { log(message); }
+    void integrationUseUbsiEngineering() { ubsiEngineering_ = true; setEngineerMode(false); }
+    void integrationOpenRegistrar() { setMode(ModeAdmin); }
+    void integrationOpenTests() { setMode(ModeTests); }
+    bool integrationResultSaved() const { return lastResultSaved_; }
 
 private slots:
     // Управление сбором
@@ -209,6 +213,8 @@ private:
     QMenu* toolsMenu_ = nullptr;
 
     bool e20Available_ = false;
+    bool ubsiEngineering_ = false;
+    bool lastResultSaved_ = false;
 
     std::unique_ptr<orbita::stand::EquipmentPluginManager> equipmentPlugins_;
     std::unique_ptr<orbita::stand::EquipmentRegistry> equipmentRegistry_;

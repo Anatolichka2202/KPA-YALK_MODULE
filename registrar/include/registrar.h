@@ -60,6 +60,10 @@ public:
         const std::string& stageAttemptId,
         Verdict verdict);
 
+    void attachTuRun(const std::string& productId, const std::string& runId, const std::string& verdict);
+    std::vector<TuRunLink> listTuRuns(const std::string& productId) const;
+    std::string replaceComponent(const std::string& productId, const std::string& componentId,
+                                 const std::string& type, const std::string& serial, const std::string& reason);
     std::vector<Product> listProducts() const;
     std::optional<Product> findProductBySerial(const std::string& serialNumber) const;
     std::vector<Component> listComponents() const;

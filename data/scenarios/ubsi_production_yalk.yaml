@@ -23,7 +23,7 @@ steps:
 
   - id: yalk_stream
     title: Запуск потока ЯЛК
-    tu: PRODUCTION / YALK / STREAM
+    tu: 5.6 / ЯЛК
     procedure: yalk.start_stream
     requires:
       - ulk.parameter_source
@@ -31,10 +31,11 @@ steps:
     args:
       configure_settle_ms: 500
       timeout_ms: 3000
+      technical_retries: 3
 
   - id: yalk_calibration
     title: Калибровка ЯЛК по адресам 97 и 99
-    tu: PRODUCTION / YALK / CALIBRATION
+    tu: 1.1.4.1, 1.1.4.14
     procedure: yalk.read_calibration
     requires:
       - catalog.parameter_resolver
@@ -48,8 +49,8 @@ steps:
       full_voltage: 6.2
 
   - id: yalk_initial
-    title: Исходное отключённое состояние 80 входов ЯЛК
-    tu: PRODUCTION / YALK / INITIAL
+    title: Обрыв и исходное отключённое состояние 80 входов ЯЛК
+    tu: 1.1.4.10
     procedure: yalk.check_initial_state
     requires:
       - catalog.parameter_resolver
@@ -62,8 +63,8 @@ steps:
       tolerance_percent_fs: 0.5
 
   - id: yalk_channels
-    title: Аналоговые сигналы 80 адресов · 0 / 3,1 / 6,2 В
-    tu: PRODUCTION / YALK / ANALOG
+    title: Аналоговые и контактные сигналы 80 адресов ЯЛК
+    tu: 1.1.4.1, 1.1.4.14
     procedure: yalk.check_channels
     requires:
       - catalog.parameter_resolver
@@ -79,9 +80,9 @@ steps:
       full_scale_v: 6.2
       tolerance_percent_fs: 0.5
 
-  - id: yalk_contacts
-    title: Контакты · 0 В → 0, 0,9 В → 0, 2,5 В → 1
-    tu: PRODUCTION / YALK / CONTACTS
+  - id: yalk_contact_thresholds
+    title: Контактные пороги всех адресов: 0 при 0,0 В, 0 при 0,9 В и 1 при 2,5 В
+    tu: 1.1.4.1
     procedure: yalk.check_channels
     requires:
       - catalog.parameter_resolver
@@ -100,12 +101,13 @@ steps:
 
   - id: yalk_overload
     title: Устойчивость остальных каналов при перегрузке ±12 В
-    tu: PRODUCTION / YALK / OVERLOAD
+    tu: 1.1.4.10, 1.1.4.11
     procedure: yalk.check_overload
     requires:
       - ulk.parameter_source
       - stand.switch_matrix
     args:
+      # KPA report.log: ИСД ш = type=3, источники 95/96 и каналы 1..88.
       mapping_confirmed: true
       physical_channel_count: 88
       observed_address_count: 88
@@ -118,8 +120,8 @@ steps:
       maximum_code_delta: 2
 
   - id: yalk_reference_voltage
-    title: Эталон 6,2 ±0,03 В по В7 и данным ЯЛК
-    tu: PRODUCTION / YALK / REFERENCE_6V2
+    title: Эталон 6,2 ±0,03 В по В7 и адресу ЯЛК
+    tu: 1.1.4.9
     procedure: ubsi.reference_voltage
     requires:
       - measure.reference_voltage
@@ -134,8 +136,8 @@ steps:
       sample_count: 16
 
   - id: yalk_cleanup
-    title: Безопасный сброс ЯЛК
-    tu: PRODUCTION / YALK / SAFE_CLEANUP
+    title: Сброс ЯЛК и контроль отсутствия воздействия
+    tu: 5.6 / ЯЛК · завершение
     procedure: yalk.safe_cleanup
     requires:
       - ulk.parameter_source
