@@ -431,6 +431,16 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
     yvpCheck_->setObjectName("includeYvp");
     yvpCheck_->setToolTip(QStringLiteral("Без отметки ЯВП исключена из объёма запуска и отчёта. Включение требует готового генератора и подтверждённой карты."));
     runOptions->addWidget(yvpCheck_);
+    productionOverloadCheck_ = new QCheckBox(QStringLiteral("ЯЛК: перегрузка"));
+    productionOverloadCheck_->setChecked(true);
+    productionOverloadCheck_->setToolTip(QStringLiteral("Производство: исключить длительную проверку перегрузки ЯЛК из выбранного объёма."));
+    productionOverloadCheck_->setVisible(false);
+    runOptions->addWidget(productionOverloadCheck_);
+    productionSurvivalCheck_ = new QCheckBox(QStringLiteral("Выдержки 19 / 37 В"));
+    productionSurvivalCheck_->setChecked(true);
+    productionSurvivalCheck_->setToolTip(QStringLiteral("Производство: исключить выдержки 19 и 37 В из выбранного объёма."));
+    productionSurvivalCheck_->setVisible(false);
+    runOptions->addWidget(productionSurvivalCheck_);
     connect(yvpCheck_, &QCheckBox::toggled, this, &TestPage::updateStartAvailability);
     runOptions->addStretch(1);
     root->addLayout(runOptions);
@@ -1175,9 +1185,11 @@ void TestPage::setProductionMode(bool enabled)
     titleLabel_->setText(enabled ? QStringLiteral("ПРОИЗВОДСТВО · УБСИ")
                                  : QStringLiteral("Проверка УБСИ · ЯЛК-96 + ЯТП"));
     subtitleLabel_->setText(enabled
-        ? QStringLiteral("Выберите пакет проверки. Изделие, активная ячейка и этап выбираются в Администрировании; запуск будет привязан к ним.")
+        ? QStringLiteral("Введите SN УБСИ и выберите пакет. Если изделия ещё нет, перед запуском будет запрошен состав из четырёх ячеек.")
         : QStringLiteral("Выберите ЯЛК или ЯТП. Во время проверки видны значения каждого канала, состояние тракта и итоговый отчёт."));
     productionR4831Label_->setVisible(enabled && selectedScopeCode() == QStringLiteral("ЯТП"));
+    productionOverloadCheck_->setVisible(enabled);
+    productionSurvivalCheck_->setVisible(enabled);
     startButton_->setText(enabled ? QStringLiteral("НАЧАТЬ ПРОИЗВОДСТВЕННУЮ ПРОВЕРКУ")
                                   : QStringLiteral("Запустить проверку"));
 }
@@ -1200,7 +1212,24 @@ void TestPage::setRunEvent(const orbita::stand::RunEvent& event)
 {
     if (!runInProgress_) return;
     if (event.stage == "BACKGROUND") { plot_->setBackground(event); return; }
-    if (event.stage == "SUPPLY") { supplyPlot_->addEvent(event); return; }
+    if (event.stage == "SUPPLY") {
+        supplyPlot_->addEvent(event);
+        const auto number = [&event](const char* key) -> int {
+            const auto found = event.data.find(key);
+            return found == event.data.end() ? 0 : QString::fromStdString(found->second).toInt();
+        };
+        const int duration = number("duration_s");
+        if (duration > 0) {
+            const int elapsed = number("elapsed_s");
+            const auto voltage = event.data.find("setpoint_v");
+            progress_->setRange(0, duration);
+            progress_->setValue(qBound(0, elapsed, duration));
+            progress_->setFormat(QStringLiteral("Выдержка %1 В: %2 / %3 с")
+                .arg(voltage == event.data.end() ? QStringLiteral("—") : QString::fromStdString(voltage->second))
+                .arg(elapsed).arg(duration));
+        }
+        return;
+    }
     if (event.stage == "START") {
         const int row = summaryTable_->rowCount();
         summaryTable_->insertRow(row);
@@ -1276,8 +1305,10 @@ void TestPage::setRunResult(const orbita::stand::ScenarioRunResult& result,
     summaryTable_->setRowCount(0);
     plot_->clear();
     supplyPlot_->clear();
-    for (const auto& event : result.events)
+    for (const auto& event : result.events) {
         if (event.stage == "SUPPLY") supplyPlot_->addEvent(event);
+        else if (event.stage == "BACKGROUND") plot_->setBackground(event);
+    }
 
     QStringList supplyReadings;
     double maximumSampleSpan = -1.0;
@@ -1487,3 +1518,5 @@ void TestPage::setRunResult(const orbita::stand::ScenarioRunResult& result,
 }
 
 bool TestPage::includeYvp() const { return yvpCheck_ && yvpCheck_->isChecked(); }
+bool TestPage::includeProductionOverload() const { return !productionOverloadCheck_ || productionOverloadCheck_->isChecked(); }
+bool TestPage::includeProductionSurvival() const { return !productionSurvivalCheck_ || productionSurvivalCheck_->isChecked(); }

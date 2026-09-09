@@ -31,6 +31,7 @@ private:
     void restoreTuSelector();
     void applyProductionScenario();
     QString productionCodeForScope(const QString& scope) const;
+    bool registerProductionProduct(const QString& serial);
     void clearPendingProduction() noexcept;
 
     std::unique_ptr<ktma::ubsi::ProductionLedger> productionLedger_;

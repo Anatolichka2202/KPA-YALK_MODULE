@@ -1,9 +1,0 @@
-{
-  "schema_version": 1,
-  "product": "MilTech Station",
-  "edition": "KTMA",
-  "version": "@CMAKE_PROJECT_VERSION@",
-  "git_sha": "@MILTECH_GIT_SHA@",
-  "build_utc": "@MILTECH_BUILD_UTC@",
-  "release_channel": "@MILTECH_RELEASE_CHANNEL@"
-}

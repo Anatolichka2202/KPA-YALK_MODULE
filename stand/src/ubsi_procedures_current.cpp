@@ -177,10 +177,12 @@ ProcedureResult supplyRangeCurrent(const ScenarioNode& node, ProcedureContext& c
 
     ProcedureResult result{RunVerdict::Ok,
         "Проверены рабочий диапазон питания и общий ток потребления УБСИ", {}};
-    const auto publishSupply = [&](double setpoint, const std::string& state) {
+    const auto publishSupply = [&](double setpoint, const std::string& state,
+                                   unsigned elapsed = 0, unsigned duration = 0) {
         context.eventSink({std::chrono::system_clock::now(),node.id,"SUPPLY","Общий ток УБСИ",RunVerdict::NotRun,
             {{"setpoint_v",std::to_string(setpoint)}, {"volts",std::to_string(responseNumber(state,"volts"))},
-             {"amperes",std::to_string(responseNumber(state,"amperes"))}}});
+             {"amperes",std::to_string(responseNumber(state,"amperes"))},
+             {"elapsed_s",std::to_string(elapsed)}, {"duration_s",std::to_string(duration)}}});
     };
     const auto restore = [&] {
         context.equipment.invoke("power.dc_supply", "set_voltage", {
@@ -231,12 +233,13 @@ ProcedureResult supplyRangeCurrent(const ScenarioNode& node, ProcedureContext& c
                 {"volts", std::to_string(survival[index])}});
             const unsigned durationMs=static_cast<unsigned>(durations[index]*1000.0);
             for(unsigned elapsed=0; elapsed<durationMs;) {
-                publishSupply(survival[index],context.equipment.invoke("power.dc_supply","read_state",{}));
+                publishSupply(survival[index],context.equipment.invoke("power.dc_supply","read_state",{}),
+                              elapsed / 1000, durationMs / 1000);
                 const unsigned interval=std::min(1000u,durationMs-elapsed);
                 wait(context,interval);elapsed+=interval;
             }
             const auto state = context.equipment.invoke("power.dc_supply", "read_state", {});
-            publishSupply(survival[index],state);
+            publishSupply(survival[index],state, durationMs / 1000, durationMs / 1000);
             const double actualVoltage = responseNumber(state, "volts");
             auto held = measurement("ubsi.supply.survival_voltage",
                 "Фактическое напряжение выдержки " + std::to_string(survival[index]) + " В",

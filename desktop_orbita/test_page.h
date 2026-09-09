@@ -48,6 +48,8 @@ public:
                       const QString& productionReportPath = {});
     QString currentScenarioCode() const;
     bool includeYvp() const;
+    bool includeProductionOverload() const;
+    bool includeProductionSurvival() const;
 
     // Product integrations may add a device readiness row without taking over
     // TestPage internals. Used by UBSI Production for the Rigol generator.
@@ -117,6 +119,8 @@ private:
     QLineEdit* serialEdit_ = nullptr;
     QCheckBox* partialCheck_ = nullptr;
     QCheckBox* yvpCheck_ = nullptr;
+    QCheckBox* productionOverloadCheck_ = nullptr;
+    QCheckBox* productionSurvivalCheck_ = nullptr;
     QCheckBox* contactThresholdCheck_ = nullptr;
     QLabel* titleLabel_ = nullptr;
     QLabel* subtitleLabel_ = nullptr;
