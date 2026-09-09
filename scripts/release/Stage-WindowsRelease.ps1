@@ -88,6 +88,20 @@ try {
         throw "windeployqt failed with exit code $LASTEXITCODE"
     }
 
+    # Equipment plugins are loaded dynamically, so their Qt dependencies are
+    # invisible when windeployqt scans only OrbitaDesktop.exe. Scan every
+    # shipped plugin as well; this is required for the AKIP SerialPort runtime.
+    $equipmentPluginDir = Join-Path $temporaryStage "app\plugins"
+    if (Test-Path -LiteralPath $equipmentPluginDir -PathType Container) {
+        foreach ($pluginDll in Get-ChildItem -LiteralPath $equipmentPluginDir -Filter "*.dll" -File) {
+            & $windeployqt $deployMode --no-translations --no-plugins --compiler-runtime `
+                --dir (Join-Path $temporaryStage "app") $pluginDll.FullName
+            if ($LASTEXITCODE -ne 0) {
+                throw "windeployqt failed for equipment plugin $($pluginDll.Name) with exit code $LASTEXITCODE"
+            }
+        }
+    }
+
     $manifestScript = Join-Path $PSScriptRoot "New-ReleaseManifest.ps1"
     & $manifestScript -StageDir $temporaryStage -PackageId $PackageId | Out-Null
 
