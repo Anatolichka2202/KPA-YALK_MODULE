@@ -77,6 +77,10 @@ target_link_libraries(MilTechStation PRIVATE
     Qt6::Concurrent
 )
 
+target_compile_definitions(MilTechStation PRIVATE
+    MILTECHSTATION_VERSION="${CMAKE_PROJECT_VERSION}"
+)
+
 if(WIN32)
     set(LUSBAPI_DLL ${CMAKE_SOURCE_DIR}/third_party/lusbapi/Lusbapi64.dll)
     if(EXISTS ${LUSBAPI_DLL})

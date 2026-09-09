@@ -39,7 +39,9 @@
 #include "adapter_monitor_widget.h"
 #include "equipment_control_widget.h"
 
-#define ORBITA_VERSION "0.1.0-alpha"
+#ifndef MILTECHSTATION_VERSION
+#define MILTECHSTATION_VERSION "dev"
+#endif
 
 // ----------------------------------------------------------------------------
 //  Конструктор / Деструктор
@@ -136,7 +138,7 @@ void MainWindow::closeEvent(QCloseEvent* event)
 // ----------------------------------------------------------------------------
 void MainWindow::setupUi()
 {
-    setWindowTitle(QString("Орбита — стендовый комплекс КТМА · %1").arg(ORBITA_VERSION));
+    setWindowTitle(QString("MilTechStation — КТМА · %1").arg(MILTECHSTATION_VERSION));
     resize(1280, 800);
 
     // Центральный стек
