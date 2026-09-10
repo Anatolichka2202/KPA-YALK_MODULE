@@ -31,7 +31,8 @@ if(BUILD_TESTING)
     )
     target_compile_definitions(ktma_ubsi_production_test PRIVATE
         KTMA_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
-    target_link_libraries(ktma_ubsi_production_test PRIVATE ktma_ubsi)
+    target_link_libraries(ktma_ubsi_production_test PRIVATE
+        ktma_ubsi orbita_stand_reporting)
     add_test(NAME ktma.ubsi.production COMMAND ktma_ubsi_production_test)
 
     add_executable(ktma_ubsi_production_scenario_test

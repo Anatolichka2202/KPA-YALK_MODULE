@@ -1,8 +1,15 @@
 ﻿#include "ktma/ubsi/production.h"
 #include "ktma/ubsi/production_ledger.h"
+#include "registrar.h"
+#include "orbita_stand/run_store.h"
 
+#include <QDir>
+#include <QSqlDatabase>
+#include <QSqlQuery>
 #include <QTemporaryDir>
 
+#include <array>
+#include <chrono>
 #include <fstream>
 #include <iostream>
 #include <QCoreApplication>
@@ -156,6 +163,108 @@ void ledgerContract()
         "product production history is incomplete");
 }
 
+bool databaseHasTable(const QString& path, const QString& table, const QString& connectionName)
+{
+    bool found = false;
+    {
+        auto database = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connectionName);
+        database.setDatabaseName(path);
+        require(database.open(), "cannot inspect lifecycle database");
+        QSqlQuery query(database);
+        query.prepare(QStringLiteral(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?"));
+        query.addBindValue(table);
+        require(query.exec(), "cannot query lifecycle database schema");
+        found = query.next();
+        database.close();
+    }
+    QSqlDatabase::removeDatabase(connectionName);
+    return found;
+}
+
+void persistedLifecycleContract()
+{
+    QTemporaryDir directory;
+    require(directory.isValid(), "temporary lifecycle directory unavailable");
+    const QString registrarPath = directory.filePath(QStringLiteral("registrar.db"));
+    const QString runsPath = directory.filePath(QStringLiteral("runs/runs.db"));
+    require(QDir().mkpath(directory.filePath(QStringLiteral("runs"))),
+        "cannot create isolated runs directory");
+
+    std::string productId;
+    std::string productionId;
+    const std::string scenarioRunId = "fake-production-run-1";
+    {
+        registrar::Registrar registrar(registrarPath.toStdString());
+        productId = registrar.createProduct("UBSI", "UBSI-LIFECYCLE-001");
+        for (const auto& item : std::array<std::pair<const char*, const char*>, 4>{{
+                 {"YALK-96", "YALK-LIFE-001"}, {"YTP", "YTP-LIFE-001"},
+                 {"YVP", "YVP-LIFE-001"}, {"YP-P", "YPP-LIFE-001"}}}) {
+            const auto componentId = registrar.createComponent(item.first, item.second);
+            registrar.installComponent(productId, componentId);
+        }
+
+        const auto context = ubsi::buildProductionRunContext(
+            registrar.productReport(productId), registrar::Stage::Primary,
+            ubsi::ProductionPackage::Yalk);
+        ubsi::ProductionLedger ledger(registrarPath.toStdString());
+        productionId = ledger.begin(context);
+
+        orbita::stand::ScenarioRunResult run;
+        run.runId = scenarioRunId;
+        run.scenarioId = "ktma.ubsi.production.yalk";
+        run.scenarioVersion = "1.0.0";
+        run.catalogVersion = "2026.08.29-yalk-1";
+        run.profileVersion = "fake-profile";
+        run.objectSerial = "UBSI-LIFECYCLE-001";
+        run.startedAt = std::chrono::system_clock::now();
+        run.finishedAt = run.startedAt + std::chrono::seconds(1);
+        run.verdict = orbita::stand::RunVerdict::Ok;
+        orbita::stand::StepRunResult step;
+        step.nodeId = "yalk_channels";
+        step.title = "YALK channels";
+        step.verdict = orbita::stand::RunVerdict::Ok;
+        run.steps.push_back(std::move(step));
+        orbita::stand::RunStore store(runsPath.toStdString());
+        store.save(run);
+
+        ledger.attachRun(productionId, scenarioRunId);
+        ledger.finish(productionId, ubsi::ProductionRunStatus::Norm);
+    }
+
+    {
+        registrar::Registrar reopenedRegistrar(registrarPath.toStdString());
+        const auto product = reopenedRegistrar.findProductBySerial("UBSI-LIFECYCLE-001");
+        require(product && product->id == productId,
+            "registered UBSI did not survive database reopen");
+        require(reopenedRegistrar.listInstalledComponents(productId).size() == 4,
+            "four-cell composition did not survive database reopen");
+        ubsi::ProductionLedger reopenedLedger(registrarPath.toStdString());
+        const auto history = reopenedLedger.listForProduct(productId);
+        require(history.size() == 1 && history.front().id == productionId,
+            "production history did not survive database reopen");
+        require(history.front().runId == scenarioRunId
+                && history.front().status == ubsi::ProductionRunStatus::Norm,
+            "production verdict/run link did not survive database reopen");
+    }
+
+    require(databaseHasTable(registrarPath, QStringLiteral("products"),
+                             QStringLiteral("inspect_registrar_products")),
+        "registrar.db is missing product lifecycle tables");
+    require(databaseHasTable(registrarPath, QStringLiteral("ubsi_production_runs"),
+                             QStringLiteral("inspect_registrar_production")),
+        "registrar.db is missing production lifecycle tables");
+    require(!databaseHasTable(registrarPath, QStringLiteral("test_runs"),
+                              QStringLiteral("inspect_registrar_runs")),
+        "raw run storage leaked into registrar.db");
+    require(databaseHasTable(runsPath, QStringLiteral("test_runs"),
+                             QStringLiteral("inspect_runs")),
+        "runs.db is missing the persisted fake run");
+    require(!databaseHasTable(runsPath, QStringLiteral("products"),
+                              QStringLiteral("inspect_runs_products")),
+        "product lifecycle leaked into runs.db");
+}
+
 void separationContract()
 {
     const char* productionFiles[] = {
@@ -209,6 +318,7 @@ int main(int argc, char** argv)
         compositionContract();
         mandatoryCompositionContract();
         ledgerContract();
+        persistedLifecycleContract();
         separationContract();
         std::cout << "KTMA UBSI production contract OK\n";
         return 0;

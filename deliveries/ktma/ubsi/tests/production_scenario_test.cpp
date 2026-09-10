@@ -21,6 +21,11 @@ void require(bool condition, const std::string& message)
 
 void verifyNode(const ScenarioNode& node)
 {
+    require(node.title.find("\xEF\xBF\xBD") == std::string::npos,
+        "Production stage title contains a UTF-8 replacement character");
+    require(node.title.find(u8"Рџ") == std::string::npos
+            && node.title.find(u8"С‚") == std::string::npos,
+        "Production stage title contains UTF-8/CP1251 mojibake");
     for (const auto& capability : node.requiredCapabilities) {
         require(capability != "orbita.parameter_source",
             "Production scenario must not require legacy Orbita/E20");
@@ -58,6 +63,11 @@ int main()
                 "Production scenario id is outside KTMA/UBSI namespace: " + relative);
             require(scenario.publicationState == PublicationState::Published,
                 "Production scenario must be published: " + relative);
+            require(scenario.title.find("\xEF\xBF\xBD") == std::string::npos,
+                "Production scenario title contains a UTF-8 replacement character: " + relative);
+            require(scenario.title.find(u8"Рџ") == std::string::npos
+                    && scenario.title.find(u8"С‚") == std::string::npos,
+                "Production scenario title contains UTF-8/CP1251 mojibake: " + relative);
             const auto errors = engine.validate(scenario);
             if (!errors.empty()) {
                 std::string message = "Production scenario validation failed: " + relative;

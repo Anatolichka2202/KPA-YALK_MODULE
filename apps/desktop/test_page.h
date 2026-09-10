@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QHash>
+#include <QElapsedTimer>
 #include <QStringList>
 #include <QWidget>
 #include <functional>
@@ -19,6 +20,7 @@ class QTableWidget;
 class QTimer;
 class TestPlotWidget;
 class SupplyPlotWidget;
+class PowerStageWidget;
 class EquipmentControlWidget;
 
 class TestPage final : public QWidget
@@ -62,6 +64,7 @@ public:
     }
 
 signals:
+    void homeRequested();
     void equipmentCheckRequested();
     void runRequested(const QString& scenarioCode, const QString& objectSerial,
                       bool allowPartial);
@@ -124,16 +127,23 @@ private:
     QCheckBox* contactThresholdCheck_ = nullptr;
     QLabel* titleLabel_ = nullptr;
     QLabel* subtitleLabel_ = nullptr;
+    QLabel* workflowBadge_ = nullptr;
+    QLabel* serialLabel_ = nullptr;
+    QLabel* elapsedLabel_ = nullptr;
     QLabel* productionR4831Label_ = nullptr;
     QLabel* productionDiagnosticsLabel_ = nullptr;
     TestPlotWidget* plot_ = nullptr;
     SupplyPlotWidget* supplyPlot_ = nullptr;
+    PowerStageWidget* powerStage_ = nullptr;
     EquipmentControlWidget* advancedControl_ = nullptr;
     QWidget* advancedContainer_ = nullptr;
     EquipmentInvoke equipmentInvoke_;
     QTimer* demoTimer_ = nullptr;
+    QTimer* runClockTimer_ = nullptr;
+    QElapsedTimer runClock_;
     QHash<QString, EquipmentRow> equipmentRows_;
     QHash<QString, ScenarioInfo> scenarios_;
+    QHash<QString, QPushButton*> scopeButtons_;
     int demoStep_ = 0;
     bool runInProgress_ = false;
     bool engineerMode_ = false;

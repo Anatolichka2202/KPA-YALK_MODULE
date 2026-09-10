@@ -3,6 +3,7 @@
 
 #include <QComboBox>
 #include <QDesktopServices>
+#include <QElapsedTimer>
 #include <QFrame>
 #include <QHeaderView>
 #include <QHBoxLayout>
@@ -20,6 +21,7 @@
 #include <QProgressBar>
 #include <QPushButton>
 #include <QScrollArea>
+#include <QSet>
 #include <QSignalBlocker>
 #include <QTableWidget>
 #include <QTableWidgetItem>
@@ -54,7 +56,7 @@ class Plot : public QWidget
 public:
     explicit Plot(QWidget* parent = nullptr) : QWidget(parent)
     {
-        setMinimumHeight(480);
+        setMinimumHeight(470);
         setMouseTracking(true);
         setObjectName("channelHistogram");
     }
@@ -120,8 +122,9 @@ protected:
         }
         const bool ytp = selectedPoint_.contains(QStringLiteral("Ом"));
         const QString unit = ytp ? QStringLiteral("Ом") : QStringLiteral("В");
-        // Small detail trace; each section retains its own physical units.
-        const QRectF trace(55, 25, width()-80, 60);
+        // The selected-channel trace is deliberately compact. The main area is
+        // reserved for the complete channel set.
+        const QRectF trace(55, 23, width()-80, 42);
         QVector<double> values;
         for (const auto& item : points_) if (item.channel == selectedChannel_ && item.point == selectedPoint_) {
             values = item.samples; if (values.isEmpty()) values.push_back(item.measured);
@@ -134,7 +137,7 @@ protected:
             const double low=*mm.first-pad, high=*mm.second+pad;
             p.setPen(QColor("#34404c")); p.drawRect(trace);
             p.setPen(QColor("#91a0af"));
-            p.drawText(0,38,QString::number(high,'f',3)); p.drawText(0,85,QString::number(low,'f',3));
+            p.drawText(0,35,QString::number(high,'f',3)); p.drawText(0,66,QString::number(low,'f',3));
             QPainterPath line;
             for (int i=0;i<values.size();++i) {
                 const QPointF q(trace.left()+trace.width()*i/qMax(1,values.size()-1), trace.bottom()-(values[i]-low)/(high-low)*trace.height());
@@ -146,11 +149,13 @@ protected:
         if (ytp) { for (int i=1;i<=30;++i) channels.push_back(QString::number(i)); }
         else { for(int i=1;i<=87;++i) if(i<=28 || (i>=32&&i<=43) || (i>=45&&i<=70) || i>=74) channels.push_back(QString::number(i)); }
         p.setPen(QColor("#dce6ef"));
-        p.drawText(QRectF(55,99,width()-80,22), QStringLiteral("ВСЕ КАНАЛЫ · %1 · γ, % шкалы · допуск ±0,5 %").arg(selectedPoint_));
+        p.drawText(QRectF(55,75,width()-80,22), QStringLiteral("ВСЕ КАНАЛЫ · %1 · γ, % шкалы · допуск ±0,5 %").arg(selectedPoint_));
         p.setPen(QColor("#95a5b4"));
-        p.drawText(QRectF(55,122,width()-80,20),QStringLiteral("Над столбцом: измерено, %1 · фоновая полоса: min…max выборки · клик: выбрать канал").arg(unit));
-        const int rows=ytp ? 1 : 2, perRow=ytp ? 30 : 40;
-        const double rowHeight=(height()-188.0)/rows;
+        p.drawText(QRectF(55,96,width()-80,20), ytp
+            ? QStringLiteral("Над столбцом: измерено, %1 · полоса: min…max · оранжевый: заметный размах").arg(unit)
+            : QStringLiteral("Над столбцом: измерено, %1 · полоса: min…max · ○/● контакт 0/1 · оранжевый: заметный размах").arg(unit));
+        const int rows=ytp ? 2 : 4, perRow=ytp ? 15 : 20;
+        const double rowHeight=(height()-145.0)/rows;
         double extent=0.65;
         for(const auto& item:points_) if(item.point==selectedPoint_) {
             auto mm=limits(item); const double fs=ytp ? 240 : 6.2;
@@ -163,8 +168,11 @@ protected:
         p.setPen(QColor("#90b7d2"));
         p.drawText(QRectF(55,height()-24,width()-80,20),QStringLiteral("Фоновый контроль всех каналов · максимальный размах окна: %1 %2 · без отдельного допуска").arg(QString::number(maxSpan,'f',5),unit));
         for(int row=0;row<rows;++row) {
-            const QRectF area(55,151+row*rowHeight,width()-80,rowHeight-28);
-            const auto y=[&](double v){return area.center().y()-v/extent*(area.height()/2-26);};
+            const QRectF area(55,119+row*rowHeight,width()-80,rowHeight-22);
+            const auto y=[&](double v){
+                const double amplitude = qMax(8.0, area.height() / 2.0 - 12.0);
+                return area.center().y() - v / extent * amplitude;
+            };
             for(double tick:{-0.5,0.0,0.5}) {
                 p.setPen(QPen(QColor(tick==0 ? "#8493a0" : "#5b6170"),1,tick==0 ? Qt::SolidLine : Qt::DashLine));
                 p.drawLine(QPointF(area.left(),y(tick)),QPointF(area.right(),y(tick)));
@@ -177,7 +185,7 @@ protected:
                 for(const auto& candidate:points_) if(candidate.channel==channel && candidate.point==selectedPoint_) item=&candidate;
                 hits_.push_back({QRectF(x,area.top(),dx,area.height()+22),channel});
                 if(channel==selectedChannel_) p.fillRect(QRectF(x,area.top(),dx,area.height()),QColor("#1c2b37"));
-                p.setPen(QColor("#a7b6c5"));p.setFont(QFont("Segoe UI",8));
+                p.setPen(QColor("#a7b6c5"));p.setFont(QFont("Segoe UI",9,QFont::DemiBold));
                 p.drawText(QRectF(x,area.bottom()+3,dx,18),Qt::AlignCenter,channel);
                 const int bi=channel.toInt()-1;
                 if(bg.size()==3 && bi>=0 && bi<bg[0].size() && std::isfinite(bg[0][bi])) {
@@ -187,12 +195,22 @@ protected:
                 if(!item) {p.setPen(QColor("#586572"));p.drawText(QRectF(x,y(0)-18,dx,16),Qt::AlignCenter,QStringLiteral("·"));continue;}
                 const double e=error(*item), yy=y(e), zero=y(0);
                 const auto mm=limits(*item);const double fs=ytp ? 240:6.2;
+                const double sampleSpan=mm.second-mm.first;
+                const double fluctuationLevel=ytp ? 0.12 : 0.0031;
+                const bool fluctuating=item->passed && sampleSpan>fluctuationLevel;
                 const double top=y((mm.second-item->reference)/fs*100), bottom=y((mm.first-item->reference)/fs*100);
                 p.fillRect(QRectF(x+2,top,dx-4,qMax(2.0,bottom-top)),QColor(102,169,222,95));
-                p.fillRect(QRectF(x+dx*.25,qMin(yy,zero),dx*.5,qMax(2.0,std::abs(yy-zero))),QColor(item->passed ? "#27b586":"#e96769"));
-                p.setPen(QColor("#dbe8ef"));p.setFont(QFont("Segoe UI",7));
-                p.save();p.translate(x+dx/2,area.top()+20);p.rotate(-45);
-                p.drawText(QRectF(-10,-13,55,15),QString::number(item->measured,'f',3));p.restore();
+                p.fillRect(QRectF(x+dx*.25,qMin(yy,zero),dx*.5,qMax(2.0,std::abs(yy-zero))),
+                           QColor(!item->passed ? "#e96769" : fluctuating ? "#d99a4a" : "#27b586"));
+                if (!ytp) {
+                    p.setBrush(item->signal ? QColor("#55c59d") : Qt::NoBrush);
+                    p.setPen(QPen(item->signal ? QColor("#55c59d") : QColor("#607080"),1));
+                    p.drawEllipse(QPointF(x+dx-7,area.top()+7),3,3);
+                    p.setBrush(Qt::NoBrush);
+                }
+                p.setPen(QColor("#dbe8ef"));p.setFont(QFont("Segoe UI",8,QFont::DemiBold));
+                p.drawText(QRectF(x+1,area.top()+2,dx-2,16),Qt::AlignCenter,
+                           QString::number(item->measured,'f',ytp ? 2 : 3));
                 p.setPen(QColor("#9aafbf"));
                 p.drawText(QRectF(x-5,area.bottom()-14,dx+10,14),Qt::AlignCenter,QString::number(e,'f',2));
             }
@@ -246,8 +264,9 @@ public:
     explicit SupplyPlotWidget(QWidget* parent = nullptr) : QWidget(parent)
     {
         setObjectName(QStringLiteral("supplyCurrentPlot"));
-        setMinimumHeight(92);
-        setMaximumHeight(115);
+        setFixedHeight(88);
+        setMinimumWidth(340);
+        setMaximumWidth(420);
     }
     void clear() { points_.clear(); update(); }
     void addEvent(const orbita::stand::RunEvent& event)
@@ -256,7 +275,7 @@ public:
             const auto found = event.data.find(key);
             return found == event.data.end() ? 0.0 : QString::fromStdString(found->second).toDouble();
         };
-        points_.push_back({value("setpoint_v"), value("volts"), value("amperes") * 1000.0});
+        points_.push_back({value("amperes") * 1000.0});
         update();
     }
 protected:
@@ -268,7 +287,7 @@ protected:
         const QRectF area(55, 23, width() - 75, height() - 42);
         painter.setPen(QColor("#9fb0bf"));
         painter.drawText(QRectF(55, 2, width() - 75, 18),
-            QStringLiteral("ПОТРЕБЛЕНИЕ · мА × время · фактическое напряжение над точкой"));
+            QStringLiteral("ПОТРЕБЛЕНИЕ УБСИ · ток, мА · предел 400 мА"));
         painter.setPen(QPen(QColor("#2d3945"), 1));
         painter.drawRect(area);
         const double maximum = 500.0;
@@ -290,9 +309,6 @@ protected:
                 : area.width() * index / static_cast<double>(points_.size() - 1));
             const QPointF point(x, y(points_[index].milliamperes));
             if (index == 0) line.moveTo(point); else line.lineTo(point);
-            painter.setPen(QColor("#9fb0bf"));
-            painter.drawText(QRectF(x - 34, area.top(), 68, 16), Qt::AlignCenter,
-                QStringLiteral("%1 В").arg(QString::number(points_[index].actualVolts, 'f', 1)));
             painter.setBrush(QColor("#55c59d"));
             painter.setPen(Qt::NoPen);
             painter.drawEllipse(point, 3.5, 3.5);
@@ -302,8 +318,108 @@ protected:
         painter.drawPath(line);
     }
 private:
-    struct Point { double setpointVolts; double actualVolts; double milliamperes; };
+    struct Point { double milliamperes; };
     QVector<Point> points_;
+};
+
+class PowerStageWidget final : public QWidget
+{
+public:
+    explicit PowerStageWidget(QWidget* parent = nullptr) : QWidget(parent)
+    {
+        setObjectName(QStringLiteral("powerStageHmi"));
+        setMinimumHeight(330);
+    }
+    void clear()
+    {
+        voltage_ = currentMa_ = 0.0;
+        elapsed_ = duration_ = 0;
+        visited_.clear();
+        update();
+    }
+    void addEvent(const orbita::stand::RunEvent& event)
+    {
+        const auto number = [&event](const char* key) {
+            const auto found = event.data.find(key);
+            return found == event.data.end() ? 0.0
+                                             : QString::fromStdString(found->second).toDouble();
+        };
+        voltage_ = number("setpoint_v");
+        currentMa_ = number("amperes") * 1000.0;
+        elapsed_ = static_cast<int>(number("elapsed_s"));
+        duration_ = static_cast<int>(number("duration_s"));
+        visited_.insert(qRound(voltage_));
+        update();
+    }
+protected:
+    void paintEvent(QPaintEvent*) override
+    {
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing);
+        p.fillRect(rect(), QColor("#0e1115"));
+        const QRectF content(38, 28, width() - 76, height() - 56);
+        p.setPen(QColor("#8f9eac"));
+        p.setFont(QFont("Segoe UI", 10, QFont::DemiBold));
+        p.drawText(QRectF(content.left(), content.top(), content.width(), 24),
+                   QStringLiteral("ДЛИТЕЛЬНОЕ ВОЗДЕЙСТВИЕ"));
+        if (duration_ <= 0) {
+            p.setPen(QColor("#748392"));
+            p.drawText(content, Qt::AlignCenter,
+                       QStringLiteral("Текущий этап питания появится после запуска"));
+            return;
+        }
+        const auto clock = [](int seconds) {
+            return QStringLiteral("%1:%2").arg(seconds / 60, 2, 10, QLatin1Char('0'))
+                .arg(seconds % 60, 2, 10, QLatin1Char('0'));
+        };
+        p.setPen(QColor("#e6edf3"));
+        p.setFont(QFont("Segoe UI", 34, QFont::DemiBold));
+        p.drawText(QRectF(content.left(), content.top() + 42, content.width() * .42, 58),
+                   QStringLiteral("%1 В").arg(QString::number(voltage_, 'f', 0)));
+        p.setPen(QColor("#55c59d"));
+        p.drawText(QRectF(content.left() + content.width() * .46, content.top() + 42,
+                          content.width() * .45, 58),
+                   QStringLiteral("%1 мА").arg(QString::number(currentMa_, 'f', 0)));
+
+        p.setFont(QFont("Segoe UI", 18, QFont::DemiBold));
+        p.setPen(QColor("#d7a95b"));
+        p.drawText(QRectF(content.left(), content.top() + 112, content.width(), 32),
+                   QStringLiteral("прошло %1   ·   осталось %2")
+                       .arg(clock(elapsed_), clock(qMax(0, duration_ - elapsed_))));
+        const QRectF track(content.left(), content.top() + 154, content.width(), 18);
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor("#202933"));
+        p.drawRoundedRect(track, 7, 7);
+        const double ratio = qBound(0.0, elapsed_ / static_cast<double>(duration_), 1.0);
+        p.setBrush(QColor("#d7a95b"));
+        p.drawRoundedRect(QRectF(track.left(), track.top(), track.width() * ratio, track.height()), 7, 7);
+
+        struct Stage { int voltage; const char* label; };
+        const Stage stages[] = {{24, "24 В"}, {27, "27 В"}, {35, "35 В"},
+                                {19, "19 В · 5 мин"}, {37, "37 В · 1 мин"}};
+        const double gap = 10.0;
+        const double stageWidth = (content.width() - gap * 4.0) / 5.0;
+        for (int i = 0; i < 5; ++i) {
+            const QRectF box(content.left() + i * (stageWidth + gap), content.top() + 205,
+                             stageWidth, 54);
+            const bool active = stages[i].voltage == qRound(voltage_);
+            const bool completed = visited_.contains(stages[i].voltage) && !active;
+            p.setPen(QPen(active ? QColor("#d7a95b") : QColor("#33404c"), active ? 2 : 1));
+            p.setBrush(active ? QColor("#332815") : completed ? QColor("#14251c")
+                                                          : QColor("#151a20"));
+            p.drawRoundedRect(box, 6, 6);
+            p.setPen(active ? QColor("#f0c777") : completed ? QColor("#70d79b")
+                                                           : QColor("#82909e"));
+            p.setFont(QFont("Segoe UI", 10, QFont::DemiBold));
+            p.drawText(box, Qt::AlignCenter, QString::fromUtf8(stages[i].label));
+        }
+    }
+private:
+    double voltage_ = 0.0;
+    double currentMa_ = 0.0;
+    int elapsed_ = 0;
+    int duration_ = 0;
+    QSet<int> visited_;
 };
 
 TestPage::TestPage(QWidget* parent) : QWidget(parent)
@@ -323,16 +439,31 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
     root->setContentsMargins(18, 14, 18, 14);
     root->setSpacing(10);
 
+    auto* header = new QHBoxLayout;
+    auto* homeButton = new QPushButton(QStringLiteral("← КТМА"));
+    homeButton->setObjectName(QStringLiteral("backToKtma"));
+    homeButton->setMaximumWidth(110);
+    homeButton->setToolTip(QStringLiteral("Вернуться к выбору рабочего контура"));
+    header->addWidget(homeButton, 0, Qt::AlignTop);
+    auto* heading = new QVBoxLayout;
+    heading->setSpacing(2);
     titleLabel_ = new QLabel(QStringLiteral("Проверка УБСИ · ЯЛК-96 + ЯТП"));
     titleLabel_->setStyleSheet("font-size:25px; font-weight:700; color:#f1f5f9;");
-    root->addWidget(titleLabel_);
-
     subtitleLabel_ = new QLabel(QStringLiteral(
         "Выберите ЯЛК или ЯТП. Во время проверки видны значения каждого канала, "
         "состояние тракта и итоговый отчёт."));
     subtitleLabel_->setWordWrap(true);
     subtitleLabel_->setStyleSheet("color:#8b95a3; font-size:13px;");
-    root->addWidget(subtitleLabel_);
+    heading->addWidget(titleLabel_);
+    heading->addWidget(subtitleLabel_);
+    header->addLayout(heading, 1);
+    workflowBadge_ = new QLabel(QStringLiteral("ПРОВЕРКА ПО ТУ"));
+    workflowBadge_->setAlignment(Qt::AlignCenter);
+    workflowBadge_->setMinimumWidth(150);
+    workflowBadge_->setStyleSheet("background:#132033; color:#9ac7ff; border:1px solid #27466c; padding:9px 14px; border-radius:5px; font-weight:700;");
+    header->addWidget(workflowBadge_, 0, Qt::AlignTop);
+    root->addLayout(header);
+    connect(homeButton, &QPushButton::clicked, this, &TestPage::homeRequested);
 
     auto* selectors = new QHBoxLayout;
     auto addSelector = [&](const QString& caption, QComboBox*& combo, int stretch) {
@@ -384,6 +515,7 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
             "QPushButton:checked { border:2px solid %1; color:%1; background:#18212c; }")
             .arg(accent));
         modeGroup->addButton(button);
+        scopeButtons_.insert(scopeCode, button);
         modeCards->addWidget(button, 1);
         connect(button, &QPushButton::clicked, this, [this, scopeCode] {
             const int scopeIndex = scopeCombo_->findData(scopeCode);
@@ -397,16 +529,28 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
     auto* ytpCard = addModeCard(QStringLiteral("ЯТП"),
         QStringLiteral("30 каналов · 0 / 120 / 240 Ом"), QStringLiteral("ЯТП"),
         QStringLiteral("#8247d6"), QStringLiteral(":/icons/detail.svg"));
-    addModeCard(QStringLiteral("УБСИ по ТУ"),
+    auto* fullCard = addModeCard(QStringLiteral("УБСИ по ТУ"),
         QStringLiteral("полная проверка и отчётность"), QStringLiteral("УБСИ ПО ТУ"),
         QStringLiteral("#079b9d"), QStringLiteral(":/icons/scenario.svg"));
+    auto* powerCard = addModeCard(QStringLiteral("Питание"),
+        QStringLiteral("потребление и выдержки"), QStringLiteral("ПИТАНИЕ"),
+        QStringLiteral("#d99a4a"), QStringLiteral(":/icons/collect.svg"));
+    auto* yvpCard = addModeCard(QStringLiteral("ЯВП-8"),
+        QStringLiteral("команда адаптера исследуется"), QStringLiteral("ЯВП-8"),
+        QStringLiteral("#d99a4a"), QStringLiteral(":/icons/detail.svg"));
+    powerCard->setVisible(false);
+    yvpCard->setVisible(false);
+    yvpCard->setEnabled(false);
+    modeCards->removeWidget(fullCard);
+    modeCards->insertWidget(0, fullCard, 1);
     ytpCard->setChecked(true);
     Q_UNUSED(yalkCard);
+    Q_UNUSED(fullCard);
     root->addLayout(modeCards);
 
     auto* runOptions = new QHBoxLayout;
-    auto* serialLabel = new QLabel(QStringLiteral("Заводской номер (необязательно):"));
-    serialLabel->setStyleSheet("color:#8b95a3;");
+    serialLabel_ = new QLabel(QStringLiteral("SN УБСИ:"));
+    serialLabel_->setStyleSheet("color:#8b95a3;");
     serialEdit_ = new QLineEdit;
     serialEdit_->setObjectName(QStringLiteral("objectSerial"));
     serialEdit_->setPlaceholderText(QStringLiteral("например, УБСИ-007"));
@@ -415,7 +559,7 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
     partialCheck_ = new QCheckBox(QStringLiteral("Диагностический запуск без части оборудования"));
     partialCheck_->setObjectName(QStringLiteral("allowPartial"));
     partialCheck_->setToolTip(QStringLiteral("Такой запуск никогда не получает итог ОК"));
-    runOptions->addWidget(serialLabel);
+    runOptions->addWidget(serialLabel_);
     runOptions->addWidget(serialEdit_);
     runOptions->addSpacing(16);
     runOptions->addWidget(partialCheck_);
@@ -442,6 +586,7 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
     productionSurvivalCheck_->setVisible(false);
     runOptions->addWidget(productionSurvivalCheck_);
     connect(yvpCheck_, &QCheckBox::toggled, this, &TestPage::updateStartAvailability);
+    connect(serialEdit_, &QLineEdit::textChanged, this, &TestPage::updateStartAvailability);
     runOptions->addStretch(1);
     root->addLayout(runOptions);
 
@@ -450,7 +595,6 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
     productionR4831Label_->setWordWrap(true);
     productionR4831Label_->setStyleSheet("background:#38290d; color:#ffda83; border:2px solid #d7a95b; padding:14px; font-size:16px; font-weight:700;");
     productionR4831Label_->setVisible(false);
-    root->addWidget(productionR4831Label_);
 
     scopeLabel_ = new QLabel;
     scopeLabel_->setWordWrap(true);
@@ -462,8 +606,13 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
     auto* body = new QHBoxLayout;
     body->setSpacing(12);
 
-    auto* left = new QVBoxLayout;
+    auto* leftPanel = new QWidget;
+    leftPanel->setMinimumWidth(410);
+    leftPanel->setMaximumWidth(530);
+    auto* left = new QVBoxLayout(leftPanel);
+    left->setContentsMargins(0, 0, 0, 0);
     left->addWidget(makeSectionTitle(QStringLiteral("Готовность выбранной процедуры")));
+    left->addWidget(productionR4831Label_);
     equipmentTable_ = new QTableWidget(0, 5);
     equipmentTable_->setObjectName(QStringLiteral("equipmentTable"));
     equipmentTable_->setHorizontalHeaderLabels(
@@ -513,19 +662,30 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
         "padding:7px 9px; border-radius:4px;");
     left->addWidget(diagnosticLabel_);
 
-    auto* right = new QVBoxLayout;
-    right->addWidget(makeSectionTitle(QStringLiteral("Ход и результат")));
+    auto* rightPanel = new QWidget;
+    rightPanel->setMinimumWidth(820);
+    auto* right = new QVBoxLayout(rightPanel);
+    right->setContentsMargins(0, 0, 0, 0);
+    right->addWidget(makeSectionTitle(QStringLiteral("Ход проверки")));
+    auto* liveSummary = new QHBoxLayout;
     productionDiagnosticsLabel_ = new QLabel(QStringLiteral(
         "ПИТАНИЕ И СТАБИЛЬНОСТЬ: данные появятся после измерений."));
     productionDiagnosticsLabel_->setWordWrap(true);
     productionDiagnosticsLabel_->setStyleSheet(
         "background:#0e1115; color:#8b95a3; border:1px solid #2c333d; "
         "padding:7px 9px; border-radius:4px;");
-    right->addWidget(productionDiagnosticsLabel_);
+    productionDiagnosticsLabel_->setVisible(false);
+    liveSummary->addWidget(productionDiagnosticsLabel_, 1);
     supplyPlot_ = new SupplyPlotWidget;
-    right->addWidget(supplyPlot_);
+    liveSummary->addWidget(supplyPlot_, 0, Qt::AlignRight);
+    right->addLayout(liveSummary);
+    powerStage_ = new PowerStageWidget;
+    powerStage_->setVisible(false);
+    right->addWidget(powerStage_, 1);
     plot_ = new TestPlotWidget;
+    plot_->setVisible(false);
     right->addWidget(plot_);
+    left->addWidget(makeSectionTitle(QStringLiteral("Этапы проверки")));
     summaryTable_ = new QTableWidget(0, 4);
     summaryTable_->setObjectName(QStringLiteral("cellSummaryTable"));
     summaryTable_->setHorizontalHeaderLabels(
@@ -550,6 +710,9 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
     resultTable_->verticalHeader()->hide();
     resultTable_->setEditTriggers(QAbstractItemView::NoEditTriggers);
     resultTable_->setSelectionMode(QAbstractItemView::NoSelection);
+    resultTable_->setMinimumHeight(120);
+    resultTable_->setMaximumHeight(210);
+    resultTable_->setVisible(false);
     right->addWidget(resultTable_, 1);
     connect(resultTable_, &QTableWidget::cellClicked, this, [this](int row, int) {
         if (row < 0 || !resultTable_->item(row, 0)) return;
@@ -559,8 +722,8 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
         plot_->selectChannel(channel);
     });
 
-    body->addLayout(left, 3);
-    body->addLayout(right, 7);
+    body->addWidget(leftPanel, 0);
+    body->addWidget(rightPanel, 1);
     root->addLayout(body, 1);
 
     auto* advancedScroll = new QScrollArea;
@@ -579,11 +742,18 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
     advancedContainer_ = advancedScroll;
     root->addWidget(advancedScroll);
 
+    auto* progressRow = new QHBoxLayout;
     progress_ = new QProgressBar;
     progress_->setRange(0, 3);
     progress_->setValue(0);
     progress_->setFormat(QStringLiteral("Проверка не запущена"));
-    root->addWidget(progress_);
+    progressRow->addWidget(progress_, 1);
+    elapsedLabel_ = new QLabel(QStringLiteral("00:00:00"));
+    elapsedLabel_->setMinimumWidth(92);
+    elapsedLabel_->setAlignment(Qt::AlignCenter);
+    elapsedLabel_->setStyleSheet("color:#aab4c0; background:#0e1115; border:1px solid #2c333d; padding:4px 8px; border-radius:4px;");
+    progressRow->addWidget(elapsedLabel_);
+    root->addLayout(progressRow);
 
     auto* actionBar = new QHBoxLayout;
     verdictLabel_ = new QLabel(QStringLiteral("ИТОГ НЕ СФОРМИРОВАН"));
@@ -617,6 +787,16 @@ TestPage::TestPage(QWidget* parent) : QWidget(parent)
     demoTimer_ = new QTimer(this);
     demoTimer_->setInterval(450);
     connect(demoTimer_, &QTimer::timeout, this, &TestPage::advanceDemo);
+    runClockTimer_ = new QTimer(this);
+    runClockTimer_->setInterval(1000);
+    connect(runClockTimer_, &QTimer::timeout, this, [this] {
+        if (!runClock_.isValid()) return;
+        const qint64 seconds = runClock_.elapsed() / 1000;
+        elapsedLabel_->setText(QStringLiteral("%1:%2:%3")
+            .arg(seconds / 3600, 2, 10, QLatin1Char('0'))
+            .arg((seconds / 60) % 60, 2, 10, QLatin1Char('0'))
+            .arg(seconds % 60, 2, 10, QLatin1Char('0')));
+    });
     connect(checkButton_, &QPushButton::clicked, this, &TestPage::equipmentCheckRequested);
     connect(detailsButton_, &QPushButton::clicked, this, [this]() {
         const bool show = equipmentTable_->isColumnHidden(1);
@@ -751,12 +931,34 @@ void TestPage::updateSelectionSummary()
     const QString object = selectedObjectCode();
     const QString scope = selectedScopeCode();
     const QString test = selectedTestCode();
-    if (test == QStringLiteral("UBSI_NORMAL_5_6")) {
+    for (auto it = scopeButtons_.begin(); it != scopeButtons_.end(); ++it)
+        it.value()->setChecked(it.key() == scope);
+    const bool fullScope = scope == QStringLiteral("УБСИ ПО ТУ");
+    yvpCheck_->setVisible(fullScope);
+    productionOverloadCheck_->setVisible(productionMode_ && fullScope);
+    productionSurvivalCheck_->setVisible(productionMode_ && fullScope);
+    productionR4831Label_->setVisible(scope == QStringLiteral("ЯТП"));
+    if (test == QStringLiteral("PROD_FULL")) {
         scopeLabel_->setText(QStringLiteral(
-            "УБСИ по ТУ 5.6: Орбита контролирует выходной поток блока, Ethernet-адаптер читает внутренние коды ячеек, ИСД выполняет коммутацию, а приборы формируют и измеряют воздействия."));
+            "Комплексная проверка УБСИ: питание, ЯЛК-96 и ЯТП. ЯВП временно исключена до подтверждения команды адаптера."));
+    } else if (test == QStringLiteral("PROD_POWER")) {
+        scopeLabel_->setText(QStringLiteral(
+            "Питание УБСИ: ток потребления и выбранные выдержки. Ток показан в компактном окне; канальная телеметрия здесь не показывается."));
+    } else if (test == QStringLiteral("PROD_YALK")) {
+        scopeLabel_->setText(QStringLiteral(
+            "ЯЛК-96: крупно показываются все 80 аналоговых каналов, контактные сигналы, значения и размах свежей выборки."));
+    } else if (test == QStringLiteral("PROD_YTP")) {
+        scopeLabel_->setText(QStringLiteral(
+            "ЯТП: 30 каналов на точках 0 / 120 / 240 Ом. Для каждой точки видны значение канала и колебания свежих кадров."));
+    } else if (test == QStringLiteral("PROD_YVP")) {
+        scopeLabel_->setText(QStringLiteral(
+            "ЯВП-8 видна в поставке, но запуск заблокирован до подтверждения внешней команды ROKT адаптера."));
+    } else if (test == QStringLiteral("UBSI_NORMAL_5_6")) {
+        scopeLabel_->setText(QStringLiteral(
+            "УБСИ по ТУ 5.6: стенд читает выходной поток блока и внутренние коды ячеек, ИСД выполняет коммутацию, приборы формируют и измеряют воздействия."));
     } else if (test == QStringLiteral("BSI_DIAGNOSTIC")) {
         scopeLabel_->setText(QStringLiteral(
-            "Подключённый БСИ используется для обкатки общей цепочки Орбита → сценарий → журнал → интерфейс. Результат всегда НЕПОЛНАЯ: БСИ по ТУ 5.6 не оценивается."));
+            "Подключённый БСИ используется для диагностики цепочки сбора данных, сценария и журнала. Результат всегда НЕПОЛНАЯ: БСИ по ТУ 5.6 не оценивается."));
     } else if (test == QStringLiteral("YALK_FULL_5_6")) {
         scopeLabel_->setText(object == QStringLiteral("BSI")
             ? QStringLiteral("Полный сценарий ЯЛК в этом релизе предназначен для УБСИ, а не для БСИ.")
@@ -802,10 +1004,13 @@ void TestPage::updateSelectionSummary()
             QStringLiteral("Адреса ЯЛК 1…80; точки 0 · 3,1 · 6,2 В"),
             QStringLiteral("— В7-78/1"), QStringLiteral("— ЯЛК"));
     }
-    plot_->setVisible(test == QStringLiteral("YALK_FULL_5_6")
-        || test == QStringLiteral("YALK_CONTACT_THRESHOLDS")
-        || test == QStringLiteral("ULK_COMBINED_CHECK")
-        || ytpPlot || test.endsWith(QStringLiteral("NORMAL_5_6")));
+    plot_->setVisible(false);
+    const bool powerOnly = scope == QStringLiteral("ПИТАНИЕ");
+    supplyPlot_->setVisible(powerOnly);
+    powerStage_->setVisible(powerOnly);
+    powerStage_->clear();
+    productionDiagnosticsLabel_->setVisible(false);
+    resultTable_->setVisible(false);
     if (test == QStringLiteral("ULK_COMBINED_CHECK")) {
         resultTable_->setHorizontalHeaderLabels({
             QStringLiteral("Ячейка"), QStringLiteral("Канал"),
@@ -983,6 +1188,14 @@ void TestPage::updateStartAvailability()
         return;
     }
 
+    if (productionMode_ && serialEdit_->text().trimmed().isEmpty()) {
+        startButton_->setEnabled(false);
+        readinessLabel_->setText(QStringLiteral(
+            "Введите SN УБСИ. Если блока нет в БД, состав будет запрошен перед запуском."));
+        readinessLabel_->setStyleSheet("color:#d7a95b;");
+        return;
+    }
+
     const QStringList required = requiredEquipment();
     QStringList missing;
     for (const auto& code : required) {
@@ -1014,9 +1227,15 @@ void TestPage::resetResults()
     tuReportButton_->setEnabled(false);
     productionReportButton_->setEnabled(false);
     resultTable_->setRowCount(0);
+    resultTable_->setVisible(false);
     summaryTable_->setRowCount(0);
     plot_->clear();
+    plot_->setVisible(false);
     supplyPlot_->clear();
+    supplyPlot_->setVisible(selectedScopeCode() == QStringLiteral("ПИТАНИЕ"));
+    powerStage_->clear();
+    powerStage_->setVisible(selectedScopeCode() == QStringLiteral("ПИТАНИЕ"));
+    productionDiagnosticsLabel_->setVisible(false);
     progress_->setValue(0);
     verdictLabel_->setText(QStringLiteral("ВЫПОЛНЯЕТСЯ…"));
     verdictLabel_->setStyleSheet(
@@ -1147,6 +1366,7 @@ void TestPage::finishDemo()
         "font-size:16px; font-weight:700; color:#70d79b; padding:8px 12px;"
         "border:1px solid #3d8f65; border-radius:4px;");
     progress_->setFormat(QStringLiteral("Демонстрационный прогон завершён"));
+    resultTable_->setVisible(resultTable_->rowCount() > 0);
     updateStartAvailability();
 }
 
@@ -1187,11 +1407,25 @@ void TestPage::setProductionMode(bool enabled)
     subtitleLabel_->setText(enabled
         ? QStringLiteral("Введите SN УБСИ и выберите пакет. Если изделия ещё нет, перед запуском будет запрошен состав из четырёх ячеек.")
         : QStringLiteral("Выберите ЯЛК или ЯТП. Во время проверки видны значения каждого канала, состояние тракта и итоговый отчёт."));
-    productionR4831Label_->setVisible(enabled && selectedScopeCode() == QStringLiteral("ЯТП"));
-    productionOverloadCheck_->setVisible(enabled);
-    productionSurvivalCheck_->setVisible(enabled);
+    workflowBadge_->setText(enabled ? QStringLiteral("ПРОИЗВОДСТВО")
+                                    : QStringLiteral("ПРОВЕРКА ПО ТУ"));
+    workflowBadge_->setStyleSheet(enabled
+        ? QStringLiteral("background:#14251c; color:#70d79b; border:1px solid #315c43; padding:9px 14px; border-radius:5px; font-weight:700;")
+        : QStringLiteral("background:#132033; color:#9ac7ff; border:1px solid #27466c; padding:9px 14px; border-radius:5px; font-weight:700;"));
+    serialLabel_->setText(enabled ? QStringLiteral("SN УБСИ (обязательно):")
+                                  : QStringLiteral("SN УБСИ:"));
+    scopeButtons_.value(QStringLiteral("ПИТАНИЕ"))->setVisible(enabled);
+    scopeButtons_.value(QStringLiteral("ЯВП-8"))->setVisible(enabled);
+    scopeButtons_.value(QStringLiteral("УБСИ ПО ТУ"))->setText(enabled
+        ? QStringLiteral("Комплексное УБСИ\nвыбранный производственный объём")
+        : QStringLiteral("УБСИ по ТУ\nполная проверка и отчётность"));
+    yvpCheck_->setChecked(false);
+    yvpCheck_->setEnabled(false);
+    yvpCheck_->setToolTip(QStringLiteral(
+        "ЯВП видна в составе поставки, но запуск заблокирован до подтверждения внешней команды ROKT адаптера."));
     startButton_->setText(enabled ? QStringLiteral("НАЧАТЬ ПРОИЗВОДСТВЕННУЮ ПРОВЕРКУ")
                                   : QStringLiteral("Запустить проверку"));
+    updateSelectionSummary();
 }
 
 void TestPage::setRunInProgress(bool running, const QString& stage)
@@ -1199,9 +1433,13 @@ void TestPage::setRunInProgress(bool running, const QString& stage)
     runInProgress_ = running;
     if (running) {
         completedSteps_ = 0;
+        runClock_.start();
+        runClockTimer_->start();
+        elapsedLabel_->setText(QStringLiteral("00:00:00"));
         progress_->setRange(0, 0);
         progress_->setFormat(stage.isEmpty() ? QStringLiteral("Выполняется…") : stage);
     } else {
+        runClockTimer_->stop();
         progress_->setRange(0, 100);
         progress_->setValue(100);
     }
@@ -1213,7 +1451,10 @@ void TestPage::setRunEvent(const orbita::stand::RunEvent& event)
     if (!runInProgress_) return;
     if (event.stage == "BACKGROUND") { plot_->setBackground(event); return; }
     if (event.stage == "SUPPLY") {
+        supplyPlot_->setVisible(true);
         supplyPlot_->addEvent(event);
+        powerStage_->setVisible(true);
+        powerStage_->addEvent(event);
         const auto number = [&event](const char* key) -> int {
             const auto found = event.data.find(key);
             return found == event.data.end() ? 0 : QString::fromStdString(found->second).toInt();
@@ -1262,11 +1503,14 @@ void TestPage::setRunEvent(const orbita::stand::RunEvent& event)
             "РУЧНОЙ ЭТАП: установите Р4831 на %1 Ом и подтвердите значение")
             .arg(target));
     } else if (event.stage == "MEASUREMENT") {
+        supplyPlot_->setVisible(false);
+        powerStage_->setVisible(false);
         const auto value = [&event](const char* key) -> QString {
             const auto found = event.data.find(key);
             return found == event.data.end() ? QString() : QString::fromStdString(found->second);
         };
         if (!value("ytp_channel").isEmpty()) {
+            plot_->setVisible(true);
             const bool combined = selectedTestCode() == QStringLiteral("ULK_COMBINED_CHECK");
             const double scale = 1.0;
             plot_->addMeasurement(value("ytp_channel"),
@@ -1281,6 +1525,7 @@ void TestPage::setRunEvent(const orbita::stand::RunEvent& event)
                 .arg(value("ytp_channel"), value("actual_reference_ohm"),
                      value("raw"), value("measured_resistance_ohm")));
         } else {
+            plot_->setVisible(true);
             const double reference = value("v7_v").toDouble();
             const double measured = value("yalk_v").toDouble();
             const double scale = 1.0;
@@ -1301,10 +1546,13 @@ void TestPage::setRunResult(const orbita::stand::ScenarioRunResult& result,
                             const QString& productionReportPath)
 {
     runInProgress_ = false;
+    runClockTimer_->stop();
     resultTable_->setRowCount(0);
     summaryTable_->setRowCount(0);
     plot_->clear();
     supplyPlot_->clear();
+    powerStage_->clear();
+    powerStage_->setVisible(false);
     for (const auto& event : result.events) {
         if (event.stage == "SUPPLY") supplyPlot_->addEvent(event);
         else if (event.stage == "BACKGROUND") plot_->setBackground(event);
@@ -1363,12 +1611,12 @@ void TestPage::setRunResult(const orbita::stand::ScenarioRunResult& result,
     productionDiagnosticsLabel_->setText(diagnosticLines.isEmpty()
         ? QStringLiteral("ПИТАНИЕ И СТАБИЛЬНОСТЬ: в этом прогоне нет соответствующих измерений.")
         : diagnosticLines.join(QStringLiteral("\n")));
+    productionDiagnosticsLabel_->setVisible(!diagnosticLines.isEmpty());
+    supplyPlot_->setVisible(!supplyReadings.isEmpty());
 
     std::function<void(const orbita::stand::StepRunResult&)> appendStep;
     appendStep = [this, &appendStep](const orbita::stand::StepRunResult& step) {
         for (const auto& measurement : step.measurements) {
-            const int row = resultTable_->rowCount();
-            resultTable_->insertRow(row);
             const auto attribute = [&measurement](const char* key) -> QString {
                 const auto found = measurement.attributes.find(key);
                 return found == measurement.attributes.end()
@@ -1380,6 +1628,8 @@ void TestPage::setRunResult(const orbita::stand::ScenarioRunResult& result,
             // cleanup and calibration summaries remain visible in the stage
             // table and in the concise TU protocol.
             if (!ytp && !yalk) continue;
+            const int row = resultTable_->rowCount();
+            resultTable_->insertRow(row);
             QStringList values;
             if (selectedTestCode() == QStringLiteral("ULK_COMBINED_CHECK")) {
                 values = ytp ? QStringList{
@@ -1430,6 +1680,7 @@ void TestPage::setRunResult(const orbita::stand::ScenarioRunResult& result,
                 resultTable_->setItem(row, column, item);
             }
             if ((measurement.unit == "V" || measurement.unit == "В" || measurement.unit == "Ом") && !attribute("value_samples").isEmpty()) {
+                plot_->setVisible(true);
                 double scale = 1.0;
 
                 const QString channel = ytp ? attribute("ytp_channel") : attribute("ulk_address");
@@ -1488,6 +1739,7 @@ void TestPage::setRunResult(const orbita::stand::ScenarioRunResult& result,
         }
         appendStep(step);
     }
+    resultTable_->setVisible(resultTable_->rowCount() > 0);
 
     QString verdict;
     QColor color;

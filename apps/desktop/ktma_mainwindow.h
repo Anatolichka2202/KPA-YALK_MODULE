@@ -19,6 +19,12 @@ public:
     explicit KtmaMainWindow(QWidget* parent = nullptr);
     ~KtmaMainWindow() override;
 
+protected:
+    bool integrationUsesDedicatedProductionFinalizer() const override
+    {
+        return integrationProductionWorkflowActive();
+    }
+
 private slots:
     void runScenario(const QString& scenarioCode, const QString& objectSerial,
                      bool allowPartial);

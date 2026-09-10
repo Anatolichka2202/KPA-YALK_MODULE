@@ -3,6 +3,7 @@
 #include <QApplication>
 #include <QCheckBox>
 #include <QComboBox>
+#include <QLineEdit>
 #include <QPixmap>
 #include <QPushButton>
 #include <QTableWidget>
@@ -123,47 +124,90 @@ int main(int argc, char** argv)
             "demonstration mode must be selectable");
     if (const QString screenshot = qEnvironmentVariable("ORBITA_UI_SCREENSHOT");
         !screenshot.isEmpty()) {
+        page.setProductionMode(qEnvironmentVariableIsSet("MILTECH_UI_PRODUCTION"));
         mode->setCurrentIndex(0);
-        scope->setCurrentIndex(scope->findData(QStringLiteral("ЯТП")));
-        test->setCurrentIndex(test->findData(QStringLiteral("YTP_FULL_5_6")));
+        const QString scene = qEnvironmentVariable("MILTECH_UI_SCENE", QStringLiteral("YALK"));
+        if (auto* serial = page.findChild<QLineEdit*>(QStringLiteral("objectSerial")))
+            serial->setText(QStringLiteral("УБСИ-0147"));
         page.setEquipmentStatus(QStringLiteral("RS485"), true,
             QStringLiteral("ROKT / UDP 192.168.0.115:1113"));
         page.setEquipmentStatus(QStringLiteral("ISD"), true,
             QStringLiteral("HTTP 192.168.0.101"));
+        page.setEquipmentStatus(QStringLiteral("V7"), true,
+            QStringLiteral("Взаимодействие с прибором подтверждено"));
+        page.setEquipmentStatus(QStringLiteral("AKIP"), true,
+            QStringLiteral("27,0 В · выход включён"));
         page.setEngineerMode(false);
-        orbita::stand::ScenarioRunResult preview;
-        preview.runId = "preview";
-        preview.scenarioId = "ubsi.468157.002.ytp.tu5_6";
-        preview.verdict = orbita::stand::RunVerdict::Ok;
-        orbita::stand::StepRunResult channels;
-        channels.title = "Проверка 30 каналов ЯТП";
-        channels.verdict = orbita::stand::RunVerdict::Ok;
-        for (int channel = 1; channel <= 30; ++channel) {
-            for (const double point : {0.0, 120.0, 240.0}) {
-                const double measured = point + (channel % 5 - 2) * 0.08;
-                orbita::stand::MeasurementResult value;
-                value.title = "ЯТП канал " + std::to_string(channel);
-                value.reference = point;
-                value.measured = measured;
-                value.unit = "Ом";
-                value.verdict = orbita::stand::RunVerdict::Ok;
-                value.attributes = {
+        orbita::stand::RunEvent start;
+        start.stage = "START";
+        if (scene == QStringLiteral("POWER")) {
+            if (scope->findData(QStringLiteral("ПИТАНИЕ")) < 0)
+                scope->addItem(QStringLiteral("Питание / потребление"), QStringLiteral("ПИТАНИЕ"));
+            scope->setCurrentIndex(scope->findData(QStringLiteral("ПИТАНИЕ")));
+            test->clear();
+            test->addItem(QStringLiteral("Питание / потребление"), QStringLiteral("PROD_POWER"));
+            QMetaObject::invokeMethod(&page, "updateSelectionSummary", Qt::DirectConnection);
+            page.setRunInProgress(true, QStringLiteral("Выдержка 19 В · 02:15 / 05:00"));
+            start.message = "Выдержка 19 В · контроль работоспособности";
+            page.setRunEvent(start);
+            for (int sample = 0; sample < 12; ++sample) {
+                orbita::stand::RunEvent event;
+                event.stage = "SUPPLY";
+                event.verdict = orbita::stand::RunVerdict::Ok;
+                event.data = {{"setpoint_v", "19"}, {"duration_s", "300"},
+                              {"elapsed_s", std::to_string(124 + sample)},
+                              {"amperes", std::to_string(0.278 + (sample % 4) * 0.001)}};
+                page.setRunEvent(event);
+            }
+        } else if (scene == QStringLiteral("YTP")) {
+            scope->setCurrentIndex(scope->findData(QStringLiteral("ЯТП")));
+            test->setCurrentIndex(test->findData(QStringLiteral("YTP_FULL_5_6")));
+            page.setRunInProgress(true, QStringLiteral("ЯТП · точка 120 Ом"));
+            start.message = "ЯТП · 30 каналов · точка 120 Ом";
+            page.setRunEvent(start);
+            for (int channel = 1; channel <= 30; ++channel) {
+                const double measured = 120.0 + (channel % 7 - 3) * 0.07;
+                const double span = channel % 11 == 0 ? 0.22 : 0.06;
+                orbita::stand::RunEvent event;
+                event.stage = "MEASUREMENT";
+                event.verdict = orbita::stand::RunVerdict::Ok;
+                event.data = {
                     {"ytp_channel", std::to_string(channel)},
-                    {"target_resistance_ohm", std::to_string(point)},
-                    {"actual_reference_ohm", std::to_string(point)},
-                    {"raw", std::to_string(330 + int(point / 240.0 * 3670))},
-                    {"calibration_zero_raw", "330"}, {"calibration_full_raw", "4000"},
+                    {"actual_reference_ohm", "120.000"},
                     {"measured_resistance_ohm", std::to_string(measured)},
-                    {"absolute_error_ohm", std::to_string(std::abs(measured - point))},
-                    {"reduced_error_percent", std::to_string((measured - point) / 2.4)},
-                    {"sample_count", "16"}, {"temperature_mode", "0"},
-                    {"value_samples", std::to_string(measured - 0.03) + ","
-                        + std::to_string(measured) + "," + std::to_string(measured + 0.03)}};
-                channels.measurements.push_back(std::move(value));
+                    {"raw", std::to_string(2160 + channel)},
+                    {"value_samples", std::to_string(measured - span / 2.0) + ","
+                        + std::to_string(measured) + ","
+                        + std::to_string(measured + span / 2.0)}};
+                page.setRunEvent(event);
+            }
+        } else {
+            scope->setCurrentIndex(scope->findData(QStringLiteral("ЯЛК-96")));
+            test->setCurrentIndex(test->findData(QStringLiteral("YALK_FULL_5_6")));
+            page.setRunInProgress(true, QStringLiteral("ЯЛК-96 · точка 6,2 В"));
+            start.message = "ЯЛК-96 · 80 аналоговых каналов";
+            page.setRunEvent(start);
+            for (int address = 1; address <= 87; ++address) {
+                if (!(address <= 28 || (address >= 32 && address <= 43)
+                        || (address >= 45 && address <= 70) || address >= 74)) continue;
+                const double measured = 6.2 + (address % 7 - 3) * 0.0012;
+                const double span = address % 13 == 0 ? 0.006 : 0.0014;
+                orbita::stand::RunEvent event;
+                event.stage = "MEASUREMENT";
+                event.verdict = orbita::stand::RunVerdict::Ok;
+                event.data = {
+                    {"ulk_address", std::to_string(address)}, {"command_v", "6.2"},
+                    {"v7_v", "6.2000"}, {"yalk_v", std::to_string(measured)},
+                    {"analog_code", std::to_string(4010 + address)},
+                    {"signal", address % 9 == 0 ? "1" : "0"},
+                    {"value_samples", std::to_string(measured - span / 2.0) + ","
+                        + std::to_string(measured - span / 4.0) + ","
+                        + std::to_string(measured) + ","
+                        + std::to_string(measured + span / 3.0) + ","
+                        + std::to_string(measured + span / 2.0)}};
+                page.setRunEvent(event);
             }
         }
-        preview.steps.push_back(std::move(channels));
-        page.setRunResult(preview);
         page.resize(1664, 935);
         page.show();
         QApplication::processEvents();

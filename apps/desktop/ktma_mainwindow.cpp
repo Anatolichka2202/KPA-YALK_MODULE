@@ -235,6 +235,13 @@ void KtmaMainWindow::loadProductionScenarios()
             const QString code = ids.value(QString::fromStdString(scenario.id));
             if (code.isEmpty()) continue;
 
+            if (code == QStringLiteral("PROD_YVP")) {
+                page->setScenarioInfo(code, false, false, {}, QStringLiteral(
+                    "ЯВП временно недоступна: внешняя команда ROKT для переключения адаптера ещё не подтверждена."));
+                loaded.insert(code);
+                continue;
+            }
+
             QStringList errors;
             for (const auto& error : engine->validate(scenario))
                 errors << QString::fromStdString(error);

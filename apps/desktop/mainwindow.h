@@ -92,6 +92,10 @@ protected:
     void integrationOpenRegistrar() { setMode(ModeAdmin); }
     void integrationOpenTests() { setMode(ModeTests); }
     bool integrationResultSaved() const { return lastResultSaved_; }
+    virtual bool integrationUsesDedicatedProductionFinalizer() const
+    {
+        return false;
+    }
 
 private slots:
     // Управление сбором

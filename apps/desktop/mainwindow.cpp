@@ -209,6 +209,11 @@ void MainWindow::setupUi()
     connect(homePage_, &HomePage::administrationRequested, this, [this] {
         setMode(ModeAdmin);
     });
+    connect(testPage_, &TestPage::homeRequested, this, [this] {
+        activeWorkflow_ = Workflow::None;
+        testPage_->setProductionMode(false);
+        setMode(ModeHome);
+    });
     connect(registrarPage_, &RegistrarPage::homeRequested, this, [this] {
         setMode(ModeHome);
     });
@@ -894,6 +899,8 @@ void MainWindow::initializeStandRuntime()
         scenarioWatcher_ = new QFutureWatcher<orbita::stand::ScenarioRunResult>(this);
         connect(scenarioWatcher_, &QFutureWatcherBase::finished, this, [this]() {
             const auto result = scenarioWatcher_->result();
+            const bool dedicatedProductionFinalizer =
+                integrationUsesDedicatedProductionFinalizer();
             QString tuReportPath;
             QString productionReportPath;
             bool resultSaved = false;
@@ -902,14 +909,18 @@ void MainWindow::initializeStandRuntime()
                 runStore_->save(result);
                 resultSaved = true;
                 lastResultSaved_ = true;
-                const QDir root(QCoreApplication::applicationDirPath());
-                const QString reportDir = root.filePath("runs/" + QString::fromStdString(result.runId));
-                const auto paths = orbita::stand::writeHtmlCsvReport(
-                    result, reportDir.toStdString(), pendingProductionReportMetadata_);
-                tuReportPath = QString::fromStdString(paths.tuHtml);
-                productionReportPath = QString::fromStdString(paths.productionHtml);
-                log(QStringLiteral("Краткий протокол ТУ: %1").arg(tuReportPath));
-                log(QStringLiteral("Производственная ведомость: %1").arg(productionReportPath));
+                if (!dedicatedProductionFinalizer) {
+                    const QDir root(QCoreApplication::applicationDirPath());
+                    const QString reportDir = root.filePath(
+                        "runs/" + QString::fromStdString(result.runId));
+                    const auto paths = orbita::stand::writeHtmlCsvReport(
+                        result, reportDir.toStdString(), pendingProductionReportMetadata_);
+                    tuReportPath = QString::fromStdString(paths.tuHtml);
+                    productionReportPath = QString::fromStdString(paths.productionHtml);
+                    log(QStringLiteral("Краткий протокол ТУ: %1").arg(tuReportPath));
+                    log(QStringLiteral("Производственная ведомость: %1")
+                            .arg(productionReportPath));
+                }
             } catch (const std::exception& error) {
                 log(QStringLiteral("Не удалось сохранить результат: %1").arg(QString::fromUtf8(error.what())));
             }
@@ -945,7 +956,8 @@ void MainWindow::initializeStandRuntime()
                 pendingProductionStageAttemptId_.clear();
                 pendingProductionReportMetadata_ = {};
             }
-            testPage_->setRunResult(result, tuReportPath, productionReportPath);
+            if (!dedicatedProductionFinalizer)
+                testPage_->setRunResult(result, tuReportPath, productionReportPath);
             if (closeAfterScenario_) {
                 closeAfterScenario_ = false;
                 QTimer::singleShot(0, this, &QWidget::close);

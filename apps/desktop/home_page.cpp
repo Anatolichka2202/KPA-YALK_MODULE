@@ -1,6 +1,7 @@
 #include "home_page.h"
 
 #include <QLabel>
+#include <QHBoxLayout>
 #include <QPushButton>
 #include <QVBoxLayout>
 
@@ -32,14 +33,20 @@ HomePage::HomePage(QWidget* parent)
     layout->setContentsMargins(64, 52, 64, 52);
     layout->setSpacing(18);
 
-    auto* title = new QLabel(QStringLiteral("КТМА"), this);
+    auto* title = new QLabel(QStringLiteral("MilTechStation / КТМА"), this);
     title->setStyleSheet(QStringLiteral("color:#f2f6fa; font-size:32px; font-weight:700;"));
     layout->addWidget(title);
 
-    auto* subtitle = new QLabel(QStringLiteral("Выберите рабочий контур"), this);
+    auto* subtitle = new QLabel(QStringLiteral("УБСИ · выберите рабочий контур"), this);
     subtitle->setStyleSheet(QStringLiteral("color:#9aa7b5; font-size:15px;"));
     layout->addWidget(subtitle);
-    layout->addSpacing(20);
+    auto* state = new QLabel(QStringLiteral("ТЕКУЩАЯ ПОСТАВКА · УБСИ 2.0"), this);
+    state->setStyleSheet(QStringLiteral(
+        "color:#70d79b; background:#14251c; border:1px solid #315c43;"
+        " border-radius:5px; padding:8px 12px; font-weight:700;"));
+    state->setMaximumWidth(270);
+    layout->addWidget(state);
+    layout->addSpacing(24);
 
     auto* production = makeHomeAction(
         QStringLiteral("ПРОИЗВОДСТВО"),
@@ -51,8 +58,17 @@ HomePage::HomePage(QWidget* parent)
         QStringLiteral("АДМИНИСТРИРОВАНИЕ"),
         QStringLiteral("Регистратор, состав изделий и настройки"), this);
 
-    layout->addWidget(production);
-    layout->addWidget(tu);
+    production->setStyleSheet(QStringLiteral(
+        "QPushButton { background:#173525; color:#e6fff0; border:2px solid #3d9a6b;"
+        " border-radius:7px; padding:20px 24px; text-align:left; font-size:18px; font-weight:700; }"
+        "QPushButton:hover { background:#1f4932; border-color:#70d79b; }"));
+    auto* work = new QHBoxLayout;
+    work->setSpacing(16);
+    work->addWidget(production, 1);
+    work->addWidget(tu, 1);
+    layout->addLayout(work);
+    administration->setMinimumHeight(66);
+    administration->setText(QStringLiteral("АДМИНИСТРИРОВАНИЕ  ·  изделия, состав и история"));
     layout->addWidget(administration);
     layout->addStretch();
 
