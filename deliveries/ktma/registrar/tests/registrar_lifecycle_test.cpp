@@ -70,7 +70,7 @@ int main(int argc, char** argv)
                 "TU run link must be visible in product history");
         require(replacementVerificationPackages("YALK-96") == std::vector<std::string>{"PROD_YALK_FULL"}
                     && replacementVerificationPackages("YTP") == std::vector<std::string>{"PROD_YTP_FULL"}
-                    && replacementVerificationPackages("YVP") == std::vector<std::string>{"PROD_YVP_FULL", "PROD_YALK_89_96"}
+                    && replacementVerificationPackages("YVP") == std::vector<std::string>{"PROD_YVP_FULL", "PROD_YALK_88_96"}
                     && replacementVerificationPackages("YP-P") == std::vector<std::string>{"PROD_POWER_CONSUMPTION"},
                 "replacement verification policy must cover each current cell type");
         const auto yalkOld = registrar.createComponent("YALK-96", "YALK-001");

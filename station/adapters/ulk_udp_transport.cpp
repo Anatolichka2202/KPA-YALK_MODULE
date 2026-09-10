@@ -362,6 +362,35 @@ struct UlkUdpTransport::Impl {
         startPreparedYtpRokt(endpointNumber);
     }
 
+    void startYvpRokt(std::uint8_t cellNumber, std::uint8_t channelNumber)
+    {
+        const auto bytes = channelNumber == 0
+            ? UlkUdpTransport::yvpRoktStartCommand(cellNumber)
+            : UlkUdpTransport::yvpRoktChannelStartCommand(channelNumber, cellNumber);
+        startReceiver();
+
+        const auto remote = endpoint(config.remoteHost, config.port);
+        Socket sender = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+        if (sender == InvalidSocket) {
+            stop();
+            throw std::runtime_error("Cannot open ULK ROKT YVP command socket");
+        }
+        const auto source = endpoint(config.localHost, 0);
+        if (::bind(sender, reinterpret_cast<const sockaddr*>(&source), sizeof(source)) != 0) {
+            closeSocket(sender);
+            stop();
+            throw std::runtime_error("Cannot bind ULK ROKT YVP command socket");
+        }
+        const int sent = ::sendto(sender,
+            reinterpret_cast<const char*>(bytes.data()), static_cast<int>(bytes.size()), 0,
+            reinterpret_cast<const sockaddr*>(&remote), sizeof(remote));
+        closeSocket(sender);
+        if (sent != static_cast<int>(bytes.size())) {
+            stop();
+            throw std::runtime_error("Cannot send ULK ROKT YVP start command");
+        }
+    }
+
     void stop() noexcept
     {
         stopping.store(true);
@@ -554,6 +583,15 @@ void UlkUdpTransport::startYtpRokt(std::uint8_t endpointNumber)
 {
     impl_->startYtpRokt(endpointNumber);
 }
+void UlkUdpTransport::startYvpRokt(std::uint8_t cellNumber)
+{
+    impl_->startYvpRokt(cellNumber, 0);
+}
+void UlkUdpTransport::startYvpChannelRokt(std::uint8_t channelNumber,
+                                          std::uint8_t cellNumber)
+{
+    impl_->startYvpRokt(cellNumber, channelNumber);
+}
 void UlkUdpTransport::stop() noexcept { impl_->stop(); }
 
 UlkFrame UlkUdpTransport::waitFrame(UlkFrameKind kind, std::uint64_t afterSequence,
@@ -604,6 +642,40 @@ std::vector<std::uint8_t> UlkUdpTransport::ytpRoktStartCommand(
     result[4] = 0x0A;
     result[5] = 0x02;
     result[7] = endpointNumber;
+    return result;
+}
+
+std::vector<std::uint8_t> UlkUdpTransport::yvpRoktStartCommand(
+    std::uint8_t cellNumber)
+{
+    if (cellNumber == 0) {
+        throw std::invalid_argument("Номер ячейки ЯВП должен быть 1..255");
+    }
+    std::vector<std::uint8_t> result(128, 0);
+    result[0] = 'R';
+    result[1] = 'O';
+    result[2] = 'K';
+    result[3] = 'T';
+    // KPA_Rokot command УЛКрежимРС: mode ЯВП, option -я<cell>.
+    result[4] = 0x0A;
+    result[5] = 0x01;
+    result[7] = cellNumber;
+    return result;
+}
+
+std::vector<std::uint8_t> UlkUdpTransport::yvpRoktChannelStartCommand(
+    std::uint8_t channelNumber, std::uint8_t cellNumber)
+{
+    if (channelNumber < 1 || channelNumber > 8) {
+        throw std::invalid_argument("Номер канала ЯВП должен быть 1..8");
+    }
+    if (cellNumber == 0) {
+        throw std::invalid_argument("Номер ячейки ЯВП должен быть 1..255");
+    }
+    auto result = yvpRoktStartCommand(cellNumber);
+    // KPA_Rokot mode ЯВП1к stores the zero-based channel in byte 6.
+    result[5] = 0x03;
+    result[6] = static_cast<std::uint8_t>(channelNumber - 1);
     return result;
 }
 

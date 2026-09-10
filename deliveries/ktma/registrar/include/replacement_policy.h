@@ -11,7 +11,7 @@ inline std::vector<std::string> replacementVerificationPackages(const std::strin
 {
     if (componentType == "YALK-96") return {"PROD_YALK_FULL"};
     if (componentType == "YTP") return {"PROD_YTP_FULL"};
-    if (componentType == "YVP") return {"PROD_YVP_FULL", "PROD_YALK_89_96"};
+    if (componentType == "YVP") return {"PROD_YVP_FULL", "PROD_YALK_88_96"};
     if (componentType == "YP-P") return {"PROD_POWER_CONSUMPTION"};
     return {};
 }
