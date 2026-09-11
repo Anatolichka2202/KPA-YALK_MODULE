@@ -1,0 +1,74 @@
+name: new-dis CI
+
+on:
+  push:
+    branches:
+      - new-dis
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: new-dis-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Windows UCRT64 · Qt 6 · GCC
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up MSYS2 UCRT64
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            git
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-qt6-base
+            mingw-w64-ucrt-x86_64-qt6-svg
+            mingw-w64-ucrt-x86_64-qt6-serialport
+
+      - name: Configure
+        shell: msys2 {0}
+        run: >-
+          cmake -S . -B build-ci -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DBUILD_TESTING=ON
+
+      - name: Build application, simulator and tests
+        shell: msys2 {0}
+        run: cmake --build build-ci --parallel 4
+
+      - name: Run CTest
+        shell: msys2 {0}
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --test-dir build-ci --output-on-failure -C Release
+
+      - name: Verify expected executables
+        shell: msys2 {0}
+        run: |
+          test -f build-ci/apps/desktop/MilTechStation.exe
+          test -f build-ci/apps/desktop/MilTechStationSimulator.exe
+
+      - name: Upload runnable build
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: MilTechStation-new-dis-windows-ucrt64
+          path: |
+            build-ci/apps/desktop/**
+          if-no-files-found: error
+          retention-days: 7
