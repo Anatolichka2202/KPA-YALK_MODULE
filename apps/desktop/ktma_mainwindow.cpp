@@ -69,7 +69,7 @@ KtmaMainWindow::KtmaMainWindow(QWidget* parent)
 
     page->registerEquipmentRow(QStringLiteral("RIGOL"),
         QStringLiteral("Rigol DG-1022Z / ДГ10.2"), QStringLiteral("USB / VISA"),
-        QStringLiteral("Требуется только сценариям ЯВП"));
+        QStringLiteral("Требуется только сценариям, где есть signal.generator"));
 
     integrationEnsureStandRuntime();
     loadProductionScenarios();
@@ -111,12 +111,13 @@ KtmaMainWindow::KtmaMainWindow(QWidget* parent)
     integrationDisableBaseScenarioRunner();
     connect(page, &TestPage::runRequested,
             this, &KtmaMainWindow::runScenario);
-    connect(page, &TestPage::equipmentCheckRequested, this, [this, page] {
-        // MainWindow checks the common stand devices. The generator is probed
-        // only when the currently selected scenario actually requires it.
-        if (page->currentRequiredEquipment().contains(QStringLiteral("RIGOL")))
-            checkRigolGenerator();
-    });
+
+    // MainWindow historically connected this signal to a broad stand check.
+    // UBSI has a stricter contract: Preparation probes only devices required by
+    // the selected scenario. Replace that inherited connection with the scoped one.
+    QObject::disconnect(page, &TestPage::equipmentCheckRequested, this, nullptr);
+    connect(page, &TestPage::equipmentCheckRequested,
+            this, &KtmaMainWindow::checkSelectedEquipment);
 
     if (auto* watcher = integrationScenarioWatcher()) {
         connect(watcher, &QFutureWatcherBase::finished,
@@ -135,9 +136,8 @@ KtmaMainWindow::KtmaMainWindow(QWidget* parent)
         connect(home, &HomePage::tuRequested, this, [this] {
             QTimer::singleShot(0, this, [this] {
                 restoreTuSelector();
-                // Equipment is deliberately not probed on the selection page.
-                // The operator checks only the equipment required by the chosen
-                // TU scenario in the Preparation stage.
+                // Selection does not touch equipment. The check is performed
+                // only from Preparation for the chosen TU scenario.
             });
         });
     }
@@ -288,6 +288,49 @@ void KtmaMainWindow::restoreTuSelector()
     if (auto* test = page->findChild<QComboBox*>(QStringLiteral("testType"))) {
         if (test->parentWidget()) test->parentWidget()->setVisible(false);
     }
+}
+
+void KtmaMainWindow::checkSelectedEquipment()
+{
+    auto* page = integrationTestPage();
+    if (!page) return;
+    integrationEnsureStandRuntime();
+    if (!integrationStandRuntimeReady()) return;
+
+    QSet<QString> required;
+    for (const auto& code : page->currentRequiredEquipment()) required.insert(code);
+
+    const QHash<QString, QString> capabilityToUi = {
+        {QStringLiteral("ulk.parameter_source"), QStringLiteral("RS485")},
+        {QStringLiteral("stand.switch_matrix"), QStringLiteral("ISD")},
+        {QStringLiteral("measure.reference_voltage"), QStringLiteral("V7")},
+        {QStringLiteral("measure.dc_current"), QStringLiteral("V7")},
+        {QStringLiteral("measure.reference_ac_voltage"), QStringLiteral("V7")},
+        {QStringLiteral("measure.reference_frequency"), QStringLiteral("V7")},
+        {QStringLiteral("power.dc_supply"), QStringLiteral("AKIP")},
+        {QStringLiteral("signal.generator"), QStringLiteral("RIGOL")}};
+
+    auto& profile = integrationStandProfile();
+    const auto savedDevices = profile.devices;
+    for (auto& definition : profile.devices) {
+        bool needed = false;
+        for (const auto& capability : definition.bindCapabilities) {
+            const QString code = capabilityToUi.value(QString::fromStdString(capability));
+            if (!code.isEmpty() && required.contains(code)) {
+                needed = true;
+                break;
+            }
+        }
+        if (!needed) definition.enabled = false;
+    }
+
+    // Reuse the verified common stand checker, but with all devices outside the
+    // selected scenario temporarily disabled. This prevents probes/outputs on
+    // unrelated hardware while preserving the existing safe-stop/bind logic.
+    integrationLegacyEquipmentCheck();
+    profile.devices = savedDevices;
+
+    if (required.contains(QStringLiteral("RIGOL"))) checkRigolGenerator();
 }
 
 void KtmaMainWindow::runScenario(
