@@ -35,6 +35,8 @@ public:
     void setEngineerMode(bool enabled);
     bool isEngineerMode() const;
     void setProductionMode(bool enabled);
+    void setAvailableProductionProducts(const QStringList& serials);
+    QStringList currentRequiredEquipment() const;
     void setRunInProgress(bool running, const QString& stage = {});
     void setRunEvent(const orbita::stand::RunEvent& event);
     void setRunResult(const orbita::stand::ScenarioRunResult& result,
@@ -70,4 +72,5 @@ private slots:
 private:
     struct Impl;
     std::unique_ptr<Impl> impl_;
+    QString lastScenarioCode_;
 };
