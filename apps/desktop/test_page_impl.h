@@ -59,7 +59,10 @@ struct TestPage::Impl
         includeOverload->setChecked(true);
         includeSurvival = new QCheckBox(QStringLiteral("Выдержки 19 / 37 В"));
         includeSurvival->setChecked(true);
-        for (auto* widget : {static_cast<QWidget*>(partial), includeYvpCheck, includeOverload, includeSurvival}) layout->addWidget(widget);
+        layout->addWidget(partial);
+        layout->addWidget(includeYvpCheck);
+        layout->addWidget(includeOverload);
+        layout->addWidget(includeSurvival);
         root->addWidget(bridge);
 
         QObject::connect(scopeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), q, [this] {
