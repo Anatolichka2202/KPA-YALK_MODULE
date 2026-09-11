@@ -2,6 +2,7 @@
 
 #include <QApplication>
 #include <QComboBox>
+#include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
 #include <QTableWidget>
@@ -40,20 +41,22 @@ int main(int argc, char** argv)
     require(page.styleSheet().contains(QStringLiteral("#14171c")),
             "operator UI must keep the dark industrial palette");
 
+    int routeEntries = 0;
+    for (auto* label : page.findChildren<QLabel*>()) {
+        if (label->property("routeStageIndex").isValid()) {
+            ++routeEntries;
+            require(label->cursor().shape() == Qt::PointingHandCursor,
+                    "route stage must be visibly interactive");
+        }
+    }
+    require(routeEntries == 6, "operator workspace must expose six clickable route stages");
+
     page.setProductionMode(true);
-    // KtmaMainWindow normally fills the hidden production selector. Reproduce
-    // only that backend bridge here.
-    scope->clear();
-    scope->addItem(QStringLiteral("УБСИ · полная"), QStringLiteral("УБСИ ПО ТУ"));
-    scope->addItem(QStringLiteral("ЯЛК-96"), QStringLiteral("ЯЛК-96"));
-    scope->addItem(QStringLiteral("ЯТП"), QStringLiteral("ЯТП"));
-    scope->addItem(QStringLiteral("ЯВП-8"), QStringLiteral("ЯВП-8"));
-    test->clear();
-    test->addItem(QStringLiteral("Полная производственная проверка УБСИ"),
-                  QStringLiteral("PROD_FULL"));
     page.setScenarioInfo(QStringLiteral("PROD_FULL"), true, false,
         {QStringLiteral("AKIP"), QStringLiteral("RS485"), QStringLiteral("ISD"),
          QStringLiteral("V7"), QStringLiteral("R4831")}, QStringLiteral("ready"));
+    require(page.currentScenarioCode() == QStringLiteral("PROD_FULL"),
+            "production card selection must directly own the backend scenario code");
 
     operatorEdit->setText(QStringLiteral("Иванов И.И."));
     serial->setText(QStringLiteral("УБСИ-0001"));
@@ -116,6 +119,6 @@ int main(int argc, char** argv)
                 {"value_samples", "120.02,120.08,120.05"}};
     page.setRunEvent(ytp);
 
-    std::cout << "New production/TU operator UI smoke test passed\n";
+    std::cout << "Unified production/TU operator navigation smoke test passed\n";
     return EXIT_SUCCESS;
 }
