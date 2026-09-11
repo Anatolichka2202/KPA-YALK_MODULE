@@ -10,6 +10,8 @@
 
 #include "orbita_stand/scenario.h"
 
+class QEvent;
+
 class TestPage final : public QWidget
 {
     Q_OBJECT
