@@ -29,6 +29,7 @@ private slots:
     void runScenario(const QString& scenarioCode, const QString& objectSerial,
                      bool allowPartial);
     void finalizeProductionRun();
+    void checkSelectedEquipment();
     void checkRigolGenerator();
 
 private:
