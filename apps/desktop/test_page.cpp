@@ -629,7 +629,22 @@ void TestPage::setRunEvent(const orbita::stand::RunEvent& event)
         return;
     }
 
-    if (event.stage == "BACKGROUND") return;
+    if (event.stage == "BACKGROUND") {
+        const auto values = [&event](const char* key) {
+            const auto found = event.data.find(key);
+            return found == event.data.end()
+                ? QVector<double>() : csvNumbers(QString::fromStdString(found->second));
+        };
+        const QString section = eventValue(event, "section");
+        if (section == QStringLiteral("YALK")) {
+            impl_->yalkOverview->setBackground(
+                values("background_mean"), values("background_min"), values("background_max"));
+        } else if (section == QStringLiteral("YTP")) {
+            impl_->ytpOverview->setBackground(
+                values("background_mean"), values("background_min"), values("background_max"));
+        }
+        return;
+    }
     if (event.stage != "MEASUREMENT") return;
 
     if (!eventValue(event, "ytp_channel").isEmpty()) {

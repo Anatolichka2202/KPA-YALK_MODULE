@@ -18,6 +18,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
+#include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
 #include <QProgressBar>
@@ -29,6 +30,7 @@
 #include <QAbstractItemView>
 #include <QTextStream>
 #include <QTimer>
+#include <QToolTip>
 #include <QUrl>
 #include <QVBoxLayout>
 
@@ -193,74 +195,56 @@ protected:
         QPainter painter(this);
         painter.setRenderHint(QPainter::Antialiasing);
         painter.fillRect(rect(), QColor("#0e1115"));
-
-        QFont font = painter.font();
-        font.setBold(true);
-        painter.setFont(font);
+        QFont font = painter.font(); font.setBold(true); painter.setFont(font);
         painter.setPen(QColor("#dce6ef"));
         painter.drawText(QRectF(9, 4, width() - 18, 20), Qt::AlignLeft, title_);
-
-        font.setBold(false);
-        font.setPointSize(std::max(8, font.pointSize() - 1));
-        painter.setFont(font);
-        if (!firstName_.isEmpty()) {
-            painter.setPen(QColor("#70d79b"));
-            painter.drawText(QRectF(width() - 260, 4, 120, 20), Qt::AlignRight, firstName_);
-        }
-        if (!secondName_.isEmpty()) {
-            painter.setPen(QColor("#69aee6"));
-            painter.drawText(QRectF(width() - 130, 4, 120, 20), Qt::AlignRight, secondName_);
-        }
-
-        const QRectF plot(42, 29, width() - 54, height() - 42);
-        painter.setPen(QPen(QColor("#27313c"), 1));
-        painter.drawRect(plot);
-        for (int i = 1; i < 4; ++i) {
-            const double y = plot.top() + plot.height() * i / 4.0;
-            painter.drawLine(QPointF(plot.left(), y), QPointF(plot.right(), y));
-        }
-
         QVector<double> values;
         for (double v : first_) if (std::isfinite(v)) values.push_back(v);
         for (double v : second_) if (std::isfinite(v)) values.push_back(v);
-        if (values.size() < 2) {
+        if (values.isEmpty()) {
             painter.setPen(QColor("#667484"));
-            painter.drawText(plot, Qt::AlignCenter, QStringLiteral("данные появятся во время измерения"));
+            painter.drawText(QRectF(12, 30, width() - 24, height() - 40), Qt::AlignCenter,
+                             QStringLiteral("ожидание измерения"));
             return;
         }
-
         const auto mm = std::minmax_element(values.begin(), values.end());
-        double low = *mm.first;
-        double high = *mm.second;
-        double pad = (high - low) * 0.2;
-        if (pad < 1e-6) pad = unit_ == QStringLiteral("Ом") ? 0.5 : 0.01;
-        low -= pad;
-        high += pad;
-        if (!(high > low)) high = low + 1.0;
-
-        painter.setPen(QColor("#7e8a98"));
-        painter.drawText(QRectF(0, plot.top() - 7, 38, 14), Qt::AlignRight,
-                         QString::number(high, 'f', unit_ == QStringLiteral("Ом") ? 2 : 3));
-        painter.drawText(QRectF(0, plot.bottom() - 7, 38, 14), Qt::AlignRight,
-                         QString::number(low, 'f', unit_ == QStringLiteral("Ом") ? 2 : 3));
-
-        const auto draw = [&](const QVector<double>& series, const QColor& color) {
-            const int count = static_cast<int>(series.size());
-            if (count < 2) return;
-            QPainterPath path;
-            bool started = false;
-            for (int i = 0; i < count; ++i) {
-                if (!std::isfinite(series[i])) continue;
-                const double x = plot.left() + plot.width() * i / std::max(1, count - 1);
-                const double y = plot.bottom() - (series[i] - low) / (high - low) * plot.height();
-                if (!started) { path.moveTo(x, y); started = true; }
-                else path.lineTo(x, y);
-            }
-            painter.setPen(QPen(color, 1.6));
-            painter.drawPath(path);
+        const double latestFirst = first_.isEmpty() ? std::numeric_limits<double>::quiet_NaN() : first_.last();
+        const double latestSecond = second_.isEmpty() ? std::numeric_limits<double>::quiet_NaN() : second_.last();
+        const int decimals = unit_ == QStringLiteral("Ом") ? 2 : 3;
+        const auto drawValue = [&](const QRectF& area, const QString& caption, double value,
+                                   const QColor& color) {
+            painter.setPen(QPen(QColor("#27313c"), 1));
+            painter.setBrush(QColor("#111820"));
+            painter.drawRoundedRect(area, 6, 6);
+            painter.setBrush(Qt::NoBrush);
+            painter.setPen(QColor("#7e8a98"));
+            painter.setFont(QFont("Segoe UI", 8));
+            painter.drawText(area.adjusted(10, 6, -10, -6), Qt::AlignTop | Qt::AlignLeft, caption);
+            painter.setPen(color);
+            painter.setFont(QFont("Segoe UI", 20, QFont::DemiBold));
+            painter.drawText(area.adjusted(10, 22, -10, -6), Qt::AlignLeft | Qt::AlignVCenter,
+                std::isfinite(value) ? QStringLiteral("%1 %2").arg(QString::number(value, 'f', decimals), unit_)
+                                     : QStringLiteral("—"));
         };
-        draw(first_, QColor("#70d79b"));
-        draw(second_, QColor("#69aee6"));
+        const double gap = 8.0;
+        const double cardWidth = second_.isEmpty() ? (width() - 24.0) / 3.0
+                                                    : (width() - 32.0) / 4.0;
+        double left = 8.0;
+        drawValue(QRectF(left, 30, cardWidth, height() - 38),
+                  firstName_.isEmpty() ? QStringLiteral("Текущее") : firstName_, latestFirst,
+                  QColor("#70d79b"));
+        left += cardWidth + gap;
+        if (!second_.isEmpty()) {
+            drawValue(QRectF(left, 30, cardWidth, height() - 38),
+                      secondName_.isEmpty() ? QStringLiteral("Измерено") : secondName_, latestSecond,
+                      QColor("#69aee6"));
+            left += cardWidth + gap;
+        }
+        drawValue(QRectF(left, 30, cardWidth, height() - 38), QStringLiteral("Минимум"), *mm.first,
+                  QColor("#c2ccd8"));
+        left += cardWidth + gap;
+        drawValue(QRectF(left, 30, cardWidth, height() - 38), QStringLiteral("Максимум"), *mm.second,
+                  QColor("#c2ccd8"));
     }
 
 private:
@@ -307,27 +291,25 @@ protected:
         painter.drawText(QRectF(9, 4, width() - 18, 20), Qt::AlignLeft, title_);
         if (steps_.isEmpty()) return;
 
-        const QRectF plot(42, 31, width() - 54, height() - 47);
-        painter.setPen(QPen(QColor("#27313c"), 1));
-        painter.drawRect(plot);
-        double minV = *std::min_element(steps_.begin(), steps_.end());
-        double maxV = *std::max_element(steps_.begin(), steps_.end());
-        if (!(maxV > minV)) { minV -= 1.0; maxV += 1.0; }
-        const double stepWidth = plot.width() / std::max(1, static_cast<int>(steps_.size()));
-        QPainterPath path;
+        const QRectF strip(10, 31, width() - 20, height() - 42);
+        const double stepWidth = strip.width() / std::max(1, static_cast<int>(steps_.size()));
         for (int i = 0; i < steps_.size(); ++i) {
-            const double y = plot.bottom() - (steps_[i] - minV) / (maxV - minV) * (plot.height() * 0.8);
-            const double x0 = plot.left() + i * stepWidth;
-            const double x1 = plot.left() + (i + 1) * stepWidth;
-            if (i == 0) path.moveTo(x0, y); else path.lineTo(x0, y);
-            path.lineTo(x1, y);
-            if (i == active_) painter.fillRect(QRectF(x0, plot.top(), stepWidth, plot.height()), QColor(215,169,91,26));
-            painter.setPen(i == active_ ? QColor("#ffda83") : QColor("#7e8a98"));
-            painter.drawText(QRectF(x0, plot.bottom() + 2, stepWidth, 16), Qt::AlignCenter,
+            const QRectF step(strip.left() + i * stepWidth + 3, strip.top() + 3,
+                              stepWidth - 6, strip.height() - 6);
+            const bool active = i == active_;
+            const bool done = active_ >= 0 && i < active_;
+            painter.setPen(active ? QColor("#5e93b8") : QColor("#27313c"));
+            painter.setBrush(active ? QColor("#132f49") : done ? QColor("#14251c") : QColor("#111820"));
+            painter.drawRoundedRect(step, 6, 6);
+            painter.setBrush(Qt::NoBrush);
+            painter.setPen(active ? QColor("#9ac7ff") : done ? QColor("#70d79b") : QColor("#8b95a3"));
+            painter.setFont(QFont("Segoe UI", 8, QFont::DemiBold));
+            painter.drawText(step.adjusted(4, 4, -4, -4), Qt::AlignTop | Qt::AlignHCenter,
+                             QString::number(i + 1));
+            painter.setFont(QFont("Segoe UI", 12, QFont::DemiBold));
+            painter.drawText(step.adjusted(4, 16, -4, -4), Qt::AlignCenter,
                              QStringLiteral("%1 %2").arg(steps_[i], 0, 'f', 1).arg(unit_));
         }
-        painter.setPen(QPen(QColor("#d7a95b"), 2));
-        painter.drawPath(path);
     }
 
 private:
@@ -354,6 +336,7 @@ public:
     {
         setObjectName(QStringLiteral("channelHistogram"));
         setMinimumHeight(290);
+        setMouseTracking(true);
     }
 
     void configure(int count, QString unit)
@@ -366,8 +349,21 @@ public:
     void clear()
     {
         items_.clear();
+        backgroundMean_.clear();
+        backgroundMinimum_.clear();
+        backgroundMaximum_.clear();
         currentKey_.clear();
         currentPoint_.clear();
+        selectedKey_.clear();
+        selectionPinned_ = false;
+        update();
+    }
+
+    void setBackground(QVector<double> mean, QVector<double> minimum, QVector<double> maximum)
+    {
+        backgroundMean_ = std::move(mean);
+        backgroundMinimum_ = std::move(minimum);
+        backgroundMaximum_ = std::move(maximum);
         update();
     }
 
@@ -384,93 +380,205 @@ public:
         if (!replaced) items_.push_back(sample);
         currentKey_ = sample.key;
         currentPoint_ = sample.point;
+        if (!selectionPinned_) selectedKey_ = currentKey_;
         update();
     }
 
 protected:
+    void mousePressEvent(QMouseEvent* event) override
+    {
+        for (const auto& hit : hits_) {
+            if (hit.first.contains(event->position())) {
+                selectedKey_ = hit.second;
+                selectionPinned_ = true;
+                update();
+                break;
+            }
+        }
+    }
+
+    void mouseMoveEvent(QMouseEvent* event) override
+    {
+        for (const auto& hit : hits_) {
+            if (!hit.first.contains(event->position())) continue;
+            for (const auto& sample : items_) {
+                if (sample.key != hit.second || sample.point != currentPoint_) continue;
+                double minimum = sample.measured;
+                double maximum = sample.measured;
+                if (!sample.samples.isEmpty()) {
+                    const auto range = std::minmax_element(sample.samples.cbegin(), sample.samples.cend());
+                    minimum = *range.first;
+                    maximum = *range.second;
+                }
+                const int precision = unit_ == QStringLiteral("Ом") ? 2 : 3;
+                const QString discrete = unit_ == QStringLiteral("Ом")
+                    ? QString() : QStringLiteral("\nДискретный: %1").arg(sample.signal ? 1 : 0);
+                QToolTip::showText(event->globalPosition().toPoint(),
+                    QStringLiteral("Канал %1\nТекущее: %2 %3\nmin…max: %4…%5 %3\nРазмах: %6 %3%7")
+                        .arg(sample.key, QString::number(sample.measured, 'f', precision), unit_,
+                             QString::number(minimum, 'f', precision),
+                             QString::number(maximum, 'f', precision),
+                             QString::number(maximum - minimum, 'f', precision), discrete),
+                    this, hit.first.toRect());
+                return;
+            }
+        }
+        QToolTip::hideText();
+    }
+
     void paintEvent(QPaintEvent*) override
     {
         QPainter painter(this);
         painter.setRenderHint(QPainter::Antialiasing);
         painter.fillRect(rect(), QColor("#0e1115"));
+        hits_.clear();
         painter.setPen(QColor("#dce6ef"));
         QFont font = painter.font(); font.setBold(true); painter.setFont(font);
         painter.drawText(QRectF(10, 4, width() - 20, 20), Qt::AlignLeft,
-            QStringLiteral("Все каналы · %1").arg(currentPoint_.isEmpty() ? QStringLiteral("ожидание") : currentPoint_));
+            QStringLiteral("Все каналы · %1 · столбец: текущее · риска: min…max")
+                .arg(currentPoint_.isEmpty() ? QStringLiteral("ожидание") : currentPoint_));
 
-        QVector<double> trace;
-        double currentMeasured = 0.0;
-        for (const auto& item : items_) {
-            if (item.key == currentKey_ && item.point == currentPoint_) {
-                trace = item.samples;
-                currentMeasured = item.measured;
-            }
-        }
-        if (trace.isEmpty() && !currentKey_.isEmpty()) trace.push_back(currentMeasured);
-        const QRectF traceRect(50, 29, width() - 65, 52);
-        painter.setPen(QPen(QColor("#27313c"), 1));
-        painter.drawRect(traceRect);
-        painter.setPen(QColor("#8b95a3"));
-        painter.drawText(QRectF(52, 31, width()-70, 16), Qt::AlignLeft,
-                         QStringLiteral("текущие колебания · канал %1").arg(currentKey_));
-        if (trace.size() > 1) {
-            auto mm = std::minmax_element(trace.begin(), trace.end());
-            double low = *mm.first, high = *mm.second;
-            const double pad = std::max(1e-4, (high-low)*0.2);
-            low -= pad; high += pad;
-            QPainterPath path;
-            for (int i=0;i<trace.size();++i) {
-                const double x=traceRect.left()+traceRect.width()*i/std::max(1,static_cast<int>(trace.size())-1);
-                const double y=traceRect.bottom()-(trace[i]-low)/(high-low)*traceRect.height();
-                if(i==0)path.moveTo(x,y);else path.lineTo(x,y);
-            }
-            painter.setPen(QPen(QColor("#70d79b"),1.6));
-            painter.drawPath(path);
+        QVector<const ChannelSample*> samples;
+        for (const auto& item : items_)
+            if (item.point == currentPoint_) samples.push_back(&item);
+        std::sort(samples.begin(), samples.end(), [](const auto* left, const auto* right) {
+            bool leftNumber = false, rightNumber = false;
+            const int leftValue = left->key.toInt(&leftNumber);
+            const int rightValue = right->key.toInt(&rightNumber);
+            return leftNumber && rightNumber ? leftValue < rightValue : left->key < right->key;
+        });
+        if (selectedKey_.isEmpty()) selectedKey_ = currentKey_;
+        const ChannelSample* selected = nullptr;
+        for (const auto* sample : samples) if (sample->key == selectedKey_) selected = sample;
+        if (!selected && !samples.isEmpty()) selected = samples.last();
+
+        if (selected) {
+            const auto mm = selected->samples.isEmpty()
+                ? std::pair<double,double>{selected->measured, selected->measured}
+                : [&] { const auto range = std::minmax_element(selected->samples.cbegin(), selected->samples.cend());
+                        return std::pair<double,double>{*range.first, *range.second}; }();
+            painter.setFont(QFont("Segoe UI", 9, QFont::DemiBold));
+            painter.setPen(QColor("#9ac7ff"));
+            const QString discrete = unit_ == QStringLiteral("Ом")
+                ? QString() : QStringLiteral("   D=%1").arg(selected->signal ? 1 : 0);
+            painter.drawText(QRectF(width() - 570, 4, 560, 20), Qt::AlignRight,
+                QStringLiteral("Канал %1   %2 %3   min…max %4…%5   Δ %6%7")
+                    .arg(selected->key, QString::number(selected->measured, 'f', unit_ == QStringLiteral("Ом") ? 2 : 3), unit_,
+                         QString::number(mm.first, 'f', unit_ == QStringLiteral("Ом") ? 2 : 3),
+                         QString::number(mm.second, 'f', unit_ == QStringLiteral("Ом") ? 2 : 3),
+                         QString::number(mm.second - mm.first, 'f', unit_ == QStringLiteral("Ом") ? 2 : 3),
+                         discrete));
         }
 
-        const QRectF area(50, 96, width() - 65, height() - 126);
+        const double footerHeight = unit_ == QStringLiteral("Ом") ? 72.0 : 88.0;
+        const QRectF area(58, 31, width() - 70, height() - 31 - footerHeight);
         painter.setPen(QPen(QColor("#27313c"), 1));
         painter.drawRect(area);
-        if (items_.isEmpty()) {
+        if (samples.isEmpty()) {
             painter.setPen(QColor("#667484"));
             painter.drawText(area, Qt::AlignCenter, QStringLiteral("поканальные данные появятся во время проверки"));
             return;
         }
 
-        QVector<QString> keys;
-        for (const auto& item : items_) if (item.point == currentPoint_ && !keys.contains(item.key)) keys.push_back(item.key);
-        const int n = std::max(1, static_cast<int>(keys.size()));
-        const int rows = count_ > 40 ? 4 : 2;
-        const int perRow = std::max(1, (n + rows - 1) / rows);
-        const double rowHeight = area.height() / rows;
+        double observedMaximum = 0.0;
+        for (const auto* sample : samples) {
+            observedMaximum = std::max(observedMaximum, sample->measured);
+            for (double value : sample->samples) observedMaximum = std::max(observedMaximum, value);
+        }
+        const double physicalMaximum = unit_ == QStringLiteral("Ом") ? 240.0 : 6.2;
+        const double lower = 0.0;
+        const double upper = std::max(physicalMaximum, observedMaximum * 1.05);
+        const auto y = [&](double value) {
+            return area.bottom() - std::clamp((value - lower) / (upper - lower), 0.0, 1.0) * area.height();
+        };
+        painter.setFont(QFont("Segoe UI", 8));
+        for (int tick = 0; tick <= 4; ++tick) {
+            const double value = lower + (upper - lower) * tick / 4.0;
+            const double position = y(value);
+            painter.setPen(QPen(QColor("#27313c"), 1, Qt::DashLine));
+            painter.drawLine(QPointF(area.left(), position), QPointF(area.right(), position));
+            painter.setPen(QColor("#8b95a3"));
+            painter.drawText(QRectF(0, position - 8, 52, 16), Qt::AlignRight,
+                             QString::number(value, 'f', unit_ == QStringLiteral("Ом") ? 2 : 3));
+        }
 
-        double extent = unit_ == QStringLiteral("Ом") ? 2.0 : 0.05;
-        for (const auto& item : items_) if (item.point == currentPoint_)
-            extent = std::max(extent, std::abs(item.measured-item.reference)*1.3);
-
-        for (int row=0; row<rows; ++row) {
-            const int begin=row*perRow;
-            const int end=std::min(n,begin+perRow);
-            if(begin>=end)break;
-            const double dx=area.width()/std::max(1,end-begin);
-            const double zero=area.top()+row*rowHeight+rowHeight/2.0;
-            painter.setPen(QPen(QColor("#45515e"),1,Qt::DashLine));
-            painter.drawLine(QPointF(area.left(),zero),QPointF(area.right(),zero));
-            for(int i=begin;i<end;++i){
-                const QString key=keys[i];
-                const ChannelSample* sample=nullptr;
-                for(const auto& item:items_) if(item.key==key&&item.point==currentPoint_){sample=&item;break;}
-                if(!sample)continue;
-                const double x=area.left()+(i-begin)*dx;
-                const double e=sample->measured-sample->reference;
-                const double h=std::clamp(std::abs(e)/extent,0.02,1.0)*(rowHeight*0.36);
-                QRectF bar(x+dx*0.25,e>=0?zero-h:zero,dx*0.5,h);
-                painter.fillRect(bar,sample->passed?QColor("#4f7fa7"):QColor("#e1766d"));
-                if(key==currentKey_) painter.fillRect(QRectF(x,zero-rowHeight*0.45,dx,rowHeight*0.9),QColor(94,147,184,22));
-                painter.setPen(QColor("#9aafbf"));
-                painter.drawText(QRectF(x,zero+rowHeight*0.34,dx,15),Qt::AlignCenter,key);
+        const double cellWidth = area.width() / std::max(1, static_cast<int>(samples.size()));
+        for (int index = 0; index < samples.size(); ++index) {
+            const auto* sample = samples[index];
+            const double x = area.left() + index * cellWidth;
+            hits_.push_back({QRectF(x, area.top(), cellWidth, area.height() + 34), sample->key});
+            if (sample->key == selectedKey_)
+                painter.fillRect(QRectF(x, area.top(), cellWidth, area.height()), QColor(94,147,184,28));
+            const double measuredY = y(sample->measured);
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(sample->passed ? QColor("#4f9f78") : QColor("#cf5d62"));
+            painter.drawRect(QRectF(x + cellWidth * 0.18, measuredY,
+                                    std::max(2.0, cellWidth * 0.64), area.bottom() - measuredY));
+            double minimum = sample->measured;
+            double maximum = sample->measured;
+            if (!sample->samples.isEmpty()) {
+                const auto range = std::minmax_element(sample->samples.cbegin(), sample->samples.cend());
+                minimum = *range.first;
+                maximum = *range.second;
+            }
+            painter.setBrush(Qt::NoBrush);
+            painter.setPen(QPen(QColor("#e6edf3"), sample->key == selectedKey_ ? 2.0 : 1.0));
+            painter.drawLine(QPointF(x + cellWidth / 2.0, y(minimum)),
+                             QPointF(x + cellWidth / 2.0, y(maximum)));
+            painter.drawLine(QPointF(x + cellWidth * 0.28, y(minimum)),
+                             QPointF(x + cellWidth * 0.72, y(minimum)));
+            painter.drawLine(QPointF(x + cellWidth * 0.28, y(maximum)),
+                             QPointF(x + cellWidth * 0.72, y(maximum)));
+            painter.setPen(QColor("#9aafbf"));
+            painter.setFont(QFont("Segoe UI", count_ > 40 ? 7 : 8));
+            painter.drawText(QRectF(x, area.bottom() + 3, cellWidth, 14),
+                             Qt::AlignCenter, sample->key);
+            if (unit_ != QStringLiteral("Ом")) {
+                painter.setPen(sample->signal ? QColor("#70d79b") : QColor("#8b95a3"));
+                painter.drawText(QRectF(x, area.bottom() + 18, cellWidth, 13), Qt::AlignCenter,
+                                 sample->signal ? QStringLiteral("1") : QStringLiteral("0"));
             }
         }
+
+        QVector<double> spans;
+        spans.reserve(samples.size());
+        double maximumSpan = 0.0;
+        for (const auto* sample : samples) {
+            const int backgroundIndex = sample->key.toInt() - 1;
+            double minimum = sample->measured;
+            double maximum = sample->measured;
+            if (backgroundIndex >= 0 && backgroundIndex < backgroundMinimum_.size()
+                && backgroundIndex < backgroundMaximum_.size()) {
+                minimum = backgroundMinimum_[backgroundIndex];
+                maximum = backgroundMaximum_[backgroundIndex];
+            } else if (!sample->samples.isEmpty()) {
+                const auto range = std::minmax_element(sample->samples.cbegin(), sample->samples.cend());
+                minimum = *range.first;
+                maximum = *range.second;
+            }
+            spans.push_back(std::max(0.0, maximum - minimum));
+            maximumSpan = std::max(maximumSpan, spans.last());
+        }
+        const QRectF spanArea(area.left(), area.bottom() + 34, area.width(), 20);
+        painter.setPen(QColor("#8b95a3"));
+        painter.setFont(QFont("Segoe UI", 8));
+        painter.drawText(QRectF(0, spanArea.top(), 52, 18), Qt::AlignRight,
+                         QStringLiteral("Δ %1").arg(unit_));
+        painter.setPen(QPen(QColor("#27313c"), 1));
+        painter.drawLine(spanArea.bottomLeft(), spanArea.bottomRight());
+        const double spanScale = std::max(maximumSpan, unit_ == QStringLiteral("Ом") ? 0.01 : 0.0001);
+        for (int index = 0; index < spans.size(); ++index) {
+            const double x = spanArea.left() + index * cellWidth;
+            const double height = spans[index] / spanScale * spanArea.height();
+            painter.fillRect(QRectF(x + cellWidth * 0.2, spanArea.bottom() - height,
+                                    std::max(2.0, cellWidth * 0.6), height), QColor("#62a6d8"));
+        }
+        painter.setPen(QColor("#9ac7ff"));
+        painter.drawText(QRectF(spanArea.left(), spanArea.top(), spanArea.width(), 16),
+                         Qt::AlignRight | Qt::AlignTop,
+                         QStringLiteral("шкала размаха 0…%1 %2")
+                             .arg(maximumSpan, 0, 'f', unit_ == QStringLiteral("Ом") ? 2 : 4)
+                             .arg(unit_));
     }
 
 private:
@@ -479,6 +587,12 @@ private:
     QVector<ChannelSample> items_;
     QString currentKey_;
     QString currentPoint_;
+    QString selectedKey_;
+    QVector<QPair<QRectF, QString>> hits_;
+    QVector<double> backgroundMean_;
+    QVector<double> backgroundMinimum_;
+    QVector<double> backgroundMaximum_;
+    bool selectionPinned_ = false;
 };
 
 class StateGrid final : public QWidget
@@ -490,15 +604,20 @@ public:
 protected:
     void paintEvent(QPaintEvent*) override {
         QPainter p(this);p.setRenderHint(QPainter::Antialiasing);p.fillRect(rect(),QColor("#0e1115"));
-        const int cols=10;const double gap=5,m=8;const int rows=8;
+        const int cols=10;const double gap=3,m=8;const int rows=8;
         const double cw=(width()-2*m-gap*(cols-1))/cols;const double ch=(height()-2*m-gap*(rows-1))/rows;
         for(int i=1;i<=80;++i){const int r=(i-1)/cols,c=(i-1)%cols;QRectF cell(m+c*(cw+gap),m+r*(ch+gap),cw,ch);
             const QString key=QString::number(i);const bool known=states_.contains(key);const int state=states_.value(key,0);
-            QColor fill=known?(state==expected_?QColor("#14251c"):QColor("#2a1718")):QColor("#111820");
-            QColor border=known?(state==expected_?QColor("#315c43"):QColor("#6b3434")):QColor("#27313c");
+            QColor fill=known?(state==expected_?QColor("#111820"):QColor("#261719")):QColor("#111820");
+            QColor border=known?(state==expected_?QColor("#344557"):QColor("#8f4549")):QColor("#27313c");
             if(key==current_){fill=QColor("#132033");border=QColor("#5e93b8");}
-            p.setPen(QPen(border,key==current_?2:1));p.setBrush(fill);p.drawRoundedRect(cell,4,4);p.setPen(QColor("#dce6ef"));p.drawText(cell.adjusted(5,2,-5,-2),Qt::AlignTop|Qt::AlignLeft,key);
-            if(known){QRectF bit(cell.right()-24,cell.bottom()-23,18,18);p.setBrush(state?QColor("#5e93b8"):QColor("#27313c"));p.setPen(Qt::NoPen);p.drawRoundedRect(bit,3,3);p.setPen(QColor("#f1f5f9"));p.drawText(bit,Qt::AlignCenter,QString::number(state));}
+            p.setPen(QPen(border,key==current_?2:1));p.setBrush(fill);p.drawRoundedRect(cell,3,3);
+            p.setBrush(Qt::NoBrush);p.setPen(QColor("#9aafbf"));p.setFont(QFont("Segoe UI",8));
+            p.drawText(cell.adjusted(5,2,-5,-2),Qt::AlignTop|Qt::AlignLeft,QStringLiteral("Канал %1").arg(key));
+            p.setPen(known?(state==expected_?QColor("#dce6ef"):QColor("#e1766d")):QColor("#667484"));
+            p.setFont(QFont("Segoe UI",11,QFont::DemiBold));
+            p.drawText(cell.adjusted(5,12,-5,-2),Qt::AlignBottom|Qt::AlignLeft,
+                       known?QStringLiteral("D = %1").arg(state):QStringLiteral("D = —"));
         }
     }
 private:QHash<QString,int> states_;QString current_;int expected_=0;

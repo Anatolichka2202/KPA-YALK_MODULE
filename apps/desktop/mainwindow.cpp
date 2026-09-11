@@ -68,9 +68,22 @@ MainWindow::MainWindow(QWidget* parent)
     // Теперь все элементы созданы — можно выставить начальный режим
     setMode(ModeHome);
 
-    // Сначала читаем профиль: E20 подключён к разным входам в разных стойках.
-    // Номер входа не должен быть скрыт в исходном коде приложения.
     initializeStandRuntime();
+
+    // E20 относится только к старому экрану телеметрии и открывается его
+    // явной кнопкой старта. Производственный контур УБСИ его не использует.
+
+    // Таймер обновления
+    connect(updateTimer_, &QTimer::timeout, this, &MainWindow::updateData);
+    updateTimer_->start(100);
+
+    log("Система инициализирована. Выберите объект и вид испытания.");
+}
+
+bool MainWindow::initializeTelemetryDevice()
+{
+    if (e20Available_) return true;
+
     unsigned e20Channel = 0;
     double e20RateKhz = 10000.0;
     try {
@@ -95,18 +108,14 @@ MainWindow::MainWindow(QWidget* parent)
         e20Available_ = true;
         log(QStringLiteral("Устройство E20-10 найдено: вход %1, %2 кГц")
             .arg(e20Channel).arg(e20RateKhz));
+        return true;
     } catch (const std::exception& e) {
         e20Available_ = false;
         orbita_->setDeviceNone();
         log(QString("E20-10 недоступно (%1). Режим без устройства.")
                 .arg(QString::fromLocal8Bit(e.what())));
+        return false;
     }
-
-    // Таймер обновления
-    connect(updateTimer_, &QTimer::timeout, this, &MainWindow::updateData);
-    updateTimer_->start(100);
-
-    log("Система инициализирована. Выберите объект и вид испытания.");
 }
 
 MainWindow::~MainWindow()
@@ -1195,15 +1204,6 @@ void MainWindow::onCheckTestEquipment()
     }
 
     // 2. Проверяем остальное оборудование, не зависящее от запуска UDP-потока.
-    testPage_->setEquipmentChecking("E20", QStringLiteral("Проверка E20-10 и активного набора Орбиты…"));
-    const bool orbitaReady = e20Available_ && !currentSpecs_.empty();
-    if (orbitaReady) {
-        equipmentRegistry_->bind("orbita.parameter_source",
-            [this](const std::string& operation,
-                   const std::map<std::string, std::string>& arguments) {
-                return invokeOrbitaParameterSource(operation, arguments);
-            });
-    }
     for (const auto& definition : standProfile_.devices) {
         if (std::find(definition.bindCapabilities.begin(), definition.bindCapabilities.end(),
                       "power.dc_supply") != definition.bindCapabilities.end()
@@ -1225,13 +1225,6 @@ void MainWindow::onCheckTestEquipment()
             checkDevice(definition, false);
     }
     QApplication::restoreOverrideCursor();
-    testPage_->setEquipmentStatus("E20", orbitaReady,
-        !e20Available_
-            ? QStringLiteral("E20-10 не открыт")
-            : currentSpecs_.empty()
-                ? QStringLiteral("E20-10 найден, но активный набор параметров пуст; откройте инженерный режим и выберите конфигурацию")
-                : QStringLiteral("E20-10 найден; активных параметров: %1")
-                    .arg(currentSpecs_.size()));
 }
 
 std::string MainWindow::invokeOrbitaParameterSource(
@@ -1446,8 +1439,6 @@ void MainWindow::setMode(int mode)
     errPhraseLabel_->setVisible(telemetryControlsVisible);
     errGroupLabel_->setVisible(telemetryControlsVisible);
 
-    if (mode == ModeTests && !testPage_->isEngineerMode()) onCheckTestEquipment();
-
     // Доки пользователь сам показывает/прячет через меню «Вид» — не навязываем по режиму.
 
     // Если перешли в детальный режим и есть выбранный канал – обновляем DetailView
@@ -1467,6 +1458,9 @@ void MainWindow::setMode(int mode)
 void MainWindow::onStart()
 {
     try {
+        if (!initializeTelemetryDevice()) {
+            throw std::runtime_error("E20-10 недоступно");
+        }
         orbita_->start();
         elapsedTimer_.restart();
         isRunning_ = true;

@@ -5,6 +5,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
+#include <QPixmap>
 #include <QTableWidget>
 
 #include <cstdlib>
@@ -31,13 +32,16 @@ int main(int argc, char** argv)
     auto* mode = page.findChild<QComboBox*>(QStringLiteral("testMode"));
     auto* serial = page.findChild<QLineEdit*>(QStringLiteral("objectSerial"));
     auto* operatorEdit = page.findChild<QLineEdit*>(QStringLiteral("operatorName"));
+    auto* operatorHistory = page.findChild<QComboBox*>(QStringLiteral("operatorHistory"));
     auto* session = page.findChild<QTableWidget*>(QStringLiteral("productionSessionTable"));
     auto* equipment = page.findChild<QTableWidget*>(QStringLiteral("equipmentTable"));
     auto* histogram = page.findChild<QWidget*>(QStringLiteral("channelHistogram"));
 
-    require(object && scope && test && mode && serial && operatorEdit && session
+    require(object && scope && test && mode && serial && operatorEdit && operatorHistory && session
                 && equipment && histogram,
             "new operator UI controls not found");
+    require(operatorEdit->placeholderText() == QStringLiteral("Фамилия Имя Отчество"),
+            "operator name must not be mixed with personnel number");
     require(page.styleSheet().contains(QStringLiteral("#14171c")),
             "operator UI must keep the dark industrial palette");
 
@@ -94,14 +98,55 @@ int main(int argc, char** argv)
     yalkStart.message = "YALK channels";
     page.setRunEvent(yalkStart);
 
-    orbita::stand::RunEvent yalk;
-    yalk.nodeId = "yalk_channels";
-    yalk.stage = "MEASUREMENT";
-    yalk.verdict = orbita::stand::RunVerdict::Ok;
-    yalk.data = {{"ulk_address", "1"}, {"command_v", "3.1"}, {"v7_v", "3.100"},
-                 {"yalk_v", "3.097"}, {"signal", "1"},
-                 {"value_samples", "3.096,3.097,3.098"}};
-    page.setRunEvent(yalk);
+    orbita::stand::RunEvent yalkBackground;
+    yalkBackground.nodeId = "monitor";
+    yalkBackground.stage = "BACKGROUND";
+    yalkBackground.data = {{"section", "YALK"}};
+    std::string backgroundMean;
+    std::string backgroundMinimum;
+    std::string backgroundMaximum;
+    for (int index = 0; index < 100; ++index) {
+        if (index > 0) {
+            backgroundMean += ',';
+            backgroundMinimum += ',';
+            backgroundMaximum += ',';
+        }
+        const double mean = 3.1 + (index % 9 - 4) * 0.003;
+        const double spread = index % 11 == 0 ? 0.018 : 0.006;
+        backgroundMean += std::to_string(mean);
+        backgroundMinimum += std::to_string(mean - spread);
+        backgroundMaximum += std::to_string(mean + spread);
+    }
+    yalkBackground.data["background_mean"] = backgroundMean;
+    yalkBackground.data["background_min"] = backgroundMinimum;
+    yalkBackground.data["background_max"] = backgroundMaximum;
+    page.setRunEvent(yalkBackground);
+
+    for (int address = 1; address <= 87; ++address) {
+        if (!(address <= 28 || (address >= 32 && address <= 43)
+                || (address >= 45 && address <= 70) || address >= 74)) continue;
+        const double measured = 3.1 + (address % 9 - 4) * 0.003;
+        const double spread = address % 11 == 0 ? 0.018 : 0.006;
+        orbita::stand::RunEvent yalk;
+        yalk.nodeId = "yalk_channels";
+        yalk.stage = "MEASUREMENT";
+        yalk.verdict = orbita::stand::RunVerdict::Ok;
+        yalk.data = {{"ulk_address", std::to_string(address)}, {"command_v", "3.1"},
+                     {"v7_v", "3.100"}, {"yalk_v", std::to_string(measured)},
+                     {"signal", address % 7 == 0 ? "1" : "0"},
+                     {"value_samples", std::to_string(measured - spread) + ","
+                        + std::to_string(measured) + "," + std::to_string(measured + spread)}};
+        page.setRunEvent(yalk);
+    }
+
+    const QString screenshot = qEnvironmentVariable("ORBITA_UI_SCREENSHOT");
+    const QString scene = qEnvironmentVariable("MILTECH_UI_SCENE", QStringLiteral("YALK"));
+    if (!screenshot.isEmpty() && scene == QStringLiteral("YALK")) {
+        page.resize(1664, 935);
+        page.show();
+        QApplication::processEvents();
+        require(page.grab().save(screenshot), "cannot save YALK operator UI screenshot");
+    }
 
     orbita::stand::RunEvent operatorEvent;
     operatorEvent.nodeId = "ytp_channels";
@@ -110,14 +155,27 @@ int main(int argc, char** argv)
                           {"point_count", "3"}};
     page.setRunEvent(operatorEvent);
 
-    orbita::stand::RunEvent ytp;
-    ytp.nodeId = "ytp_channels";
-    ytp.stage = "MEASUREMENT";
-    ytp.verdict = orbita::stand::RunVerdict::Ok;
-    ytp.data = {{"ytp_channel", "1"}, {"actual_reference_ohm", "120.000"},
-                {"measured_resistance_ohm", "120.08"},
-                {"value_samples", "120.02,120.08,120.05"}};
-    page.setRunEvent(ytp);
+    for (int channel = 1; channel <= 30; ++channel) {
+        const double measured = 120.0 + (channel % 9 - 4) * 0.08;
+        const double spread = channel % 8 == 0 ? 0.35 : 0.09;
+        orbita::stand::RunEvent ytp;
+        ytp.nodeId = "ytp_channels";
+        ytp.stage = "MEASUREMENT";
+        ytp.verdict = orbita::stand::RunVerdict::Ok;
+        ytp.data = {{"ytp_channel", std::to_string(channel)},
+                    {"actual_reference_ohm", "120.000"},
+                    {"measured_resistance_ohm", std::to_string(measured)},
+                    {"value_samples", std::to_string(measured - spread) + ","
+                        + std::to_string(measured) + "," + std::to_string(measured + spread)}};
+        page.setRunEvent(ytp);
+    }
+
+    if (!screenshot.isEmpty() && scene == QStringLiteral("YTP")) {
+        page.resize(1664, 935);
+        page.show();
+        QApplication::processEvents();
+        require(page.grab().save(screenshot), "cannot save operator UI screenshot");
+    }
 
     std::cout << "Unified production/TU operator navigation smoke test passed\n";
     return EXIT_SUCCESS;

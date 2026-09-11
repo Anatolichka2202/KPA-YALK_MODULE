@@ -18,6 +18,7 @@ struct TestPage::Impl
         buildBridge();
         buildSession();
         buildWorkspace();
+        loadOperatorHistory();
         pages->setCurrentWidget(sessionPage);
 
         runClockTimer = new QTimer(q);
@@ -100,11 +101,15 @@ struct TestPage::Impl
         sessionDataPanel = panel(true);
         auto* sessionData = new QHBoxLayout(sessionDataPanel);
         sessionData->setContentsMargins(13, 9, 13, 9);
-        operatorCaption = new QLabel(QStringLiteral("Оператор"));
+        operatorCaption = new QLabel(QStringLiteral("ФИО оператора"));
         operatorEdit = new QLineEdit;
         operatorEdit->setObjectName(QStringLiteral("operatorName"));
-        operatorEdit->setPlaceholderText(QStringLiteral("Фамилия И.О. / табельный №"));
-        operatorEdit->setMinimumWidth(280);
+        operatorEdit->setPlaceholderText(QStringLiteral("Фамилия Имя Отчество"));
+        operatorEdit->setMinimumWidth(250);
+        operatorHistory = new QComboBox;
+        operatorHistory->setObjectName(QStringLiteral("operatorHistory"));
+        operatorHistory->setMinimumWidth(210);
+        operatorHistory->setToolTip(QStringLiteral("Последние операторы"));
         serialCaption = new QLabel(QStringLiteral("SN УБСИ"));
         serialEdit = new QLineEdit;
         serialEdit->setObjectName(QStringLiteral("objectSerial"));
@@ -114,11 +119,16 @@ struct TestPage::Impl
         addProduct->setObjectName(QStringLiteral("addProductionProduct"));
         sessionData->addWidget(operatorCaption);
         sessionData->addWidget(operatorEdit);
+        sessionData->addWidget(operatorHistory);
         sessionData->addSpacing(14);
         sessionData->addWidget(serialCaption);
         sessionData->addWidget(serialEdit);
         sessionData->addWidget(addProduct);
         layout->addWidget(sessionDataPanel);
+        QObject::connect(operatorHistory, QOverload<int>::of(&QComboBox::activated), q,
+            [this](int index) {
+                if (index > 0) operatorEdit->setText(operatorHistory->itemText(index));
+            });
 
         auto* body = new QHBoxLayout;
         body->setSpacing(10);
@@ -424,13 +434,38 @@ struct TestPage::Impl
 
     void appendSessionRecord(const QString& status,const QString& runId={})
     {
-        if(!productionMode)return;const QString rootPath=QCoreApplication::applicationDirPath()+QStringLiteral("/runs");QDir().mkpath(rootPath);QFile file(rootPath+QStringLiteral("/operator_sessions.csv"));const bool fresh=!file.exists();if(!file.open(QIODevice::WriteOnly|QIODevice::Append|QIODevice::Text))return;QTextStream out(&file);if(fresh)out<<"timestamp;operator;serial;scenario;status;run_id\n";out<<QDateTime::currentDateTime().toString(Qt::ISODateWithMs)<<';'<<activeOperator<<';'<<activeSerial<<';'<<testCombo->currentData().toString()<<';'<<status<<';'<<runId<<'\n';
+        if(!productionMode)return;const QString rootPath=QCoreApplication::applicationDirPath()+QStringLiteral("/runs");QDir().mkpath(rootPath);QFile file(rootPath+QStringLiteral("/operator_sessions.csv"));const bool fresh=!file.exists();if(!file.open(QIODevice::WriteOnly|QIODevice::Append|QIODevice::Text))return;QTextStream out(&file);if(fresh)out<<"timestamp;operator;serial;scenario;status;run_id\n";out<<QDateTime::currentDateTime().toString(Qt::ISODateWithMs)<<';'<<activeOperator<<';'<<activeSerial<<';'<<testCombo->currentData().toString()<<';'<<status<<';'<<runId<<'\n';out.flush();file.close();if(status==QStringLiteral("START"))loadOperatorHistory();
+    }
+
+    void loadOperatorHistory()
+    {
+        operatorHistory->clear();
+        operatorHistory->addItem(QStringLiteral("Выбрать из списка"));
+        const QString path = QDir(QCoreApplication::applicationDirPath())
+            .filePath(QStringLiteral("runs/operator_sessions.csv"));
+        QFile file(path);
+        if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) return;
+        QStringList recordedNames;
+        QTextStream input(&file);
+        while (!input.atEnd()) {
+            const QStringList fields = input.readLine().split(';');
+            if (fields.size() < 2 || fields[0] == QStringLiteral("timestamp")) continue;
+            const QString name = fields[1].trimmed();
+            if (!name.isEmpty()) recordedNames << name;
+        }
+        QSet<QString> seen;
+        QStringList names;
+        for (auto iterator = recordedNames.crbegin(); iterator != recordedNames.crend(); ++iterator)
+            if (!seen.contains(*iterator)) { seen.insert(*iterator); names << *iterator; }
+        operatorHistory->addItems(names);
+        if (operatorHistory->count() > 1)
+            operatorEdit->setText(operatorHistory->itemText(1));
     }
 
     TestPage* q=nullptr;
     QVBoxLayout* root=nullptr;QStackedWidget* pages=nullptr;QWidget* bridge=nullptr;QWidget* sessionPage=nullptr;QWidget* workspacePage=nullptr;
     QComboBox* objectCombo=nullptr;QComboBox* scopeCombo=nullptr;QComboBox* testCombo=nullptr;QComboBox* modeCombo=nullptr;QCheckBox* partial=nullptr;QCheckBox* includeYvpCheck=nullptr;QCheckBox* includeOverload=nullptr;QCheckBox* includeSurvival=nullptr;
-    QPushButton* home=nullptr;QLabel* sessionTitle=nullptr;QLabel* sessionSubtitle=nullptr;QLabel* workflowBadge=nullptr;QFrame* sessionDataPanel=nullptr;QLabel* operatorCaption=nullptr;QLineEdit* operatorEdit=nullptr;QLabel* serialCaption=nullptr;QLineEdit* serialEdit=nullptr;QPushButton* addProduct=nullptr;QFrame* productsPanel=nullptr;QTableWidget* productTable=nullptr;QButtonGroup* scopeGroup=nullptr;QHash<QString,QPushButton*> scopeButtons;QWidget* yalkSubPanel=nullptr;QButtonGroup* yalkSubGroup=nullptr;QLabel* scenarioInfo=nullptr;QPushButton* enterPreparation=nullptr;QFrame* engineerBridgePanel=nullptr;
+    QPushButton* home=nullptr;QLabel* sessionTitle=nullptr;QLabel* sessionSubtitle=nullptr;QLabel* workflowBadge=nullptr;QFrame* sessionDataPanel=nullptr;QLabel* operatorCaption=nullptr;QLineEdit* operatorEdit=nullptr;QComboBox* operatorHistory=nullptr;QLabel* serialCaption=nullptr;QLineEdit* serialEdit=nullptr;QPushButton* addProduct=nullptr;QFrame* productsPanel=nullptr;QTableWidget* productTable=nullptr;QButtonGroup* scopeGroup=nullptr;QHash<QString,QPushButton*> scopeButtons;QWidget* yalkSubPanel=nullptr;QButtonGroup* yalkSubGroup=nullptr;QLabel* scenarioInfo=nullptr;QPushButton* enterPreparation=nullptr;QFrame* engineerBridgePanel=nullptr;
     QPushButton* backSession=nullptr;QLabel* workspaceTitle=nullptr;QLabel* workspaceSubtitle=nullptr;QLabel* operatorBadge=nullptr;QPushButton* stopButton=nullptr;QVector<QLabel*> stageLabels;QStackedWidget* workStack=nullptr;QLabel* elapsed=nullptr;QLabel* footerStage=nullptr;QProgressBar* progress=nullptr;TrendPlot* consumption=nullptr;
     QLabel* preparationSubtitle=nullptr;QTableWidget* equipmentTable=nullptr;QLabel* readiness=nullptr;QPushButton* checkButton=nullptr;QPushButton* startButton=nullptr;
     QLabel* powerSet=nullptr;QLabel* powerActual=nullptr;QLabel* powerCurrent=nullptr;QLabel* powerHold=nullptr;TrendPlot* powerTrend=nullptr;StepPlot* powerSteps=nullptr;

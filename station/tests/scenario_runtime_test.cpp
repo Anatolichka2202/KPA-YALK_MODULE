@@ -345,8 +345,8 @@ void configurationAndCatalog(const QString& root)
             "YTP must be a published six-stage powered manual-reference scenario");
     require(engine.validate(ytp120).empty() && ytp120.steps.size() == 6,
             "Fixed 120-ohm YTP scenario must validate");
-    require(engine.validate(combined).empty() && combined.steps.size() == 19,
-            "Canonical TU scenario must contain only the accepted fifteen stages");
+    require(engine.validate(combined).empty() && combined.steps.size() == 18,
+            "Canonical TU scenario must contain the accepted eighteen stages");
     const auto combinedStep = [&combined](const std::string& id) -> const ScenarioNode* {
         const auto iterator = std::find_if(combined.steps.begin(), combined.steps.end(),
             [&id](const ScenarioNode& step) { return step.id == id; });
@@ -391,13 +391,13 @@ void configurationAndCatalog(const QString& root)
         for (const auto& child : node.children) collectCapabilities(child);
     };
     for (const auto& step : scenario.steps) collectCapabilities(step);
-    require(scenarioCapabilities.count("operator.manual_input") != 0
-                && scenarioCapabilities.count("measure.reference_ac_voltage") != 0
-                && scenarioCapabilities.count("measure.reference_frequency") != 0,
-            "UBSI scenario must contain manual R4831 audit and V7 AC/frequency checks");
+    require(scenarioCapabilities.count("operator.manual_input") != 0,
+            "UBSI scenario must contain the manual R4831 audit");
     require(scenarioCapabilities.count("signal.resistance") == 0
+                && scenarioCapabilities.count("measure.reference_ac_voltage") == 0
+                && scenarioCapabilities.count("measure.reference_frequency") == 0
                 && scenarioCapabilities.count("measure.waveform") == 0,
-            "UBSI scenario must not require automatic R4831 or an oscilloscope");
+            "UBSI scenario must not require unconfirmed YVP measurement equipment");
 
     QTemporaryDir temporary;
     require(temporary.isValid(), "Cannot create temporary directory");
