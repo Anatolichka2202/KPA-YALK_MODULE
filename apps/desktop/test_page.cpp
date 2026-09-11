@@ -2,14 +2,90 @@
 #include "test_page_ui.h"
 #include "test_page_impl.h"
 
+#include <QEvent>
+
+namespace {
+
+QString productionScenarioForScope(const QString& scope)
+{
+    if (scope == QStringLiteral("ЯЛК-96")) return QStringLiteral("PROD_YALK");
+    if (scope == QStringLiteral("ЯТП")) return QStringLiteral("PROD_YTP");
+    if (scope == QStringLiteral("ЯВП-8")) return QStringLiteral("PROD_YVP");
+    return QStringLiteral("PROD_FULL");
+}
+
+QString productionScenarioTitle(const QString& code)
+{
+    if (code == QStringLiteral("PROD_YALK")) return QStringLiteral("Полная ЯЛК-96");
+    if (code == QStringLiteral("PROD_YTP")) return QStringLiteral("Полная ЯТП · 0 / 120 / 240 Ом");
+    if (code == QStringLiteral("PROD_YVP")) return QStringLiteral("Полная ЯВП-8 · ROKT");
+    return QStringLiteral("Полная производственная проверка УБСИ");
+}
+
+QString routeStageName(int index)
+{
+    static const QStringList names = {
+        QStringLiteral("Подготовка"),
+        QStringLiteral("Питание / потребление"),
+        QStringLiteral("ЯЛК-96"),
+        QStringLiteral("ЯТП"),
+        QStringLiteral("ЯВП-8"),
+        QStringLiteral("Завершение")
+    };
+    return index >= 0 && index < names.size() ? names[index] : QStringLiteral("Этап");
+}
+
+} // namespace
+
 TestPage::TestPage(QWidget* parent)
     : QWidget(parent)
     , impl_(std::make_unique<Impl>(this))
 {
     rebuildScopes();
+
+    // Route entries are navigation, not passive status labels. Before a run the
+    // operator may inspect every visible screen. During a run only the current
+    // and already reached stages are open; backend RunEvent remains the sole
+    // authority that advances the actual procedure.
+    for (int i = 0; i < impl_->stageLabels.size(); ++i) {
+        auto* label = impl_->stageLabels[i];
+        label->setProperty("routeStageIndex", i);
+        label->setCursor(Qt::PointingHandCursor);
+        label->setToolTip(QStringLiteral("Открыть экран «%1»").arg(routeStageName(i)));
+        label->installEventFilter(this);
+    }
 }
 
 TestPage::~TestPage() = default;
+
+bool TestPage::eventFilter(QObject* watched, QEvent* event)
+{
+    auto* label = qobject_cast<QLabel*>(watched);
+    if (label && event->type() == QEvent::MouseButtonRelease) {
+        bool ok = false;
+        const int index = label->property("routeStageIndex").toInt(&ok);
+        if (ok && index >= 0 && index < impl_->workStack->count() && label->isVisible()) {
+            const int runtimeStage = static_cast<int>(impl_->topStage);
+            if (impl_->runInProgress && index > runtimeStage) {
+                impl_->footerStage->setText(
+                    QStringLiteral("Этап «%1» ещё не начат · выполняется: %2")
+                        .arg(routeStageName(index), routeStageName(runtimeStage)));
+                return true;
+            }
+
+            impl_->workStack->setCurrentIndex(index);
+            if (impl_->runInProgress && index != runtimeStage) {
+                impl_->footerStage->setText(
+                    QStringLiteral("Просмотр: %1 · выполняется: %2")
+                        .arg(routeStageName(index), routeStageName(runtimeStage)));
+            } else {
+                impl_->footerStage->setText(QStringLiteral("Просмотр: %1").arg(routeStageName(index)));
+            }
+            return true;
+        }
+    }
+    return QWidget::eventFilter(watched, event);
+}
 
 void TestPage::setEquipmentInvoker(EquipmentInvoke invoke)
 {
@@ -55,8 +131,9 @@ void TestPage::setEquipmentChecking(const QString& code, const QString& detail)
     const auto it = impl_->equipmentRows.find(code);
     if (it == impl_->equipmentRows.end() || it->operatorConfirmation) return;
     it->ready = false;
-    impl_->equipmentTable->item(it->row, 3)->setText(QStringLiteral("ПРОВЕРКА…"));
-    impl_->equipmentTable->item(it->row, 3)->setForeground(QColor("#d7a95b"));
+    auto* state = impl_->equipmentTable->item(it->row, 3);
+    state->setText(QStringLiteral("ПРОВЕРКА…"));
+    state->setForeground(QColor("#d7a95b"));
     impl_->equipmentTable->item(it->row, 4)->setText(detail);
     updateStartAvailability();
 }
@@ -90,8 +167,8 @@ void TestPage::setProductionMode(bool enabled)
         ? QStringLiteral("Производственная сессия")
         : QStringLiteral("Проверка УБСИ по ТУ"));
     impl_->sessionSubtitle->setText(enabled
-        ? QStringLiteral("Один оператор может последовательно проверить несколько УБСИ. Каждый фактический прогон сохраняется backend отдельно.")
-        : QStringLiteral("Выберите проверку. Во время прогона оператор видит измерительные графики и итоговый вердикт ТУ; служебные калибровки остаются внутри сценария."));
+        ? QStringLiteral("Один оператор может последовательно проверить несколько УБСИ. Выбранное изделие и маршрут сохраняются при переходе в испытательное окно.")
+        : QStringLiteral("Проверка по ТУ: оператор видит измерительные графики и итоговый вердикт; служебные калибровки остаются внутри сценария."));
     impl_->workflowBadge->setText(enabled
         ? QStringLiteral("ПРОИЗВОДСТВО")
         : QStringLiteral("ПРОВЕРКА ПО ТУ"));
@@ -99,8 +176,6 @@ void TestPage::setProductionMode(bool enabled)
         ? QStringLiteral("background:#14251c;color:#70d79b;border:1px solid #315c43;border-radius:5px;padding:8px 12px;font-weight:700;")
         : QStringLiteral("background:#132033;color:#9ac7ff;border:1px solid #27466c;border-radius:5px;padding:8px 12px;font-weight:700;"));
 
-    // Production owns the operator queue. TU works with a single registered
-    // product and intentionally does not expose the production session controls.
     impl_->operatorCaption->setVisible(enabled);
     impl_->operatorEdit->setVisible(enabled);
     impl_->addProduct->setVisible(enabled);
@@ -109,9 +184,6 @@ void TestPage::setProductionMode(bool enabled)
     impl_->yalkSubPanel->setVisible(false);
     impl_->includeYvpCheck->setChecked(enabled);
 
-    // TU is deliberately read-only and graph-centric. The scenario still runs
-    // every service/calibration procedure, but their engineering cards are not
-    // part of the operator presentation.
     const bool showEngineeringDetail = enabled;
     const auto setMetricVisible = [showEngineeringDetail](QLabel* value) {
         if (value && value->parentWidget()) value->parentWidget()->setVisible(showEngineeringDetail);
@@ -200,12 +272,28 @@ void TestPage::updateSelectionSummary()
     for (auto it = impl_->scopeButtons.begin(); it != impl_->scopeButtons.end(); ++it)
         it.value()->setChecked(it.key() == scope);
     impl_->yalkSubPanel->setVisible(impl_->productionMode && scope == QStringLiteral("ЯЛК-96"));
-    const QString code = impl_->testCombo->currentData().toString();
+
+    // In production the visible cards are the source of truth. The hidden
+    // combo remains only as a compatibility bridge for legacy engineering
+    // actions; it is synchronised from the card selection, never the reverse.
+    if (impl_->productionMode) {
+        const QString code = productionScenarioForScope(scope);
+        if (impl_->testCombo->count() != 1 || impl_->testCombo->currentData().toString() != code) {
+            impl_->testCombo->blockSignals(true);
+            impl_->testCombo->clear();
+            impl_->testCombo->addItem(productionScenarioTitle(code), code);
+            impl_->testCombo->setCurrentIndex(0);
+            impl_->testCombo->blockSignals(false);
+        }
+    }
+
+    const QString code = currentScenarioCode();
     const auto info = impl_->scenarios.value(code);
-    if (!code.isEmpty())
+    if (!code.isEmpty()) {
         impl_->scenarioInfo->setText(info.detail.isEmpty()
             ? QStringLiteral("Сценарий: %1").arg(code)
             : info.detail);
+    }
     impl_->includeYvpCheck->setChecked(scope == QStringLiteral("УБСИ ПО ТУ")
                                        || scope == QStringLiteral("ЯВП-8"));
     updateStartAvailability();
@@ -213,11 +301,24 @@ void TestPage::updateSelectionSummary()
 
 void TestPage::updateStartAvailability()
 {
-    const QString code = impl_->testCombo->currentData().toString();
+    const QString code = currentScenarioCode();
     const auto info = impl_->scenarios.value(code);
     const bool available = info.available;
-    const bool ready = impl_->equipmentReady();
-    impl_->checkButton->setEnabled(!impl_->runInProgress);
+
+    bool ready = available;
+    if (ready) {
+        for (const auto& equipmentCode : info.required) {
+            if (equipmentCode == QStringLiteral("SCHEME") || equipmentCode == QStringLiteral("R4831"))
+                continue;
+            const auto row = impl_->equipmentRows.constFind(equipmentCode);
+            if (row == impl_->equipmentRows.cend() || !row->ready) {
+                ready = false;
+                break;
+            }
+        }
+    }
+
+    impl_->checkButton->setEnabled(!impl_->runInProgress && available);
     impl_->stopButton->setEnabled(impl_->runInProgress);
     impl_->startButton->setEnabled(!impl_->runInProgress && available && ready);
     if (impl_->runInProgress) {
@@ -241,7 +342,7 @@ void TestPage::startSelectedTest()
 {
     if (impl_->modeCombo->currentIndex() == kDemoMode) {
         QMessageBox::information(this, QStringLiteral("Демонстрация"),
-            QStringLiteral("Для дизайнерского просмотра используйте протокольный имитатор стенда: UI теперь подключён к реальным RunEvent."));
+            QStringLiteral("Для дизайнерского просмотра используйте протокольный имитатор стенда: UI подключён к реальным RunEvent."));
         return;
     }
 
@@ -291,9 +392,6 @@ void TestPage::setRunEvent(const orbita::stand::RunEvent& event)
         if (impl_->productionMode) {
             impl_->mapNode(node);
         } else {
-            // TU suppresses service/calibration pages. Backend still executes
-            // them; the operator remains on the graph that will receive the
-            // actual measurement data for that cell.
             if (node == QStringLiteral("readiness")
                 || node == QStringLiteral("supply_range")
                 || node == QStringLiteral("supply_status")) {
@@ -354,8 +452,6 @@ void TestPage::setRunEvent(const orbita::stand::RunEvent& event)
         impl_->ytpOperatorBanner->setText(
             QStringLiteral("Р4831: установите %1 Ом · подтверждение откроется отдельным диалогом")
                 .arg(resistance, 0, 'f', 3));
-        // In TU the backend modal is the only operator prompt. Production may
-        // additionally keep the in-page banner as a persistent cue.
         impl_->ytpOperatorBanner->setVisible(impl_->productionMode);
         impl_->ytpResistanceSteps->setActiveValue(resistance);
         impl_->updateProgressByStage();
@@ -467,6 +563,8 @@ void TestPage::setRunResult(const orbita::stand::ScenarioRunResult& result,
 
 QString TestPage::currentScenarioCode() const
 {
+    if (impl_->productionMode)
+        return productionScenarioForScope(impl_->scopeCombo->currentData().toString());
     return impl_->testCombo->currentData().toString();
 }
 
