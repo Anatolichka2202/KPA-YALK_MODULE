@@ -136,6 +136,7 @@ private:
     void log(const QString& msg);
     void updateStatusBar(const orbita::Snapshot& snap);
     void initializeStandRuntime();
+    bool initializeTelemetryDevice();
     void setEngineerMode(bool enabled);
     std::string invokeOrbitaParameterSource(
         const std::string& operation,

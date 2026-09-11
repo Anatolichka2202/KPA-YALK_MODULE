@@ -1,27 +1,16 @@
 #pragma once
 
-#include <QHash>
-#include <QElapsedTimer>
 #include <QStringList>
 #include <QWidget>
+
 #include <functional>
 #include <map>
+#include <memory>
 #include <string>
 
 #include "orbita_stand/scenario.h"
 
-class QComboBox;
-class QLabel;
-class QProgressBar;
-class QPushButton;
-class QLineEdit;
-class QCheckBox;
-class QTableWidget;
-class QTimer;
-class TestPlotWidget;
-class SupplyPlotWidget;
-class PowerStageWidget;
-class EquipmentControlWidget;
+class QEvent;
 
 class TestPage final : public QWidget
 {
@@ -29,11 +18,13 @@ class TestPage final : public QWidget
 
 public:
     explicit TestPage(QWidget* parent = nullptr);
+    ~TestPage() override;
+
     using EquipmentInvoke = std::function<std::string(
         const std::string&, const std::string&,
         const std::map<std::string, std::string>&)>;
-    void setEquipmentInvoker(EquipmentInvoke invoke);
 
+    void setEquipmentInvoker(EquipmentInvoke invoke);
     void setEquipmentStatus(const QString& code, bool ready, const QString& detail);
     void setEquipmentConnection(const QString& code, const QString& connection);
     void setEquipmentMissingPlugin(const QString& code, const QString& detail);
@@ -42,8 +33,10 @@ public:
                          const QStringList& requiredEquipment,
                          const QString& detail);
     void setEngineerMode(bool enabled);
-    bool isEngineerMode() const { return engineerMode_; }
+    bool isEngineerMode() const;
     void setProductionMode(bool enabled);
+    void setAvailableProductionProducts(const QStringList& serials);
+    QStringList currentRequiredEquipment() const;
     void setRunInProgress(bool running, const QString& stage = {});
     void setRunEvent(const orbita::stand::RunEvent& event);
     void setRunResult(const orbita::stand::ScenarioRunResult& result,
@@ -54,15 +47,9 @@ public:
     bool includeProductionOverload() const;
     bool includeProductionSurvival() const;
 
-    // Product integrations may add a device readiness row without taking over
-    // TestPage internals. Used by UBSI Production for the Rigol generator.
     void registerEquipmentRow(const QString& code, const QString& name,
                               const QString& connection, const QString& initialDetail,
-                              bool operatorConfirmation = false)
-    {
-        if (!equipmentRows_.contains(code))
-            addEquipment(code, name, connection, initialDetail, operatorConfirmation);
-    }
+                              bool operatorConfirmation = false);
 
 signals:
     void homeRequested();
@@ -70,6 +57,9 @@ signals:
     void runRequested(const QString& scenarioCode, const QString& objectSerial,
                       bool allowPartial);
     void stopRequested();
+
+protected:
+    bool eventFilter(QObject* watched, QEvent* event) override;
 
 private slots:
     void updateStartAvailability();
@@ -80,76 +70,7 @@ private slots:
     void advanceDemo();
 
 private:
-    struct EquipmentRow {
-        int row = -1;
-        bool ready = false;
-        bool operatorConfirmation = false;
-    };
-    struct ScenarioInfo {
-        bool available = false;
-        bool diagnostic = false;
-        QStringList requiredEquipment;
-        QString detail;
-    };
-
-    void addEquipment(const QString& code, const QString& name,
-                      const QString& connection, const QString& initialDetail,
-                      bool operatorConfirmation = false);
-    QStringList requiredEquipment() const;
-    QString selectedObjectCode() const;
-    QString selectedScopeCode() const;
-    QString selectedTestCode() const;
-    void resetResults();
-    void finishDemo();
-
-    QComboBox* objectCombo_ = nullptr;
-    QComboBox* scopeCombo_ = nullptr;
-    QComboBox* testCombo_ = nullptr;
-    QComboBox* modeCombo_ = nullptr;
-    QTableWidget* equipmentTable_ = nullptr;
-    QTableWidget* resultTable_ = nullptr;
-    QTableWidget* summaryTable_ = nullptr;
-    QLabel* readinessLabel_ = nullptr;
-    QLabel* diagnosticLabel_ = nullptr;
-    QLabel* verdictLabel_ = nullptr;
-    QLabel* scopeLabel_ = nullptr;
-    QProgressBar* progress_ = nullptr;
-    QPushButton* checkButton_ = nullptr;
-    QPushButton* startButton_ = nullptr;
-    QPushButton* stopButton_ = nullptr;
-    QPushButton* detailsButton_ = nullptr;
-    QPushButton* tuReportButton_ = nullptr;
-    QPushButton* productionReportButton_ = nullptr;
-    QLineEdit* serialEdit_ = nullptr;
-    QCheckBox* partialCheck_ = nullptr;
-    QCheckBox* yvpCheck_ = nullptr;
-    QCheckBox* productionOverloadCheck_ = nullptr;
-    QCheckBox* productionSurvivalCheck_ = nullptr;
-    QCheckBox* contactThresholdCheck_ = nullptr;
-    QLabel* titleLabel_ = nullptr;
-    QLabel* subtitleLabel_ = nullptr;
-    QLabel* workflowBadge_ = nullptr;
-    QLabel* serialLabel_ = nullptr;
-    QLabel* elapsedLabel_ = nullptr;
-    QLabel* productionR4831Label_ = nullptr;
-    QLabel* productionDiagnosticsLabel_ = nullptr;
-    TestPlotWidget* plot_ = nullptr;
-    SupplyPlotWidget* supplyPlot_ = nullptr;
-    PowerStageWidget* powerStage_ = nullptr;
-    EquipmentControlWidget* advancedControl_ = nullptr;
-    QWidget* advancedContainer_ = nullptr;
-    EquipmentInvoke equipmentInvoke_;
-    QTimer* demoTimer_ = nullptr;
-    QTimer* runClockTimer_ = nullptr;
-    QElapsedTimer runClock_;
-    QHash<QString, EquipmentRow> equipmentRows_;
-    QHash<QString, ScenarioInfo> scenarios_;
-    QHash<QString, QPushButton*> scopeButtons_;
-    int demoStep_ = 0;
-    bool runInProgress_ = false;
-    bool engineerMode_ = false;
-    bool productionMode_ = false;
-    int completedSteps_ = 0;
-    QString tuReportPath_;
-    QString productionReportPath_;
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
+    QString lastScenarioCode_;
 };

@@ -29,6 +29,7 @@ private slots:
     void runScenario(const QString& scenarioCode, const QString& objectSerial,
                      bool allowPartial);
     void finalizeProductionRun();
+    void checkSelectedEquipment();
     void checkRigolGenerator();
 
 private:
@@ -37,7 +38,6 @@ private:
     void restoreTuSelector();
     void applyProductionScenario();
     QString productionCodeForScope(const QString& scope) const;
-    bool registerProductionProduct(const QString& serial);
     void clearPendingProduction() noexcept;
 
     std::unique_ptr<ktma::ubsi::ProductionLedger> productionLedger_;

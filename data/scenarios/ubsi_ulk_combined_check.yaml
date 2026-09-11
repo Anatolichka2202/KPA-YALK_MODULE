@@ -1,18 +1,19 @@
-﻿schema: 1
+schema: 1
 id: ubsi.468157.002.ulk.combined.check
-title: РЈР‘РЎР В· РїРѕР»РЅР°СЏ РїСЂРѕРІРµСЂРєР° РїРѕ РўРЈ
-version: 2.1.1
+title: УБСИ · полная проверка по ТУ
+version: 2.2.0
 catalog_version: 2026.08.29-yalk-1
 object_type: UBSI_468157_002
 state: published
 
-# РљР°РЅРѕРЅРёС‡РµСЃРєРёР№ current TU backend. РќРµ РґРѕР±Р°РІР»СЏС‚СЊ СЃСЋРґР° 1.1.4.4, 1.1.4.6,
-# РїРѕРєР°РЅР°Р»СЊРЅС‹Р№ С‚РѕРє, sensor_supply 350/450 РјРђ РёР»Рё external-evidence gates.
-# РџРѕ СѓС‚РѕС‡РЅРµРЅРёСЋ 2026-09-08 С‚СЂР°РєС‚ РЇР’Рџ РѕС‚РЅРѕСЃРёС‚СЃСЏ Рє РґРёР°РїР°Р·РѕРЅСѓ РЇР›Рљ 88..96.
-# РўРѕС‡РЅР°СЏ РІРѕСЃСЊРјРёРєР°РЅР°Р»СЊРЅР°СЏ РєР°СЂС‚Р° РІРЅСѓС‚СЂРё РґРёР°РїР°Р·РѕРЅР° вЂ” commissioning-РєРѕРЅС„РёРіСѓСЂР°С†РёСЏ.
+# Канонический current TU backend. Не добавлять сюда 1.1.4.4, 1.1.4.6,
+# поканальный ток, sensor_supply 350/450 мА или external-evidence gates.
+# Для ЯВП текущий подтверждённый transport — отдельные ROKT 0A 01 / 0A 03.
+# Полезная нагрузка ЯВП пока не декодирована, поэтому ЯВП завершает run как
+# INCOMPLETE и не выдаёт выдуманный приёмочный verdict.
 steps:
   - id: readiness
-    title: Р“РѕС‚РѕРІРЅРѕСЃС‚СЊ РЈР‘РЎР РїРѕСЃР»Рµ С…РѕР»РѕРґРЅРѕРіРѕ РІРєР»СЋС‡РµРЅРёСЏ РЅРµ Р±РѕР»РµРµ 30 СЃРµРєСѓРЅРґ
+    title: Готовность УБСИ после холодного включения не более 30 секунд
     tu: 1.1.4.13
     procedure: ubsi.readiness
     requires:
@@ -26,7 +27,7 @@ steps:
       technical_retries: 3
 
   - id: supply_range
-    title: Р Р°Р±РѕС‚Р° РїСЂРё 24 / 27 / 35 Р’, РѕР±С‰РёР№ С‚РѕРє РґРѕ 400 РјРђ Рё РІС‹РґРµСЂР¶РєРё 19 / 37 Р’
+    title: Работа при 24 / 27 / 35 В, общий ток до 400 мА и выдержки 19 / 37 В
     tu: 1.1.4.3, 1.1.4.5
     procedure: ubsi.supply_range
     requires:
@@ -35,7 +36,6 @@ steps:
     args:
       voltage_points_v: 24,27,35
       maximum_total_current_a: 0.4
-      # Р­С‚Рѕ Р·Р°С‰РёС‚РЅР°СЏ СѓСЃС‚Р°РІРєР° РђРљРРџ, Р° РЅРµ РЅРѕСЂРјР°С‚РёРІ РёР·РјРµСЂРµРЅРЅРѕРіРѕ РїРѕС‚СЂРµР±Р»РµРЅРёСЏ.
       supply_current_limit_a: 0.6
       voltage_tolerance_v: 0.5
       settle_ms: 500
@@ -45,8 +45,8 @@ steps:
       recovery_timeout_ms: 30000
 
   - id: yalk_stream
-    title: Р—Р°РїСѓСЃРє РїРѕС‚РѕРєР° РЇР›Рљ
-    tu: 5.6 / РЇР›Рљ
+    title: Запуск потока ЯЛК
+    tu: 5.6 / ЯЛК
     procedure: yalk.start_stream
     requires:
       - ulk.parameter_source
@@ -57,7 +57,7 @@ steps:
       technical_retries: 3
 
   - id: yalk_calibration
-    title: РљР°Р»РёР±СЂРѕРІРєР° РЇР›Рљ РїРѕ Р°РґСЂРµСЃР°Рј 97 Рё 99
+    title: Калибровка ЯЛК по адресам 97 и 99
     tu: 1.1.4.1, 1.1.4.14
     procedure: yalk.read_calibration
     requires:
@@ -72,7 +72,7 @@ steps:
       full_voltage: 6.2
 
   - id: yalk_initial
-    title: РћР±СЂС‹РІ Рё РёСЃС…РѕРґРЅРѕРµ РѕС‚РєР»СЋС‡С‘РЅРЅРѕРµ СЃРѕСЃС‚РѕСЏРЅРёРµ 80 РІС…РѕРґРѕРІ РЇР›Рљ
+    title: Обрыв и исходное отключённое состояние 80 входов ЯЛК
     tu: 1.1.4.10
     procedure: yalk.check_initial_state
     requires:
@@ -86,7 +86,7 @@ steps:
       tolerance_percent_fs: 0.5
 
   - id: yalk_channels
-    title: РђРЅР°Р»РѕРіРѕРІС‹Рµ Рё РєРѕРЅС‚Р°РєС‚РЅС‹Рµ СЃРёРіРЅР°Р»С‹ 80 Р°РґСЂРµСЃРѕРІ РЇР›Рљ
+    title: Аналоговые сигналы 80 адресов ЯЛК · 0 / 3,1 / 6,2 В
     tu: 1.1.4.1, 1.1.4.14
     procedure: yalk.check_channels
     requires:
@@ -123,14 +123,13 @@ steps:
       tolerance_percent_fs: 0.5
 
   - id: yalk_overload
-    title: РЈСЃС‚РѕР№С‡РёРІРѕСЃС‚СЊ РѕСЃС‚Р°Р»СЊРЅС‹С… РєР°РЅР°Р»РѕРІ РїСЂРё РїРµСЂРµРіСЂСѓР·РєРµ В±12 Р’
+    title: Устойчивость остальных каналов при перегрузке ±12 В
     tu: 1.1.4.10, 1.1.4.11
     procedure: yalk.check_overload
     requires:
       - ulk.parameter_source
       - stand.switch_matrix
     args:
-      # KPA report.log: РРЎР” С€ = type=3, РёСЃС‚РѕС‡РЅРёРєРё 95/96 Рё РєР°РЅР°Р»С‹ 1..88.
       mapping_confirmed: true
       physical_channel_count: 88
       observed_address_count: 88
@@ -143,7 +142,7 @@ steps:
       maximum_code_delta: 2
 
   - id: yalk_reference_voltage
-    title: Р­С‚Р°Р»РѕРЅ 6,2 В±0,03 Р’ РїРѕ Р’7 Рё Р°РґСЂРµСЃСѓ РЇР›Рљ
+    title: Эталон 6,2 ±0,03 В по В7 и адресу ЯЛК
     tu: 1.1.4.9
     procedure: ubsi.reference_voltage
     requires:
@@ -159,8 +158,8 @@ steps:
       sample_count: 16
 
   - id: yalk_cleanup
-    title: РЎР±СЂРѕСЃ РЇР›Рљ Рё РєРѕРЅС‚СЂРѕР»СЊ РѕС‚СЃСѓС‚СЃС‚РІРёСЏ РІРѕР·РґРµР№СЃС‚РІРёСЏ
-    tu: 5.6 / РЇР›Рљ В· Р·Р°РІРµСЂС€РµРЅРёРµ
+    title: Сброс ЯЛК и контроль отсутствия воздействия
+    tu: 5.6 / ЯЛК · завершение
     procedure: yalk.safe_cleanup
     requires:
       - ulk.parameter_source
@@ -174,8 +173,8 @@ steps:
       retry_settle_ms: 500
 
   - id: ytp_stream
-    title: РџРµСЂРµРІРѕРґ Р°РґР°РїС‚РµСЂР° РІ СЂРµР¶РёРј РЇРўРџ
-    tu: 5.6 / РЇРўРџ
+    title: Перевод адаптера в режим ЯТП
+    tu: 5.6 / ЯТП
     procedure: ytp.start_stream
     requires:
       - ulk.parameter_source
@@ -190,7 +189,7 @@ steps:
       technical_retries: 3
 
   - id: ytp_calibration
-    title: РљР°Р»РёР±СЂРѕРІРєР° РЇРўРџ РїРѕ СЃР»РѕРІР°Рј 32 Рё 31
+    title: Калибровка ЯТП по словам 32 и 31
     tu: 1.1.4.1, 1.1.4.14
     procedure: ytp.read_calibration
     requires:
@@ -203,7 +202,7 @@ steps:
       sample_count: 16
 
   - id: ytp_channels
-    title: РџСЂРѕРІРµСЂРєР° 30 РєР°РЅР°Р»РѕРІ РЇРўРџ РІ С‚РѕС‡РєР°С… 0 / 120 / 240 РћРј
+    title: Проверка 30 каналов ЯТП в точках 0 / 120 / 240 Ом
     tu: 1.1.4.1, 1.1.4.14
     procedure: ytp.check_channels
     requires:
@@ -222,8 +221,8 @@ steps:
       criteria_confirmed: true
 
   - id: ytp_cleanup
-    title: РћСЃС‚Р°РЅРѕРІРєР° РїРѕС‚РѕРєР° РЇРўРџ
-    tu: 5.6 / Р·Р°РІРµСЂС€РµРЅРёРµ РЇРўРџ
+    title: Остановка потока ЯТП
+    tu: 5.6 / завершение ЯТП
     procedure: ytp.safe_cleanup
     requires:
       - ulk.parameter_source
@@ -232,83 +231,38 @@ steps:
       isd_switch_type: 7
       isd_route_channels: 3,9,12,17
 
-  - id: yvp_yalk_stream
-    title: РџРµСЂРµРІРѕРґ Р°РґР°РїС‚РµСЂР° РѕР±СЂР°С‚РЅРѕ РІ РїРѕС‚РѕРє РЇР›Рљ РґР»СЏ РЇР’Рџ-8
-    tu: 5.6 / РЇР’Рџ
-    procedure: yalk.start_stream
+  - id: yvp_mode
+    title: Перевод адаптера в режим ЯВП · ROKT 0A 01
+    tu: 5.6 / ЯВП
+    procedure: yvp.enter_mode
     requires:
       - ulk.parameter_source
-      - stand.switch_matrix
     args:
-      configure_settle_ms: 500
+      yvp_cell: 1
       timeout_ms: 3000
+      technical_retries: 3
 
-  - id: yvp_yalk_calibration
-    title: РђРєС‚СѓР°Р»РёР·Р°С†РёСЏ РєР°Р»РёР±СЂРѕРІРєРё РЇР›Рљ 97/99 РїРµСЂРµРґ С‡С‚РµРЅРёРµРј РЇР’Рџ
-    tu: 1.1.4.14
-    procedure: yalk.read_calibration
-    requires:
-      - catalog.parameter_resolver
-      - ulk.parameter_source
-      - stand.switch_matrix
-      - measure.reference_voltage
-    args:
-      channel_count: 80
-      sample_count: 16
-      settle_ms: 150
-      full_voltage: 6.2
-
-  - id: yvp_check
-    title: РЇР’Рџ-8 В· РєРѕСЌС„С„РёС†РёРµРЅС‚С‹ СѓСЃРёР»РµРЅРёСЏ, РђР§РҐ Рё Р·Р°С‚СѓС…Р°РЅРёРµ С‡РµСЂРµР· РґРёР°РїР°Р·РѕРЅ РЇР›Рљ 88вЂ“96
+  - id: yvp_channels
+    title: ЯВП-8 · выбор 8 каналов ROKT 0A 03 и контроль свежего UDP-трафика
     tu: 1.1.4.1, 1.1.4.7, 1.1.4.8, 1.1.4.14
     procedure: ubsi.yvp
     requires:
-      - catalog.parameter_resolver
       - ulk.parameter_source
-      - stand.switch_matrix
-      - signal.generator
-      - measure.reference_ac_voltage
-      - measure.reference_frequency
     args:
       channel_count: 8
-      parameter_group: yvp_fast
-      yalk_address_min: 88
-      yalk_address_max: 96
-      frequencies_hz: 0.15,20,250,500,1800,2000,4000
-      gains_mv_per_pcl: 0.25,0.5,1,2,4,8,32
-      coupling_capacitance_pf: 1000
-      sample_count: 16
-      gain_tolerance_percent: 7
-      working_low_frequency_hz: 2
-      working_high_frequency_hz: 2000
-      input_route: yvp_input
-      gain_route: yvp_gain
-      # РђРєС‚РёРІРЅС‹Р№ Р·Р°РїСѓСЃРє РѕСЃС‚Р°С‘С‚СЃСЏ fail-safe РґРѕ commissioning С‚РѕС‡РЅРѕР№ РІРѕСЃСЊРјРёРєР°РЅР°Р»СЊРЅРѕР№
-      # РєР°СЂС‚С‹ РІРЅСѓС‚СЂРё 88..96, С„РёР·РёС‡РµСЃРєРѕР№ РєСЂРѕСЃСЃРёСЂРѕРІРєРё Рё РїРµСЂРµСЃС‡С‘С‚Р° СЃР»РѕРІР° РЇР›Рљ РІ Uout.
-      routes_confirmed: false
-      yalk_value_model_confirmed: false
-      stimulus_tolerance_percent: 5
-      frequency_tolerance_percent: 1
-      settle_ms: 200
+      yvp_cell: 1
+      timeout_ms: 3000
 
-  - id: yvp_yalk_cleanup
-    title: Р‘РµР·РѕРїР°СЃРЅС‹Р№ СЃР±СЂРѕСЃ С‚СЂР°РєС‚Р° РЇР’Рџ / РЇР›Рљ
-    tu: 5.6 / РЇР’Рџ В· Р·Р°РІРµСЂС€РµРЅРёРµ
-    procedure: yalk.safe_cleanup
+  - id: yvp_cleanup
+    title: Безопасный сброс потока ЯВП
+    tu: 5.6 / ЯВП · завершение
+    procedure: yvp.safe_cleanup
     requires:
       - ulk.parameter_source
-      - stand.switch_matrix
-      - catalog.parameter_resolver
-      - measure.reference_voltage
-    args:
-      channel_count: 80
-      maximum_residual_voltage_v: 0.2
-      settle_ms: 300
-      retry_settle_ms: 500
 
   - id: power_off
-    title: РћС‚РєР»СЋС‡РµРЅРёРµ РїРёС‚Р°РЅРёСЏ РЈР‘РЎР РїРѕСЃР»Рµ РїСЂРѕРІРµСЂРєРё
-    tu: 5.6 / Р±РµР·РѕРїР°СЃРЅРѕРµ Р·Р°РІРµСЂС€РµРЅРёРµ
+    title: Отключение питания УБСИ после проверки
+    tu: 5.6 / безопасное завершение
     procedure: ubsi.power_safe_off
     requires:
       - power.dc_supply

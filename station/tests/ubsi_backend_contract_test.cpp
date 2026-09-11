@@ -2,6 +2,7 @@
 #include "orbita_stand/ubsi_procedures.h"
 #include "orbita_stand/ubsi_yvp_math.h"
 
+#include <algorithm>
 #include <cmath>
 #include <fstream>
 #include <iostream>
@@ -50,30 +51,42 @@ bool tuReferences(const std::string& yaml, const std::string& requirement)
     return false;
 }
 
-void yvpAddressContract()
+void yvpTransportContract()
 {
-    std::istringstream input(readFile("data/catalog/address_sets/ulk_yvp_reference.txt"));
-    std::vector<unsigned> addresses;
-    unsigned value = 0;
-    while (input >> value) addresses.push_back(value);
-    require(addresses.size() == 8, "YVP address set must contain exactly 8 addresses");
-    for (unsigned index = 0; index < addresses.size(); ++index) {
-        require(addresses[index] == 89 + index,
-            "YVP ulk_address must be 89..96 (word_index 88..95)");
-    }
-
     const auto catalog = readFile("data/catalog/catalog.yaml");
     const auto begin = catalog.find("parameter_group: yvp_fast", catalog.find("bindings:"));
-    require(begin != std::string::npos, "catalog must contain yvp_fast binding");
+    require(begin != std::string::npos, "catalog must retain the YVP commissioning binding");
     const auto end = catalog.find("\ninstances:", begin);
     const auto block = catalog.substr(begin, end - begin);
     require(contains(block, "source: ulk.parameter_source"),
-        "YVP must use ulk.parameter_source");
-    require(contains(block, "address_file: address_sets/ulk_yvp_reference.txt"),
-        "YVP must use the dedicated YALK address set");
-    require(contains(block, "count: 8"), "YVP binding count must be 8");
+        "YVP commissioning binding must use ulk.parameter_source");
+    require(contains(block, "confirmed: false"),
+        "obsolete YVP-to-YALK candidate must remain unconfirmed");
     require(!contains(block, "orbita.parameter_source"),
-        "YVP current binding must not use Orbita/E20");
+        "YVP must never fall back to Orbita/E20");
+
+    const auto standalone = readFile("data/scenarios/ubsi_production_yvp.yaml");
+    require(contains(standalone, "procedure: yvp.enter_mode"),
+        "standalone YVP production must enter the confirmed ROKT mode");
+    require(contains(standalone, "procedure: ubsi.yvp"),
+        "standalone YVP production must execute the ROKT channel procedure");
+    require(contains(standalone, "procedure: yvp.safe_cleanup"),
+        "standalone YVP production must stop its stream safely");
+    require(!contains(standalone, "procedure: yalk.start_stream")
+            && !contains(standalone, "procedure: yalk.read_calibration"),
+        "standalone YVP production must not use the obsolete YALK-address transport");
+
+    const auto full = readFile("data/scenarios/ubsi_production_full.yaml");
+    require(contains(full, "id: yvp_mode") && contains(full, "procedure: yvp.enter_mode"),
+        "full production must use the ROKT YVP mode");
+
+    const auto combined = readFile("data/scenarios/ubsi_ulk_combined_check.yaml");
+    require(contains(combined, "procedure: yvp.enter_mode")
+            && contains(combined, "procedure: yvp.safe_cleanup"),
+        "current TU run must use the ROKT YVP transport");
+    require(!contains(combined, "routes_confirmed: false")
+            && !contains(combined, "yalk_value_model_confirmed: false"),
+        "current TU run must not retain the obsolete YALK YVP gates");
 }
 
 void scenarioContract()
@@ -88,19 +101,11 @@ void scenarioContract()
     require(!contains(combined, "ubsi.external_evidence"),
         "excluded checks must not return as external-evidence gates");
     require(!contains(combined, "orbita.parameter_source"),
-        "YVP current TU route must not use Orbita/E20");
+        "current TU route must not use Orbita/E20 for YVP");
     require(contains(combined, "maximum_total_current_a: 0.4"),
         "whole-UBSI current criterion must be 0.4 A");
     require(contains(combined, "supply_current_limit_a: 0.6"),
         "hardware current limit must remain separate from the 0.4 A criterion");
-    require(contains(combined, "frequencies_hz: 0.15,20,250,500,1800,2000,4000"),
-        "YVP frequency set is wrong");
-    require(contains(combined, "gains_mv_per_pcl: 0.25,0.5,1,2,4,8,32"),
-        "YVP gain set is wrong");
-    require(contains(combined, "routes_confirmed: false"),
-        "uncommissioned YVP routing must be fail-safe");
-    require(contains(combined, "yalk_value_model_confirmed: false"),
-        "uncommissioned YVP Uout model must be fail-safe");
 
     const auto legacy = readFile("data/scenarios/ubsi_tu_5_6.yaml");
     require(!tuReferences(legacy, "1.1.4.6"),
@@ -149,6 +154,14 @@ public:
                        const std::map<std::string, std::string>& arguments) override
     {
         operations.push_back(capability + ":" + operation);
+        if (capability == "ulk.parameter_source"
+            && (operation == "start_yvp_probe" || operation == "start_yvp_channel_probe")) {
+            ++yvpStarts;
+            return "status=capturing\nprotocol=rokt_yvp_unclassified\ndecoder=unconfirmed\n";
+        }
+        if (capability == "ulk.parameter_source" && operation == "stats") {
+            return "status=ready\nlast_sequence=1\nunknown=1\ndropped=0\n";
+        }
         if (capability == "catalog.parameter_resolver" && operation == "resolve") {
             const unsigned channel = static_cast<unsigned>(std::stoul(arguments.at("channel_index")));
             const unsigned address = 89 + channel;
@@ -156,7 +169,7 @@ public:
                 + std::to_string(address)
                 + "\nstream_id=\nword_index=" + std::to_string(address - 1)
                 + "\nmask=1023\nshift=0\nmode=0\nconversion_id=yalk_two_point_6v2\n"
-                  "stimulus_route=\nstimulus_offset=0\nconfirmed=true\n";
+                  "stimulus_route=\nstimulus_offset=0\nconfirmed=false\n";
         }
         if (capability == "power.dc_supply" && operation == "set_voltage") {
             supplyVoltage = std::stod(arguments.at("volts"));
@@ -188,6 +201,7 @@ public:
     double hardwareCurrentLimit = 0.0;
     bool outputEnabled = false;
     bool stopped = false;
+    unsigned yvpStarts = 0;
 };
 
 ScenarioDefinition oneStep(std::string procedure,
@@ -224,20 +238,20 @@ void procedureRuntimeContract()
 
     ContractEquipment yvpEquipment;
     const auto yvpRun = engine.run(oneStep("ubsi.yvp", {
-        {"channel_count", "8"}, {"sample_count", "16"},
-        {"parameter_group", "yvp_fast"},
-        {"frequencies_hz", "0.15,20,250,500,1800,2000,4000"},
-        {"gains_mv_per_pcl", "0.25,0.5,1,2,4,8,32"},
-        {"routes_confirmed", "false"},
-        {"yalk_value_model_confirmed", "false"}}),
+        {"channel_count", "8"}, {"yvp_cell", "1"}, {"timeout_ms", "100"}}),
         yvpEquipment, "p", "", false);
     require(yvpRun.verdict == RunVerdict::Incomplete,
-        "uncommissioned YVP must be INCOMPLETE");
+        "YVP ROKT transport without a confirmed payload decoder must be INCOMPLETE");
+    require(yvpEquipment.yvpStarts == 8,
+        "YVP procedure must issue one ROKT channel command for each of 8 channels");
+    require(std::count(yvpEquipment.operations.begin(), yvpEquipment.operations.end(),
+                "ulk.parameter_source:start_yvp_channel_probe") == 8,
+        "YVP procedure must use start_yvp_channel_probe exactly 8 times");
     for (const auto& operation : yvpEquipment.operations) {
         require(operation.rfind("signal.generator:", 0) != 0,
-            "uncommissioned YVP must not enable or configure Rigol");
+            "YVP must not enable or configure Rigol before payload decoding is confirmed");
         require(operation.rfind("stand.switch_matrix:", 0) != 0,
-            "uncommissioned YVP must not switch active YVP routes");
+            "YVP ROKT transport commissioning must not switch active YVP routes");
     }
 
     ContractEquipment supplyEquipment;
@@ -275,7 +289,7 @@ void procedureRuntimeContract()
 int main()
 {
     try {
-        yvpAddressContract();
+        yvpTransportContract();
         scenarioContract();
         yvpMathContract();
         procedureRuntimeContract();

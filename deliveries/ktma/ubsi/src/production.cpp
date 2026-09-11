@@ -94,7 +94,10 @@ std::vector<std::string> affectedComponentTypes(ProductionPackage package)
     case ProductionPackage::Ytp:
         return {"YTP"};
     case ProductionPackage::Yvp:
-        return {"YVP", "YALK-96"};
+        // Current YVP transport is its own ROKT mode (0A 01 / 0A 03), not the
+        // obsolete YALK-address hypothesis. A YVP-only run therefore affects
+        // the YVP cell result only.
+        return {"YVP"};
     }
     throw std::invalid_argument("unknown UBSI production package");
 }

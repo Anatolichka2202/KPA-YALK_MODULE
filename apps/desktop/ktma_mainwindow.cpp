@@ -5,13 +5,8 @@
 
 #include <QComboBox>
 #include <QCoreApplication>
-#include <QDialog>
-#include <QDialogButtonBox>
 #include <QDir>
 #include <QFile>
-#include <QFormLayout>
-#include <QLabel>
-#include <QLineEdit>
 #include <QMessageBox>
 #include <QMetaObject>
 #include <QSet>
@@ -19,9 +14,8 @@
 #include <QTimer>
 #include <QtConcurrent/QtConcurrentRun>
 
-#include <functional>
 #include <algorithm>
-#include <array>
+#include <functional>
 #include <stdexcept>
 
 namespace {
@@ -75,12 +69,32 @@ KtmaMainWindow::KtmaMainWindow(QWidget* parent)
 
     page->registerEquipmentRow(QStringLiteral("RIGOL"),
         QStringLiteral("Rigol DG-1022Z / ДГ10.2"), QStringLiteral("USB / VISA"),
-        QStringLiteral("Требуется для проверки ЯВП; состояние определяется профилем стенда"));
+        QStringLiteral("Требуется только сценариям, где есть signal.generator"));
 
     integrationEnsureStandRuntime();
     loadProductionScenarios();
-    connect(integrationRegistrarPage(), &RegistrarPage::productionRequested,this,[this]{
-        integrationOpenTests();configureProductionSelector();
+
+    const auto loadRegisteredProducts = [this, page] {
+        QStringList serials;
+        if (auto* registrar = integrationRegistrar()) {
+            try {
+                for (const auto& product : registrar->listProducts()) {
+                    if (product.productType == "UBSI")
+                        serials << QString::fromStdString(product.serialNumber);
+                }
+            } catch (const std::exception& error) {
+                integrationLog(QStringLiteral("Registrar: не удалось загрузить список УБСИ: %1")
+                    .arg(QString::fromUtf8(error.what())));
+            }
+        }
+        page->setAvailableProductionProducts(serials);
+    };
+
+    connect(integrationRegistrarPage(), &RegistrarPage::productionRequested, this,
+            [this, loadRegisteredProducts] {
+        integrationOpenTests();
+        configureProductionSelector();
+        loadRegisteredProducts();
     });
 
     try {
@@ -94,13 +108,16 @@ KtmaMainWindow::KtmaMainWindow(QWidget* parent)
             .arg(QString::fromUtf8(error.what())));
     }
 
-    // Replace only the UBSI run orchestration. The base window keeps Orbita
-    // monitoring/engineering behaviour for future BSI/RPU product packages.
     integrationDisableBaseScenarioRunner();
     connect(page, &TestPage::runRequested,
             this, &KtmaMainWindow::runScenario);
+
+    // MainWindow historically connected this signal to a broad stand check.
+    // UBSI has a stricter contract: Preparation probes only devices required by
+    // the selected scenario. Replace that inherited connection with the scoped one.
+    QObject::disconnect(page, &TestPage::equipmentCheckRequested, this, nullptr);
     connect(page, &TestPage::equipmentCheckRequested,
-            this, &KtmaMainWindow::checkRigolGenerator);
+            this, &KtmaMainWindow::checkSelectedEquipment);
 
     if (auto* watcher = integrationScenarioWatcher()) {
         connect(watcher, &QFutureWatcherBase::finished,
@@ -108,16 +125,19 @@ KtmaMainWindow::KtmaMainWindow(QWidget* parent)
     }
 
     if (auto* home = integrationHomePage()) {
-        connect(home, &HomePage::productionRequested, this, [this] {
-            QTimer::singleShot(0, this, [this] {
+        connect(home, &HomePage::productionRequested, this,
+                [this, loadRegisteredProducts] {
+            QTimer::singleShot(0, this, [this, loadRegisteredProducts] {
                 configureProductionSelector();
+                loadRegisteredProducts();
                 integrationOpenTests();
             });
         });
         connect(home, &HomePage::tuRequested, this, [this] {
             QTimer::singleShot(0, this, [this] {
                 restoreTuSelector();
-                checkRigolGenerator();
+                // Selection does not touch equipment. The check is performed
+                // only from Preparation for the chosen TU scenario.
             });
         });
     }
@@ -128,74 +148,6 @@ KtmaMainWindow::KtmaMainWindow(QWidget* parent)
             if (!integrationProductionWorkflowActive()) return;
             QTimer::singleShot(0, this, &KtmaMainWindow::applyProductionScenario);
         });
-    }
-}
-
-bool KtmaMainWindow::registerProductionProduct(const QString& serial)
-{
-    auto* registrar = integrationRegistrar();
-    if (!registrar) {
-        QMessageBox::warning(this, QStringLiteral("Регистрация изделия"),
-            QStringLiteral("Регистратор недоступен."));
-        return false;
-    }
-
-    QDialog dialog(this);
-    dialog.setWindowTitle(QStringLiteral("Новое изделие УБСИ · %1").arg(serial));
-    dialog.setModal(true);
-    auto* layout = new QVBoxLayout(&dialog);
-    auto* caption = new QLabel(QStringLiteral(
-        "Изделие не найдено. Укажите серийные номера установленного состава; "
-        "после сохранения вы вернётесь к запуску проверки."), &dialog);
-    caption->setWordWrap(true);
-    layout->addWidget(caption);
-    auto* form = new QFormLayout;
-    QLineEdit yalk;
-    QLineEdit ytp;
-    QLineEdit yvp;
-    QLineEdit power;
-    for (auto* edit : {&yalk, &ytp, &yvp, &power}) {
-        edit->setMinimumWidth(280);
-        edit->setPlaceholderText(QStringLiteral("Серийный номер"));
-    }
-    form->addRow(QStringLiteral("ЯЛК-96"), &yalk);
-    form->addRow(QStringLiteral("ЯТП"), &ytp);
-    form->addRow(QStringLiteral("ЯВП"), &yvp);
-    form->addRow(QStringLiteral("ЯП-П"), &power);
-    layout->addLayout(form);
-    auto* buttons = new QDialogButtonBox(
-        QDialogButtonBox::Cancel | QDialogButtonBox::Save, &dialog);
-    buttons->button(QDialogButtonBox::Save)->setText(QStringLiteral("ЗАРЕГИСТРИРОВАТЬ И ПРОДОЛЖИТЬ"));
-    buttons->button(QDialogButtonBox::Cancel)->setText(QStringLiteral("ОТМЕНА"));
-    layout->addWidget(buttons);
-    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-    connect(buttons, &QDialogButtonBox::accepted, &dialog, [&] {
-        if (yalk.text().trimmed().isEmpty() || ytp.text().trimmed().isEmpty()
-            || yvp.text().trimmed().isEmpty() || power.text().trimmed().isEmpty()) {
-            QMessageBox::warning(&dialog, QStringLiteral("Состав изделия"),
-                QStringLiteral("Укажите SN всех четырёх ячеек."));
-            return;
-        }
-        dialog.accept();
-    });
-    if (dialog.exec() != QDialog::Accepted) return false;
-
-    try {
-        const auto productId = registrar->createProduct("UBSI", serial.toStdString());
-        const std::array<std::pair<const char*, QString>, 4> components = {{
-            {"YALK-96", yalk.text().trimmed()}, {"YTP", ytp.text().trimmed()},
-            {"YVP", yvp.text().trimmed()}, {"YP-P", power.text().trimmed()}}};
-        for (const auto& [type, componentSerial] : components) {
-            const auto componentId = registrar->createComponent(type, componentSerial.toStdString());
-            registrar->installComponent(productId, componentId);
-        }
-        integrationLog(QStringLiteral("Production: зарегистрировано изделие %1 и его состав")
-            .arg(serial));
-        return true;
-    } catch (const std::exception& error) {
-        QMessageBox::warning(this, QStringLiteral("Регистрация изделия"),
-            QString::fromUtf8(error.what()));
-        return false;
     }
 }
 
@@ -211,8 +163,9 @@ void KtmaMainWindow::loadProductionScenarios()
             "Production scenarios недоступны: стендовый runtime не инициализирован");
         for (const auto& code : {QStringLiteral("PROD_FULL"), QStringLiteral("PROD_POWER"),
                                  QStringLiteral("PROD_YALK"), QStringLiteral("PROD_YTP"),
-                                 QStringLiteral("PROD_YVP")})
+                                 QStringLiteral("PROD_YVP")}) {
             page->setScenarioInfo(code, false, false, {}, detail);
+        }
         return;
     }
 
@@ -233,13 +186,6 @@ void KtmaMainWindow::loadProductionScenarios()
                 file.absoluteFilePath().toUtf8().toStdString());
             const QString code = ids.value(QString::fromStdString(scenario.id));
             if (code.isEmpty()) continue;
-
-            if (code == QStringLiteral("PROD_YVP")) {
-                page->setScenarioInfo(code, false, false, {}, QStringLiteral(
-                    "ЯВП временно недоступна: внешняя команда ROKT для переключения адаптера ещё не подтверждена."));
-                loaded.insert(code);
-                continue;
-            }
 
             QStringList errors;
             for (const auto& error : engine->validate(scenario))
@@ -276,7 +222,6 @@ void KtmaMainWindow::loadProductionScenarios()
 QString KtmaMainWindow::productionCodeForScope(const QString& scope) const
 {
     if (scope == QStringLiteral("УБСИ ПО ТУ")) return QStringLiteral("PROD_FULL");
-    if (scope == QStringLiteral("ПИТАНИЕ")) return QStringLiteral("PROD_POWER");
     if (scope == QStringLiteral("ЯЛК-96")) return QStringLiteral("PROD_YALK");
     if (scope == QStringLiteral("ЯТП")) return QStringLiteral("PROD_YTP");
     if (scope == QStringLiteral("ЯВП-8")) return QStringLiteral("PROD_YVP");
@@ -295,7 +240,6 @@ void KtmaMainWindow::configureProductionSelector()
     const QSignalBlocker blocker(scope);
     scope->clear();
     scope->addItem(QStringLiteral("УБСИ · полная"), QStringLiteral("УБСИ ПО ТУ"));
-    scope->addItem(QStringLiteral("Питание / потребление"), QStringLiteral("ПИТАНИЕ"));
     scope->addItem(QStringLiteral("ЯЛК-96"), QStringLiteral("ЯЛК-96"));
     scope->addItem(QStringLiteral("ЯТП"), QStringLiteral("ЯТП"));
     scope->addItem(QStringLiteral("ЯВП-8"), QStringLiteral("ЯВП-8"));
@@ -317,18 +261,19 @@ void KtmaMainWindow::applyProductionScenario()
     const QString code = productionCodeForScope(scope->currentData().toString());
     if (code.isEmpty()) return;
     QString title;
-    if (code == QStringLiteral("PROD_FULL")) title = QStringLiteral("Полная производственная проверка УБСИ");
-    else if (code == QStringLiteral("PROD_POWER")) title = QStringLiteral("Питание / потребление");
-    else if (code == QStringLiteral("PROD_YALK")) title = QStringLiteral("Полная ЯЛК-96");
-    else if (code == QStringLiteral("PROD_YTP")) title = QStringLiteral("Полная ЯТП · 0 / 120 / 240 Ом");
-    else if (code == QStringLiteral("PROD_YVP")) title = QStringLiteral("Полная ЯВП-8 · ЯЛК 88–96");
+    if (code == QStringLiteral("PROD_FULL"))
+        title = QStringLiteral("Полная производственная проверка УБСИ");
+    else if (code == QStringLiteral("PROD_YALK"))
+        title = QStringLiteral("Полная ЯЛК-96");
+    else if (code == QStringLiteral("PROD_YTP"))
+        title = QStringLiteral("Полная ЯТП · 0 / 120 / 240 Ом");
+    else if (code == QStringLiteral("PROD_YVP"))
+        title = QStringLiteral("Полная ЯВП-8 · ROKT");
 
-    {
-        const QSignalBlocker blocker(test);
-        test->clear();
-        test->addItem(title, code);
-        test->setCurrentIndex(0);
-    }
+    const QSignalBlocker blocker(test);
+    test->clear();
+    test->addItem(title, code);
+    test->setCurrentIndex(0);
     QMetaObject::invokeMethod(page, "updateSelectionSummary", Qt::DirectConnection);
 }
 
@@ -343,6 +288,49 @@ void KtmaMainWindow::restoreTuSelector()
     if (auto* test = page->findChild<QComboBox*>(QStringLiteral("testType"))) {
         if (test->parentWidget()) test->parentWidget()->setVisible(false);
     }
+}
+
+void KtmaMainWindow::checkSelectedEquipment()
+{
+    auto* page = integrationTestPage();
+    if (!page) return;
+    integrationEnsureStandRuntime();
+    if (!integrationStandRuntimeReady()) return;
+
+    QSet<QString> required;
+    for (const auto& code : page->currentRequiredEquipment()) required.insert(code);
+
+    const QHash<QString, QString> capabilityToUi = {
+        {QStringLiteral("ulk.parameter_source"), QStringLiteral("RS485")},
+        {QStringLiteral("stand.switch_matrix"), QStringLiteral("ISD")},
+        {QStringLiteral("measure.reference_voltage"), QStringLiteral("V7")},
+        {QStringLiteral("measure.dc_current"), QStringLiteral("V7")},
+        {QStringLiteral("measure.reference_ac_voltage"), QStringLiteral("V7")},
+        {QStringLiteral("measure.reference_frequency"), QStringLiteral("V7")},
+        {QStringLiteral("power.dc_supply"), QStringLiteral("AKIP")},
+        {QStringLiteral("signal.generator"), QStringLiteral("RIGOL")}};
+
+    auto& profile = integrationStandProfile();
+    const auto savedDevices = profile.devices;
+    for (auto& definition : profile.devices) {
+        bool needed = false;
+        for (const auto& capability : definition.bindCapabilities) {
+            const QString code = capabilityToUi.value(QString::fromStdString(capability));
+            if (!code.isEmpty() && required.contains(code)) {
+                needed = true;
+                break;
+            }
+        }
+        if (!needed) definition.enabled = false;
+    }
+
+    // Reuse the verified common stand checker, but with all devices outside the
+    // selected scenario temporarily disabled. This prevents probes/outputs on
+    // unrelated hardware while preserving the existing safe-stop/bind logic.
+    integrationLegacyEquipmentCheck();
+    profile.devices = savedDevices;
+
+    if (required.contains(QStringLiteral("RIGOL"))) checkRigolGenerator();
 }
 
 void KtmaMainWindow::runScenario(
@@ -365,18 +353,17 @@ void KtmaMainWindow::runScenario(
     try {
         if (integrationProductionWorkflowActive()) {
             auto* registrar = integrationRegistrar();
-            if (!registrar || !productionLedger_) {
+            if (!registrar || !productionLedger_)
                 throw std::runtime_error("Production backend не инициализирован");
-            }
-            if (serial.empty()) {
-                throw std::runtime_error("Введите заводской номер УБСИ");
-            }
-            auto product = registrar->findProductBySerial(serial);
+            if (serial.empty())
+                throw std::runtime_error("Выберите зарегистрированное УБСИ");
+
+            const auto product = registrar->findProductBySerial(serial);
             if (!product) {
-                if (!registerProductionProduct(QString::fromUtf8(serial))) return;
-                product = registrar->findProductBySerial(serial);
+                throw std::runtime_error(
+                    "Изделие отсутствует в registrar.db. Регистрация выполняется только в разделе Администрирование");
             }
-            if (!product) throw std::runtime_error("Не удалось зарегистрировать изделие УБСИ");
+
             const auto package = ktma::ubsi::productionPackageFromCode(
                 requestedCode.toStdString());
             const auto report = registrar->productReport(product->id);
@@ -385,9 +372,8 @@ void KtmaMainWindow::runScenario(
             effectiveCode = QString::fromStdString(productionContext->scenarioCode);
             serial = productionContext->productSerial;
         } else if (integrationTuWorkflowActive()) {
-            if (objectSerial.trimmed().isEmpty()) {
+            if (objectSerial.trimmed().isEmpty())
                 throw std::runtime_error("Введите заводской номер проверяемого УБСИ");
-            }
             if (auto* registrar = integrationRegistrar()) {
                 const auto product = registrar->findProductBySerial(serial);
                 pendingTuProductId_ = product ? product->id : std::string();
@@ -408,6 +394,7 @@ void KtmaMainWindow::runScenario(
         const bool omitYvp = !page->includeYvp() && effectiveCode != QStringLiteral("PROD_YVP");
         const bool omitOverload = production && !page->includeProductionOverload();
         const bool omitSurvival = production && !page->includeProductionSurvival();
+
         bool yvpExcluded = false;
         if (omitYvp) {
             auto& steps = scenario.steps;
@@ -416,8 +403,12 @@ void KtmaMainWindow::runScenario(
                 return node.id.rfind("yvp_", 0) == 0;
             }), steps.end());
             yvpExcluded = steps.size() != originalCount;
-            if (yvpExcluded) { scenario.title += " · без ЯВП"; scenario.version += "+without-yvp"; }
+            if (yvpExcluded) {
+                scenario.title += " · без ЯВП";
+                scenario.version += "+without-yvp";
+            }
         }
+
         bool overloadExcluded = false;
         if (omitOverload) {
             auto& steps = scenario.steps;
@@ -426,8 +417,12 @@ void KtmaMainWindow::runScenario(
                 return node.id == "yalk_overload";
             }), steps.end());
             overloadExcluded = steps.size() != originalCount;
-            if (overloadExcluded) { scenario.title += " · без перегрузки ЯЛК"; scenario.version += "+without-overload"; }
+            if (overloadExcluded) {
+                scenario.title += " · без перегрузки ЯЛК";
+                scenario.version += "+without-overload";
+            }
         }
+
         bool survivalExcluded = false;
         if (omitSurvival) {
             for (auto& node : scenario.steps) {
@@ -436,7 +431,10 @@ void KtmaMainWindow::runScenario(
                 node.arguments.erase("survival_points_v");
                 node.arguments.erase("survival_seconds");
             }
-            if (survivalExcluded) { scenario.title += " · без выдержек 19/37 В"; scenario.version += "+without-survival"; }
+            if (survivalExcluded) {
+                scenario.title += " · без выдержек 19/37 В";
+                scenario.version += "+without-survival";
+            }
         }
 
         if (productionContext) {
@@ -452,19 +450,25 @@ void KtmaMainWindow::runScenario(
 
         const std::string profileVersion = integrationStandProfile().version;
         watcher->setFuture(QtConcurrent::run(
-            [this, engine, registry, scenario, profileVersion, serial, allowPartial, yvpExcluded, overloadExcluded, survivalExcluded]() {
-                auto result = engine->run(scenario, *registry, profileVersion, serial, allowPartial,
+            [this, engine, registry, scenario, profileVersion, serial, allowPartial,
+             yvpExcluded, overloadExcluded, survivalExcluded]() {
+                auto result = engine->run(
+                    scenario, *registry, profileVersion, serial, allowPartial,
                     [this](const orbita::stand::RunEvent& event) {
                         QMetaObject::invokeMethod(this, [this, event] {
                             if (auto* testPage = integrationTestPage())
                                 testPage->setRunEvent(event);
                         }, Qt::QueuedConnection);
                     });
-                if (yvpExcluded || overloadExcluded || survivalExcluded) result.events.insert(result.events.begin(), {
-                    result.startedAt, "scope", "SCOPE", "Производственный результат относится к выбранному оператором объёму",
-                    orbita::stand::RunVerdict::NotRun, {{"yvp_included", yvpExcluded ? "false" : "true"},
-                                                        {"overload_included", overloadExcluded ? "false" : "true"},
-                                                        {"survival_included", survivalExcluded ? "false" : "true"}}});
+                if (yvpExcluded || overloadExcluded || survivalExcluded) {
+                    result.events.insert(result.events.begin(), {
+                        result.startedAt, "scope", "SCOPE",
+                        "Производственный результат относится к выбранному оператором объёму",
+                        orbita::stand::RunVerdict::NotRun,
+                        {{"yvp_included", yvpExcluded ? "false" : "true"},
+                         {"overload_included", overloadExcluded ? "false" : "true"},
+                         {"survival_included", survivalExcluded ? "false" : "true"}}});
+                }
                 return result;
             }));
     } catch (const std::exception& error) {
@@ -493,12 +497,16 @@ void KtmaMainWindow::finalizeProductionRun()
     if (!pendingTuProductId_.empty()) {
         try {
             if (integrationResultSaved()) {
-                const auto result=integrationScenarioWatcher()->result();
-                integrationRegistrar()->attachTuRun(pendingTuProductId_,result.runId,orbita::stand::toString(result.verdict));
+                const auto result = integrationScenarioWatcher()->result();
+                integrationRegistrar()->attachTuRun(
+                    pendingTuProductId_, result.runId, orbita::stand::toString(result.verdict));
             }
-        } catch(const std::exception& error) { integrationLog(QString::fromUtf8(error.what())); }
+        } catch (const std::exception& error) {
+            integrationLog(QString::fromUtf8(error.what()));
+        }
         pendingTuProductId_.clear();
     }
+
     if (pendingProductionRunId_.empty() || !pendingProductionContext_
         || !productionLedger_) return;
     auto* watcher = integrationScenarioWatcher();
@@ -506,7 +514,9 @@ void KtmaMainWindow::finalizeProductionRun()
     if (!watcher || !page) return;
 
     const auto result = watcher->result();
-    const auto status = integrationResultSaved() ? ktma::ubsi::productionStatusFromScenarioVerdict(result.verdict) : ktma::ubsi::ProductionRunStatus::StandError;
+    const auto status = integrationResultSaved()
+        ? ktma::ubsi::productionStatusFromScenarioVerdict(result.verdict)
+        : ktma::ubsi::ProductionRunStatus::StandError;
 
     if (integrationResultSaved() && !result.runId.empty()) {
         try {
@@ -532,9 +542,6 @@ void KtmaMainWindow::finalizeProductionRun()
             const auto report = ktma::ubsi::writeProductionReport(
                 result, *pendingProductionContext_, reportDirectory.toStdString());
             productionReportPath = QString::fromStdString(report.html);
-
-            // Compatibility cleanup: the legacy technical writer used by the
-            // base shell must never expose a TU protocol for a Production run.
             QFile::remove(QDir(reportDirectory).filePath(
                 QStringLiteral("Протокол_ТУ_%1.html")
                     .arg(QString::fromStdString(result.runId))));
@@ -559,6 +566,7 @@ void KtmaMainWindow::checkRigolGenerator()
     auto* plugins = integrationEquipmentPlugins();
     auto* registry = integrationEquipmentRegistry();
     if (!page || !plugins || !registry || !integrationStandRuntimeReady()) return;
+    if (!page->currentRequiredEquipment().contains(QStringLiteral("RIGOL"))) return;
 
     const auto& profile = integrationStandProfile();
     const orbita::stand::DeviceProfile* definition = nullptr;

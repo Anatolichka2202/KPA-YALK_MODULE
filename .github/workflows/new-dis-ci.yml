@@ -1,0 +1,170 @@
+name: new-dis CI
+
+on:
+  push:
+    branches:
+      - new-dis
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: new-dis-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Windows UCRT64 · Qt 6 · GCC
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up MSYS2 UCRT64
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            git
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-qt6-base
+            mingw-w64-ucrt-x86_64-qt6-svg
+            mingw-w64-ucrt-x86_64-qt6-serialport
+
+      - name: Configure
+        shell: msys2 {0}
+        run: >-
+          cmake -S . -B build-ci -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DBUILD_TESTING=ON
+
+      - name: Build application, simulator and tests
+        shell: msys2 {0}
+        run: cmake --build build-ci --parallel 4
+
+      - name: Run CTest
+        shell: msys2 {0}
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --test-dir build-ci --output-on-failure -C Release
+
+      - name: Preserve CTest failure log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: new-dis-ctest-failure-log
+          path: build-ci/Testing/Temporary/LastTest.log
+          if-no-files-found: warn
+          retention-days: 3
+
+      - name: Verify expected executables
+        shell: msys2 {0}
+        run: |
+          test -f build-ci/apps/desktop/MilTechStation.exe
+          test -f build-ci/apps/desktop/MilTechStationSimulator.exe
+          test -f build-ci/apps/desktop/orbita_yvp_rokt_probe.exe
+
+      - name: Assemble portable package
+        shell: msys2 {0}
+        run: |
+          rm -rf deploy
+          mkdir -p deploy
+          cp build-ci/apps/desktop/MilTechStation.exe deploy/
+          cp build-ci/apps/desktop/MilTechStationSimulator.exe deploy/
+          cp build-ci/apps/desktop/orbita_yvp_rokt_probe.exe deploy/
+
+          for item in address catalog profiles scenarios plugins parameters.db Lusbapi64.dll; do
+            if [ -e "build-ci/apps/desktop/$item" ]; then
+              cp -r "build-ci/apps/desktop/$item" deploy/
+            fi
+          done
+
+          if command -v windeployqt6 >/dev/null 2>&1; then
+            WDEPLOY=windeployqt6
+          else
+            WDEPLOY=windeployqt
+          fi
+
+          "$WDEPLOY" --release --no-translations --dir deploy deploy/MilTechStation.exe
+          "$WDEPLOY" --release --no-translations --dir deploy deploy/MilTechStationSimulator.exe
+
+          for dll in libgcc_s_seh-1.dll libstdc++-6.dll libwinpthread-1.dll; do
+            cp "/ucrt64/bin/$dll" deploy/
+          done
+
+          printf 'branch=new-dis\ncommit=%s\n' "$GITHUB_SHA" > deploy/BUILD_INFO.txt
+
+      - name: Verify portable package
+        shell: msys2 {0}
+        run: |
+          test -f deploy/MilTechStation.exe
+          test -f deploy/MilTechStationSimulator.exe
+          test -f deploy/orbita_yvp_rokt_probe.exe
+          test -f deploy/Qt6Core.dll
+          test -f deploy/Qt6Gui.dll
+          test -f deploy/Qt6Widgets.dll
+          test -f deploy/libgcc_s_seh-1.dll
+          test -f deploy/libstdc++-6.dll
+          test -f deploy/libwinpthread-1.dll
+          test -d deploy/platforms
+          test -d deploy/profiles
+          test -d deploy/scenarios
+          test -d deploy/plugins
+
+      - name: Upload portable build
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: MilTechStation-new-dis-portable-windows-ucrt64
+          path: deploy/**
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Build rolling pilot archive
+        if: success() && github.event_name != 'pull_request'
+        shell: pwsh
+        run: |
+          $short = $env:GITHUB_SHA.Substring(0, 7)
+          $packageName = "MilTechStation-KTMA-2.0.0-pilot-$short"
+          if (Test-Path $packageName) { Remove-Item $packageName -Recurse -Force }
+          Copy-Item -LiteralPath deploy -Destination $packageName -Recurse
+
+          $archive = 'MilTechStation-KTMA-new-dis.zip'
+          if (Test-Path $archive) { Remove-Item $archive -Force }
+          Compress-Archive -LiteralPath $packageName -DestinationPath $archive -CompressionLevel Optimal
+          $hash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          Set-Content -LiteralPath "$archive.sha256.txt" -Encoding ascii -Value "$hash  $archive"
+          "PACKAGE_NAME=$packageName" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Publish rolling new-dis pilot
+        if: success() && github.event_name != 'pull_request'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view new-dis-latest --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release delete new-dis-latest --repo $env:GITHUB_REPOSITORY --cleanup-tag --yes
+            if ($LASTEXITCODE -ne 0) { throw 'Cannot replace existing new-dis-latest release' }
+          }
+
+          gh release create new-dis-latest `
+            MilTechStation-KTMA-new-dis.zip `
+            MilTechStation-KTMA-new-dis.zip.sha256.txt `
+            --repo $env:GITHUB_REPOSITORY `
+            --target $env:GITHUB_SHA `
+            --title "new-dis pilot · $env:PACKAGE_NAME" `
+            --notes "Rolling pilot build from branch new-dis. Install into C:\Orbita\releases without overwriting earlier releases." `
+            --prerelease
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot publish new-dis-latest release' }

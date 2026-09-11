@@ -14,6 +14,15 @@ include(CTest)
 # Legacy Orbita telemetry remains a separate subsystem. KTMA/UBSI application
 # code lives under ktma/ and must not depend on the Orbita/E20 product model.
 add_subdirectory(third_party/yaml-cpp)
+
+# The pinned yaml-cpp revision relies on fixed-width integer typedefs being
+# pulled in transitively. GCC 16 no longer guarantees that, so make the missing
+# standard header explicit at compile time without modifying the submodule.
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU"
+   AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 16)
+    target_compile_options(yaml-cpp PRIVATE -include cstdint)
+endif()
+
 add_subdirectory(orbita)
 add_subdirectory(station)
 add_subdirectory(deliveries/ktma/registrar)

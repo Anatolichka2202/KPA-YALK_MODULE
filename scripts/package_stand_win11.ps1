@@ -2,7 +2,7 @@
 param(
     [string]$BuildDirectory = '',
     [string]$OutputDirectory = '',
-    [string]$PackageName = ('MilTechStation-KTMA-2.0.0-{0}' -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
+    [string]$PackageName = ''
 )
 
 Set-StrictMode -Version Latest
@@ -13,6 +13,16 @@ if ([string]::IsNullOrWhiteSpace($BuildDirectory)) {
 }
 if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
     $OutputDirectory = Join-Path $PSScriptRoot '..\build\deploy'
+}
+if ([string]::IsNullOrWhiteSpace($PackageName)) {
+    $shortSha = ''
+    try {
+        $shortSha = (& git -C (Join-Path $PSScriptRoot '..') rev-parse --short=7 HEAD 2>$null).Trim()
+    } catch {}
+    if ([string]::IsNullOrWhiteSpace($shortSha)) {
+        $shortSha = Get-Date -Format 'yyyyMMdd-HHmmss'
+    }
+    $PackageName = "MilTechStation-KTMA-2.0.0-pilot-$shortSha"
 }
 
 $buildRoot = (Resolve-Path -LiteralPath $BuildDirectory).Path
@@ -46,7 +56,8 @@ foreach ($name in @(
     'MilTechStation.exe', 'Lusbapi64.dll', 'Qt6SerialPort.dll',
     'parameters.db', 'stand.ini',
     'orbita_equipment_probe.exe', 'orbita_telemetry_probe.exe',
-    'orbita_ubsi_udp_probe.exe', 'visa_discover.exe'
+    'orbita_ubsi_udp_probe.exe', 'orbita_yvp_rokt_probe.exe',
+    'visa_discover.exe'
 )) {
     $source = Join-Path $runtimeRoot $name
     if (Test-Path -LiteralPath $source -PathType Leaf) {
@@ -64,11 +75,14 @@ foreach ($name in @('address', 'catalog', 'profiles', 'scenarios', 'plugins')) {
 New-Item -ItemType Directory -Path (Join-Path $packageRoot 'records') | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $packageRoot 'runs') | Out-Null
 
+Set-Content -LiteralPath (Join-Path $packageRoot 'BUILD_INFO.txt') -Encoding ascii -Value @(
+    "package=$PackageName"
+    "created_utc=$([DateTime]::UtcNow.ToString('o'))"
+)
+
 & $deployTool --release --no-translations --compiler-runtime --dir $packageRoot $application
 if ($LASTEXITCODE -ne 0) { throw "windeployqt failed with exit code $LASTEXITCODE" }
 
-# Equipment DLLs are loaded dynamically and can have Qt dependencies that are
-# invisible while windeployqt scans the executable (notably SerialPort).
 foreach ($plugin in Get-ChildItem -LiteralPath (Join-Path $packageRoot 'plugins') -Filter '*.dll' -File) {
     & $deployTool --release --no-translations --no-plugins --compiler-runtime `
         --dir $packageRoot $plugin.FullName
@@ -86,6 +100,7 @@ $required = @(
     'plugins\orbita_plugin_isd_http.dll',
     'plugins\orbita_plugin_ktma_adapter_udp.dll',
     'plugins\orbita_plugin_v7_visa.dll',
+    'orbita_yvp_rokt_probe.exe',
     'platforms\qwindows.dll', 'Qt6SerialPort.dll'
 )
 foreach ($relative in $required) {
