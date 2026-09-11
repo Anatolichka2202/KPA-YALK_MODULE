@@ -1,7 +1,7 @@
 schema: 1
 id: ubsi.468157.002.tu5_6.normal
 title: УБСИ ЛВРМ.468157.002 — legacy trace сценарий 5.6
-version: 1.6.0
+version: 1.6.1
 catalog_version: 2026.08.29-yalk-1
 object_type: UBSI_468157_002
 # Trace-only draft. Текущий published full run — ubsi_ulk_combined_check.yaml.
@@ -175,14 +175,19 @@ steps:
     title: ЯВП-8 — ROKT transport commissioning
     steps:
       - id: yvp_mode
-        title: Перевод адаптера в режим ЯВП · ROKT 0A 01
+        title: Готовность Rigol и перевод адаптера в режим ЯВП · ROKT 0A 01
         tu: 5.6 / ЯВП
         procedure: yvp.enter_mode
         requires:
           - ulk.parameter_source
+          - signal.generator
         args:
           yvp_cell: 1
           timeout_ms: 3000
+          stimulus_source: rigol_ch1
+          stimulus_nominal_v: 1
+          stimulus_control: manual
+          stimulus_amplitude_definition: TODO_CONFIRM
       - id: yvp_channels
         title: ЯВП-8 · выбор каналов ROKT 0A 03 и контроль свежего UDP-трафика
         tu: 1.1.4.1, 1.1.4.7, 1.1.4.8, 1.1.4.14
