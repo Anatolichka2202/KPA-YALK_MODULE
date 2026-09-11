@@ -65,12 +65,56 @@ jobs:
           test -f build-ci/apps/desktop/MilTechStation.exe
           test -f build-ci/apps/desktop/MilTechStationSimulator.exe
 
-      - name: Upload runnable build
+      - name: Assemble portable package
+        shell: msys2 {0}
+        run: |
+          rm -rf deploy
+          mkdir -p deploy
+          cp build-ci/apps/desktop/MilTechStation.exe deploy/
+          cp build-ci/apps/desktop/MilTechStationSimulator.exe deploy/
+
+          for item in address catalog profiles scenarios plugins parameters.db Lusbapi64.dll; do
+            if [ -e "build-ci/apps/desktop/$item" ]; then
+              cp -r "build-ci/apps/desktop/$item" deploy/
+            fi
+          done
+
+          if command -v windeployqt6 >/dev/null 2>&1; then
+            WDEPLOY=windeployqt6
+          else
+            WDEPLOY=windeployqt
+          fi
+
+          "$WDEPLOY" --release --no-translations --dir deploy deploy/MilTechStation.exe
+          "$WDEPLOY" --release --no-translations --dir deploy deploy/MilTechStationSimulator.exe
+
+          for dll in libgcc_s_seh-1.dll libstdc++-6.dll libwinpthread-1.dll; do
+            cp "/ucrt64/bin/$dll" deploy/
+          done
+
+          printf 'branch=new-dis\ncommit=%s\n' "$GITHUB_SHA" > deploy/BUILD_INFO.txt
+
+      - name: Verify portable package
+        shell: msys2 {0}
+        run: |
+          test -f deploy/MilTechStation.exe
+          test -f deploy/MilTechStationSimulator.exe
+          test -f deploy/Qt6Core.dll
+          test -f deploy/Qt6Gui.dll
+          test -f deploy/Qt6Widgets.dll
+          test -f deploy/libgcc_s_seh-1.dll
+          test -f deploy/libstdc++-6.dll
+          test -f deploy/libwinpthread-1.dll
+          test -d deploy/platforms
+          test -d deploy/profiles
+          test -d deploy/scenarios
+          test -d deploy/plugins
+
+      - name: Upload portable build
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: MilTechStation-new-dis-windows-ucrt64
-          path: |
-            build-ci/apps/desktop/**
+          name: MilTechStation-new-dis-portable-windows-ucrt64
+          path: deploy/**
           if-no-files-found: error
           retention-days: 7
