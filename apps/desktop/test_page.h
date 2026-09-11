@@ -54,6 +54,9 @@ signals:
                       bool allowPartial);
     void stopRequested();
 
+protected:
+    bool eventFilter(QObject* watched, QEvent* event) override;
+
 private slots:
     void updateStartAvailability();
     void rebuildScopes();
