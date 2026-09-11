@@ -4,6 +4,8 @@
 #include <QHeaderView>
 #include <QHBoxLayout>
 #include <QDialog>
+#include <QDialogButtonBox>
+#include <QFormLayout>
 #include <QCoreApplication>
 #include <QDesktopServices>
 #include <QDir>
@@ -17,6 +19,8 @@
 #include <QTableWidgetItem>
 #include <QUrl>
 #include <QVBoxLayout>
+
+#include <array>
 
 #include "registrar.h"
 #include "ktma/ubsi/production_ledger.h"
@@ -194,7 +198,7 @@ RegistrarPage::RegistrarPage(QWidget* parent)
     replacementRow->addWidget(replaceButton);
     layout->addLayout(replacementRow);
 
-    auto* createCaption = new QLabel(QStringLiteral("Зарегистрировать новое изделие УБСИ"), this);
+    auto* createCaption = new QLabel(QStringLiteral("Зарегистрировать УБСИ и установленный состав"), this);
     createCaption->setStyleSheet(QStringLiteral("font-weight:700; color:#c5d3e0;"));
     layout->addWidget(createCaption);
 
@@ -385,21 +389,75 @@ void RegistrarPage::createProduct()
         statusLabel_->setText(QStringLiteral("Введите номер изделия."));
         return;
     }
+    if (registrar_->findProductBySerial(serial.toStdString())) {
+        statusLabel_->setText(QStringLiteral("УБСИ %1 уже зарегистрировано.").arg(serial));
+        return;
+    }
+
+    QDialog dialog(this);
+    dialog.setWindowTitle(QStringLiteral("Регистрация УБСИ %1 · состав").arg(serial));
+    dialog.setModal(true);
+    auto* dialogLayout = new QVBoxLayout(&dialog);
+    auto* info = new QLabel(QStringLiteral(
+        "Введите серийные номера четырёх установленных ячеек. "
+        "После регистрации эти данные берутся из registrar.db и повторно в производственной сессии не запрашиваются."), &dialog);
+    info->setWordWrap(true);
+    dialogLayout->addWidget(info);
+
+    auto* form = new QFormLayout;
+    QLineEdit yalk(&dialog), ytp(&dialog), yvp(&dialog), ypp(&dialog);
+    for (auto* edit : {&yalk, &ytp, &yvp, &ypp}) {
+        edit->setMinimumWidth(300);
+        edit->setPlaceholderText(QStringLiteral("SN ячейки"));
+    }
+    form->addRow(QStringLiteral("ЯЛК-96"), &yalk);
+    form->addRow(QStringLiteral("ЯТП"), &ytp);
+    form->addRow(QStringLiteral("ЯВП-8"), &yvp);
+    form->addRow(QStringLiteral("ЯП-П"), &ypp);
+    dialogLayout->addLayout(form);
+
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Cancel, &dialog);
+    buttons->button(QDialogButtonBox::Save)->setText(QStringLiteral("ЗАРЕГИСТРИРОВАТЬ"));
+    buttons->button(QDialogButtonBox::Cancel)->setText(QStringLiteral("ОТМЕНА"));
+    dialogLayout->addWidget(buttons);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, [&] {
+        if (yalk.text().trimmed().isEmpty() || ytp.text().trimmed().isEmpty()
+            || yvp.text().trimmed().isEmpty() || ypp.text().trimmed().isEmpty()) {
+            QMessageBox::warning(&dialog, QStringLiteral("Состав УБСИ"),
+                QStringLiteral("Укажите SN ЯЛК-96, ЯТП, ЯВП-8 и ЯП-П."));
+            return;
+        }
+        dialog.accept();
+    });
+    if (dialog.exec() != QDialog::Accepted) return;
 
     try {
-        registrar_->createProduct("UBSI", serial.toStdString());
+        const auto productId = registrar_->createProduct("UBSI", serial.toStdString());
+        const std::array<std::pair<const char*, QString>, 4> components = {{
+            {"YALK-96", yalk.text().trimmed()},
+            {"YTP", ytp.text().trimmed()},
+            {"YVP", yvp.text().trimmed()},
+            {"YP-P", ypp.text().trimmed()}}};
+        for (const auto& [type, componentSerial] : components) {
+            const auto componentId = registrar_->createComponent(type, componentSerial.toStdString());
+            registrar_->installComponent(productId, componentId);
+        }
         serialEdit_->clear();
         searchEdit_->setText(serial);
+        refreshProducts();
         for (int row = 0; row < productsTable_->rowCount(); ++row) {
             if (productsTable_->item(row, 0)->text() == serial) {
                 productsTable_->selectRow(row);
                 break;
             }
         }
-        statusLabel_->setText(QStringLiteral("Изделие %1 зарегистрировано.").arg(serial));
+        refreshComposition();
+        statusLabel_->setText(QStringLiteral("УБСИ %1 и состав зарегистрированы.").arg(serial));
     } catch (const std::exception& error) {
         QMessageBox::warning(this, QStringLiteral("Регистрация изделия"),
             QString::fromUtf8(error.what()));
+        refreshProducts();
     }
 }
 
@@ -427,8 +485,6 @@ void RegistrarPage::replaceComponent()
     const QString componentId = typeItem->data(Qt::UserRole).toString();
     const QString type = typeItem->data(Qt::UserRole + 1).toString();
     try {
-        // Create first: an error such as a duplicate component SN must not
-        // remove a currently working cell from the product.
         registrar_->replaceComponent(productId.toStdString(), componentId.toStdString(),
             type.toStdString(), serial.toStdString(), reason.toStdString());
         replacementSerialEdit_->clear();
