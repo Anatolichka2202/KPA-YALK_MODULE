@@ -823,11 +823,12 @@ void pluginContracts()
         .filePath(QStringLiteral("../plugins"));
     EquipmentPluginManager manager;
     manager.loadDirectory(pluginDirectory.toUtf8().toStdString());
-    require(manager.plugins().size() == 6, "All first-release equipment DLLs must load");
+    require(manager.plugins().size() == 7, "All equipment DLLs must load");
     bool ubsi = false;
     bool scope = false;
     bool akip = false;
     bool v7 = false;
+    bool tcpScpi = false;
     for (const auto& descriptor : manager.plugins()) {
         ubsi = ubsi || descriptor.id == "orbita.ktma_adapter_udp";
         scope = scope || (descriptor.id == "orbita.rigol_dho8xx"
@@ -837,9 +838,28 @@ void pluginContracts()
         v7 = v7 || (descriptor.id == "orbita.v7_visa"
             && descriptor.capabilities.count("measure.reference_ac_voltage") != 0
             && descriptor.capabilities.count("measure.reference_frequency") != 0);
+        tcpScpi = tcpScpi || (descriptor.id == "orbita.tcp_scpi_bench"
+            && descriptor.capabilities.count("power.dc_supply") != 0
+            && descriptor.capabilities.count("measure.reference_voltage") != 0);
     }
-    require(ubsi && scope && akip && v7,
+    require(ubsi && scope && akip && v7 && tcpScpi,
             "Plugin ABI descriptors do not expose required capabilities");
+}
+
+void shippedConfigurationParses(const QString& sourceRoot)
+{
+    const QDir scenarios(sourceRoot + QStringLiteral("/data/scenarios"));
+    const auto files = scenarios.entryInfoList({QStringLiteral("*.yaml")}, QDir::Files);
+    require(!files.empty(), "No shipped scenarios found");
+    for (const auto& file : files) {
+        const auto scenario = loadScenarioYaml(file.absoluteFilePath().toStdString());
+        require(!scenario.id.empty(), "Shipped scenario has no id: "
+            + file.fileName().toStdString());
+    }
+    const auto simulator = loadStandProfile(
+        (sourceRoot + QStringLiteral("/data/profiles/stand_ktma_simulator.yaml")).toStdString());
+    require(simulator.id == "ktma-local-protocol-simulator",
+            "Simulator stand profile was not loaded");
 }
 
 void persistenceAndReport()
@@ -947,6 +967,7 @@ int main(int argc, char** argv)
         yvpUnconfirmedBindingRegression();
         waveformDecoder();
         pluginContracts();
+        shippedConfigurationParses(QStringLiteral(ORBITA_SOURCE_DIR));
         persistenceAndReport();
         std::cout << "Scenario runtime tests passed\n";
         return EXIT_SUCCESS;

@@ -87,6 +87,7 @@ devices:
       protocol: rokt_yalk
       timeout_ms: 800
       queue_capacity: 4096
+      record_root: records
       ytp_protocol: rokt_ytp68
       ytp_endpoint: 1
       # 29.08.2026: ROKT дал 100 reference204 без unknown/drop/timeout.

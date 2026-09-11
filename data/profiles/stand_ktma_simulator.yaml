@@ -1,0 +1,98 @@
+schema: 1
+id: ktma-local-protocol-simulator
+version: 2026.09.11-1
+title: Локальный протокольный имитатор КТМА
+active_outputs_confirmed: true
+
+connections:
+  adapter_rs485: UDP-имитатор Адаптера на 127.0.0.2:1113
+  isd_to_yalk: HTTP-имитатор ИСД на 127.0.0.1:18080
+  bench_scpi: TCP SCPI на 127.0.0.1:15025
+
+routes:
+  orbita_e20_channel: 1
+  orbita_e20_rate_khz: 10000
+  sensor_load_350ma:
+    base: 1
+    type: 2
+    bus: 0
+    safe: off
+  sensor_load_450ma:
+    base: 2
+    type: 2
+    bus: 0
+    safe: off
+  yalk_analog:
+    base: 1
+    safe: off
+  yalk_contacts:
+    base: 1
+    type: 2
+    bus: 0
+    safe: off
+  yalk_open:
+    base: 1
+    type: 2
+    bus: 0
+    safe: off
+  yalk_overload_positive:
+    base: 96
+    type: 3
+    bus: 0
+    safe: off
+  yalk_overload_negative:
+    base: 95
+    type: 3
+    bus: 0
+    safe: off
+  yvp_gain:
+    base: 1
+    type: 2
+    bus: 0
+    safe: off
+  yvp_input:
+    base: 1
+    type: 2
+    bus: 0
+    safe: off
+
+devices:
+  - id: local-adapter
+    plugin: orbita.ktma_adapter_udp
+    bind:
+      - ulk.parameter_source
+    config:
+      host: 127.0.0.2
+      local_address: 127.0.0.1
+      data_port: 1113
+      timeout_ms: 1000
+      queue_capacity: 8192
+      record_root: records
+      protocol: rokt_yalk
+      ytp_protocol: rokt_ytp68
+      ytp_endpoint: 1
+      device.active_commands_confirmed: true
+  - id: local-isd
+    plugin: orbita.isd_http
+    bind:
+      - stand.switch_matrix
+    config:
+      host: 127.0.0.1
+      port: 18080
+      timeout_ms: 1000
+      switch_type: 2
+      device.active_commands_confirmed: true
+  - id: local-scpi
+    plugin: orbita.tcp_scpi_bench
+    bind:
+      - power.dc_supply
+      - measure.reference_voltage
+      - measure.dc_current
+      - measure.reference_ac_voltage
+      - measure.reference_frequency
+      - signal.generator
+    config:
+      host: 127.0.0.1
+      port: 15025
+      timeout_ms: 1000
+      device.active_commands_confirmed: true

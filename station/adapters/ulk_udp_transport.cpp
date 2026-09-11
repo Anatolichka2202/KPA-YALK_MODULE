@@ -92,7 +92,9 @@ struct UlkUdpTransport::Impl {
         sockaddr_in local{};
         local.sin_family = AF_INET;
         local.sin_port = htons(config.port);
-        local.sin_addr.s_addr = htonl(INADDR_ANY);
+        // Bind to the address selected by the profile. This also permits a
+        // protocol emulator on another loopback address to use the same port.
+        local.sin_addr = endpoint(config.localHost, config.port).sin_addr;
 
         if (::bind(socket,
                    reinterpret_cast<const sockaddr*>(&local),

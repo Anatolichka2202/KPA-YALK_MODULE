@@ -87,6 +87,10 @@ protected:
         if (!standRuntimeReady_) initializeStandRuntime();
     }
     void integrationLegacyEquipmentCheck() { onCheckTestEquipment(); }
+    void integrationDisableBaseScenarioRunner()
+    {
+        QObject::disconnect(scenarioRunConnection_);
+    }
     void integrationLog(const QString& message) { log(message); }
     void integrationUseUbsiEngineering() { ubsiEngineering_ = true; setEngineerMode(false); }
     void integrationOpenRegistrar() { setMode(ModeAdmin); }
@@ -235,6 +239,7 @@ private:
     orbita::stand::ProductionReportMetadata pendingProductionReportMetadata_;
     bool closeAfterScenario_ = false;
     bool standRuntimeReady_ = false;
+    QMetaObject::Connection scenarioRunConnection_;
 
 private slots:
     void onOpenScenario();

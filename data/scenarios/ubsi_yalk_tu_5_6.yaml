@@ -81,7 +81,7 @@ steps:
       tolerance_percent_fs: 0.5
 
   - id: yalk_contact_thresholds
-    title: Контактные пороги всех адресов: 0 при 0,0 В, 0 при 0,9 В и 1 при 2,5 В
+    title: "Контактные пороги всех адресов: 0 при 0,0 В, 0 при 0,9 В и 1 при 2,5 В"
     tu: 1.1.4.1
     procedure: yalk.check_channels
     requires:

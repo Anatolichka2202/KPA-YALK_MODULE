@@ -35,6 +35,7 @@ public:
     void setEquipmentInvoker(EquipmentInvoke invoke);
 
     void setEquipmentStatus(const QString& code, bool ready, const QString& detail);
+    void setEquipmentConnection(const QString& code, const QString& connection);
     void setEquipmentMissingPlugin(const QString& code, const QString& detail);
     void setEquipmentChecking(const QString& code, const QString& detail);
     void setScenarioInfo(const QString& code, bool available, bool diagnostic,

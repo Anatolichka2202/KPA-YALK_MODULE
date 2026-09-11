@@ -96,8 +96,7 @@ KtmaMainWindow::KtmaMainWindow(QWidget* parent)
 
     // Replace only the UBSI run orchestration. The base window keeps Orbita
     // monitoring/engineering behaviour for future BSI/RPU product packages.
-    QObject::disconnect(page, SIGNAL(runRequested(QString,QString,bool)),
-                        this, SLOT(onRunScenario(QString,QString,bool)));
+    integrationDisableBaseScenarioRunner();
     connect(page, &TestPage::runRequested,
             this, &KtmaMainWindow::runScenario);
     connect(page, &TestPage::equipmentCheckRequested,

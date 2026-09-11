@@ -142,6 +142,7 @@ add_orbita_equipment_plugin(orbita_plugin_v7_visa plugins/v7_visa_plugin.cpp)
 add_orbita_equipment_plugin(orbita_plugin_rigol_generator plugins/rigol_generator_plugin.cpp)
 add_orbita_equipment_plugin(orbita_plugin_akip_1160 plugins/power_supply_plugin.cpp)
 add_orbita_equipment_plugin(orbita_plugin_rigol_dho8xx plugins/rigol_dho8xx_plugin.cpp)
+add_orbita_equipment_plugin(orbita_plugin_tcp_scpi_bench plugins/tcp_scpi_bench_plugin.cpp)
 
 add_custom_target(orbita_equipment_plugins ALL DEPENDS
     orbita_plugin_ktma_adapter_udp
@@ -150,6 +151,7 @@ add_custom_target(orbita_equipment_plugins ALL DEPENDS
     orbita_plugin_rigol_generator
     orbita_plugin_akip_1160
     orbita_plugin_rigol_dho8xx)
+add_dependencies(orbita_equipment_plugins orbita_plugin_tcp_scpi_bench)
 
 add_executable(catalog_import tools/catalog_import.cpp)
 target_link_libraries(catalog_import PRIVATE orbita_stand_runtime Qt6::Core)

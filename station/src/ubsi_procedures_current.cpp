@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdlib>
 #include <set>
 #include <sstream>
 #include <stdexcept>
@@ -123,6 +124,11 @@ void append(ProcedureResult& result, MeasurementResult value)
 
 void wait(ProcedureContext& context, unsigned milliseconds)
 {
+    double scale = 1.0;
+    if (const char* text = std::getenv("MILTECH_TIME_SCALE")) {
+        try { scale = std::clamp(std::stod(text), 0.001, 1.0); } catch (...) {}
+    }
+    milliseconds = static_cast<unsigned>(std::max(1.0, milliseconds * scale));
     constexpr unsigned slice = 50;
     for (unsigned elapsed = 0; elapsed < milliseconds; elapsed += slice) {
         if (context.stopRequested.load()) throw std::runtime_error("Остановлено оператором");

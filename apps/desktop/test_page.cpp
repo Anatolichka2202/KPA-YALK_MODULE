@@ -935,8 +935,10 @@ void TestPage::updateSelectionSummary()
         it.value()->setChecked(it.key() == scope);
     const bool fullScope = scope == QStringLiteral("УБСИ ПО ТУ");
     yvpCheck_->setVisible(fullScope);
-    productionOverloadCheck_->setVisible(productionMode_ && fullScope);
-    productionSurvivalCheck_->setVisible(productionMode_ && fullScope);
+    productionOverloadCheck_->setVisible(productionMode_
+        && (fullScope || scope == QStringLiteral("ЯЛК-96")));
+    productionSurvivalCheck_->setVisible(productionMode_
+        && (fullScope || scope == QStringLiteral("ПИТАНИЕ")));
     productionR4831Label_->setVisible(scope == QStringLiteral("ЯТП"));
     if (test == QStringLiteral("PROD_FULL")) {
         scopeLabel_->setText(QStringLiteral(
@@ -1426,6 +1428,14 @@ void TestPage::setProductionMode(bool enabled)
     startButton_->setText(enabled ? QStringLiteral("НАЧАТЬ ПРОИЗВОДСТВЕННУЮ ПРОВЕРКУ")
                                   : QStringLiteral("Запустить проверку"));
     updateSelectionSummary();
+}
+
+void TestPage::setEquipmentConnection(const QString& code, const QString& connection)
+{
+    const auto it = equipmentRows_.constFind(code);
+    if (it == equipmentRows_.cend()) return;
+    equipmentTable_->item(it->row, 1)->setText(connection);
+    equipmentTable_->item(it->row, 1)->setToolTip(connection);
 }
 
 void TestPage::setRunInProgress(bool running, const QString& stage)

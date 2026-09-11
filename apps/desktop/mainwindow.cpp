@@ -686,8 +686,8 @@ void MainWindow::setupToolBar()
 
     connect(testPage_, &TestPage::equipmentCheckRequested,
             this, &MainWindow::onCheckTestEquipment);
-    connect(testPage_, &TestPage::runRequested,
-            this, &MainWindow::onRunScenario);
+    scenarioRunConnection_ = connect(testPage_, &TestPage::runRequested,
+                                     this, &MainWindow::onRunScenario);
     connect(testPage_, &TestPage::stopRequested,
             this, &MainWindow::onStopScenario);
     connect(accessModeCombo_, QOverload<int>::of(&QComboBox::currentIndexChanged),
@@ -774,8 +774,10 @@ void MainWindow::onOpenCatalog()
 
 void MainWindow::onOpenStandProfile()
 {
+    const QString profileName = qEnvironmentVariable(
+        "MILTECH_STAND_PROFILE", QStringLiteral("stand_ktma.yaml"));
     const QString path = QDir(QCoreApplication::applicationDirPath())
-        .filePath(QStringLiteral("profiles/stand_ktma.yaml"));
+        .filePath(QStringLiteral("profiles/") + profileName);
     ScenarioYamlEditor editor(path, this);
     editor.exec();
 }
@@ -790,8 +792,27 @@ void MainWindow::initializeStandRuntime()
         registrar_ = std::make_unique<ktma::registrar::Registrar>(
             root.filePath(QStringLiteral("registrar.db")).toStdString());
         registrarPage_->setRegistrar(registrar_.get());
+        const QString profileName = qEnvironmentVariable(
+            "MILTECH_STAND_PROFILE", QStringLiteral("stand_ktma.yaml"));
         standProfile_ = orbita::stand::loadStandProfile(
-            root.filePath("profiles/stand_ktma.yaml").toStdString());
+            root.filePath("profiles/" + profileName).toStdString());
+        const QHash<QString, QString> equipmentCode = {
+            {"ulk.parameter_source", "RS485"}, {"stand.switch_matrix", "ISD"},
+            {"measure.reference_voltage", "V7"}, {"power.dc_supply", "AKIP"},
+            {"signal.generator", "RIGOL"}, {"measure.waveform", "SCOPE"}};
+        for (const auto& device : standProfile_.devices) {
+            const auto host = device.configuration.find("host");
+            const auto port = device.configuration.find("port");
+            QString endpoint = host == device.configuration.end()
+                ? QString::fromStdString(device.pluginId)
+                : QString::fromStdString(host->second);
+            if (port != device.configuration.end())
+                endpoint += QStringLiteral(":") + QString::fromStdString(port->second);
+            for (const auto& capability : device.bindCapabilities) {
+                const QString code = equipmentCode.value(QString::fromStdString(capability));
+                if (!code.isEmpty()) testPage_->setEquipmentConnection(code, endpoint);
+            }
+        }
         const auto catalog = orbita::stand::importCatalogYaml(
             root.filePath("catalog/catalog.yaml").toStdString(),
             root.filePath("parameters.db").toStdString());
@@ -981,11 +1002,10 @@ void MainWindow::onCheckTestEquipment()
         if (!standRuntimeReady_) return;
     }
 
-    const QHash<QString, QString> uiCodes = {
-        {"orbita.ktma_adapter_udp", "RS485"}, {"orbita.isd_http", "ISD"},
-        {"orbita.v7_visa", "V7"}, {"orbita.akip_1160_pair", "AKIP"},
-        {"orbita.rigol_generator", "RIGOL"},
-        {"orbita.rigol_dho8xx", "SCOPE"}};
+    const QHash<QString, QString> uiCodeForCapability = {
+        {"ulk.parameter_source", "RS485"}, {"stand.switch_matrix", "ISD"},
+        {"measure.reference_voltage", "V7"}, {"power.dc_supply", "AKIP"},
+        {"signal.generator", "RIGOL"}, {"measure.waveform", "SCOPE"}};
     const QSet<QString> deliveryEquipment = {"RS485", "ISD", "V7", "AKIP"};
     const QSet<QString> activeCapabilities = {
         "stand.switch_matrix", "signal.generator"};
@@ -1085,23 +1105,29 @@ void MainWindow::onCheckTestEquipment()
             return response.str();
         });
     QApplication::setOverrideCursor(Qt::WaitCursor);
-    const auto checkDevice = [this, &uiCodes, &deliveryEquipment, &activeCapabilities](
+    const auto checkDevice = [this, &uiCodeForCapability, &deliveryEquipment, &activeCapabilities](
                                  const orbita::stand::DeviceProfile& definition,
                                  bool armSupply) {
-        const QString code = uiCodes.value(QString::fromStdString(definition.pluginId));
-        if (!deliveryEquipment.contains(code)) return;
+        QSet<QString> codes;
+        for (const auto& capability : definition.bindCapabilities) {
+            const QString code = uiCodeForCapability.value(QString::fromStdString(capability));
+            if (!code.isEmpty()) codes.insert(code);
+        }
+        const bool affectsDelivery = std::any_of(codes.cbegin(), codes.cend(),
+            [&deliveryEquipment](const QString& code) { return deliveryEquipment.contains(code); });
+        if (!affectsDelivery) return;
         if (!definition.enabled) {
             const auto reason = definition.configuration.find("disabled_reason");
             const QString detail = reason == definition.configuration.end()
                 ? QStringLiteral("Отключено в профиле стенда")
                 : QString::fromStdString(reason->second);
-            if (!code.isEmpty()) testPage_->setEquipmentStatus(code, false, detail);
+            for (const auto& code : codes) testPage_->setEquipmentStatus(code, false, detail);
             log(QStringLiteral("%1: %2")
                 .arg(QString::fromStdString(definition.id), detail));
             return;
         }
-        if (!code.isEmpty()) {
-            testPage_->setEquipmentChecking(code, armSupply
+        for (const auto& code : codes) {
+            testPage_->setEquipmentChecking(code, armSupply && code == QStringLiteral("AKIP")
                 ? QStringLiteral("Подключение АКИП и включение питания УБСИ 27 В…")
                 : QStringLiteral("Загрузка DLL и проверка связи…"));
         }
@@ -1149,11 +1175,11 @@ void MainWindow::onCheckTestEquipment()
             QString detail = QString::fromStdString(finalResponse).trimmed();
             if (activeBlocked) detail += QStringLiteral(
                 "; активные воздействия заблокированы профилем до подтверждения схемы");
-            if (!code.isEmpty()) testPage_->setEquipmentStatus(code, ready, detail);
+            for (const auto& code : codes) testPage_->setEquipmentStatus(code, ready, detail);
             log(QStringLiteral("%1: %2").arg(QString::fromStdString(definition.id), detail));
         } catch (const std::exception& error) {
             const QString detail = QString::fromUtf8(error.what());
-            if (!code.isEmpty()) testPage_->setEquipmentStatus(code, false, detail);
+            for (const auto& code : codes) testPage_->setEquipmentStatus(code, false, detail);
             log(QStringLiteral("%1 не готов: %2")
                 .arg(QString::fromStdString(definition.id), detail));
         }
@@ -1163,7 +1189,9 @@ void MainWindow::onCheckTestEquipment()
     // гарантирует известное состояние, но новый экземпляр АКИП сразу заново
     // задаёт 27 В / 0,6 А и включает выход.
     for (const auto& definition : standProfile_.devices) {
-        if (definition.pluginId == "orbita.akip_1160_pair") checkDevice(definition, true);
+        if (std::find(definition.bindCapabilities.begin(), definition.bindCapabilities.end(),
+                      "power.dc_supply") != definition.bindCapabilities.end())
+            checkDevice(definition, true);
     }
 
     // 2. Проверяем остальное оборудование, не зависящее от запуска UDP-потока.
@@ -1177,8 +1205,10 @@ void MainWindow::onCheckTestEquipment()
             });
     }
     for (const auto& definition : standProfile_.devices) {
-        if (definition.pluginId == "orbita.akip_1160_pair"
-            || definition.pluginId == "orbita.ktma_adapter_udp") continue;
+        if (std::find(definition.bindCapabilities.begin(), definition.bindCapabilities.end(),
+                      "power.dc_supply") != definition.bindCapabilities.end()
+            || std::find(definition.bindCapabilities.begin(), definition.bindCapabilities.end(),
+                         "ulk.parameter_source") != definition.bindCapabilities.end()) continue;
         checkDevice(definition, false);
     }
 
@@ -1190,7 +1220,9 @@ void MainWindow::onCheckTestEquipment()
     QTimer::singleShot(3000, &startupDelay, &QEventLoop::quit);
     startupDelay.exec(QEventLoop::ExcludeUserInputEvents);
     for (const auto& definition : standProfile_.devices) {
-        if (definition.pluginId == "orbita.ktma_adapter_udp") checkDevice(definition, false);
+        if (std::find(definition.bindCapabilities.begin(), definition.bindCapabilities.end(),
+                      "ulk.parameter_source") != definition.bindCapabilities.end())
+            checkDevice(definition, false);
     }
     QApplication::restoreOverrideCursor();
     testPage_->setEquipmentStatus("E20", orbitaReady,

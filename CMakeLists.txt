@@ -19,4 +19,5 @@ add_subdirectory(station)
 add_subdirectory(deliveries/ktma/registrar)
 add_subdirectory(deliveries/ktma/ubsi)
 add_subdirectory(apps/desktop)
+add_subdirectory(apps/simulator)
 
