@@ -116,103 +116,155 @@ protected:
     void paintEvent(QPaintEvent*) override {
         QPainter p(this); p.setRenderHint(QPainter::Antialiasing);
         p.fillRect(rect(), QColor("#0e1115")); hits_.clear();
-        p.setPen(QColor("#aab8c5"));
         if (points_.isEmpty()) {
-            p.drawText(rect(), Qt::AlignCenter, QStringLiteral("Все каналы · отклонение от эталона\nЗначения и колебания появятся при измерении")); return;
+            p.setPen(QColor("#aab8c5"));
+            p.drawText(rect(), Qt::AlignCenter,
+                       QStringLiteral("80 аналоговых каналов ЯЛК\nЗначения и min…max появятся при измерении"));
+            return;
         }
+
         const bool ytp = selectedPoint_.contains(QStringLiteral("Ом"));
         const QString unit = ytp ? QStringLiteral("Ом") : QStringLiteral("В");
-        // The selected-channel trace is deliberately compact. The main area is
-        // reserved for the complete channel set.
-        const QRectF trace(55, 23, width()-80, 42);
-        QVector<double> values;
-        for (const auto& item : points_) if (item.channel == selectedChannel_ && item.point == selectedPoint_) {
-            values = item.samples; if (values.isEmpty()) values.push_back(item.measured);
-        }
-        p.drawText(QRectF(55,2,width()-80,20), QStringLiteral("%1 · канал %2 · свежие отсчёты, %3")
-            .arg(ytp ? QStringLiteral("ЯТП") : QStringLiteral("ЯЛК"), selectedChannel_,unit));
-        if (!values.isEmpty()) {
-            const auto mm = std::minmax_element(values.begin(),values.end());
-            const double pad = qMax(0.001, (*mm.second-*mm.first)*0.2);
-            const double low=*mm.first-pad, high=*mm.second+pad;
-            p.setPen(QColor("#34404c")); p.drawRect(trace);
-            p.setPen(QColor("#91a0af"));
-            p.drawText(0,35,QString::number(high,'f',3)); p.drawText(0,66,QString::number(low,'f',3));
-            QPainterPath line;
-            for (int i=0;i<values.size();++i) {
-                const QPointF q(trace.left()+trace.width()*i/qMax(1,values.size()-1), trace.bottom()-(values[i]-low)/(high-low)*trace.height());
-                if (i==0) line.moveTo(q); else line.lineTo(q);
-            }
-            p.setPen(QPen(QColor("#6bdbb4"),1.5));p.drawPath(line);
-        }
         QVector<QString> channels;
-        if (ytp) { for (int i=1;i<=30;++i) channels.push_back(QString::number(i)); }
-        else { for(int i=1;i<=87;++i) if(i<=28 || (i>=32&&i<=43) || (i>=45&&i<=70) || i>=74) channels.push_back(QString::number(i)); }
-        p.setPen(QColor("#dce6ef"));
-        p.drawText(QRectF(55,75,width()-80,22), QStringLiteral("ВСЕ КАНАЛЫ · %1 · γ, % шкалы · допуск ±0,5 %").arg(selectedPoint_));
-        p.setPen(QColor("#95a5b4"));
-        p.drawText(QRectF(55,96,width()-80,20), ytp
-            ? QStringLiteral("Над столбцом: измерено, %1 · полоса: min…max · оранжевый: заметный размах").arg(unit)
-            : QStringLiteral("Над столбцом: измерено, %1 · полоса: min…max · ○/● контакт 0/1 · оранжевый: заметный размах").arg(unit));
-        const int rows=ytp ? 2 : 4, perRow=ytp ? 15 : 20;
-        const double rowHeight=(height()-145.0)/rows;
-        double extent=0.65;
-        for(const auto& item:points_) if(item.point==selectedPoint_) {
-            auto mm=limits(item); const double fs=ytp ? 240 : 6.2;
-            extent=qMax(extent,qMax(std::abs((mm.first-item.reference)/fs*100),std::abs((mm.second-item.reference)/fs*100))*1.2);
-            extent=qMax(extent,std::abs(error(item))*1.2);
+        if (ytp) {
+            for (int index = 1; index <= 30; ++index) channels.push_back(QString::number(index));
+        } else {
+            for (int index = 1; index <= 87; ++index)
+                if (index <= 28 || (index >= 32 && index <= 43)
+                    || (index >= 45 && index <= 70) || index >= 74)
+                    channels.push_back(QString::number(index));
         }
-        const auto bg=background_.value(ytp ? "YTP":"YALK");
-        double maxSpan=0.000001;
-        if(bg.size()==3) for(int i=0;i<bg[0].size();++i) if(std::isfinite(bg[1][i])&&std::isfinite(bg[2][i])) maxSpan=qMax(maxSpan,bg[2][i]-bg[1][i]);
-        p.setPen(QColor("#90b7d2"));
-        p.drawText(QRectF(55,height()-24,width()-80,20),QStringLiteral("Фоновый контроль всех каналов · максимальный размах окна: %1 %2 · без отдельного допуска").arg(QString::number(maxSpan,'f',5),unit));
-        for(int row=0;row<rows;++row) {
-            const QRectF area(55,119+row*rowHeight,width()-80,rowHeight-22);
-            const auto y=[&](double v){
-                const double amplitude = qMax(8.0, area.height() / 2.0 - 12.0);
-                return area.center().y() - v / extent * amplitude;
-            };
-            for(double tick:{-0.5,0.0,0.5}) {
-                p.setPen(QPen(QColor(tick==0 ? "#8493a0" : "#5b6170"),1,tick==0 ? Qt::SolidLine : Qt::DashLine));
-                p.drawLine(QPointF(area.left(),y(tick)),QPointF(area.right(),y(tick)));
-                p.drawText(QRectF(0,y(tick)-8,50,16),Qt::AlignRight,QString::number(tick,'f',1));
+
+        const auto findSample = [this](const QString& channel) -> const Sample* {
+            for (const auto& item : points_)
+                if (item.channel == channel && item.point == selectedPoint_) return &item;
+            return nullptr;
+        };
+        const auto bg = background_.value(ytp ? QStringLiteral("YTP") : QStringLiteral("YALK"));
+        double maxBackgroundSpan = 0.000001;
+        if (bg.size() == 3) {
+            for (int index = 0; index < bg[0].size(); ++index) {
+                if (index < bg[1].size() && index < bg[2].size()
+                    && std::isfinite(bg[1][index]) && std::isfinite(bg[2][index]))
+                    maxBackgroundSpan = qMax(maxBackgroundSpan, bg[2][index] - bg[1][index]);
             }
-            const int n=qMin(perRow,channels.size()-row*perRow); const double dx=area.width()/n;
-            for(int i=0;i<n;++i) {
-                const QString channel=channels[row*perRow+i]; const double x=area.left()+i*dx;
-                const Sample* item=nullptr;
-                for(const auto& candidate:points_) if(candidate.channel==channel && candidate.point==selectedPoint_) item=&candidate;
-                hits_.push_back({QRectF(x,area.top(),dx,area.height()+22),channel});
-                if(channel==selectedChannel_) p.fillRect(QRectF(x,area.top(),dx,area.height()),QColor("#1c2b37"));
-                p.setPen(QColor("#a7b6c5"));p.setFont(QFont("Segoe UI",9,QFont::DemiBold));
-                p.drawText(QRectF(x,area.bottom()+3,dx,18),Qt::AlignCenter,channel);
-                const int bi=channel.toInt()-1;
-                if(bg.size()==3 && bi>=0 && bi<bg[0].size() && std::isfinite(bg[0][bi])) {
-                    const double h=qMax(1.0,(bg[2][bi]-bg[1][bi])/maxSpan*16);
-                    p.fillRect(QRectF(x+2,area.bottom()-h,dx-4,h),QColor(85,156,209,65));
+        }
+
+        p.setPen(QColor("#dce6ef"));
+        p.setFont(QFont("Segoe UI", 10, QFont::DemiBold));
+        p.drawText(QRectF(14, 4, width() - 28, 18),
+                   QStringLiteral("АНАЛОГОВЫЕ КАНАЛЫ ЯЛК · %1 каналов · точка %2")
+                       .arg(channels.size()).arg(selectedPoint_));
+
+        const QRectF trace(14, 27, width() - 28, 34);
+        QVector<double> values;
+        if (const auto* selected = findSample(selectedChannel_)) {
+            values = selected->samples;
+            if (values.isEmpty()) values.push_back(selected->measured);
+        }
+        p.setPen(QColor("#34404c"));
+        p.drawRect(trace);
+        if (!values.isEmpty()) {
+            const auto mm = std::minmax_element(values.cbegin(), values.cend());
+            const double low = *mm.first;
+            const double high = qMax(low + 0.000001, *mm.second);
+            QPainterPath line;
+            for (int index = 0; index < values.size(); ++index) {
+                const double x = trace.left() + trace.width() * index
+                    / qMax(1, values.size() - 1);
+                const double y = trace.bottom() - (values[index] - low)
+                    / (high - low) * trace.height();
+                if (index == 0) line.moveTo(x, y); else line.lineTo(x, y);
+            }
+            p.setPen(QPen(QColor("#6bdbb4"), 1.5));
+            p.drawPath(line);
+            p.setPen(QColor("#91a0af"));
+            p.setFont(QFont("Segoe UI", 8));
+            p.drawText(QRectF(20, 27, 180, 16),
+                       QStringLiteral("Выбранный канал %1 · %2 %3")
+                           .arg(selectedChannel_, QString::number(values.last(), 'f', ytp ? 2 : 3), unit));
+        }
+
+        const int rows = ytp ? 2 : 5;
+        const int perRow = ytp ? 15 : 16;
+        const int analogTop = 69;
+        const int signalHeight = ytp ? 0 : 62;
+        const double analogHeight = (height() - analogTop - signalHeight - 26) / rows;
+        const double cellWidth = (width() - 28) / static_cast<double>(perRow);
+        for (int row = 0; row < rows; ++row) {
+            const double top = analogTop + row * analogHeight;
+            const double bottom = top + analogHeight - 4;
+            for (int column = 0; column < perRow; ++column) {
+                const int channelIndex = row * perRow + column;
+                if (channelIndex >= channels.size()) break;
+                const QString channel = channels[channelIndex];
+                const double left = 14 + column * cellWidth;
+                const QRectF cell(left + 1, top + 1, cellWidth - 2, bottom - top - 1);
+                const Sample* item = findSample(channel);
+                hits_.push_back({cell, channel});
+                p.setPen(channel == selectedChannel_ ? QColor("#4c9fe8") : QColor("#273544"));
+                p.setBrush(channel == selectedChannel_ ? QColor("#142b40") : QColor("#111a23"));
+                p.drawRoundedRect(cell, 3, 3);
+                p.setBrush(Qt::NoBrush);
+                p.setFont(QFont("Segoe UI", 8, QFont::DemiBold));
+                p.setPen(QColor("#9fb0bf"));
+                p.drawText(QRectF(left + 4, top + 4, cellWidth - 8, 14),
+                           QStringLiteral("№ %1").arg(channel));
+                if (!item) {
+                    p.setPen(QColor("#586572"));
+                    p.drawText(QRectF(left + 4, top + 21, cellWidth - 8, 18),
+                               QStringLiteral("нет данных"));
+                    continue;
                 }
-                if(!item) {p.setPen(QColor("#586572"));p.drawText(QRectF(x,y(0)-18,dx,16),Qt::AlignCenter,QStringLiteral("·"));continue;}
-                const double e=error(*item), yy=y(e), zero=y(0);
-                const auto mm=limits(*item);const double fs=ytp ? 240:6.2;
-                const double sampleSpan=mm.second-mm.first;
-                const double fluctuationLevel=ytp ? 0.12 : 0.0031;
-                const bool fluctuating=item->passed && sampleSpan>fluctuationLevel;
-                const double top=y((mm.second-item->reference)/fs*100), bottom=y((mm.first-item->reference)/fs*100);
-                p.fillRect(QRectF(x+2,top,dx-4,qMax(2.0,bottom-top)),QColor(102,169,222,95));
-                p.fillRect(QRectF(x+dx*.25,qMin(yy,zero),dx*.5,qMax(2.0,std::abs(yy-zero))),
-                           QColor(!item->passed ? "#e96769" : fluctuating ? "#d99a4a" : "#27b586"));
-                if (!ytp) {
-                    p.setBrush(item->signal ? QColor("#55c59d") : Qt::NoBrush);
-                    p.setPen(QPen(item->signal ? QColor("#55c59d") : QColor("#607080"),1));
-                    p.drawEllipse(QPointF(x+dx-7,area.top()+7),3,3);
+                const auto mm = limits(*item);
+                const bool unstable = item->passed && (mm.second - mm.first) > (ytp ? 0.12 : 0.0031);
+                p.setPen(item->passed ? (unstable ? QColor("#d7a95b") : QColor("#70d79b"))
+                                      : QColor("#e1766d"));
+                p.setFont(QFont("Segoe UI", 10, QFont::DemiBold));
+                p.drawText(QRectF(left + 4, top + 19, cellWidth - 8, 18), Qt::AlignLeft,
+                           QString::number(item->measured, 'f', ytp ? 2 : 3));
+                p.setPen(QColor("#c1ced8"));
+                p.setFont(QFont("Segoe UI", 8));
+                p.drawText(QRectF(left + 4, top + 38, cellWidth - 8, 16),
+                           QStringLiteral("%1…%2").arg(QString::number(mm.first, 'f', ytp ? 2 : 3),
+                                                        QString::number(mm.second, 'f', ytp ? 2 : 3)));
+                const int backgroundIndex = channel.toInt() - 1;
+                if (!ytp && bg.size() == 3 && backgroundIndex >= 0
+                    && backgroundIndex < bg[0].size() && backgroundIndex < bg[1].size()
+                    && backgroundIndex < bg[2].size()) {
+                    const double span = qMax(0.0, bg[2][backgroundIndex] - bg[1][backgroundIndex]);
+                    const double markerWidth = qBound(2.0, span / maxBackgroundSpan * (cellWidth - 10), cellWidth - 10);
+                    p.setPen(Qt::NoPen);
+                    p.setBrush(QColor(85, 156, 209, 120));
+                    p.drawRect(QRectF(left + 5, bottom - 5, markerWidth, 2));
                     p.setBrush(Qt::NoBrush);
                 }
-                p.setPen(QColor("#dbe8ef"));p.setFont(QFont("Segoe UI",8,QFont::DemiBold));
-                p.drawText(QRectF(x+1,area.top()+2,dx-2,16),Qt::AlignCenter,
-                           QString::number(item->measured,'f',ytp ? 2 : 3));
-                p.setPen(QColor("#9aafbf"));
-                p.drawText(QRectF(x-5,area.bottom()-14,dx+10,14),Qt::AlignCenter,QString::number(e,'f',2));
+            }
+        }
+
+        if (!ytp) {
+            const double signalTop = height() - signalHeight + 2;
+            p.setPen(QColor("#90b7d2"));
+            p.setFont(QFont("Segoe UI", 9, QFont::DemiBold));
+            p.drawText(QRectF(14, signalTop, width() - 28, 16),
+                       QStringLiteral("ДИСКРЕТНЫЙ СИГНАЛ · отдельная полоса · ● 1 / ○ 0"));
+            const double signalCellWidth = (width() - 28) / 16.0;
+            for (int row = 0; row < 5; ++row) {
+                for (int column = 0; column < 16; ++column) {
+                    const int index = row * 16 + column;
+                    if (index >= channels.size()) break;
+                    const QString channel = channels[index];
+                    const Sample* item = findSample(channel);
+                    const double left = 14 + column * signalCellWidth;
+                    p.setPen(QColor("#34404c"));
+                    p.drawLine(QPointF(left + 2, signalTop + 18 + row * 10),
+                               QPointF(left + signalCellWidth - 2, signalTop + 18 + row * 10));
+                    p.setPen(item && item->signal ? QColor("#70d79b") : QColor("#687887"));
+                    p.setFont(QFont("Segoe UI", 7));
+                    p.drawText(QRectF(left, signalTop + 18 + row * 10, signalCellWidth, 10),
+                               Qt::AlignCenter, item && item->signal ? QStringLiteral("●%1").arg(channel)
+                                                                      : QStringLiteral("○%1").arg(channel));
+                }
             }
         }
     }
