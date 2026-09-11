@@ -1,7 +1,7 @@
 schema: 1
 id: ktma.ubsi.production.full
 title: Производство УБСИ · полная проверка
-version: 1.0.3
+version: 1.0.4
 catalog_version: 2026.08.29-yalk-1
 object_type: UBSI_468157_002
 state: published
@@ -229,15 +229,20 @@ steps:
       isd_route_channels: 3,9,12,17
 
   - id: yvp_mode
-    title: Перевод адаптера в режим ЯВП · ROKT 0A 01
+    title: Готовность Rigol и перевод адаптера в режим ЯВП · ROKT 0A 01
     tu: PRODUCTION / YVP / ROKT_MODE
     procedure: yvp.enter_mode
     requires:
       - ulk.parameter_source
+      - signal.generator
     args:
       yvp_cell: 1
       timeout_ms: 3000
       technical_retries: 3
+      stimulus_source: rigol_ch1
+      stimulus_nominal_v: 1
+      stimulus_control: manual
+      stimulus_amplitude_definition: TODO_CONFIRM
 
   - id: yvp_channels
     title: ЯВП-8 · выбор 8 каналов ROKT 0A 03 и контроль свежего UDP-трафика
