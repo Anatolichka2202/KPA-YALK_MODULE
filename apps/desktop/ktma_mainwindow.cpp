@@ -5,23 +5,16 @@
 
 #include <QComboBox>
 #include <QCoreApplication>
-#include <QDialog>
-#include <QDialogButtonBox>
 #include <QDir>
 #include <QFile>
-#include <QFormLayout>
-#include <QLabel>
-#include <QLineEdit>
 #include <QMessageBox>
 #include <QMetaObject>
 #include <QSet>
 #include <QSignalBlocker>
 #include <QTimer>
-#include <QVBoxLayout>
 #include <QtConcurrent/QtConcurrentRun>
 
 #include <algorithm>
-#include <array>
 #include <functional>
 #include <stdexcept>
 
@@ -76,13 +69,32 @@ KtmaMainWindow::KtmaMainWindow(QWidget* parent)
 
     page->registerEquipmentRow(QStringLiteral("RIGOL"),
         QStringLiteral("Rigol DG-1022Z / ДГ10.2"), QStringLiteral("USB / VISA"),
-        QStringLiteral("Требуется для проверки ЯВП; состояние определяется профилем стенда"));
+        QStringLiteral("Требуется только сценариям ЯВП"));
 
     integrationEnsureStandRuntime();
     loadProductionScenarios();
-    connect(integrationRegistrarPage(), &RegistrarPage::productionRequested, this, [this] {
+
+    const auto loadRegisteredProducts = [this, page] {
+        QStringList serials;
+        if (auto* registrar = integrationRegistrar()) {
+            try {
+                for (const auto& product : registrar->listProducts()) {
+                    if (product.productType == "UBSI")
+                        serials << QString::fromStdString(product.serialNumber);
+                }
+            } catch (const std::exception& error) {
+                integrationLog(QStringLiteral("Registrar: не удалось загрузить список УБСИ: %1")
+                    .arg(QString::fromUtf8(error.what())));
+            }
+        }
+        page->setAvailableProductionProducts(serials);
+    };
+
+    connect(integrationRegistrarPage(), &RegistrarPage::productionRequested, this,
+            [this, loadRegisteredProducts] {
         integrationOpenTests();
         configureProductionSelector();
+        loadRegisteredProducts();
     });
 
     try {
@@ -99,8 +111,12 @@ KtmaMainWindow::KtmaMainWindow(QWidget* parent)
     integrationDisableBaseScenarioRunner();
     connect(page, &TestPage::runRequested,
             this, &KtmaMainWindow::runScenario);
-    connect(page, &TestPage::equipmentCheckRequested,
-            this, &KtmaMainWindow::checkRigolGenerator);
+    connect(page, &TestPage::equipmentCheckRequested, this, [this, page] {
+        // MainWindow checks the common stand devices. The generator is probed
+        // only when the currently selected scenario actually requires it.
+        if (page->currentRequiredEquipment().contains(QStringLiteral("RIGOL")))
+            checkRigolGenerator();
+    });
 
     if (auto* watcher = integrationScenarioWatcher()) {
         connect(watcher, &QFutureWatcherBase::finished,
@@ -108,16 +124,20 @@ KtmaMainWindow::KtmaMainWindow(QWidget* parent)
     }
 
     if (auto* home = integrationHomePage()) {
-        connect(home, &HomePage::productionRequested, this, [this] {
-            QTimer::singleShot(0, this, [this] {
+        connect(home, &HomePage::productionRequested, this,
+                [this, loadRegisteredProducts] {
+            QTimer::singleShot(0, this, [this, loadRegisteredProducts] {
                 configureProductionSelector();
+                loadRegisteredProducts();
                 integrationOpenTests();
             });
         });
         connect(home, &HomePage::tuRequested, this, [this] {
             QTimer::singleShot(0, this, [this] {
                 restoreTuSelector();
-                checkRigolGenerator();
+                // Equipment is deliberately not probed on the selection page.
+                // The operator checks only the equipment required by the chosen
+                // TU scenario in the Preparation stage.
             });
         });
     }
@@ -132,77 +152,6 @@ KtmaMainWindow::KtmaMainWindow(QWidget* parent)
 }
 
 KtmaMainWindow::~KtmaMainWindow() = default;
-
-bool KtmaMainWindow::registerProductionProduct(const QString& serial)
-{
-    auto* registrar = integrationRegistrar();
-    if (!registrar) {
-        QMessageBox::warning(this, QStringLiteral("Регистрация изделия"),
-            QStringLiteral("Регистратор недоступен."));
-        return false;
-    }
-
-    QDialog dialog(this);
-    dialog.setWindowTitle(QStringLiteral("Новое изделие УБСИ · %1").arg(serial));
-    dialog.setModal(true);
-    auto* layout = new QVBoxLayout(&dialog);
-    auto* caption = new QLabel(QStringLiteral(
-        "Изделие не найдено. Укажите серийные номера установленного состава; "
-        "после сохранения вы вернётесь к запуску проверки."), &dialog);
-    caption->setWordWrap(true);
-    layout->addWidget(caption);
-
-    auto* form = new QFormLayout;
-    QLineEdit yalk;
-    QLineEdit ytp;
-    QLineEdit yvp;
-    QLineEdit power;
-    for (auto* edit : {&yalk, &ytp, &yvp, &power}) {
-        edit->setMinimumWidth(280);
-        edit->setPlaceholderText(QStringLiteral("Серийный номер"));
-    }
-    form->addRow(QStringLiteral("ЯЛК-96"), &yalk);
-    form->addRow(QStringLiteral("ЯТП"), &ytp);
-    form->addRow(QStringLiteral("ЯВП"), &yvp);
-    form->addRow(QStringLiteral("ЯП-П"), &power);
-    layout->addLayout(form);
-
-    auto* buttons = new QDialogButtonBox(
-        QDialogButtonBox::Cancel | QDialogButtonBox::Save, &dialog);
-    buttons->button(QDialogButtonBox::Save)->setText(
-        QStringLiteral("ЗАРЕГИСТРИРОВАТЬ И ПРОДОЛЖИТЬ"));
-    buttons->button(QDialogButtonBox::Cancel)->setText(QStringLiteral("ОТМЕНА"));
-    layout->addWidget(buttons);
-    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-    connect(buttons, &QDialogButtonBox::accepted, &dialog, [&] {
-        if (yalk.text().trimmed().isEmpty() || ytp.text().trimmed().isEmpty()
-            || yvp.text().trimmed().isEmpty() || power.text().trimmed().isEmpty()) {
-            QMessageBox::warning(&dialog, QStringLiteral("Состав изделия"),
-                QStringLiteral("Укажите SN всех четырёх ячеек."));
-            return;
-        }
-        dialog.accept();
-    });
-    if (dialog.exec() != QDialog::Accepted) return false;
-
-    try {
-        const auto productId = registrar->createProduct("UBSI", serial.toStdString());
-        const std::array<std::pair<const char*, QString>, 4> components = {{
-            {"YALK-96", yalk.text().trimmed()}, {"YTP", ytp.text().trimmed()},
-            {"YVP", yvp.text().trimmed()}, {"YP-P", power.text().trimmed()}}};
-        for (const auto& [type, componentSerial] : components) {
-            const auto componentId = registrar->createComponent(type, componentSerial.toStdString());
-            registrar->installComponent(productId, componentId);
-        }
-        integrationLog(QStringLiteral("Production: зарегистрировано изделие %1 и его состав")
-            .arg(serial));
-        return true;
-    } catch (const std::exception& error) {
-        QMessageBox::warning(this, QStringLiteral("Регистрация изделия"),
-            QString::fromUtf8(error.what()));
-        return false;
-    }
-}
 
 void KtmaMainWindow::loadProductionScenarios()
 {
@@ -319,7 +268,7 @@ void KtmaMainWindow::applyProductionScenario()
     else if (code == QStringLiteral("PROD_YTP"))
         title = QStringLiteral("Полная ЯТП · 0 / 120 / 240 Ом");
     else if (code == QStringLiteral("PROD_YVP"))
-        title = QStringLiteral("Полная ЯВП-8 · ЯЛК 89–96");
+        title = QStringLiteral("Полная ЯВП-8 · ROKT");
 
     const QSignalBlocker blocker(test);
     test->clear();
@@ -364,15 +313,13 @@ void KtmaMainWindow::runScenario(
             if (!registrar || !productionLedger_)
                 throw std::runtime_error("Production backend не инициализирован");
             if (serial.empty())
-                throw std::runtime_error("Введите заводской номер УБСИ");
+                throw std::runtime_error("Выберите зарегистрированное УБСИ");
 
-            auto product = registrar->findProductBySerial(serial);
+            const auto product = registrar->findProductBySerial(serial);
             if (!product) {
-                if (!registerProductionProduct(QString::fromUtf8(serial))) return;
-                product = registrar->findProductBySerial(serial);
+                throw std::runtime_error(
+                    "Изделие отсутствует в registrar.db. Регистрация выполняется только в разделе Администрирование");
             }
-            if (!product)
-                throw std::runtime_error("Не удалось зарегистрировать изделие УБСИ");
 
             const auto package = ktma::ubsi::productionPackageFromCode(
                 requestedCode.toStdString());
@@ -576,6 +523,7 @@ void KtmaMainWindow::checkRigolGenerator()
     auto* plugins = integrationEquipmentPlugins();
     auto* registry = integrationEquipmentRegistry();
     if (!page || !plugins || !registry || !integrationStandRuntimeReady()) return;
+    if (!page->currentRequiredEquipment().contains(QStringLiteral("RIGOL"))) return;
 
     const auto& profile = integrationStandProfile();
     const orbita::stand::DeviceProfile* definition = nullptr;
