@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: new-dis-ci-${{ github.ref }}
@@ -64,6 +64,7 @@ jobs:
         run: |
           test -f build-ci/apps/desktop/MilTechStation.exe
           test -f build-ci/apps/desktop/MilTechStationSimulator.exe
+          test -f build-ci/apps/desktop/orbita_yvp_rokt_probe.exe
 
       - name: Assemble portable package
         shell: msys2 {0}
@@ -72,6 +73,7 @@ jobs:
           mkdir -p deploy
           cp build-ci/apps/desktop/MilTechStation.exe deploy/
           cp build-ci/apps/desktop/MilTechStationSimulator.exe deploy/
+          cp build-ci/apps/desktop/orbita_yvp_rokt_probe.exe deploy/
 
           for item in address catalog profiles scenarios plugins parameters.db Lusbapi64.dll; do
             if [ -e "build-ci/apps/desktop/$item" ]; then
@@ -99,6 +101,7 @@ jobs:
         run: |
           test -f deploy/MilTechStation.exe
           test -f deploy/MilTechStationSimulator.exe
+          test -f deploy/orbita_yvp_rokt_probe.exe
           test -f deploy/Qt6Core.dll
           test -f deploy/Qt6Gui.dll
           test -f deploy/Qt6Widgets.dll
@@ -118,3 +121,41 @@ jobs:
           path: deploy/**
           if-no-files-found: error
           retention-days: 7
+
+      - name: Build rolling pilot archive
+        if: success() && github.event_name != 'pull_request'
+        shell: pwsh
+        run: |
+          $short = $env:GITHUB_SHA.Substring(0, 7)
+          $packageName = "MilTechStation-KTMA-2.0.0-pilot-$short"
+          if (Test-Path $packageName) { Remove-Item $packageName -Recurse -Force }
+          Copy-Item -LiteralPath deploy -Destination $packageName -Recurse
+
+          $archive = 'MilTechStation-KTMA-new-dis.zip'
+          if (Test-Path $archive) { Remove-Item $archive -Force }
+          Compress-Archive -LiteralPath $packageName -DestinationPath $archive -CompressionLevel Optimal
+          $hash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          Set-Content -LiteralPath "$archive.sha256.txt" -Encoding ascii -Value "$hash  $archive"
+          "PACKAGE_NAME=$packageName" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Publish rolling new-dis pilot
+        if: success() && github.event_name != 'pull_request'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view new-dis-latest --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release delete new-dis-latest --repo $env:GITHUB_REPOSITORY --cleanup-tag --yes
+            if ($LASTEXITCODE -ne 0) { throw 'Cannot replace existing new-dis-latest release' }
+          }
+
+          gh release create new-dis-latest `
+            MilTechStation-KTMA-new-dis.zip `
+            MilTechStation-KTMA-new-dis.zip.sha256.txt `
+            --repo $env:GITHUB_REPOSITORY `
+            --target $env:GITHUB_SHA `
+            --title "new-dis pilot · $env:PACKAGE_NAME" `
+            --notes "Rolling pilot build from branch new-dis. Install into C:\Orbita\releases without overwriting earlier releases." `
+            --prerelease
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot publish new-dis-latest release' }

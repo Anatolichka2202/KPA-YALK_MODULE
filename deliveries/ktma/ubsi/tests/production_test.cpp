@@ -1,4 +1,4 @@
-﻿#include "ktma/ubsi/production.h"
+#include "ktma/ubsi/production.h"
 #include "ktma/ubsi/production_ledger.h"
 #include "registrar.h"
 #include "orbita_stand/run_store.h"
@@ -45,12 +45,12 @@ registrar::ComponentBinding component(
 registrar::ProductReport completeProduct()
 {
     registrar::ProductReport report;
-    report.product = {"p1", "UBSI", "РЈР‘РЎР-0001"};
+    report.product = {"p1", "UBSI", "UBSI-0001"};
     report.components = {
-        component("c-yalk", "YALK-96", "РЇР›Рљ-001"),
-        component("c-ytp", "YTP", "РЇРўРџ-001"),
-        component("c-yvp", "YVP", "РЇР’Рџ-001"),
-        component("c-power", "YP-P", "РЇРџРџ-001")};
+        component("c-yalk", "YALK-96", "YALK-001"),
+        component("c-ytp", "YTP", "YTP-001"),
+        component("c-yvp", "YVP", "YVP-001"),
+        component("c-power", "YP-P", "YPP-001")};
     return report;
 }
 
@@ -77,7 +77,7 @@ void compositionContract()
     const auto report = completeProduct();
     const auto full = ubsi::buildProductionRunContext(
         report, registrar::Stage::ClimatePlus, ubsi::ProductionPackage::FullUbsi);
-    require(full.productSerial == "РЈР‘РЎР-0001", "product serial lost");
+    require(full.productSerial == "UBSI-0001", "product serial lost");
     require(full.composition.size() == 4, "production snapshot must contain four active cells");
     require(full.scenarioCode == "PROD_FULL", "full package must use Production scenario");
     for (const auto& item : full.composition)
@@ -97,9 +97,8 @@ void compositionContract()
         report, registrar::Stage::Primary, ubsi::ProductionPackage::Yvp);
     require(yvp.scenarioCode == "PROD_YVP", "YVP must use Production scenario");
     require(affected(yvp, "YVP"), "YVP package must affect YVP");
-    require(affected(yvp, "YALK-96"), "YVP package must include linked YALK 88..96 path");
-    require(!affected(yvp, "YTP") && !affected(yvp, "YP-P"),
-        "YVP package must not claim unrelated cells");
+    require(!affected(yvp, "YALK-96") && !affected(yvp, "YTP") && !affected(yvp, "YP-P"),
+        "YVP ROKT package must not claim unrelated cells");
 
     const auto power = ubsi::buildProductionRunContext(
         report, registrar::Stage::ClimateNormal, ubsi::ProductionPackage::PowerConsumption);
@@ -147,8 +146,8 @@ void ledgerContract()
         "new production run must be IN_PROGRESS");
     require(record.context.composition.size() == 4,
         "ledger must persist complete composition snapshot");
-    require(affected(record.context, "YVP") && affected(record.context, "YALK-96"),
-        "ledger lost affected YVP/YALK cells");
+    require(affected(record.context, "YVP") && !affected(record.context, "YALK-96"),
+        "ledger must keep the YVP-only affected set for current ROKT transport");
 
     ledger.attachRun(id, "scenario-run-1");
     ledger.finish(id, ubsi::ProductionRunStatus::StandError);
@@ -282,21 +281,24 @@ void separationContract()
     }
 
     const auto yvpScenario = readFile("data/scenarios/ubsi_production_yvp.yaml");
-    require(yvpScenario.find("yalk_address_min: 88") != std::string::npos
-        && yvpScenario.find("yalk_address_max: 96") != std::string::npos,
-        "YVP production scenario must lock corrected YALK range 88..96");
+    require(yvpScenario.find("procedure: yvp.enter_mode") != std::string::npos
+            && yvpScenario.find("procedure: yvp.safe_cleanup") != std::string::npos,
+        "YVP production scenario must use confirmed ROKT mode/channel control");
+    require(yvpScenario.find("procedure: yalk.start_stream") == std::string::npos
+            && yvpScenario.find("yalk_address_min") == std::string::npos,
+        "YVP production scenario must not use obsolete YALK-address transport");
 
     const auto catalog = readFile("data/catalog/catalog.yaml");
     const auto yvp = catalog.find("parameter_group: yvp_fast", catalog.find("bindings:"));
-    require(yvp != std::string::npos, "YVP binding missing");
+    require(yvp != std::string::npos, "YVP commissioning binding missing");
     const auto yvpEnd = catalog.find("\ninstances:", yvp);
     const auto yvpBlock = catalog.substr(yvp, yvpEnd - yvp);
     require(yvpBlock.find("source: ulk.parameter_source") != std::string::npos,
-        "YVP production data must come from YALK/ULK");
+        "YVP commissioning data must remain attached to ULK, never Orbita/E20");
     require(yvpBlock.find("orbita.parameter_source") == std::string::npos,
         "YVP production binding must not return to Orbita/E20");
     require(yvpBlock.find("confirmed: false") != std::string::npos,
-        "stale eight-address YVP binding must remain fail-safe until 88..96 mapping is commissioned");
+        "obsolete YVP-to-YALK candidate must remain fail-safe and unconfirmed");
 
     const auto rootCmake = readFile("CMakeLists.txt");
     require(rootCmake.find("project(MilTechStation") != std::string::npos,
@@ -327,4 +329,3 @@ int main(int argc, char** argv)
         return 1;
     }
 }
-

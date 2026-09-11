@@ -1,7 +1,7 @@
 schema: 1
 id: ktma.ubsi.production.full
 title: Производство УБСИ · полная проверка
-version: 1.0.2
+version: 1.0.3
 catalog_version: 2026.08.29-yalk-1
 object_type: UBSI_468157_002
 state: published
@@ -228,77 +228,34 @@ steps:
       isd_switch_type: 7
       isd_route_channels: 3,9,12,17
 
-  - id: yvp_yalk_stream
-    title: Поток ЯЛК для ЯВП-8
-    tu: PRODUCTION / YVP / YALK_STREAM
-    procedure: yalk.start_stream
+  - id: yvp_mode
+    title: Перевод адаптера в режим ЯВП · ROKT 0A 01
+    tu: PRODUCTION / YVP / ROKT_MODE
+    procedure: yvp.enter_mode
     requires:
       - ulk.parameter_source
-      - stand.switch_matrix
     args:
-      configure_settle_ms: 500
+      yvp_cell: 1
       timeout_ms: 3000
+      technical_retries: 3
 
-  - id: yvp_yalk_calibration
-    title: Калибровка ЯЛК перед ЯВП
-    tu: PRODUCTION / YVP / YALK_CALIBRATION
-    procedure: yalk.read_calibration
-    requires:
-      - catalog.parameter_resolver
-      - ulk.parameter_source
-      - stand.switch_matrix
-      - measure.reference_voltage
-    args:
-      channel_count: 80
-      sample_count: 16
-      settle_ms: 150
-      full_voltage: 6.2
-
-  - id: yvp_check
-    title: ЯВП-8 · коэффициенты, АЧХ, затухание · диапазон ЯЛК 88–96
-    tu: PRODUCTION / YVP
+  - id: yvp_channels
+    title: ЯВП-8 · выбор 8 каналов ROKT 0A 03 и контроль свежего UDP-трафика
+    tu: PRODUCTION / YVP / ROKT_CHANNELS
     procedure: ubsi.yvp
     requires:
-      - catalog.parameter_resolver
       - ulk.parameter_source
-      - stand.switch_matrix
-      - signal.generator
-      - measure.reference_ac_voltage
-      - measure.reference_frequency
     args:
       channel_count: 8
-      parameter_group: yvp_fast
-      yalk_address_min: 88
-      yalk_address_max: 96
-      frequencies_hz: 0.15,20,250,500,1800,2000,4000
-      gains_mv_per_pcl: 0.25,0.5,1,2,4,8,32
-      coupling_capacitance_pf: 1000
-      sample_count: 16
-      gain_tolerance_percent: 7
-      working_low_frequency_hz: 2
-      working_high_frequency_hz: 2000
-      input_route: yvp_input
-      gain_route: yvp_gain
-      routes_confirmed: false
-      yalk_value_model_confirmed: false
-      stimulus_tolerance_percent: 5
-      frequency_tolerance_percent: 1
-      settle_ms: 200
+      yvp_cell: 1
+      timeout_ms: 3000
 
   - id: yvp_cleanup
-    title: Безопасный сброс ЯВП / ЯЛК
+    title: Безопасная остановка потока ЯВП
     tu: PRODUCTION / YVP / SAFE_CLEANUP
-    procedure: yalk.safe_cleanup
+    procedure: yvp.safe_cleanup
     requires:
       - ulk.parameter_source
-      - stand.switch_matrix
-      - catalog.parameter_resolver
-      - measure.reference_voltage
-    args:
-      channel_count: 80
-      maximum_residual_voltage_v: 0.2
-      settle_ms: 300
-      retry_settle_ms: 500
 
   - id: power_off
     title: Отключение питания

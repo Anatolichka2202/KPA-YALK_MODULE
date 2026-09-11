@@ -2,8 +2,7 @@
 
 Этот runbook обязателен перед переносом сборки на стенд.
 
-Агент не должен изобретать альтернативный транспорт, если этот способ
-работает.
+Агент не должен изобретать альтернативный транспорт, если этот способ работает.
 
 ---
 
@@ -27,9 +26,7 @@
 DESKTOP-5EO9J5A
 ```
 
-Эти адреса не взаимозаменяемы.
-
-Перед удалёнными действиями проверять именно hostname.
+Эти адреса не взаимозаменяемы. Перед удалёнными действиями проверять именно hostname.
 
 ---
 
@@ -44,9 +41,72 @@ CMake НЕ нужен
 build tree НЕ нужен
 ```
 
-На стенд доставляется готовый release directory.
+На стенд доставляется готовый release directory. Сборка выполняется на машине разработчика или CI.
 
-Сборка выполняется на машине разработчика.
+---
+
+# Каталог выпусков и rollback
+
+Каждый выпуск устанавливается только в новый каталог:
+
+```text
+C:\Orbita\releases\MilTechStation-KTMA-2.0.0-pilot-<short-sha>
+```
+
+Пример:
+
+```text
+C:\Orbita\releases\MilTechStation-KTMA-2.0.0-pilot-8ea034c
+```
+
+Существующий release не перезаписывается и не удаляется. Он является rollback point.
+
+---
+
+# Rolling pilot для ветки new-dis
+
+Успешный CI ветки `new-dis` публикует rolling prerelease с фиксированным тегом:
+
+```text
+new-dis-latest
+```
+
+Фиксированные assets:
+
+```text
+MilTechStation-KTMA-new-dis.zip
+MilTechStation-KTMA-new-dis.zip.sha256.txt
+```
+
+Внутри ZIP находится один каталог с фактическим commit-based именем:
+
+```text
+MilTechStation-KTMA-2.0.0-pilot-<short-sha>
+```
+
+Поэтому ссылка на скачивание постоянна, но установка всегда создаёт новый каталог и не затирает прошлый выпуск.
+
+На стенде канонический install-flow:
+
+```powershell
+$u='https://raw.githubusercontent.com/Anatolichka2202/KPA-YALK_MODULE/new-dis/scripts/install_new_dis_release.ps1'
+Invoke-WebRequest -UseBasicParsing $u -OutFile "$env:TEMP\install_new_dis_release.ps1"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$env:TEMP\install_new_dis_release.ps1"
+```
+
+Скрипт:
+
+1. скачивает ZIP и SHA-256 из `new-dis-latest`;
+2. проверяет SHA-256;
+3. проверяет, что ZIP содержит ровно один каталог `MilTechStation-KTMA-2.0.0-pilot-<short-sha>`;
+4. отказывается перезаписывать существующий каталог;
+5. устанавливает выпуск в `C:\Orbita\releases`.
+
+Прямая ссылка на текущий ZIP:
+
+```text
+https://github.com/Anatolichka2202/KPA-YALK_MODULE/releases/download/new-dis-latest/MilTechStation-KTMA-new-dis.zip
+```
 
 ---
 
@@ -67,15 +127,7 @@ new routing
 firewall reconfiguration
 ```
 
-Использовать существующий SSH/SCP flow.
-
-Если он не работает:
-
-```text
-сначала диагностика существующего flow
-```
-
-а не создание новой инфраструктуры.
+Для удалённой диагностики и ручной доставки использовать существующий SSH/SCP flow. Если он не работает — сначала диагностика существующего flow, а не создание новой инфраструктуры.
 
 ---
 
@@ -145,26 +197,9 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass `
   -OutputDirectory C:\Users\Public\OrbitaDiag
 ```
 
-Диагностика собирает:
+Диагностика собирает Windows, сеть, маршруты, ARP, USB/PnP, COM, LCard/E20, VISA, DLL, SSH и пассивную UDP-диагностику adapter.
 
-- Windows;
-- сеть;
-- маршруты;
-- ARP;
-- USB/PnP;
-- COM;
-- LCard/E20;
-- VISA;
-- DLL;
-- SSH;
-- пассивную UDP-диагностику adapter.
-
-Результат:
-
-```text
-ZIP
-SHA-256
-```
+Результат: ZIP и SHA-256.
 
 ---
 
@@ -178,22 +213,12 @@ CLI release flow:
 
 ```powershell
 cmake -S . -B build -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Release
-
 cmake --build build -j 4
-
 ctest --test-dir build --output-on-failure
-
-powershell.exe -NoProfile -ExecutionPolicy Bypass `
-  -File .\scripts\package_stand_win11.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\package_stand_win11.ps1
 ```
 
-Packaging создаёт новый release, ZIP и SHA-256 в:
-
-```text
-build\deploy
-```
-
-Существующий release с тем же именем не перезаписывать.
+Packaging создаёт новый release, ZIP и SHA-256 в `build\deploy`. Существующий release с тем же именем не перезаписывается.
 
 ---
 
@@ -202,43 +227,21 @@ build\deploy
 Типовой каталог:
 
 ```text
-OrbitaDesktop.exe
+MilTechStation.exe
 orbita_equipment_probe.exe
-
+orbita_yvp_rokt_probe.exe
 parameters.db
-
 address\...
 catalog\catalog.yaml
 profiles\stand_ktma.yaml
-
 scenarios\...
 plugins\orbita_plugin_*.dll
-
 Qt6*.dll
 platforms\qwindows.dll
-
 Lusbapi64.dll
 ```
 
-Конкретный состав определяет packaging script.
-
-Не собирать release вручную копированием DLL "пока не запустится".
-
----
-
-# Установка
-
-Каждый выпуск:
-
-```text
-C:\Orbita\releases\<version>
-```
-
-Новый выпуск всегда идёт в новый каталог.
-
-Предыдущий release не перезаписывается.
-
-Это rollback point.
+Конкретный состав определяет packaging script. Не собирать release вручную копированием DLL «пока не запустится».
 
 ---
 
@@ -257,17 +260,9 @@ C:\Orbita\releases\<version>
 
 # GUI через SSH
 
-SSH используется для:
+SSH используется для доставки, диагностики и CLI probe.
 
-```text
-доставки
-диагностики
-CLI probe
-```
-
-`OrbitaDesktop.exe` штатно запускается оператором в desktop session стенда.
-
-Не тратить время на попытку поднять GUI через служебный SSH-сеанс.
+`MilTechStation.exe` штатно запускается оператором в desktop session стенда. Не тратить время на попытку поднять GUI через служебный SSH-сеанс.
 
 ---
 

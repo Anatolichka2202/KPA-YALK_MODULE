@@ -31,12 +31,15 @@ void verifyNode(const ScenarioNode& node)
             "Production scenario must not require legacy Orbita/E20");
     }
     if (node.procedure == "ubsi.yvp") {
-        const auto low = node.arguments.find("yalk_address_min");
-        const auto high = node.arguments.find("yalk_address_max");
-        require(low != node.arguments.end() && low->second == "88",
-            "YVP scenario must parse yalk_address_min=88");
-        require(high != node.arguments.end() && high->second == "96",
-            "YVP scenario must parse yalk_address_max=96");
+        const auto count = node.arguments.find("channel_count");
+        const auto cell = node.arguments.find("yvp_cell");
+        require(count != node.arguments.end() && count->second == "8",
+            "YVP ROKT scenario must parse channel_count=8");
+        require(cell != node.arguments.end() && cell->second == "1",
+            "YVP ROKT scenario must parse yvp_cell=1");
+        require(node.arguments.find("yalk_address_min") == node.arguments.end()
+                && node.arguments.find("yalk_address_max") == node.arguments.end(),
+            "YVP ROKT scenario must not depend on obsolete YALK address bounds");
     }
     for (const auto& child : node.children) verifyNode(child);
 }

@@ -1,4 +1,4 @@
-﻿add_library(orbita_stand_core STATIC
+add_library(orbita_stand_core STATIC
     src/scenario.cpp
 )
 
@@ -14,14 +14,16 @@ add_library(orbita_stand_domain STATIC
     src/yalk_analog_procedure.cpp
     src/ubsi_procedures.cpp
     src/ubsi_procedures_current.cpp
+    src/ubsi_procedures_rokt.cpp
     src/telemetry_procedures.cpp
 )
 
-# РЎРѕС…СЂР°РЅСЏРµРј РїСЂРѕРІРµСЂРµРЅРЅСѓСЋ legacy-СЂРµР°Р»РёР·Р°С†РёСЋ РєР°Рє РёСЃС‚РѕС‡РЅРёРє СЃС‚Р°СЂС‹С… callback-РѕРІ,
-# РЅРѕ РµС‘ public registrar РїРµСЂРµРёРјРµРЅРѕРІС‹РІР°РµРј. ubsi_procedures_current.cpp СЃРЅР°С‡Р°Р»Р°
-# СЂРµРіРёСЃС‚СЂРёСЂСѓРµС‚ legacy callback-Рё, Р·Р°С‚РµРј Р·Р°РјРµРЅСЏРµС‚ С‚РѕР»СЊРєРѕ РёСЃРїСЂР°РІР»РµРЅРЅС‹Рµ current ids.
+# Keep the validated legacy callbacks available, then layer current-delivery
+# overrides and finally the confirmed ROKT YVP control path.
 set_source_files_properties(src/ubsi_procedures.cpp PROPERTIES
     COMPILE_DEFINITIONS "registerUbsiProcedures=registerLegacyUbsiProcedures")
+set_source_files_properties(src/ubsi_procedures_current.cpp PROPERTIES
+    COMPILE_DEFINITIONS "registerUbsiProcedures=registerCurrentUbsiProcedures")
 
 target_include_directories(orbita_stand_domain
     PUBLIC
@@ -57,9 +59,6 @@ add_library(orbita_stand_runtime STATIC
 )
 target_include_directories(orbita_stand_runtime PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_compile_features(orbita_stand_runtime PUBLIC cxx_std_17)
-# Р­С‚Рѕ СЃС‚Р°С‚РёС‡РµСЃРєР°СЏ Р±РёР±Р»РёРѕС‚РµРєР°: РµС‘ РІРЅРµС€РЅРёРµ Qt-Р·Р°РІРёСЃРёРјРѕСЃС‚Рё РґРѕР»Р¶РЅС‹ РґРѕР№С‚Рё РґРѕ
-# РёСЃРїРѕР»РЅСЏРµРјС‹С… С„Р°Р№Р»РѕРІ С‚РµСЃС‚РѕРІ, СѓС‚РёР»РёС‚ Рё РїР»Р°РіРёРЅРѕРІ, РёРЅР°С‡Рµ Windows РЅРµ СЃРјРѕР¶РµС‚
-# Р·Р°РіСЂСѓР·РёС‚СЊ С‚СЂРµР±СѓРµРјС‹Рµ Qt DLL СЂСЏРґРѕРј СЃ РЅРёРјРё.
 target_link_libraries(orbita_stand_runtime PUBLIC
     orbita_stand_domain orbita_stand_catalog orbita_stand_reporting
     Qt6::Core Qt6::Sql Qt6::Gui)
@@ -112,8 +111,6 @@ if(BUILD_TESTING)
     target_link_libraries(ubsi_backend_contract_test PRIVATE orbita_stand_domain)
     add_test(NAME stand.ubsi_backend_contract COMMAND ubsi_backend_contract_test)
 
-    # Qt DLL РЅРµ РєРѕРїРёСЂСѓСЋС‚СЃСЏ РІ РєР°С‚Р°Р»РѕРі СЃР±РѕСЂРєРё Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё. Р”Р»СЏ CTest РґРѕР±Р°РІР»СЏРµРј
-    # РєР°С‚Р°Р»РѕРі Qt Рє PATH, РЅРµ СЃРјРµС€РёРІР°СЏ С‚РµСЃС‚РѕРІС‹Рµ Р°СЂС‚РµС„Р°РєС‚С‹ СЃ release-РїР°РєРµС‚РѕРј.
     if(WIN32)
         set(_orbita_qt_test_path "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
         set_tests_properties(
@@ -173,26 +170,14 @@ if(MINGW)
     )
 endif()
 
-# РќРѕРІС‹Р№ РѕС‚РґРµР»СЊРЅС‹Р№ probe РґР»СЏ ROKT-РїСЂРѕС‚РѕРєРѕР»Р°
 if(WIN32)
     add_executable(orbita_ubsi_rokt_probe
         tools/ubsi_rokt_probe.cpp
     )
-
-    target_link_libraries(
-        orbita_ubsi_rokt_probe
-        PRIVATE
-        ws2_32
-    )
-
+    target_link_libraries(orbita_ubsi_rokt_probe PRIVATE ws2_32)
     if(MINGW)
-        target_link_options(
-            orbita_ubsi_rokt_probe
-            PRIVATE
-            -static
-            -static-libgcc
-            -static-libstdc++
-        )
+        target_link_options(orbita_ubsi_rokt_probe PRIVATE
+            -static -static-libgcc -static-libstdc++)
     endif()
 endif()
 
@@ -200,21 +185,21 @@ if(WIN32)
     add_executable(orbita_ytp_rokt_probe
         tools/ytp_rokt_probe.cpp
     )
-
-    target_link_libraries(
-        orbita_ytp_rokt_probe
-        PRIVATE
-        ws2_32
-    )
-
+    target_link_libraries(orbita_ytp_rokt_probe PRIVATE ws2_32)
     if(MINGW)
-        target_link_options(
-            orbita_ytp_rokt_probe
-            PRIVATE
-            -static
-            -static-libgcc
-            -static-libstdc++
-        )
+        target_link_options(orbita_ytp_rokt_probe PRIVATE
+            -static -static-libgcc -static-libstdc++)
+    endif()
+endif()
+
+if(WIN32)
+    add_executable(orbita_yvp_rokt_probe
+        tools/yvp_rokt_probe.cpp
+    )
+    target_link_libraries(orbita_yvp_rokt_probe PRIVATE orbita_stand_adapters)
+    if(MINGW)
+        target_link_options(orbita_yvp_rokt_probe PRIVATE
+            -static -static-libgcc -static-libstdc++)
     endif()
 endif()
 
@@ -235,4 +220,3 @@ if(WIN32)
         target_link_options(v7_probe PRIVATE -static -static-libgcc -static-libstdc++)
     endif()
 endif()
-
