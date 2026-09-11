@@ -32,6 +32,22 @@ Yvp
 
 Пакет определяет, какая часть состава затронута конкретным run.
 
+Текущее отображение package -> affected composition в коде:
+
+```text
+FullUbsi          -> YALK-96, YTP, YVP, YP-P
+PowerConsumption -> YP-P
+Yalk              -> YALK-96
+Ytp               -> YTP
+Yvp               -> YVP
+```
+
+Это backend-модель production lifecycle, а не список пользовательских кнопок HMI.
+
+Операторский интерфейс не обязан показывать отдельный scope `YP-P` или `PowerConsumption`; канонический UI описан в [operator.md](operator.md).
+
+Важно: само наличие `YP-P` в affected-set `FullUbsi` ещё не доказывает, что конкретное электрическое требование ЯП-П полностью закрывается текущим `ubsi_production_full.yaml`. В full scenario есть `readiness` и `supply_range`, но отдельного узла `YP-P` нет. Это открытая несостыковка, которую необходимо закрыть на уровне требований/методики/backend, а не только подписью в UI.
+
 ---
 
 # Snapshot состава
@@ -68,6 +84,15 @@ composition.size() == 4
 ```
 
 перед созданием production run.
+
+Ожидаемые типы состава текущей реализации:
+
+```text
+YALK-96
+YTP
+YVP
+YP-P
+```
 
 Это task-specific правило текущей реализации УБСИ.
 
@@ -186,12 +211,12 @@ ProductionLedger не должен самостоятельно определя
 
 ---
 
-# Следующий документ
-
-Требования и покрытие УБСИ будут собраны отдельно:
+# Связанные документы
 
 ```text
 docs/task/ubsi/tu.md
 docs/task/ubsi/tu-work.md
 docs/task/ubsi/testing.md
+docs/task/ubsi/operator.md
+docs/task/ubsi/yvp.md
 ```

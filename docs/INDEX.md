@@ -71,6 +71,7 @@
 | Что требует нормативный источник | [task/ubsi/tu.md](task/ubsi/tu.md) |
 | Как требования закрываются стендом | [task/ubsi/tu-work.md](task/ubsi/tu-work.md) |
 | Как физически выполняется испытание | [task/ubsi/testing.md](task/ubsi/testing.md) |
+| Как должен работать операторский интерфейс и какие расхождения ещё открыты | [task/ubsi/operator.md](task/ubsi/operator.md) |
 | Где лежат первичные источники | [sources/INDEX.md](sources/INDEX.md) |
 | Что такое внешний локальный архив | [research/external-archive.md](research/external-archive.md) |
 
@@ -121,6 +122,9 @@ docs/
 
 После переноса полезной информации старые документальные артефакты будут
 удалены. История их редакций остаётся в Git.
+
+Отдельный `docs/operator-ui-new-dis.md` является переходным историческим
+артефактом и не заменяет канонический [task/ubsi/operator.md](task/ubsi/operator.md).
 
 ---
 
