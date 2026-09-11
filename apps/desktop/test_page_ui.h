@@ -349,6 +349,7 @@ public:
     void clear()
     {
         items_.clear();
+        discreteStates_.clear();
         backgroundMean_.clear();
         backgroundMinimum_.clear();
         backgroundMaximum_.clear();
@@ -356,6 +357,8 @@ public:
         currentPoint_.clear();
         selectedKey_.clear();
         selectionPinned_ = false;
+        setProperty("backgroundChannelCount", 0);
+        setProperty("renderedChannelCount", 0);
         update();
     }
 
@@ -364,6 +367,15 @@ public:
         backgroundMean_ = std::move(mean);
         backgroundMinimum_ = std::move(minimum);
         backgroundMaximum_ = std::move(maximum);
+        int available = 0;
+        for (const auto& key : channelKeys()) {
+            const int index = key.toInt() - 1;
+            if (index >= 0 && index < backgroundMean_.size()
+                && index < backgroundMinimum_.size() && index < backgroundMaximum_.size())
+                ++available;
+        }
+        setProperty("backgroundChannelCount", available);
+        setProperty("renderedChannelCount", available);
         update();
     }
 
@@ -380,7 +392,17 @@ public:
         if (!replaced) items_.push_back(sample);
         currentKey_ = sample.key;
         currentPoint_ = sample.point;
+        discreteStates_.insert(sample.key, sample.signal ? 1 : 0);
         if (!selectionPinned_) selectedKey_ = currentKey_;
+        setProperty("renderedChannelCount", displayChannels().size());
+        update();
+    }
+
+    void setDiscrete(const QString& key, bool signal)
+    {
+        discreteStates_.insert(key, signal ? 1 : 0);
+        currentKey_ = key;
+        if (!selectionPinned_) selectedKey_ = key;
         update();
     }
 
@@ -401,24 +423,18 @@ protected:
     {
         for (const auto& hit : hits_) {
             if (!hit.first.contains(event->position())) continue;
-            for (const auto& sample : items_) {
-                if (sample.key != hit.second || sample.point != currentPoint_) continue;
-                double minimum = sample.measured;
-                double maximum = sample.measured;
-                if (!sample.samples.isEmpty()) {
-                    const auto range = std::minmax_element(sample.samples.cbegin(), sample.samples.cend());
-                    minimum = *range.first;
-                    maximum = *range.second;
-                }
+            for (const auto& sample : displayChannels()) {
+                if (sample.key != hit.second || !sample.hasData) continue;
                 const int precision = unit_ == QStringLiteral("Ом") ? 2 : 3;
                 const QString discrete = unit_ == QStringLiteral("Ом")
-                    ? QString() : QStringLiteral("\nДискретный: %1").arg(sample.signal ? 1 : 0);
+                    ? QString() : QStringLiteral("\nДискретный: %1")
+                        .arg(sample.signalKnown ? QString::number(sample.signal) : QStringLiteral("не измерен"));
                 QToolTip::showText(event->globalPosition().toPoint(),
                     QStringLiteral("Канал %1\nТекущее: %2 %3\nmin…max: %4…%5 %3\nРазмах: %6 %3%7")
-                        .arg(sample.key, QString::number(sample.measured, 'f', precision), unit_,
-                             QString::number(minimum, 'f', precision),
-                             QString::number(maximum, 'f', precision),
-                             QString::number(maximum - minimum, 'f', precision), discrete),
+                        .arg(sample.key, QString::number(sample.value, 'f', precision), unit_,
+                             QString::number(sample.minimum, 'f', precision),
+                             QString::number(sample.maximum, 'f', precision),
+                             QString::number(sample.maximum - sample.minimum, 'f', precision), discrete),
                     this, hit.first.toRect());
                 return;
             }
@@ -438,35 +454,27 @@ protected:
             QStringLiteral("Все каналы · %1 · столбец: текущее · риска: min…max")
                 .arg(currentPoint_.isEmpty() ? QStringLiteral("ожидание") : currentPoint_));
 
-        QVector<const ChannelSample*> samples;
-        for (const auto& item : items_)
-            if (item.point == currentPoint_) samples.push_back(&item);
-        std::sort(samples.begin(), samples.end(), [](const auto* left, const auto* right) {
-            bool leftNumber = false, rightNumber = false;
-            const int leftValue = left->key.toInt(&leftNumber);
-            const int rightValue = right->key.toInt(&rightNumber);
-            return leftNumber && rightNumber ? leftValue < rightValue : left->key < right->key;
-        });
-        if (selectedKey_.isEmpty()) selectedKey_ = currentKey_;
-        const ChannelSample* selected = nullptr;
-        for (const auto* sample : samples) if (sample->key == selectedKey_) selected = sample;
-        if (!selected && !samples.isEmpty()) selected = samples.last();
+        const auto samples = displayChannels();
+        if (selectedKey_.isEmpty() && !samples.isEmpty()) selectedKey_ = samples.first().key;
+        const DisplayChannel* selected = nullptr;
+        for (const auto& sample : samples)
+            if (sample.key == selectedKey_ && sample.hasData) selected = &sample;
+        if (!selected)
+            for (const auto& sample : samples)
+                if (sample.hasData) { selected = &sample; break; }
 
         if (selected) {
-            const auto mm = selected->samples.isEmpty()
-                ? std::pair<double,double>{selected->measured, selected->measured}
-                : [&] { const auto range = std::minmax_element(selected->samples.cbegin(), selected->samples.cend());
-                        return std::pair<double,double>{*range.first, *range.second}; }();
             painter.setFont(QFont("Segoe UI", 9, QFont::DemiBold));
             painter.setPen(QColor("#9ac7ff"));
             const QString discrete = unit_ == QStringLiteral("Ом")
-                ? QString() : QStringLiteral("   D=%1").arg(selected->signal ? 1 : 0);
+                ? QString() : QStringLiteral("   D=%1")
+                    .arg(selected->signalKnown ? QString::number(selected->signal) : QStringLiteral("?"));
             painter.drawText(QRectF(width() - 570, 4, 560, 20), Qt::AlignRight,
                 QStringLiteral("Канал %1   %2 %3   min…max %4…%5   Δ %6%7")
-                    .arg(selected->key, QString::number(selected->measured, 'f', unit_ == QStringLiteral("Ом") ? 2 : 3), unit_,
-                         QString::number(mm.first, 'f', unit_ == QStringLiteral("Ом") ? 2 : 3),
-                         QString::number(mm.second, 'f', unit_ == QStringLiteral("Ом") ? 2 : 3),
-                         QString::number(mm.second - mm.first, 'f', unit_ == QStringLiteral("Ом") ? 2 : 3),
+                    .arg(selected->key, QString::number(selected->value, 'f', unit_ == QStringLiteral("Ом") ? 2 : 3), unit_,
+                         QString::number(selected->minimum, 'f', unit_ == QStringLiteral("Ом") ? 2 : 3),
+                         QString::number(selected->maximum, 'f', unit_ == QStringLiteral("Ом") ? 2 : 3),
+                         QString::number(selected->maximum - selected->minimum, 'f', unit_ == QStringLiteral("Ом") ? 2 : 3),
                          discrete));
         }
 
@@ -474,16 +482,19 @@ protected:
         const QRectF area(58, 31, width() - 70, height() - 31 - footerHeight);
         painter.setPen(QPen(QColor("#27313c"), 1));
         painter.drawRect(area);
-        if (samples.isEmpty()) {
+        const int dataCount = std::count_if(samples.cbegin(), samples.cend(),
+            [](const DisplayChannel& sample) { return sample.hasData; });
+        setProperty("renderedChannelCount", dataCount);
+        if (dataCount == 0) {
             painter.setPen(QColor("#667484"));
             painter.drawText(area, Qt::AlignCenter, QStringLiteral("поканальные данные появятся во время проверки"));
             return;
         }
 
         double observedMaximum = 0.0;
-        for (const auto* sample : samples) {
-            observedMaximum = std::max(observedMaximum, sample->measured);
-            for (double value : sample->samples) observedMaximum = std::max(observedMaximum, value);
+        for (const auto& sample : samples) {
+            if (!sample.hasData) continue;
+            observedMaximum = std::max({observedMaximum, sample.value, sample.maximum});
         }
         const double physicalMaximum = unit_ == QStringLiteral("Ом") ? 240.0 : 6.2;
         const double lower = 0.0;
@@ -504,59 +515,44 @@ protected:
 
         const double cellWidth = area.width() / std::max(1, static_cast<int>(samples.size()));
         for (int index = 0; index < samples.size(); ++index) {
-            const auto* sample = samples[index];
+            const auto& sample = samples[index];
             const double x = area.left() + index * cellWidth;
-            hits_.push_back({QRectF(x, area.top(), cellWidth, area.height() + 34), sample->key});
-            if (sample->key == selectedKey_)
+            hits_.push_back({QRectF(x, area.top(), cellWidth, area.height() + 34), sample.key});
+            if (sample.key == selectedKey_)
                 painter.fillRect(QRectF(x, area.top(), cellWidth, area.height()), QColor(94,147,184,28));
-            const double measuredY = y(sample->measured);
-            painter.setPen(Qt::NoPen);
-            painter.setBrush(sample->passed ? QColor("#4f9f78") : QColor("#cf5d62"));
-            painter.drawRect(QRectF(x + cellWidth * 0.18, measuredY,
-                                    std::max(2.0, cellWidth * 0.64), area.bottom() - measuredY));
-            double minimum = sample->measured;
-            double maximum = sample->measured;
-            if (!sample->samples.isEmpty()) {
-                const auto range = std::minmax_element(sample->samples.cbegin(), sample->samples.cend());
-                minimum = *range.first;
-                maximum = *range.second;
+            if (sample.hasData) {
+                const double measuredY = y(sample.value);
+                painter.setPen(Qt::NoPen);
+                painter.setBrush(sample.measured
+                    ? (sample.passed ? QColor("#4f9f78") : QColor("#cf5d62"))
+                    : QColor("#3e7da1"));
+                painter.drawRect(QRectF(x + cellWidth * 0.18, measuredY,
+                                        std::max(2.0, cellWidth * 0.64), area.bottom() - measuredY));
+                painter.setBrush(Qt::NoBrush);
+                painter.setPen(QPen(QColor("#e6edf3"), sample.key == selectedKey_ ? 2.0 : 1.0));
+                painter.drawLine(QPointF(x + cellWidth / 2.0, y(sample.minimum)),
+                                 QPointF(x + cellWidth / 2.0, y(sample.maximum)));
+                painter.drawLine(QPointF(x + cellWidth * 0.28, y(sample.minimum)),
+                                 QPointF(x + cellWidth * 0.72, y(sample.minimum)));
+                painter.drawLine(QPointF(x + cellWidth * 0.28, y(sample.maximum)),
+                                 QPointF(x + cellWidth * 0.72, y(sample.maximum)));
             }
-            painter.setBrush(Qt::NoBrush);
-            painter.setPen(QPen(QColor("#e6edf3"), sample->key == selectedKey_ ? 2.0 : 1.0));
-            painter.drawLine(QPointF(x + cellWidth / 2.0, y(minimum)),
-                             QPointF(x + cellWidth / 2.0, y(maximum)));
-            painter.drawLine(QPointF(x + cellWidth * 0.28, y(minimum)),
-                             QPointF(x + cellWidth * 0.72, y(minimum)));
-            painter.drawLine(QPointF(x + cellWidth * 0.28, y(maximum)),
-                             QPointF(x + cellWidth * 0.72, y(maximum)));
             painter.setPen(QColor("#9aafbf"));
             painter.setFont(QFont("Segoe UI", count_ > 40 ? 7 : 8));
             painter.drawText(QRectF(x, area.bottom() + 3, cellWidth, 14),
-                             Qt::AlignCenter, sample->key);
+                             Qt::AlignCenter, sample.key);
             if (unit_ != QStringLiteral("Ом")) {
-                painter.setPen(sample->signal ? QColor("#70d79b") : QColor("#8b95a3"));
+                painter.setPen(sample.signalKnown && sample.signal ? QColor("#70d79b") : QColor("#8b95a3"));
                 painter.drawText(QRectF(x, area.bottom() + 18, cellWidth, 13), Qt::AlignCenter,
-                                 sample->signal ? QStringLiteral("1") : QStringLiteral("0"));
+                                 sample.signalKnown ? QString::number(sample.signal) : QStringLiteral("?"));
             }
         }
 
         QVector<double> spans;
         spans.reserve(samples.size());
         double maximumSpan = 0.0;
-        for (const auto* sample : samples) {
-            const int backgroundIndex = sample->key.toInt() - 1;
-            double minimum = sample->measured;
-            double maximum = sample->measured;
-            if (backgroundIndex >= 0 && backgroundIndex < backgroundMinimum_.size()
-                && backgroundIndex < backgroundMaximum_.size()) {
-                minimum = backgroundMinimum_[backgroundIndex];
-                maximum = backgroundMaximum_[backgroundIndex];
-            } else if (!sample->samples.isEmpty()) {
-                const auto range = std::minmax_element(sample->samples.cbegin(), sample->samples.cend());
-                minimum = *range.first;
-                maximum = *range.second;
-            }
-            spans.push_back(std::max(0.0, maximum - minimum));
+        for (const auto& sample : samples) {
+            spans.push_back(sample.hasData ? std::max(0.0, sample.maximum - sample.minimum) : 0.0);
             maximumSpan = std::max(maximumSpan, spans.last());
         }
         const QRectF spanArea(area.left(), area.bottom() + 34, area.width(), 20);
@@ -582,6 +578,76 @@ protected:
     }
 
 private:
+    struct DisplayChannel {
+        QString key;
+        double value = 0.0;
+        double minimum = 0.0;
+        double maximum = 0.0;
+        bool hasData = false;
+        bool measured = false;
+        bool passed = true;
+        bool signalKnown = false;
+        int signal = 0;
+    };
+
+    QVector<QString> channelKeys() const
+    {
+        QVector<QString> keys;
+        if (count_ == 80 && unit_ == QStringLiteral("В")) {
+            for (int address = 1; address <= 87; ++address)
+                if (address <= 28 || (address >= 32 && address <= 43)
+                    || (address >= 45 && address <= 70) || address >= 74)
+                    keys.push_back(QString::number(address));
+            return keys;
+        }
+        for (int channel = 1; channel <= count_; ++channel)
+            keys.push_back(QString::number(channel));
+        return keys;
+    }
+
+    QVector<DisplayChannel> displayChannels() const
+    {
+        QVector<DisplayChannel> channels;
+        for (const auto& key : channelKeys()) {
+            DisplayChannel channel;
+            channel.key = key;
+            const int backgroundIndex = key.toInt() - 1;
+            if (backgroundIndex >= 0 && backgroundIndex < backgroundMean_.size()
+                && backgroundIndex < backgroundMinimum_.size()
+                && backgroundIndex < backgroundMaximum_.size()) {
+                channel.value = backgroundMean_[backgroundIndex];
+                channel.minimum = backgroundMinimum_[backgroundIndex];
+                channel.maximum = backgroundMaximum_[backgroundIndex];
+                channel.hasData = true;
+            }
+            const bool hasBackground = channel.hasData;
+            for (auto item = items_.crbegin(); item != items_.crend(); ++item) {
+                if (item->key != key || (!currentPoint_.isEmpty() && item->point != currentPoint_)) continue;
+                channel.value = item->measured;
+                channel.measured = true;
+                channel.passed = item->passed;
+                channel.hasData = true;
+                if (!hasBackground) {
+                    channel.minimum = item->measured;
+                    channel.maximum = item->measured;
+                    if (!item->samples.isEmpty()) {
+                        const auto range = std::minmax_element(item->samples.cbegin(), item->samples.cend());
+                        channel.minimum = *range.first;
+                        channel.maximum = *range.second;
+                    }
+                }
+                break;
+            }
+            const auto signal = discreteStates_.constFind(key);
+            if (signal != discreteStates_.cend()) {
+                channel.signalKnown = true;
+                channel.signal = *signal;
+            }
+            channels.push_back(channel);
+        }
+        return channels;
+    }
+
     int count_ = 80;
     QString unit_ = QStringLiteral("В");
     QVector<ChannelSample> items_;
@@ -592,6 +658,7 @@ private:
     QVector<double> backgroundMean_;
     QVector<double> backgroundMinimum_;
     QVector<double> backgroundMaximum_;
+    QHash<QString, int> discreteStates_;
     bool selectionPinned_ = false;
 };
 

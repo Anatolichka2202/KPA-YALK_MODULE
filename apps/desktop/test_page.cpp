@@ -128,7 +128,7 @@ bool TestPage::eventFilter(QObject* watched, QEvent* event)
     if (label && event->type() == QEvent::MouseButtonRelease) {
         bool ok = false;
         const int index = label->property("routeStageIndex").toInt(&ok);
-        if (ok && index >= 0 && index < impl_->workStack->count() && label->isVisible()) {
+        if (ok && index >= 0 && index < impl_->workStack->count() && !label->isHidden()) {
             const int runtimeStage = static_cast<int>(impl_->topStage);
             if (impl_->runInProgress && index > runtimeStage) {
                 impl_->footerStage->setText(
@@ -417,6 +417,7 @@ void TestPage::updateSelectionSummary()
             }
         }
     }
+    impl_->configureRouteVisibility();
     updateStartAvailability();
 }
 
@@ -522,12 +523,12 @@ void TestPage::setRunEvent(const orbita::stand::RunEvent& event)
     auto setRouteDetail = [this](int index, const QString& detail) {
         if (index < 0 || index >= impl_->stageLabels.size()) return;
         auto* label = impl_->stageLabels[index];
-        if (!label->isVisible()) return;
+        if (label->isHidden()) return;
         const QString prefix = index == static_cast<int>(impl_->topStage)
             ? QStringLiteral("▶")
             : index < static_cast<int>(impl_->topStage) ? QStringLiteral("✓") : QStringLiteral("○");
         label->setText(QStringLiteral("%1  %2. %3\n%4")
-            .arg(prefix).arg(index + 1).arg(routeStageName(index), detail));
+            .arg(prefix).arg(impl_->visibleRouteNumber(index)).arg(routeStageName(index), detail));
     };
 
     if (event.stage == "START") {
@@ -686,6 +687,18 @@ void TestPage::setRunEvent(const orbita::stand::RunEvent& event)
         const double yalk = eventValue(event, "yalk_v").toDouble();
         const int signal = eventValue(event, "signal").toInt();
 
+        impl_->yalkChannel->setText(address);
+        impl_->yalkPoint->setText(QStringLiteral("%1 В").arg(command, 0, 'f', 1));
+        impl_->yalkV7->setText(QStringLiteral("%1 В").arg(v7, 0, 'f', 3));
+        ChannelSample sample{address,
+                             QStringLiteral("%1 В").arg(command, 0, 'f', 1),
+                             v7,
+                             yalk,
+                             signal != 0,
+                             event.verdict == orbita::stand::RunVerdict::Ok,
+                             csvNumbers(eventValue(event, "value_samples"))};
+        impl_->yalkOverview->add(std::move(sample));
+
         if (impl_->yalkPhase == YalkPhase::Discrete) {
             const int expected = command >= 2.0 ? 1 : 0;
             impl_->yalkDiscretePoint->setText(QStringLiteral("%1 В").arg(command, 0, 'f', 1));
@@ -697,17 +710,6 @@ void TestPage::setRunEvent(const orbita::stand::RunEvent& event)
                 QStringLiteral("Дискретные пороги · канал %1 · %2 В")
                     .arg(address).arg(command, 0, 'f', 1));
         } else {
-            impl_->yalkChannel->setText(address);
-            impl_->yalkPoint->setText(QStringLiteral("%1 В").arg(command, 0, 'f', 1));
-            impl_->yalkV7->setText(QStringLiteral("%1 В").arg(v7, 0, 'f', 3));
-            ChannelSample sample{address,
-                                 QStringLiteral("%1 В").arg(command, 0, 'f', 1),
-                                 v7,
-                                 yalk,
-                                 signal != 0,
-                                 event.verdict == orbita::stand::RunVerdict::Ok,
-                                 csvNumbers(eventValue(event, "value_samples"))};
-            impl_->yalkOverview->add(std::move(sample));
             setRouteDetail(static_cast<int>(TopStage::Yalk),
                 QStringLiteral("Аналоговые · канал %1 · %2 В")
                     .arg(address).arg(command, 0, 'f', 1));

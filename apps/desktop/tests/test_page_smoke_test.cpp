@@ -35,10 +35,11 @@ int main(int argc, char** argv)
     auto* operatorHistory = page.findChild<QComboBox*>(QStringLiteral("operatorHistory"));
     auto* session = page.findChild<QTableWidget*>(QStringLiteral("productionSessionTable"));
     auto* equipment = page.findChild<QTableWidget*>(QStringLiteral("equipmentTable"));
-    auto* histogram = page.findChild<QWidget*>(QStringLiteral("channelHistogram"));
+    auto* histogram = page.findChild<QWidget*>(QStringLiteral("yalkChannelHistogram"));
+    auto* ytpHistogram = page.findChild<QWidget*>(QStringLiteral("ytpChannelHistogram"));
 
     require(object && scope && test && mode && serial && operatorEdit && operatorHistory && session
-                && equipment && histogram,
+                && equipment && histogram && ytpHistogram,
             "new operator UI controls not found");
     require(operatorEdit->placeholderText() == QStringLiteral("Фамилия Имя Отчество"),
             "operator name must not be mixed with personnel number");
@@ -56,6 +57,18 @@ int main(int argc, char** argv)
     require(routeEntries == 6, "operator workspace must expose six clickable route stages");
 
     page.setProductionMode(true);
+    const int yalkScope = scope->findData(QStringLiteral("ЯЛК-96"));
+    require(yalkScope >= 0, "YALK production scope not found");
+    scope->setCurrentIndex(yalkScope);
+    int visibleRouteNumber = 0;
+    for (auto* label : page.findChildren<QLabel*>()) {
+        if (!label->property("routeStageIndex").isValid() || label->isHidden()) continue;
+        ++visibleRouteNumber;
+        require(label->text().contains(QStringLiteral("%1.").arg(visibleRouteNumber)),
+                "visible production route stages must be numbered consecutively");
+    }
+    require(visibleRouteNumber == 4, "YALK production route must expose four relevant stages");
+    scope->setCurrentIndex(scope->findData(QStringLiteral("УБСИ ПО ТУ")));
     page.setScenarioInfo(QStringLiteral("PROD_FULL"), true, false,
         {QStringLiteral("AKIP"), QStringLiteral("RS485"), QStringLiteral("ISD"),
          QStringLiteral("V7"), QStringLiteral("R4831")}, QStringLiteral("ready"));
@@ -121,6 +134,39 @@ int main(int argc, char** argv)
     yalkBackground.data["background_min"] = backgroundMinimum;
     yalkBackground.data["background_max"] = backgroundMaximum;
     page.setRunEvent(yalkBackground);
+    QApplication::processEvents();
+    require(histogram->property("backgroundChannelCount").toInt() == 80,
+            "YALK BACKGROUND alone must render all 80 configured addresses");
+    require(histogram->property("renderedChannelCount").toInt() == 80,
+            "YALK histogram must not wait for MEASUREMENT events");
+
+    orbita::stand::RunEvent overload;
+    overload.nodeId = "yalk_overload_positive";
+    overload.stage = "OVERLOAD";
+    overload.data = {{"polarity", "+12 V"}, {"stressed_channel", "37"},
+                     {"target_count", "80"}};
+    page.setRunEvent(overload);
+    QApplication::processEvents();
+    require(histogram->isVisible(), "YALK histogram must remain visible during overload");
+    require(histogram->property("renderedChannelCount").toInt() == 80,
+            "overload transition must retain YALK background channels");
+
+    const QString screenshot = qEnvironmentVariable("ORBITA_UI_SCREENSHOT");
+    const QString scene = qEnvironmentVariable("MILTECH_UI_SCENE", QStringLiteral("YALK"));
+    if (!screenshot.isEmpty() && scene == QStringLiteral("YALK_BACKGROUND")) {
+        page.resize(1664, 935);
+        page.show();
+        QApplication::processEvents();
+        require(page.grab().save(screenshot), "cannot save YALK background screenshot");
+    }
+    if (!screenshot.isEmpty() && scene == QStringLiteral("YALK_OVERLOAD")) {
+        page.resize(1664, 935);
+        page.show();
+        QApplication::processEvents();
+        require(page.grab().save(screenshot), "cannot save YALK overload screenshot");
+    }
+
+    page.setRunEvent(yalkStart);
 
     for (int address = 1; address <= 87; ++address) {
         if (!(address <= 28 || (address >= 32 && address <= 43)
@@ -139,8 +185,6 @@ int main(int argc, char** argv)
         page.setRunEvent(yalk);
     }
 
-    const QString screenshot = qEnvironmentVariable("ORBITA_UI_SCREENSHOT");
-    const QString scene = qEnvironmentVariable("MILTECH_UI_SCENE", QStringLiteral("YALK"));
     if (!screenshot.isEmpty() && scene == QStringLiteral("YALK")) {
         page.resize(1664, 935);
         page.show();
@@ -154,6 +198,36 @@ int main(int argc, char** argv)
     operatorEvent.data = {{"target_resistance_ohm", "120"}, {"point_index", "2"},
                           {"point_count", "3"}};
     page.setRunEvent(operatorEvent);
+
+    orbita::stand::RunEvent ytpBackground;
+    ytpBackground.nodeId = "monitor";
+    ytpBackground.stage = "BACKGROUND";
+    ytpBackground.data = {{"section", "YTP"}};
+    std::string ytpMean;
+    std::string ytpMinimum;
+    std::string ytpMaximum;
+    for (int index = 0; index < 30; ++index) {
+        if (index > 0) { ytpMean += ','; ytpMinimum += ','; ytpMaximum += ','; }
+        const double mean = 120.0 + (index % 7 - 3) * 0.08;
+        ytpMean += std::to_string(mean);
+        ytpMinimum += std::to_string(mean - 0.12);
+        ytpMaximum += std::to_string(mean + 0.12);
+    }
+    ytpBackground.data["background_mean"] = ytpMean;
+    ytpBackground.data["background_min"] = ytpMinimum;
+    ytpBackground.data["background_max"] = ytpMaximum;
+    page.setRunEvent(ytpBackground);
+    QApplication::processEvents();
+    require(ytpHistogram->property("backgroundChannelCount").toInt() == 30,
+            "YTP BACKGROUND alone must render all 30 channels");
+    require(ytpHistogram->property("renderedChannelCount").toInt() == 30,
+            "YTP histogram must not wait for MEASUREMENT events");
+    if (!screenshot.isEmpty() && scene == QStringLiteral("YTP_BACKGROUND")) {
+        page.resize(1664, 935);
+        page.show();
+        QApplication::processEvents();
+        require(page.grab().save(screenshot), "cannot save YTP background screenshot");
+    }
 
     for (int channel = 1; channel <= 30; ++channel) {
         const double measured = 120.0 + (channel % 9 - 4) * 0.08;
