@@ -35,6 +35,19 @@ QString routeStageName(int index)
     return index >= 0 && index < names.size() ? names[index] : QStringLiteral("Этап");
 }
 
+QString yalkStepText(const QString& node)
+{
+    if (node.contains(QStringLiteral("stream"))) return QStringLiteral("Инициализация потока");
+    if (node.contains(QStringLiteral("calibration"))) return QStringLiteral("Калибровка 97 / 99");
+    if (node.contains(QStringLiteral("initial"))) return QStringLiteral("Исходное состояние 80 входов");
+    if (node == QStringLiteral("yalk_channels")) return QStringLiteral("80 аналоговых каналов");
+    if (node.contains(QStringLiteral("contact"))) return QStringLiteral("Дискретные пороги 0 / 0,9 / 2,5 В");
+    if (node.contains(QStringLiteral("overload"))) return QStringLiteral("Перегрузка ±12 В");
+    if (node.contains(QStringLiteral("reference"))) return QStringLiteral("Эталон 6,2 В");
+    if (node.contains(QStringLiteral("cleanup"))) return QStringLiteral("Безопасное завершение ЯЛК");
+    return QStringLiteral("Выполняется");
+}
+
 } // namespace
 
 TestPage::TestPage(QWidget* parent)
@@ -43,10 +56,8 @@ TestPage::TestPage(QWidget* parent)
 {
     rebuildScopes();
 
-    // Route entries are navigation, not passive status labels. Before a run the
-    // operator may inspect every visible screen. During a run only the current
-    // and already reached stages are open; backend RunEvent remains the sole
-    // authority that advances the actual procedure.
+    // The route at the left is navigation through one persistent test window.
+    // Backend RunEvent remains the only authority that advances the real run.
     for (int i = 0; i < impl_->stageLabels.size(); ++i) {
         auto* label = impl_->stageLabels[i];
         label->setProperty("routeStageIndex", i);
@@ -54,6 +65,59 @@ TestPage::TestPage(QWidget* parent)
         label->setToolTip(QStringLiteral("Открыть экран «%1»").arg(routeStageName(i)));
         label->installEventFilter(this);
     }
+
+    // Agreed timing belongs to the upper status line as a separate text block,
+    // not inside the consumption chart. Until ScenarioEngine exposes a planned
+    // duration, total/remaining are explicitly shown as estimates from run
+    // progress rather than invented fixed numbers.
+    if (auto* workspaceLayout = qobject_cast<QVBoxLayout*>(impl_->workspacePage->layout())) {
+        auto* status = new QFrame(impl_->workspacePage);
+        status->setObjectName(QStringLiteral("testWindowStatus"));
+        status->setStyleSheet(QStringLiteral(
+            "#testWindowStatus{background:#10151b;border:1px solid #27313c;border-radius:5px;}"
+            "#testWindowStatus QLabel{color:#aebdcb;padding:4px 8px;}"));
+        auto* line = new QHBoxLayout(status);
+        line->setContentsMargins(8, 3, 8, 3);
+        line->setSpacing(14);
+        auto makeTime = [status, line](const QString& name, const QString& text) {
+            auto* label = new QLabel(text, status);
+            label->setObjectName(name);
+            line->addWidget(label);
+            return label;
+        };
+        makeTime(QStringLiteral("runtimeElapsed"), QStringLiteral("Текущее время: 00:00:00"));
+        makeTime(QStringLiteral("runtimeTotal"), QStringLiteral("Общая длительность: —"));
+        makeTime(QStringLiteral("runtimeRemaining"), QStringLiteral("Осталось: —"));
+        line->addStretch();
+        workspaceLayout->insertWidget(1, status);
+    }
+
+    // Time is no longer duplicated in the bottom telemetry strip.
+    if (impl_->elapsed && impl_->elapsed->parentWidget())
+        impl_->elapsed->parentWidget()->hide();
+
+    QObject::connect(impl_->runClockTimer, &QTimer::timeout, this, [this] {
+        auto* current = findChild<QLabel*>(QStringLiteral("runtimeElapsed"));
+        auto* total = findChild<QLabel*>(QStringLiteral("runtimeTotal"));
+        auto* remaining = findChild<QLabel*>(QStringLiteral("runtimeRemaining"));
+        if (!current || !total || !remaining || !impl_->runClock.isValid()) return;
+        const qint64 elapsedMs = std::max<qint64>(0, impl_->runClock.elapsed());
+        current->setText(QStringLiteral("Текущее время: %1").arg(elapsedText(elapsedMs)));
+        const int percent = impl_->progress->value();
+        if (percent >= 5 && percent < 100) {
+            const qint64 estimatedTotal = elapsedMs * 100 / percent;
+            total->setText(QStringLiteral("Общая длительность: ≈ %1")
+                .arg(elapsedText(estimatedTotal)));
+            remaining->setText(QStringLiteral("Осталось: ≈ %1")
+                .arg(elapsedText(std::max<qint64>(0, estimatedTotal - elapsedMs))));
+        } else if (percent >= 100) {
+            total->setText(QStringLiteral("Общая длительность: %1").arg(elapsedText(elapsedMs)));
+            remaining->setText(QStringLiteral("Осталось: 00:00:00"));
+        } else {
+            total->setText(QStringLiteral("Общая длительность: —"));
+            remaining->setText(QStringLiteral("Осталось: —"));
+        }
+    });
 }
 
 TestPage::~TestPage() = default;
@@ -167,7 +231,7 @@ void TestPage::setProductionMode(bool enabled)
         ? QStringLiteral("Производственная сессия")
         : QStringLiteral("Проверка УБСИ по ТУ"));
     impl_->sessionSubtitle->setText(enabled
-        ? QStringLiteral("Один оператор может последовательно проверить несколько УБСИ. Выбранное изделие и маршрут сохраняются при переходе в испытательное окно.")
+        ? QStringLiteral("Выберите зарегистрированное УБСИ из registrar.db. Один оператор может последовательно проверить несколько изделий.")
         : QStringLiteral("Проверка по ТУ: оператор видит измерительные графики и итоговый вердикт; служебные калибровки остаются внутри сценария."));
     impl_->workflowBadge->setText(enabled
         ? QStringLiteral("ПРОИЗВОДСТВО")
@@ -178,7 +242,11 @@ void TestPage::setProductionMode(bool enabled)
 
     impl_->operatorCaption->setVisible(enabled);
     impl_->operatorEdit->setVisible(enabled);
-    impl_->addProduct->setVisible(enabled);
+    // Production never registers products from the test screen. The queue is
+    // populated from registrar.db by KtmaMainWindow. TU keeps one serial input.
+    impl_->serialCaption->setVisible(!enabled);
+    impl_->serialEdit->setVisible(!enabled);
+    impl_->addProduct->setVisible(false);
     impl_->productsPanel->setVisible(enabled);
     impl_->scopeButtons.value(QStringLiteral("ЯВП-8"))->setVisible(enabled);
     impl_->yalkSubPanel->setVisible(false);
@@ -219,6 +287,45 @@ void TestPage::setProductionMode(bool enabled)
     impl_->pages->setCurrentWidget(impl_->sessionPage);
     rebuildScopes();
     updateSelectionSummary();
+}
+
+void TestPage::setAvailableProductionProducts(const QStringList& serials)
+{
+    if (!impl_->productionMode) return;
+    const QString selected = impl_->productTable->currentRow() >= 0
+        ? impl_->productTable->item(impl_->productTable->currentRow(), 0)->text()
+        : QString();
+    QStringList unique = serials;
+    unique.removeDuplicates();
+    unique.sort(Qt::CaseInsensitive);
+
+    impl_->productTable->setRowCount(0);
+    int selectedRow = -1;
+    for (const QString& serial : unique) {
+        const int row = impl_->productTable->rowCount();
+        impl_->productTable->insertRow(row);
+        impl_->productTable->setItem(row, 0, new QTableWidgetItem(serial));
+        impl_->productTable->setItem(row, 1, new QTableWidgetItem(impl_->scopeDisplay()));
+        auto* status = new QTableWidgetItem(QStringLiteral("ОЖИДАЕТ"));
+        status->setForeground(QColor("#d7a95b"));
+        impl_->productTable->setItem(row, 2, status);
+        if (serial == selected) selectedRow = row;
+    }
+    if (selectedRow < 0 && impl_->productTable->rowCount() > 0) selectedRow = 0;
+    if (selectedRow >= 0) {
+        impl_->productTable->selectRow(selectedRow);
+        impl_->serialEdit->setText(impl_->productTable->item(selectedRow, 0)->text());
+    } else {
+        impl_->serialEdit->clear();
+    }
+    impl_->scenarioInfo->setText(unique.isEmpty()
+        ? QStringLiteral("В registrar.db нет зарегистрированных УБСИ. Регистрация выполняется в «Администрирование».")
+        : QStringLiteral("Доступно УБСИ из registrar.db: %1").arg(unique.size()));
+}
+
+QStringList TestPage::currentRequiredEquipment() const
+{
+    return impl_->scenarios.value(currentScenarioCode()).required;
 }
 
 void TestPage::rebuildScopes()
@@ -273,9 +380,6 @@ void TestPage::updateSelectionSummary()
         it.value()->setChecked(it.key() == scope);
     impl_->yalkSubPanel->setVisible(impl_->productionMode && scope == QStringLiteral("ЯЛК-96"));
 
-    // In production the visible cards are the source of truth. The hidden
-    // combo remains only as a compatibility bridge for legacy engineering
-    // actions; it is synchronised from the card selection, never the reverse.
     if (impl_->productionMode) {
         const QString code = productionScenarioForScope(scope);
         if (impl_->testCombo->count() != 1 || impl_->testCombo->currentData().toString() != code) {
@@ -285,6 +389,8 @@ void TestPage::updateSelectionSummary()
             impl_->testCombo->setCurrentIndex(0);
             impl_->testCombo->blockSignals(false);
         }
+        for (int row = 0; row < impl_->productTable->rowCount(); ++row)
+            impl_->productTable->item(row, 1)->setText(impl_->scopeDisplay());
     }
 
     const QString code = currentScenarioCode();
@@ -296,6 +402,21 @@ void TestPage::updateSelectionSummary()
     }
     impl_->includeYvpCheck->setChecked(scope == QStringLiteral("УБСИ ПО ТУ")
                                        || scope == QStringLiteral("ЯВП-8"));
+
+    const bool scenarioChanged = code != lastScenarioCode_;
+    if (scenarioChanged) lastScenarioCode_ = code;
+    const QSet<QString> required(info.required.cbegin(), info.required.cend());
+    for (auto it = impl_->equipmentRows.begin(); it != impl_->equipmentRows.end(); ++it) {
+        const bool visible = required.contains(it.key());
+        impl_->equipmentTable->setRowHidden(it->row, !visible);
+        if (scenarioChanged && visible && !it->operatorConfirmation) {
+            it->ready = false;
+            if (auto* state = impl_->equipmentTable->item(it->row, 3)) {
+                state->setText(QStringLiteral("НЕ ПРОВЕРЕНО"));
+                state->setForeground(QColor("#d7a95b"));
+            }
+        }
+    }
     updateStartAvailability();
 }
 
@@ -330,10 +451,10 @@ void TestPage::updateStartAvailability()
             : info.detail);
         impl_->readiness->setStyleSheet(QStringLiteral("color:#e1766d;font-weight:700;"));
     } else if (!ready) {
-        impl_->readiness->setText(QStringLiteral("Проверьте оборудование для выбранного сценария"));
+        impl_->readiness->setText(QStringLiteral("Проверьте оборудование, требуемое выбранным сценарием"));
         impl_->readiness->setStyleSheet(QStringLiteral("color:#d7a95b;font-weight:700;"));
     } else {
-        impl_->readiness->setText(QStringLiteral("Оборудование готово. Можно запускать проверку."));
+        impl_->readiness->setText(QStringLiteral("Оборудование выбранного сценария готово. Можно запускать проверку."));
         impl_->readiness->setStyleSheet(QStringLiteral("color:#70d79b;font-weight:700;"));
     }
 }
@@ -346,7 +467,12 @@ void TestPage::startSelectedTest()
         return;
     }
 
-    if (impl_->productionMode && impl_->productTable->currentRow() >= 0) {
+    if (impl_->productionMode) {
+        if (impl_->productTable->currentRow() < 0) {
+            QMessageBox::warning(this, QStringLiteral("УБСИ"),
+                QStringLiteral("Выберите зарегистрированное УБСИ из registrar.db."));
+            return;
+        }
         impl_->activeRow = impl_->productTable->currentRow();
         impl_->activeSerial = impl_->productTable->item(impl_->activeRow, 0)->text();
         impl_->serialEdit->setText(impl_->activeSerial);
@@ -358,7 +484,7 @@ void TestPage::startSelectedTest()
 
     if (impl_->activeSerial.isEmpty()) {
         QMessageBox::warning(this, QStringLiteral("УБСИ"),
-                             QStringLiteral("Введите заводской номер УБСИ."));
+                             QStringLiteral("Выберите заводской номер УБСИ."));
         return;
     }
     impl_->appendSessionRecord(QStringLiteral("START"));
@@ -376,6 +502,12 @@ void TestPage::setRunInProgress(bool running, const QString& stage)
         impl_->stopButton->setEnabled(true);
         impl_->progress->setRange(0, 100);
         impl_->footerStage->setText(stage.isEmpty() ? QStringLiteral("Выполняется…") : stage);
+        if (auto* label = findChild<QLabel*>(QStringLiteral("runtimeElapsed")))
+            label->setText(QStringLiteral("Текущее время: 00:00:00"));
+        if (auto* label = findChild<QLabel*>(QStringLiteral("runtimeTotal")))
+            label->setText(QStringLiteral("Общая длительность: —"));
+        if (auto* label = findChild<QLabel*>(QStringLiteral("runtimeRemaining")))
+            label->setText(QStringLiteral("Осталось: —"));
     } else {
         impl_->runClockTimer->stop();
         impl_->stopButton->setEnabled(false);
@@ -387,6 +519,16 @@ void TestPage::setRunEvent(const orbita::stand::RunEvent& event)
 {
     if (!impl_->runInProgress) return;
     const QString node = QString::fromStdString(event.nodeId);
+    auto setRouteDetail = [this](int index, const QString& detail) {
+        if (index < 0 || index >= impl_->stageLabels.size()) return;
+        auto* label = impl_->stageLabels[index];
+        if (!label->isVisible()) return;
+        const QString prefix = index == static_cast<int>(impl_->topStage)
+            ? QStringLiteral("▶")
+            : index < static_cast<int>(impl_->topStage) ? QStringLiteral("✓") : QStringLiteral("○");
+        label->setText(QStringLiteral("%1  %2. %3\n%4")
+            .arg(prefix).arg(index + 1).arg(routeStageName(index), detail));
+    };
 
     if (event.stage == "START") {
         if (impl_->productionMode) {
@@ -416,6 +558,15 @@ void TestPage::setRunEvent(const orbita::stand::RunEvent& event)
                 impl_->mapNode(node);
             }
         }
+        if (node.startsWith(QStringLiteral("yalk_")) && !node.startsWith(QStringLiteral("yvp_")))
+            setRouteDetail(static_cast<int>(TopStage::Yalk), yalkStepText(node));
+        else if (node.startsWith(QStringLiteral("ytp_")))
+            setRouteDetail(static_cast<int>(TopStage::Ytp), node.contains(QStringLiteral("channels"))
+                ? QStringLiteral("30 каналов · 0 / 120 / 240 Ом")
+                : node.contains(QStringLiteral("calibration"))
+                    ? QStringLiteral("Калибровка") : QStringLiteral("Подготовка потока"));
+        else if (node.startsWith(QStringLiteral("yvp_")))
+            setRouteDetail(static_cast<int>(TopStage::Yvp), QStringLiteral("ROKT · 8 каналов"));
         impl_->updateProgressByStage();
         return;
     }
@@ -441,7 +592,25 @@ void TestPage::setRunEvent(const orbita::stand::RunEvent& event)
         impl_->powerTrend->append(set, actual);
         impl_->powerSteps->setActiveValue(set);
         impl_->consumption->append(amperes);
+        setRouteDetail(static_cast<int>(TopStage::Power),
+            QStringLiteral("%1 В · %2 А").arg(actual, 0, 'f', 2).arg(amperes, 0, 'f', 3));
         impl_->updateProgressByStage();
+        return;
+    }
+
+    if (event.stage == "OVERLOAD") {
+        impl_->setTopStage(TopStage::Yalk);
+        impl_->setYalkPhase(YalkPhase::Overload);
+        const QString polarity = eventValue(event, "polarity");
+        const QString channel = eventValue(event, "stressed_channel");
+        const QString count = eventValue(event, "target_count");
+        impl_->overloadChannel->setText(channel.isEmpty() ? QStringLiteral("—") : channel);
+        impl_->overloadPolarity->setText(polarity.isEmpty() ? QStringLiteral("±12 В") : polarity);
+        setRouteDetail(static_cast<int>(TopStage::Yalk),
+            QStringLiteral("Перегрузка %1 · канал %2 / %3")
+                .arg(polarity.isEmpty() ? QStringLiteral("±12 В") : polarity,
+                     channel.isEmpty() ? QStringLiteral("—") : channel,
+                     count.isEmpty() ? QStringLiteral("88") : count));
         return;
     }
 
@@ -454,6 +623,8 @@ void TestPage::setRunEvent(const orbita::stand::RunEvent& event)
                 .arg(resistance, 0, 'f', 3));
         impl_->ytpOperatorBanner->setVisible(impl_->productionMode);
         impl_->ytpResistanceSteps->setActiveValue(resistance);
+        setRouteDetail(static_cast<int>(TopStage::Ytp),
+            QStringLiteral("Р4831 · %1 Ом").arg(resistance, 0, 'f', 0));
         impl_->updateProgressByStage();
         return;
     }
@@ -480,6 +651,9 @@ void TestPage::setRunEvent(const orbita::stand::RunEvent& event)
                              event.verdict == orbita::stand::RunVerdict::Ok,
                              csvNumbers(eventValue(event, "value_samples"))};
         impl_->ytpOverview->add(std::move(sample));
+        setRouteDetail(static_cast<int>(TopStage::Ytp),
+            QStringLiteral("Канал %1 / 30 · Р4831 %2 Ом")
+                .arg(channel).arg(ref, 0, 'f', 0));
         impl_->updateProgressByStage();
         return;
     }
@@ -504,6 +678,9 @@ void TestPage::setRunEvent(const orbita::stand::RunEvent& event)
             impl_->yalkDiscreteChannel->setText(address);
             impl_->yalkDiscrete->setCurrent(address, signal, expected);
             impl_->yalkDiscreteSteps->setActiveValue(command);
+            setRouteDetail(static_cast<int>(TopStage::Yalk),
+                QStringLiteral("Дискретные пороги · канал %1 · %2 В")
+                    .arg(address).arg(command, 0, 'f', 1));
         } else {
             impl_->yalkChannel->setText(address);
             impl_->yalkPoint->setText(QStringLiteral("%1 В").arg(command, 0, 'f', 1));
@@ -516,6 +693,9 @@ void TestPage::setRunEvent(const orbita::stand::RunEvent& event)
                                  event.verdict == orbita::stand::RunVerdict::Ok,
                                  csvNumbers(eventValue(event, "value_samples"))};
             impl_->yalkOverview->add(std::move(sample));
+            setRouteDetail(static_cast<int>(TopStage::Yalk),
+                QStringLiteral("Аналоговые · канал %1 · %2 В")
+                    .arg(address).arg(command, 0, 'f', 1));
         }
         impl_->updateProgressByStage();
     }
@@ -531,6 +711,14 @@ void TestPage::setRunResult(const orbita::stand::ScenarioRunResult& result,
     impl_->productionReportPath = productionReportPath;
     impl_->setTopStage(TopStage::Finish);
     impl_->progress->setValue(100);
+
+    const qint64 elapsedMs = impl_->runClock.isValid() ? impl_->runClock.elapsed() : 0;
+    if (auto* label = findChild<QLabel*>(QStringLiteral("runtimeElapsed")))
+        label->setText(QStringLiteral("Текущее время: %1").arg(elapsedText(elapsedMs)));
+    if (auto* label = findChild<QLabel*>(QStringLiteral("runtimeTotal")))
+        label->setText(QStringLiteral("Общая длительность: %1").arg(elapsedText(elapsedMs)));
+    if (auto* label = findChild<QLabel*>(QStringLiteral("runtimeRemaining")))
+        label->setText(QStringLiteral("Осталось: 00:00:00"));
 
     const QString verdict = verdictText(result.verdict);
     impl_->finishVerdict->setText(impl_->productionMode
