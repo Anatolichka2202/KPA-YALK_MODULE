@@ -267,6 +267,11 @@ void instantiateProfile(
         config["profile.active_outputs_confirmed"] = profile.activeOutputsConfirmed ? "true" : "false";
         for (const auto& [key, value] : profile.routes) config["route." + key] = value;
         auto device = manager.createDevice(definition.pluginId, definition.id, config);
+
+        // Resource identity and capability are separate dimensions. Component
+        // id is the stable default resource id; legacy scenarios still receive
+        // the old capability-only bindings below during the migration period.
+        registry.bindResource(definition.id, device);
         for (const auto& capability : definition.bindCapabilities) registry.bind(capability, device);
         devices.push_back(std::move(device));
     }
