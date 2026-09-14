@@ -1,6 +1,6 @@
 #pragma once
 
-#include "orbita_stand/yalk_analog_procedure.h"
+#include "orbita_stand/equipment_contracts.h"
 
 #include <cstdint>
 #include <memory>
