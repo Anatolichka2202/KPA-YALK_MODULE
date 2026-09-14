@@ -14,8 +14,9 @@ namespace orbita::stand {
 // provider обслуживает соответствующий kind.
 //
 // Текущие kind:
-//   equipment     — синхронное оборудование через Equipment Plugin ABI;
-//   sample_source — поток сырых отсчётов (например, E20-10 для liborbita).
+//   equipment          — синхронное оборудование через Equipment Plugin ABI;
+//   sample_source      — поток сырых отсчётов (например, E20-10 для liborbita);
+//   execution_runtime  — запуск внешнего/интерпретируемого стендового ПО.
 //
 // Модель намеренно строковая: будущие runtime/transport providers (Lua,
 // Python, external process, SSH, serial и т.п.) не должны требовать изменения
@@ -26,12 +27,17 @@ struct ComponentProfile {
     std::string provider;
     bool enabled = true;
 
-    // Логические точки подключения компонента к станции. Для legacy equipment
-    // сюда временно зеркалируются capability-id, но для новых component kinds
-    // binding — это роль ресурса, а не описание модели устройства.
+    // Логические station bindings/roles. Для новых equipment declarations это
+    // именно имена ресурсов (например, power.dut), а не capabilities плагина.
     std::vector<std::string> bindings;
 
     std::map<std::string, std::string> configuration;
+
+    // Для kind=equipment — capabilities, которые поставка экспортирует через
+    // compatibility/default routing. Поле добавлено в конец структуры, чтобы
+    // существующие aggregate initializers ComponentProfile не меняли смысл.
+    // Если поле пусто, старый профиль трактует `bind` как capability list.
+    std::vector<std::string> capabilities;
 };
 
 // Совместимость с текущим Equipment runtime. `devices:` остаётся допустимым
@@ -56,7 +62,7 @@ struct StandProfile {
     std::vector<ComponentProfile> components;
 
     // Legacy view для существующего Equipment runtime. Удаляется после
-    // миграции профилей поставок и instantiateProfile().
+    // миграции desktop и оставшихся capability-only consumers.
     std::vector<DeviceProfile> devices;
 
     std::map<std::string, std::string> routes;
