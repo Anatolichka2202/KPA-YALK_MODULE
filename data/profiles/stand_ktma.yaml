@@ -1,6 +1,6 @@
 schema: 1
 id: ktma-main
-version: 2026.09.14-universal-3
+version: 2026.09.14-universal-4
 title: Основной стенд КТМА, Windows 11
 
 # Общие активные воздействия разрешены только для уже подтверждённых устройств.
@@ -156,11 +156,6 @@ connections:
   yvp_signal_source: АКИП-1160/6 не участвует в сигнальном тракте ЯВП
 
 routes:
-  # Legacy compatibility для текущего desktop. Каноническая декларация E20-10
-  # находится в components/orbita-sample-input; после миграции desktop эти два
-  # route будут удалены.
-  orbita_e20_channel: 1
-  orbita_e20_rate_khz: 10000
   sensor_load_350ma:
     base: TODO_CONFIRM
     type: 2

@@ -55,18 +55,18 @@ decoded raw channel values
 - SQLite;
 - UI.
 
-## Переходный compatibility path
+## Физическая граница
 
-В публичном API пока остаются:
+Публичный API `liborbita` больше не содержит `setDeviceE2010()` или другого
+метода выбора АЦП. Библиотека получает данные только через:
 
 ```cpp
-setDeviceE2010(...)
-setDeviceNone()
+pushSamples(const std::vector<int16_t>& samples)
 ```
 
-Они нужны только существующему desktop-коду до переключения на station-owned
-`sample_source`. Новый код не должен использовать эти методы. После миграции
-старые `orbita/device/*` будут удалены из библиотеки.
+E20-10 реализован как station-level provider `miltech.sample.e2010` и зависит
+от Lusbapi на уровне `orbita_stand_adapters`. Сам target `orbita` не содержит
+E20 implementation и не линкуется с Lusbapi.
 
 ## API
 

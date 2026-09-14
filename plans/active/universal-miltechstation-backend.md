@@ -39,8 +39,8 @@ liborbita
   ↓ decoded Orbita values
 ```
 
-`liborbita` не должна выбирать E20-10 и не должна зависеть от Lusbapi после
-завершения миграции desktop.
+`liborbita` не выбирает E20-10 и не зависит от Lusbapi. E20-10 является
+station-level provider конкретной поставки.
 
 ## Этапы
 
@@ -78,21 +78,25 @@ liborbita
 
 ### 3. Источники сырых отсчётов
 
-Статус: **PARTIAL**
+Статус: **DONE**
 
 - [x] общий `ISampleSource` на уровне station;
 - [x] E20-10 реализован как station provider `miltech.sample.e2010`;
-- [x] `liborbita::pushSamples()` добавлен как независимый вход;
+- [x] `liborbita::pushSamples()` является независимым входом raw samples;
 - [x] `sample_source` подключён к `ComponentRuntime`;
 - [x] `E2010SampleSource::stop()` освобождает I/O events даже после аварийного
   завершения acquisition thread;
-- [x] `orbita_telemetry_probe` больше не создаёт E20 через `liborbita`: probe
-  загружает delivery profile, берёт `telemetry.orbita.sample_source` из
-  `ComponentRuntime` и подаёт raw samples в `Orbita::pushSamples()`;
-- [ ] desktop должен брать `telemetry.orbita.sample_source` из runtime;
-- [ ] удалить legacy `setDeviceE2010()/setDeviceNone()` из liborbita;
-- [ ] удалить `orbita/device/e2010_device.*` и старый `ISampleSource`;
-- [ ] удалить зависимость liborbita от Lusbapi.
+- [x] `orbita_telemetry_probe` загружает delivery profile, берёт
+  `telemetry.orbita.sample_source` из `ComponentRuntime` и подаёт raw samples в
+  `Orbita::pushSamples()`;
+- [x] desktop берёт `telemetry.orbita.sample_source` из station runtime и не
+  конфигурирует E20 через `liborbita`;
+- [x] удалены legacy `setDeviceE2010()/setDeviceNone()` из публичного API и
+  реализации liborbita;
+- [x] удалены `orbita/device/e2010_device.*` и старый liborbita-level
+  `ISampleSource`;
+- [x] target `orbita` больше не включает и не линкует Lusbapi; зависимость
+  остаётся только у station provider E20.
 
 ### 4. Запуск существующего стендового ПО
 
@@ -123,10 +127,10 @@ liborbita
 - [x] общие typed-контракты оборудования (`IIsdRouter`, `IVoltageSource`,
   `IReferenceVoltmeter`, `IProcedureWaiter`) вынесены из YALK-заголовка в
   `equipment_contracts.h`;
-- [x] desktop теперь явно объявляет зависимость от текущего KTMA/UBSI domain,
+- [x] desktop явно объявляет зависимость от текущего KTMA/UBSI domain,
   вместо получения её через generic runtime;
 - [x] UBSI production scenario test явно линкует текущий procedure domain,
-  поэтому generic runtime не требуется снова загрязнять KTMA-процедурами.
+  поэтому generic runtime не загрязнён KTMA-процедурами.
 
 Остаётся:
 
@@ -141,7 +145,7 @@ liborbita
 Статус: **PARTIAL / FIRST DELIVERY SLICE MIGRATED**
 
 Канонический профиль описывает component instance отдельно от provider.
-`EquipmentRegistry` и ScenarioEngine теперь имеют отдельный role/resource path:
+`EquipmentRegistry` и ScenarioEngine имеют отдельный role/resource path:
 
 ```text
 logical resource role
@@ -188,14 +192,16 @@ operation
 - [x] `ktma.ubsi.production.power` переведён на `power.dut` и
   `dut.parameter_source`; старые `ubsi.supply_range`/`ubsi.power_safe_off`
   используют выбранные роли без переписывания процедуры;
+- [x] `ktma.ubsi.production.full` переведён на delivery resources для
+  физических приборов;
 - [x] contract tests проверяют YAML parsing, missing-resource preflight,
-  transparent routing старого procedure invoke и роли production power;
+  transparent routing старого procedure invoke и роли production сценариев;
 - [x] component-profile contract test проверяет, что role не протекает в
   legacy capability view и что explicit capability сохраняется отдельно.
 
 Остаётся:
 
-- [ ] перевести остальные KTMA-сценарии на explicit resource + capability;
+- [ ] перевести остальные KTMA/TU-сценарии на explicit resource + capability;
 - [ ] procedures, которым действительно нужны два ресурса одинаковой
   capability, перевести на явный `invokeResource()`;
 - [ ] после миграции запретить неоднозначный default routing по capability.
@@ -226,7 +232,11 @@ station-level contracts для транспорта/remote session, когда �
   `ComponentRuntime`, EquipmentPluginManager/Registry и общим safe-stop;
 - [x] contract test проверяет configure/clear и автоматический выбор
   non-equipment component kinds из профиля;
-- [ ] переключить текущий desktop на `StationSession`;
+- [x] desktop больше не владеет E20 через `liborbita`; sample source создаётся
+  из station component profile;
+- [ ] переключить desktop с промежуточной ручной композиции на `StationSession`;
+- [ ] использовать узкий integration boundary для связи sample source ↔
+  protocol consumer вместо разрастания wiring в `MainWindow`;
 - [ ] убрать lifecycle оборудования из `MainWindow`;
 - [ ] product/delivery package подключать композицией, а не разрастанием
   `integration*()` protected API;
@@ -249,7 +259,10 @@ workflow.
 ## Текущий следующий шаг
 
 1. держать ветку зелёной через отдельный CI после каждого backend-среза;
-2. переключить desktop Orbita monitoring на station-owned `sample_source`;
-3. после этого физически удалить E20/Lusbapi из `liborbita`;
-4. параллельно переводить остальные KTMA scenario YAML на delivery roles;
-5. затем физически вынести UBSI/KTMA domain из общего `station` target.
+2. завершить application composition: desktop → `StationSession`, а связь
+   station sample source ↔ liborbita держать в integration boundary;
+3. физически вынести UBSI/YALK/KTMA procedures из generic `station` target;
+4. параллельно перевести оставшиеся KTMA/TU scenario YAML на delivery roles;
+5. связать `execution_runtime` с run/evidence, после чего подключать первый
+   реальный Python/Lua стенд без переписывания его логики;
+6. затем добавить transport/session contracts для serial/SSH/debug board flows.
