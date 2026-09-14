@@ -218,11 +218,22 @@ if(BUILD_TESTING)
 
     add_test(NAME desktop.test_page_power_yalk_event COMMAND test_page_power_yalk_event_test -platform offscreen)
 
+    add_executable(tu_flow_widget_test
+        tests/tu_flow_widget_test.cpp
+        tu_flow_widget.cpp
+        tu_flow_widget.h
+    )
+
+    target_include_directories(tu_flow_widget_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(tu_flow_widget_test PRIVATE Qt6::Core Qt6::Widgets)
+    add_test(NAME desktop.tu_flow_widget COMMAND tu_flow_widget_test -platform offscreen)
+
     get_filename_component(QT_TEST_PLUGIN_DIR "${Qt6_DIR}/../../../plugins" ABSOLUTE)
     set_tests_properties(
         desktop.test_page_smoke
         desktop.test_page_yvp_event
         desktop.test_page_power_yalk_event
+        desktop.tu_flow_widget
         PROPERTIES ENVIRONMENT "QT_PLUGIN_PATH=${QT_TEST_PLUGIN_DIR}"
     )
     if(WIN32)
@@ -230,6 +241,7 @@ if(BUILD_TESTING)
             desktop.test_page_smoke
             desktop.test_page_yvp_event
             desktop.test_page_power_yalk_event
+            desktop.tu_flow_widget
             PROPERTIES ENVIRONMENT_MODIFICATION
                 "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
         )
