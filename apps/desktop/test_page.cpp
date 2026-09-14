@@ -568,7 +568,7 @@ void TestPage::setRunEvent(const orbita::stand::RunEvent& event)
     if (event.stage == "POWER_YALK") {
         impl_->setTopStage(TopStage::Power);
         auto* status = findChild<QLabel*>(QStringLiteral("powerYalkStatus"));
-        auto* overview = findChild<ChannelOverview*>(QStringLiteral("powerYalkOverview"));
+        auto* overview = dynamic_cast<ChannelOverview*>(findChild<QWidget*>(QStringLiteral("powerYalkOverview")));
         const bool fresh = eventValue(event, "fresh") == QStringLiteral("true");
         const QString setpoint = eventValue(event, "setpoint_v");
         if (overview) {
