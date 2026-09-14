@@ -94,12 +94,38 @@ std::vector<std::string> affectedComponentTypes(ProductionPackage package)
     case ProductionPackage::Ytp:
         return {"YTP"};
     case ProductionPackage::Yvp:
-        // Current YVP transport is its own ROKT mode (0A 01 / 0A 03), not the
-        // obsolete YALK-address hypothesis. A YVP-only run therefore affects
-        // the YVP cell result only.
+        // The current YVP production backend measures the YVP cell through the
+        // confirmed V7 + ISD tract. It must not claim results for unrelated cells.
         return {"YVP"};
     }
     throw std::invalid_argument("unknown UBSI production package");
+}
+
+std::string productionStageDisplayName(registrar::Stage stage)
+{
+    using registrar::Stage;
+    switch (stage) {
+    case Stage::Primary:
+        return "Первичная проверка";
+    case Stage::ClimateNormal:
+        return "Климатические испытания — нормальные условия";
+    case Stage::ClimateMinus:
+        return "Климатические испытания — отрицательная температура";
+    case Stage::ClimatePlus:
+        return "Климатические испытания — повышенная температура";
+    case Stage::PottingClimateNormal:
+        return "После заливки — нормальные условия";
+    case Stage::PottingClimatePlus:
+        return "После заливки — повышенная температура";
+    case Stage::PottingClimateMinus:
+        return "После заливки — отрицательная температура";
+    case Stage::InitialElectrical:
+    case Stage::PostVibrationElectrical:
+    case Stage::PostClimateElectrical:
+    case Stage::FinalElectrical:
+        return registrar::toString(stage);
+    }
+    return registrar::toString(stage);
 }
 
 ProductionRunContext buildProductionRunContext(
