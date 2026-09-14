@@ -48,9 +48,16 @@ public:
         auto* normal = new QPushButton(QStringLiteral("Все в норме"));
         streamEnabled_ = new QCheckBox(QStringLiteral("Поток Адаптера"));
         streamEnabled_->setChecked(true);
+        timeScale_ = number(0.05, 0.001, 1.0, 3, QStringLiteral(" ×"));
+        timeScale_->setSingleStep(0.01);
+        timeScale_->setToolTip(QStringLiteral(
+            "Множитель технологических выдержек в режиме имитации. 0,05 = время ×1/20."));
         actions->addWidget(launch);
         actions->addWidget(normal);
         actions->addWidget(streamEnabled_);
+        actions->addSpacing(18);
+        actions->addWidget(new QLabel(QStringLiteral("Время")));
+        actions->addWidget(timeScale_);
         actions->addStretch();
         root->addLayout(actions);
 
@@ -58,6 +65,7 @@ public:
         tabs->addTab(makeCommonTab(), QStringLiteral("Оборудование"));
         tabs->addTab(makeYalkTab(), QStringLiteral("ЯЛК · 100 слов"));
         tabs->addTab(makeYtpTab(), QStringLiteral("ЯТП · 30 каналов"));
+        tabs->addTab(makeYvpTab(), QStringLiteral("ЯВП-8"));
         root->addWidget(tabs, 1);
 
         log_ = new QPlainTextEdit;
@@ -190,6 +198,48 @@ private:
         return page;
     }
 
+    QWidget* makeYvpTab()
+    {
+        auto* page = new QWidget;
+        auto* layout = new QVBoxLayout(page);
+        auto* columns = new QHBoxLayout;
+
+        auto* generator = new QGroupBox(QStringLiteral("Rigol CH1 · команды MilTech Station"));
+        auto* gf = new QFormLayout(generator);
+        generatorFrequencyLabel_ = new QLabel(QStringLiteral("—"));
+        generatorAmplitudeLabel_ = new QLabel(QStringLiteral("—"));
+        generatorOffsetLabel_ = new QLabel(QStringLiteral("—"));
+        generatorOutputLabel_ = new QLabel(QStringLiteral("ВЫКЛ"));
+        gf->addRow(QStringLiteral("Частота"), generatorFrequencyLabel_);
+        gf->addRow(QStringLiteral("Амплитуда"), generatorAmplitudeLabel_);
+        gf->addRow(QStringLiteral("Смещение"), generatorOffsetLabel_);
+        gf->addRow(QStringLiteral("Выход"), generatorOutputLabel_);
+        columns->addWidget(generator, 1);
+
+        auto* v7 = new QGroupBox(QStringLiteral("В7 · ответ имитатора"));
+        auto* vf = new QFormLayout(v7);
+        yvpAcReadback_ = new QLabel;
+        yvpFrequencyReadback_ = new QLabel;
+        vf->addRow(QStringLiteral("AC RMS"), yvpAcReadback_);
+        vf->addRow(QStringLiteral("Частота"), yvpFrequencyReadback_);
+        auto* note = new QLabel(QStringLiteral(
+            "При MILTECH_SIMULATION=1 ЯВП проходит виртуальные точки Rigol/V7 даже до подтверждения реальной карты ИСД. "
+            "Реальные контакты ИСД не подставляются, приёмочный критерий не применяется."));
+        note->setWordWrap(true);
+        vf->addRow(note);
+        columns->addWidget(v7, 1);
+        columns->addStretch();
+        layout->addLayout(columns);
+        layout->addStretch();
+
+        connect(acVoltage_, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+                this, [this](double) { updateYvpReadback(); });
+        connect(frequencyError_, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+                this, [this](double) { updateYvpReadback(); });
+        updateYvpReadback();
+        return page;
+    }
+
     QDoubleSpinBox* number(double value, double low, double high, int decimals, const QString& suffix)
     {
         auto* box = new QDoubleSpinBox;
@@ -223,12 +273,15 @@ private:
         auto* process = new QProcess(this);
         auto environment = QProcessEnvironment::systemEnvironment();
         environment.insert(QStringLiteral("MILTECH_STAND_PROFILE"), QStringLiteral("stand_ktma_simulator.yaml"));
-        environment.insert(QStringLiteral("MILTECH_TIME_SCALE"), QStringLiteral("0.01"));
+        environment.insert(QStringLiteral("MILTECH_SIMULATION"), QStringLiteral("1"));
+        environment.insert(QStringLiteral("MILTECH_TIME_SCALE"),
+                           QString::number(timeScale_->value(), 'f', 3));
         process->setProcessEnvironment(environment);
         process->setProgram(exe);
         process->setWorkingDirectory(QCoreApplication::applicationDirPath());
         process->startDetached();
-        appendLog(QStringLiteral("Запущена MilTech Station с локальным профилем, масштаб времени 1:100"));
+        appendLog(QStringLiteral("Запущена MilTech Station · протокольная имитация · время ×%1")
+            .arg(timeScale_->value(), 0, 'f', 3));
     }
 
     void setNormal()
@@ -239,6 +292,12 @@ private:
         for (int i = 0; i < 100; ++i) { yalkTable_->item(i, 1)->setText("0"); yalkTable_->item(i, 2)->setText(QStringLiteral("авто")); }
         overloadObserved_->setValue(30); overloadDeltaCode_->setValue(0);
         for (int i = 0; i < 30; ++i) ytpTable_->item(i, 1)->setText("0");
+        generatorFrequency_ = 1000.0;
+        generatorAmplitudeVpp_ = 0.0;
+        generatorOffsetV_ = 0.0;
+        generatorOutput_ = false;
+        updateYvpCommandLabels();
+        updateYvpReadback();
         appendLog(QStringLiteral("Установлен профиль «Все в норме»"));
     }
 
@@ -251,7 +310,7 @@ private:
                 adapterMode_ = quint8(bytes[5]) == 0x02 ? 2 : quint8(bytes[5]) == 0x00 ? 1 : 3;
                 appendLog(adapterMode_ == 1 ? QStringLiteral("Адаптер: поток ЯЛК 204")
                     : adapterMode_ == 2 ? QStringLiteral("Адаптер: поток ЯТП 68")
-                    : QStringLiteral("Адаптер: команда ЯВП (сырой формат пока не декодируется Station)"));
+                    : QStringLiteral("Адаптер: команда legacy ЯВП / ROKT"));
             } else if (bytes.size() == 3 && quint8(bytes[0]) == 0x44 && quint8(bytes[1]) == 0x01) {
                 adapterMode_ = quint8(bytes[2]) == 2 ? 4 : 1;
             }
@@ -382,13 +441,37 @@ private:
         else if (cmd=="MEAS:VOLT?") answer=QByteArray::number(supplyOutput_ ? supplySetVoltage_+voltageError_->value() : 0.0, 'g', 12);
         else if (cmd=="MEAS:CURR?" || cmd=="MEAS:CURR:DC?") answer=QByteArray::number(supplyOutput_ ? current_->value() : 0.0, 'g', 12);
         else if (cmd=="MEAS:VOLT:DC?") answer=QByteArray::number(referenceVoltage()+referenceError_->value(), 'g', 12);
-        else if (cmd=="MEAS:VOLT:AC?") answer=QByteArray::number(acVoltage_->value(), 'g', 12);
-        else if (cmd=="MEAS:FREQ?") answer=QByteArray::number(generatorFrequency_+frequencyError_->value(), 'g', 12);
-        else if (cmd.startsWith("SOUR1:APPL:SIN ")) generatorFrequency_=cmd.mid(15).split(',').value(0).toDouble();
-        else if (cmd=="OUTP1 ON") generatorOutput_=true;
-        else if (cmd=="OUTP1 OFF") generatorOutput_=false;
+        else if (cmd=="MEAS:VOLT:AC?") { answer=QByteArray::number(acVoltage_->value(), 'g', 12); updateYvpReadback(); }
+        else if (cmd=="MEAS:FREQ?") { answer=QByteArray::number(generatorFrequency_+frequencyError_->value(), 'g', 12); updateYvpReadback(); }
+        else if (cmd.startsWith("SOUR1:APPL:SIN ")) {
+            const auto values=cmd.mid(15).split(',');
+            generatorFrequency_=values.value(0).toDouble();
+            generatorAmplitudeVpp_=values.value(1).toDouble();
+            generatorOffsetV_=values.value(2).toDouble();
+            updateYvpCommandLabels();
+            updateYvpReadback();
+        }
+        else if (cmd=="OUTP1 ON") { generatorOutput_=true; updateYvpCommandLabels(); }
+        else if (cmd=="OUTP1 OFF") { generatorOutput_=false; updateYvpCommandLabels(); }
         else answer="ERR unsupported command";
         socket->write(answer+'\n'); socket->disconnectFromHost();
+    }
+
+    void updateYvpCommandLabels()
+    {
+        if (!generatorFrequencyLabel_) return;
+        generatorFrequencyLabel_->setText(QStringLiteral("%1 Гц").arg(generatorFrequency_, 0, 'f', 3));
+        generatorAmplitudeLabel_->setText(QStringLiteral("%1 Vpp").arg(generatorAmplitudeVpp_, 0, 'f', 3));
+        generatorOffsetLabel_->setText(QStringLiteral("%1 В").arg(generatorOffsetV_, 0, 'f', 3));
+        generatorOutputLabel_->setText(generatorOutput_ ? QStringLiteral("ВКЛ") : QStringLiteral("ВЫКЛ"));
+    }
+
+    void updateYvpReadback()
+    {
+        if (!yvpAcReadback_ || !acVoltage_ || !frequencyError_) return;
+        yvpAcReadback_->setText(QStringLiteral("%1 В RMS").arg(acVoltage_->value(), 0, 'f', 4));
+        yvpFrequencyReadback_->setText(QStringLiteral("%1 Гц")
+            .arg(generatorFrequency_ + frequencyError_->value(), 0, 'f', 3));
     }
 
     double referenceVoltage() const
@@ -408,12 +491,15 @@ private:
     std::array<double,100> yalkDirectCode_{}; std::array<bool,100> yalkDirectEnabled_{};
     std::array<bool,100> type3Enabled_{};
     double supplySetVoltage_=0, supplyCurrentLimit_=0, generatorFrequency_=1000;
+    double generatorAmplitudeVpp_=0, generatorOffsetV_=0;
     bool supplyOutput_=false, generatorOutput_=false;
     QCheckBox *streamEnabled_=nullptr,*isdOnline_=nullptr,*scpiOnline_=nullptr;
-    QDoubleSpinBox *current_=nullptr,*voltageError_=nullptr,*referenceError_=nullptr,*acVoltage_=nullptr,*frequencyError_=nullptr;
+    QDoubleSpinBox *timeScale_=nullptr,*current_=nullptr,*voltageError_=nullptr,*referenceError_=nullptr,*acVoltage_=nullptr,*frequencyError_=nullptr;
     QDoubleSpinBox *yalkNoise_=nullptr,*ytpResistance_=nullptr,*ytpNoise_=nullptr;
     QSpinBox *overloadObserved_=nullptr,*overloadDeltaCode_=nullptr;
     QLabel *supplyVoltage_=nullptr,*outputState_=nullptr;
+    QLabel *generatorFrequencyLabel_=nullptr,*generatorAmplitudeLabel_=nullptr,*generatorOffsetLabel_=nullptr,*generatorOutputLabel_=nullptr;
+    QLabel *yvpAcReadback_=nullptr,*yvpFrequencyReadback_=nullptr;
     QTableWidget *yalkTable_=nullptr,*ytpTable_=nullptr;
     QPlainTextEdit* log_=nullptr;
 };
