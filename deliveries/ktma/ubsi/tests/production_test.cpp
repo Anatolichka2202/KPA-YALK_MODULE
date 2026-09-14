@@ -98,7 +98,7 @@ void compositionContract()
     require(yvp.scenarioCode == "PROD_YVP", "YVP must use Production scenario");
     require(affected(yvp, "YVP"), "YVP package must affect YVP");
     require(!affected(yvp, "YALK-96") && !affected(yvp, "YTP") && !affected(yvp, "YP-P"),
-        "YVP ROKT package must not claim unrelated cells");
+        "YVP package must not claim unrelated cells");
 
     const auto power = ubsi::buildProductionRunContext(
         report, registrar::Stage::ClimateNormal, ubsi::ProductionPackage::PowerConsumption);
@@ -113,6 +113,12 @@ void compositionContract()
         "legacy Qt YTP code must resolve to Production YTP package");
     require(ubsi::productionPackageFromCode("ULK_COMBINED_CHECK") == ubsi::ProductionPackage::FullUbsi,
         "legacy Qt combined code must resolve to full Production package");
+
+    require(ubsi::productionStageDisplayName(registrar::Stage::Primary) == "Первичная проверка",
+        "Primary stage must have Russian operator name");
+    require(ubsi::productionStageDisplayName(registrar::Stage::ClimateMinus)
+            == "Климатические испытания — отрицательная температура",
+        "ClimateMinus stage must have Russian operator name without an invented temperature");
 }
 
 void mandatoryCompositionContract()
@@ -137,29 +143,48 @@ void ledgerContract()
     ubsi::ProductionLedger ledger(
         directory.filePath(QStringLiteral("registrar.db")).toStdString());
 
-    const auto context = ubsi::buildProductionRunContext(
-        completeProduct(), registrar::Stage::PottingClimatePlus,
+    auto firstContext = ubsi::buildProductionRunContext(
+        completeProduct(), registrar::Stage::ClimateMinus,
         ubsi::ProductionPackage::Yvp);
-    const auto id = ledger.begin(context);
-    auto record = ledger.get(id);
+    firstContext.stageComment = "−40 °C, цикл 1";
+    const auto firstId = ledger.begin(firstContext);
+    auto record = ledger.get(firstId);
     require(record.status == ubsi::ProductionRunStatus::InProgress,
         "new production run must be IN_PROGRESS");
     require(record.context.composition.size() == 4,
         "ledger must persist complete composition snapshot");
     require(affected(record.context, "YVP") && !affected(record.context, "YALK-96"),
-        "ledger must keep the YVP-only affected set for current ROKT transport");
+        "ledger must keep the YVP-only affected set");
+    require(record.context.stage == registrar::Stage::ClimateMinus,
+        "production stage not persisted");
+    require(record.context.stageComment == firstContext.stageComment,
+        "production stage comment not persisted");
 
-    ledger.attachRun(id, "scenario-run-1");
-    ledger.finish(id, ubsi::ProductionRunStatus::StandError);
-    record = ledger.get(id);
+    ledger.attachRun(firstId, "scenario-run-1");
+    ledger.finish(firstId, ubsi::ProductionRunStatus::StandError);
+    record = ledger.get(firstId);
     require(record.runId == "scenario-run-1", "ScenarioEngine run_id not persisted");
     require(record.status == ubsi::ProductionRunStatus::StandError,
         "STAND_ERROR must not collapse to Cancelled/Incomplete");
     require(!record.finishedAt.empty(), "finished timestamp missing");
 
+    auto secondContext = firstContext;
+    secondContext.stageComment = "−50 °C, цикл 2";
+    const auto secondId = ledger.begin(secondContext);
+    ledger.attachRun(secondId, "scenario-run-2");
+    ledger.finish(secondId, ubsi::ProductionRunStatus::Norm);
+
     const auto history = ledger.listForProduct("p1");
-    require(history.size() == 1 && history.front().id == id,
-        "product production history is incomplete");
+    require(history.size() == 2,
+        "one UBSI/cell package must allow repeated attempts of the same climate stage");
+    bool firstFound = false;
+    bool secondFound = false;
+    for (const auto& item : history) {
+        firstFound = firstFound || (item.id == firstId && item.context.stageComment == firstContext.stageComment);
+        secondFound = secondFound || (item.id == secondId && item.context.stageComment == secondContext.stageComment);
+    }
+    require(firstFound && secondFound,
+        "repeated climate attempts must keep their own comments");
 }
 
 bool databaseHasTable(const QString& path, const QString& table, const QString& connectionName)
@@ -203,9 +228,10 @@ void persistedLifecycleContract()
             registrar.installComponent(productId, componentId);
         }
 
-        const auto context = ubsi::buildProductionRunContext(
+        auto context = ubsi::buildProductionRunContext(
             registrar.productReport(productId), registrar::Stage::Primary,
             ubsi::ProductionPackage::Yalk);
+        context.stageComment = "входной контроль";
         ubsi::ProductionLedger ledger(registrarPath.toStdString());
         productionId = ledger.begin(context);
 
@@ -245,6 +271,8 @@ void persistedLifecycleContract()
         require(history.front().runId == scenarioRunId
                 && history.front().status == ubsi::ProductionRunStatus::Norm,
             "production verdict/run link did not survive database reopen");
+        require(history.front().context.stageComment == "входной контроль",
+            "production stage comment did not survive database reopen");
     }
 
     require(databaseHasTable(registrarPath, QStringLiteral("products"),
