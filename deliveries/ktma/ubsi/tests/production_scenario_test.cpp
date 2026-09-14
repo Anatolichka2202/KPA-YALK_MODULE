@@ -88,6 +88,21 @@ void verifyNode(const ScenarioNode& node, const StandProfile& profile)
     for (const auto& child : node.children) verifyNode(child, profile);
 }
 
+void verifyScenarioContracts(
+    const ScenarioDefinition& scenario,
+    const StandProfile& profile,
+    ScenarioEngine& engine,
+    const std::string& label)
+{
+    const auto errors = engine.validate(scenario);
+    if (!errors.empty()) {
+        std::string message = label + " scenario validation failed";
+        for (const auto& error : errors) message += "\n - " + error;
+        throw std::runtime_error(message);
+    }
+    for (const auto& node : scenario.steps) verifyNode(node, profile);
+}
+
 } // namespace
 
 int main()
@@ -118,26 +133,20 @@ int main()
             require(scenario.title.find(u8"Рџ") == std::string::npos
                     && scenario.title.find(u8"С‚") == std::string::npos,
                 "Production scenario title contains UTF-8/CP1251 mojibake: " + relative);
-            const auto errors = engine.validate(scenario);
-            if (!errors.empty()) {
-                std::string message = "Production scenario validation failed: " + relative;
-                for (const auto& error : errors) message += "\n - " + error;
-                throw std::runtime_error(message);
-            }
-            for (const auto& node : scenario.steps) verifyNode(node, profile);
+            verifyScenarioContracts(scenario, profile, engine, "Production");
         }
 
         const auto canonicalTu = loadScenarioYaml(
             std::string(KTMA_SOURCE_DIR) + "/data/scenarios/ubsi_ulk_combined_check.yaml");
         require(canonicalTu.publicationState == PublicationState::Published,
             "Canonical TU scenario must be published");
-        const auto tuErrors = engine.validate(canonicalTu);
-        if (!tuErrors.empty()) {
-            std::string message = "Canonical TU scenario validation failed";
-            for (const auto& error : tuErrors) message += "\n - " + error;
-            throw std::runtime_error(message);
-        }
-        for (const auto& node : canonicalTu.steps) verifyNode(node, profile);
+        verifyScenarioContracts(canonicalTu, profile, engine, "Canonical TU");
+
+        const auto yalkTu = loadScenarioYaml(
+            std::string(KTMA_SOURCE_DIR) + "/data/scenarios/ubsi_yalk_tu_5_6.yaml");
+        require(yalkTu.publicationState == PublicationState::Published,
+            "Standalone YALK TU scenario must be published");
+        verifyScenarioContracts(yalkTu, profile, engine, "Standalone YALK TU");
 
         std::cout << "KTMA UBSI production/TU resource contracts OK\n";
         return 0;

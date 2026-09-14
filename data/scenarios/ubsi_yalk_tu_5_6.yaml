@@ -1,7 +1,7 @@
 schema: 1
 id: ubsi.468157.002.yalk.tu5_6
 title: УБСИ · полная проверка ЯЛК-96 по ТУ 5.6
-version: 1.0.0
+version: 1.1.0
 catalog_version: 2026.08.29-yalk-1
 object_type: UBSI_468157_002
 state: published
@@ -13,6 +13,9 @@ steps:
     procedure: ubsi.supply_status
     requires:
       - power.dc_supply
+    resources:
+      - resource: power.dut
+        capability: power.dc_supply
     args:
       nominal_voltage_v: 27
       minimum_voltage_v: 24
@@ -28,6 +31,11 @@ steps:
     requires:
       - ulk.parameter_source
       - stand.switch_matrix
+    resources:
+      - resource: dut.parameter_source
+        capability: ulk.parameter_source
+      - resource: switch_matrix.primary
+        capability: stand.switch_matrix
     args:
       configure_settle_ms: 500
       timeout_ms: 3000
@@ -42,6 +50,13 @@ steps:
       - ulk.parameter_source
       - stand.switch_matrix
       - measure.reference_voltage
+    resources:
+      - resource: dut.parameter_source
+        capability: ulk.parameter_source
+      - resource: switch_matrix.primary
+        capability: stand.switch_matrix
+      - resource: measure.reference
+        capability: measure.reference_voltage
     args:
       channel_count: 80
       sample_count: 16
@@ -56,6 +71,11 @@ steps:
       - catalog.parameter_resolver
       - ulk.parameter_source
       - stand.switch_matrix
+    resources:
+      - resource: dut.parameter_source
+        capability: ulk.parameter_source
+      - resource: switch_matrix.primary
+        capability: stand.switch_matrix
     args:
       channel_count: 80
       sample_count: 4
@@ -71,6 +91,13 @@ steps:
       - ulk.parameter_source
       - stand.switch_matrix
       - measure.reference_voltage
+    resources:
+      - resource: dut.parameter_source
+        capability: ulk.parameter_source
+      - resource: switch_matrix.primary
+        capability: stand.switch_matrix
+      - resource: measure.reference
+        capability: measure.reference_voltage
     args:
       channel_count: 80
       point_volts: 0,3.1,6.2
@@ -89,6 +116,13 @@ steps:
       - ulk.parameter_source
       - stand.switch_matrix
       - measure.reference_voltage
+    resources:
+      - resource: dut.parameter_source
+        capability: ulk.parameter_source
+      - resource: switch_matrix.primary
+        capability: stand.switch_matrix
+      - resource: measure.reference
+        capability: measure.reference_voltage
     args:
       channel_count: 80
       point_volts: 0,0.9,2.5
@@ -106,6 +140,11 @@ steps:
     requires:
       - ulk.parameter_source
       - stand.switch_matrix
+    resources:
+      - resource: dut.parameter_source
+        capability: ulk.parameter_source
+      - resource: switch_matrix.primary
+        capability: stand.switch_matrix
     args:
       # KPA report.log: ИСД ш = type=3, источники 95/96 и каналы 1..88.
       mapping_confirmed: true
@@ -127,6 +166,11 @@ steps:
       - measure.reference_voltage
       - catalog.parameter_resolver
       - ulk.parameter_source
+    resources:
+      - resource: measure.reference
+        capability: measure.reference_voltage
+      - resource: dut.parameter_source
+        capability: ulk.parameter_source
     args:
       nominal_v: 6.2
       tolerance_v: 0.03
@@ -144,6 +188,13 @@ steps:
       - stand.switch_matrix
       - catalog.parameter_resolver
       - measure.reference_voltage
+    resources:
+      - resource: dut.parameter_source
+        capability: ulk.parameter_source
+      - resource: switch_matrix.primary
+        capability: stand.switch_matrix
+      - resource: measure.reference
+        capability: measure.reference_voltage
     args:
       channel_count: 80
       maximum_residual_voltage_v: 0.2
@@ -156,3 +207,6 @@ steps:
     procedure: ubsi.power_safe_off
     requires:
       - power.dc_supply
+    resources:
+      - resource: power.dut
+        capability: power.dc_supply
