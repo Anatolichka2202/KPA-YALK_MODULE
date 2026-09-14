@@ -1,5 +1,6 @@
 #include "orbita_stand/station_session.h"
 
+#include <stdexcept>
 #include <utility>
 
 namespace orbita::stand {
@@ -13,7 +14,26 @@ void StationSession::configure(
     try {
         equipmentPlugins_.loadDirectory(pluginDirectory);
         instantiateProfile(profile, equipmentPlugins_, equipment_, equipmentDevices_);
-        components_.instantiate(profile, componentKinds);
+
+        std::set<std::string> selectedKinds = componentKinds;
+        if (selectedKinds.count("equipment")) {
+            throw std::invalid_argument(
+                "StationSession equipment is owned by Equipment runtime during migration");
+        }
+        if (selectedKinds.empty()) {
+            // Empty selection means all non-equipment kinds for which the
+            // application/delivery actually registered a factory. Do not pass
+            // an empty set to ComponentRuntime because that means "all profile
+            // kinds" and would incorrectly attempt to instantiate equipment.
+            for (const auto& component : profile.components) {
+                if (component.kind != "equipment"
+                    && components_.hasKindFactory(component.kind)) {
+                    selectedKinds.insert(component.kind);
+                }
+            }
+        }
+        components_.instantiate(profile, selectedKinds);
+
         profile_ = std::move(profile);
         configured_ = true;
     } catch (...) {
