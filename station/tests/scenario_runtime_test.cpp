@@ -345,8 +345,8 @@ void configurationAndCatalog(const QString& root)
             "YTP must be a published six-stage powered manual-reference scenario");
     require(engine.validate(ytp120).empty() && ytp120.steps.size() == 6,
             "Fixed 120-ohm YTP scenario must validate");
-    require(engine.validate(combined).empty() && combined.steps.size() == 18,
-            "Canonical TU scenario must contain the accepted eighteen stages");
+    require(engine.validate(combined).empty() && combined.steps.size() == 16,
+            "Canonical TU scenario must contain the accepted sixteen stages");
     const auto combinedStep = [&combined](const std::string& id) -> const ScenarioNode* {
         const auto iterator = std::find_if(combined.steps.begin(), combined.steps.end(),
             [&id](const ScenarioNode& step) { return step.id == id; });
@@ -360,6 +360,11 @@ void configurationAndCatalog(const QString& root)
     const auto* referenceVoltage = combinedStep("yalk_reference_voltage");
     require(referenceVoltage && referenceVoltage->procedure == "ubsi.reference_voltage",
             "TU 1.1.4.9 must be measured by V7 and YALK, not external evidence");
+    const auto* yvpStep = combinedStep("yvp_channels");
+    require(yvpStep && yvpStep->procedure == "ubsi.yvp"
+                && yvpStep->requiredCapabilities.count("measure.reference_ac_voltage")
+                && !yvpStep->requiredCapabilities.count("ulk.parameter_source"),
+            "Canonical TU YVP must use the V7+ISD backend without the adapter");
     for (const auto& step : combined.steps) {
         require(step.procedure != "ubsi.external_evidence",
             "Canonical TU must not contain excluded external evidence");

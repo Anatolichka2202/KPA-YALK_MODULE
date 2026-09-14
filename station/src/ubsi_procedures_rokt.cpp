@@ -414,6 +414,9 @@ void registerUbsiProcedures(ScenarioEngine& engine)
     // Replace the legacy callback only to expose per-impact progress. The
     // measurement sequence, limits and safe-state behaviour stay identical.
     engine.registerProcedure("yalk.check_overload", yalkOverloadWithProgress);
+    engine.registerProcedure("yvp.rokt.enter_mode", yvpEnterMode);
+    engine.registerProcedure("yvp.rokt.channels", yvpRoktChannels);
+    engine.registerProcedure("yvp.rokt.safe_cleanup", yvpSafeCleanup);
     engine.registerProcedure("yvp.enter_mode", yvpEnterMode);
     engine.registerProcedure("yvp.safe_cleanup", yvpSafeCleanup);
 }

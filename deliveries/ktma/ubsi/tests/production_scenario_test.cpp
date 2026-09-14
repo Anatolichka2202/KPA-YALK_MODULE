@@ -32,14 +32,15 @@ void verifyNode(const ScenarioNode& node)
     }
     if (node.procedure == "ubsi.yvp") {
         const auto count = node.arguments.find("channel_count");
-        const auto cell = node.arguments.find("yvp_cell");
         require(count != node.arguments.end() && count->second == "8",
-            "YVP ROKT scenario must parse channel_count=8");
-        require(cell != node.arguments.end() && cell->second == "1",
-            "YVP ROKT scenario must parse yvp_cell=1");
-        require(node.arguments.find("yalk_address_min") == node.arguments.end()
-                && node.arguments.find("yalk_address_max") == node.arguments.end(),
-            "YVP ROKT scenario must not depend on obsolete YALK address bounds");
+            "YVP V7/ISD scenario must parse channel_count=8");
+        require(node.arguments.find("yvp_cell") == node.arguments.end()
+                && node.arguments.find("yalk_addresses") == node.arguments.end(),
+            "YVP V7/ISD scenario must not depend on adapter/YALK addressing");
+        require(node.requiredCapabilities.count("measure.reference_ac_voltage")
+                    && node.requiredCapabilities.count("measure.reference_frequency")
+                    && node.requiredCapabilities.count("stand.switch_matrix"),
+            "YVP V7/ISD scenario must require V7 and ISD capabilities");
     }
     for (const auto& child : node.children) verifyNode(child);
 }

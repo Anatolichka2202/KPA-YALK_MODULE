@@ -211,6 +211,17 @@ void procedureRuntimeContract()
                 "ulk.parameter_source:start_yvp_probe") == 1,
         "ROKT commissioning must not be selected by ubsi.yvp");
 
+    ContractEquipment roktBackendEquipment;
+    const auto roktBackendRun = engine.run(oneStep("yvp.rokt", {
+        {"channel_count", "8"}, {"yvp_cell", "1"}}),
+        roktBackendEquipment, "p", "", false);
+    require(roktBackendRun.verdict == RunVerdict::Incomplete,
+        "The retained adapter/ROKT backend must remain a diagnostic path");
+    require(std::count(roktBackendEquipment.operations.begin(),
+                       roktBackendEquipment.operations.end(),
+                       "ulk.parameter_source:start_yvp_channel_probe") == 8,
+        "The explicit yvp.rokt alias must execute the retained channel probe");
+
     ContractEquipment supplyEquipment;
     const auto supplyRun = engine.run(oneStep("ubsi.supply_range", {
         {"voltage_points_v", "24,27,35"},

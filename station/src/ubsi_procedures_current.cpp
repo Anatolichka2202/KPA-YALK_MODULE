@@ -659,6 +659,9 @@ void registerUbsiProcedures(ScenarioEngine& engine)
     // the legacy callback with the same id.
     engine.registerProcedure("ubsi.sensor_supply", sensorSupplyDisabled);
     engine.registerProcedure("ubsi.supply_range", supplyRangeCurrent);
+    // This is the adapter/ROKT implementation retained for commissioning.
+    // It must not own the production ubsi.yvp alias.
+    engine.registerProcedure("yvp.rokt", yvpCurrent);
     engine.registerProcedure("ubsi.yvp", yvpCurrent);
 }
 
