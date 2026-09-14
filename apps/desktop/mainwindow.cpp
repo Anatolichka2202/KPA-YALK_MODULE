@@ -70,8 +70,9 @@ MainWindow::MainWindow(QWidget* parent)
 
     initializeStandRuntime();
 
-    // E20 относится только к старому экрану телеметрии и открывается его
-    // явной кнопкой старта. Производственный контур УБСИ его не использует.
+    // Физический источник телеметрии принадлежит ComponentRuntime и открывается
+    // только по явному старту мониторинга. Производственный контур УБСИ его не
+    // обязан использовать.
 
     // Таймер обновления
     connect(updateTimer_, &QTimer::timeout, this, &MainWindow::updateData);
@@ -80,40 +81,29 @@ MainWindow::MainWindow(QWidget* parent)
     log("Система инициализирована. Выберите объект и вид испытания.");
 }
 
-bool MainWindow::initializeTelemetryDevice()
+bool MainWindow::initializeTelemetrySource()
 {
-    if (e20Available_) return true;
-
-    unsigned e20Channel = 0;
-    double e20RateKhz = 10000.0;
-    try {
-        if (const auto value = standProfile_.routes.find("orbita_e20_channel");
-            value != standProfile_.routes.end()) {
-            e20Channel = static_cast<unsigned>(std::stoul(value->second));
-        }
-        if (const auto value = standProfile_.routes.find("orbita_e20_rate_khz");
-            value != standProfile_.routes.end()) {
-            e20RateKhz = std::stod(value->second);
-        }
-    } catch (const std::exception& error) {
-        log(QStringLiteral("Профиль E20 некорректен, используется вход 0: %1")
-            .arg(QString::fromUtf8(error.what())));
-        e20Channel = 0;
-        e20RateKhz = 10000.0;
+    if (!telemetrySampleSource_) {
+        log(QStringLiteral("Источник отсчётов Орбиты не объявлен поставкой"));
+        return false;
     }
+    if (telemetrySampleSource_->isOpen()) return true;
 
-    // Инициализация устройства
     try {
-        orbita_->setDeviceE2010(e20Channel, e20RateKhz);
-        e20Available_ = true;
-        log(QStringLiteral("Устройство E20-10 найдено: вход %1, %2 кГц")
-            .arg(e20Channel).arg(e20RateKhz));
+        if (!telemetrySampleSource_->open()) {
+            log(QStringLiteral("Источник отсчётов Орбиты недоступен"));
+            return false;
+        }
+        const auto* definition = orbita::stand::findComponentByBinding(
+            standProfile_, "telemetry.orbita.sample_source");
+        const QString provider = definition
+            ? QString::fromStdString(definition->provider)
+            : QStringLiteral("sample_source");
+        log(QStringLiteral("Источник отсчётов Орбиты готов: %1").arg(provider));
         return true;
-    } catch (const std::exception& e) {
-        e20Available_ = false;
-        orbita_->setDeviceNone();
-        log(QString("E20-10 недоступно (%1). Режим без устройства.")
-                .arg(QString::fromLocal8Bit(e.what())));
+    } catch (const std::exception& error) {
+        log(QStringLiteral("Не удалось открыть источник отсчётов Орбиты: %1")
+            .arg(QString::fromUtf8(error.what())));
         return false;
     }
 }
@@ -123,6 +113,9 @@ MainWindow::~MainWindow()
     if (scenarioEngine_) scenarioEngine_->requestStop();
     if (scenarioWatcher_ && scenarioWatcher_->isRunning()) scenarioWatcher_->waitForFinished();
     if (equipmentRegistry_) equipmentRegistry_->safeStopAll();
+    if (telemetrySampleSource_) telemetrySampleSource_->stop();
+    if (orbita_ && orbita_->isRunning()) orbita_->stop();
+    if (componentRuntime_) componentRuntime_->safeStopAll();
 }
 
 void MainWindow::closeEvent(QCloseEvent* event)
@@ -805,6 +798,38 @@ void MainWindow::initializeStandRuntime()
             "MILTECH_STAND_PROFILE", QStringLiteral("stand_ktma.yaml"));
         standProfile_ = orbita::stand::loadStandProfile(
             root.filePath("profiles/" + profileName).toStdString());
+
+        // Общий station-level runtime создаёт только те составные части,
+        // которые уже переведены на component model. Equipment пока остаётся
+        // на существующем EquipmentRegistry до отдельного этапа миграции.
+        componentRuntime_ = std::make_unique<orbita::stand::ComponentRuntime>();
+        orbita::stand::registerSampleSourceComponents(*componentRuntime_);
+        try {
+            componentRuntime_->instantiate(standProfile_, {"sample_source"});
+            telemetrySampleSource_ = componentRuntime_->findAs<orbita::stand::ISampleSource>(
+                "telemetry.orbita.sample_source");
+            if (telemetrySampleSource_) {
+                telemetrySampleSource_->setSamplesCallback(
+                    [this](const std::vector<int16_t>& samples) {
+                        if (orbita_) orbita_->pushSamples(samples);
+                    });
+                telemetrySampleSource_->setErrorCallback(
+                    [this](const std::string& message) {
+                        QMetaObject::invokeMethod(this, [this, message] {
+                            log(QStringLiteral("Источник телеметрии: %1")
+                                .arg(QString::fromStdString(message)));
+                        }, Qt::QueuedConnection);
+                    });
+            } else {
+                log(QStringLiteral(
+                    "Поставка не объявляет binding telemetry.orbita.sample_source"));
+            }
+        } catch (const std::exception& error) {
+            telemetrySampleSource_ = nullptr;
+            log(QStringLiteral("Источник телеметрии не создан: %1")
+                .arg(QString::fromUtf8(error.what())));
+        }
+
         const QHash<QString, QString> equipmentCode = {
             {"ulk.parameter_source", "RS485"}, {"stand.switch_matrix", "ISD"},
             {"measure.reference_voltage", "V7"}, {"power.dc_supply", "AKIP"},
@@ -828,6 +853,11 @@ void MainWindow::initializeStandRuntime()
         equipmentPlugins_ = std::make_unique<orbita::stand::EquipmentPluginManager>();
         equipmentPlugins_->loadDirectory(root.filePath("plugins").toStdString());
         equipmentRegistry_ = std::make_unique<orbita::stand::EquipmentRegistry>();
+        equipmentRegistry_->bind("orbita.parameter_source",
+            [this](const std::string& operation,
+                   const std::map<std::string, std::string>& arguments) {
+                return invokeOrbitaParameterSource(operation, arguments);
+            });
         scenarioEngine_ = std::make_unique<orbita::stand::ScenarioEngine>();
         orbita::stand::registerUbsiProcedures(*scenarioEngine_);
         orbita::stand::registerTelemetryProcedures(*scenarioEngine_);
@@ -1022,6 +1052,11 @@ void MainWindow::onCheckTestEquipment()
     equipmentRegistry_->safeStopAll();
     equipmentRegistry_->clear();
     equipmentDevices_.clear();
+    equipmentRegistry_->bind("orbita.parameter_source",
+        [this](const std::string& operation,
+               const std::map<std::string, std::string>& arguments) {
+            return invokeOrbitaParameterSource(operation, arguments);
+        });
     const std::string catalogDatabase = QDir(QCoreApplication::applicationDirPath())
         .filePath(QStringLiteral("parameters.db")).toUtf8().toStdString();
     equipmentRegistry_->bind("catalog.parameter_resolver",
@@ -1231,11 +1266,14 @@ std::string MainWindow::invokeOrbitaParameterSource(
     const std::string& operation,
     const std::map<std::string, std::string>& arguments)
 {
-    if (!e20Available_) return "status=disconnected\ndiagnostic=E20-10 не открыт\n";
+    if (!telemetrySampleSource_ || !telemetrySampleSource_->isOpen()) {
+        return "status=disconnected\ndiagnostic=Источник отсчётов Орбиты не открыт\n";
+    }
     const auto channels = orbita_->getChannels();
     if (operation == "probe") {
         return "status=" + std::string(channels.empty() ? "not_configured" : "ready")
-            + "\nrunning=" + (orbita_->isRunning() ? "true" : "false")
+            + "\nrunning=" + (orbita_->isRunning() && telemetrySampleSource_->isRunning()
+                ? "true" : "false")
             + "\nchannel_count=" + std::to_string(channels.size()) + "\n";
     }
     if (channels.empty()) {
@@ -1243,7 +1281,7 @@ std::string MainWindow::invokeOrbitaParameterSource(
                "channel_count=0\nframes_processed=0\nphrase_error_percent=100\n"
                "group_error_percent=100\n";
     }
-    if (!orbita_->isRunning()) {
+    if (!orbita_->isRunning() || !telemetrySampleSource_->isRunning()) {
         return "status=not_running\ndiagnostic=Сбор Орбиты не запущен\n"
             "channel_count=" + std::to_string(channels.size()) + "\n"
             "frames_processed=0\nphrase_error_percent=100\ngroup_error_percent=100\n";
@@ -1457,11 +1495,16 @@ void MainWindow::setMode(int mode)
 // ----------------------------------------------------------------------------
 void MainWindow::onStart()
 {
+    bool decoderStarted = false;
     try {
-        if (!initializeTelemetryDevice()) {
-            throw std::runtime_error("E20-10 недоступно");
+        if (!initializeTelemetrySource()) {
+            throw std::runtime_error("Источник отсчётов Орбиты недоступен");
         }
         orbita_->start();
+        decoderStarted = true;
+        if (!telemetrySampleSource_->start()) {
+            throw std::runtime_error("Источник отсчётов не запустил сбор");
+        }
         elapsedTimer_.restart();
         isRunning_ = true;
         startBtn_->setEnabled(false);
@@ -1469,8 +1512,10 @@ void MainWindow::onStart()
         recordBtn_->setEnabled(true);
         statusLabel_->setText("● Сбор идёт");
         statusLabel_->setStyleSheet("color: #7fc79a; font-weight: 500;");
-        log("Старт сбора данных (E20-10)");
+        log("Старт сбора данных Орбиты через station sample_source");
     } catch (const std::exception& e) {
+        if (telemetrySampleSource_) telemetrySampleSource_->stop();
+        if (decoderStarted && orbita_->isRunning()) orbita_->stop();
         QMessageBox::critical(this, "Ошибка запуска", e.what());
         log("Ошибка запуска: " + QString::fromLocal8Bit(e.what()));
     }
@@ -1478,9 +1523,10 @@ void MainWindow::onStart()
 
 void MainWindow::onStop()
 {
+    if (isRecording_) onToggleRecording();
+    if (telemetrySampleSource_) telemetrySampleSource_->stop();
     orbita_->stop();
     isRunning_ = false;
-    if (isRecording_) onToggleRecording(); // остановить запись
     startBtn_->setEnabled(!currentSpecs_.empty());
     stopBtn_->setEnabled(false);
     recordBtn_->setEnabled(false);

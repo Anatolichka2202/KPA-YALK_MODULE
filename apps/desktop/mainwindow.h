@@ -20,6 +20,8 @@
 #include <QHash>
 
 #include "orbita_stand/config.h"
+#include "orbita_stand/component_runtime.h"
+#include "orbita_stand/sample_source.h"
 #include "orbita_stand/equipment_runtime.h"
 #include "orbita_stand/run_store.h"
 #include "orbita_stand/report_writer.h"
@@ -136,7 +138,7 @@ private:
     void log(const QString& msg);
     void updateStatusBar(const orbita::Snapshot& snap);
     void initializeStandRuntime();
-    bool initializeTelemetryDevice();
+    bool initializeTelemetrySource();
     void setEngineerMode(bool enabled);
     std::string invokeOrbitaParameterSource(
         const std::string& operation,
@@ -145,7 +147,8 @@ private:
     // Вспомогательные методы
     static int extractChannelNumber(const std::string& address);
 
-    // Ядро и БД
+    // Декодер протокола и БД. Физический источник отсчётов принадлежит
+    // ComponentRuntime станции, а не liborbita.
     std::unique_ptr<orbita::Orbita> orbita_;
     std::unique_ptr<MetadataService> dbProvider_;
     ToleranceResolver toleranceResolver_;
@@ -221,9 +224,13 @@ private:
     QAction* actScenario_ = nullptr;
     QMenu* toolsMenu_ = nullptr;
 
-    bool e20Available_ = false;
     bool ubsiEngineering_ = false;
     bool lastResultSaved_ = false;
+
+    // Общий station-level lifecycle компонентов. telemetrySampleSource_ —
+    // не владеющий указатель на экземпляр, принадлежащий componentRuntime_.
+    std::unique_ptr<orbita::stand::ComponentRuntime> componentRuntime_;
+    orbita::stand::ISampleSource* telemetrySampleSource_ = nullptr;
 
     std::unique_ptr<orbita::stand::EquipmentPluginManager> equipmentPlugins_;
     std::unique_ptr<orbita::stand::EquipmentRegistry> equipmentRegistry_;
