@@ -25,7 +25,12 @@ struct ComponentProfile {
     std::string kind;
     std::string provider;
     bool enabled = true;
-    std::vector<std::string> bindCapabilities;
+
+    // Логические точки подключения компонента к станции. Для legacy equipment
+    // сюда временно зеркалируются capability-id, но для новых component kinds
+    // binding — это роль ресурса, а не описание модели устройства.
+    std::vector<std::string> bindings;
+
     std::map<std::string, std::string> configuration;
 };
 
