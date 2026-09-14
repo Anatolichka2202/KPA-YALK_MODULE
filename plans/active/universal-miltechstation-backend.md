@@ -49,12 +49,18 @@ liborbita
 Статус: **DONE**
 
 - [x] `ComponentProfile` добавлен в `StandProfile`;
-- [x] новая секция `components:` загружается из профиля;
-- [x] legacy `devices:` временно зеркалируется как `kind=equipment`;
+- [x] секция `components:` загружается из профиля;
 - [x] KTMA декларирует E20-10 как `kind=sample_source`, provider
   `miltech.sample.e2010`;
-- [x] logical `bindings` отделены от equipment-specific capability модели;
-- [x] contract test проверяет реальный профиль КТМА.
+- [x] KTMA переведён на единую декларацию оборудования через
+  `components:` / `kind=equipment`;
+- [x] `devices:` больше не является вторым источником истины для KTMA;
+- [x] legacy `devices:` остаётся входным форматом для старых поставок;
+- [x] для существующего desktop загрузчик автоматически строит
+  `StandProfile::devices` из canonical equipment components;
+- [x] двойная декларация одного id одновременно в `components:` и `devices:`
+  отвергается;
+- [x] contract test проверяет реальный профиль КТМА и compatibility view.
 
 ### 2. Общий lifecycle компонентов
 
@@ -110,7 +116,11 @@ liborbita
 
 ### 6. Resource/role model оборудования
 
-Статус: **TODO**
+Статус: **TODO / NEXT BACKEND BOUNDARY**
+
+Канонический профиль уже описывает component instance отдельно от provider.
+Но для `kind=equipment` поле `bind` пока содержит capability-id ради
+совместимости с `EquipmentRegistry` и существующими сценариями.
 
 Текущий `EquipmentRegistry` адресует устройство capability-id и поэтому не
 может корректно представить два устройства с одной capability в разных ролях.
@@ -125,6 +135,8 @@ capabilities
 ```
 
 При этом сценарий обращается к роли, а runtime отдельно валидирует capability.
+Это нужно сделать до переноса PPB и других стендов, где одинаковые типы
+приборов могут использоваться в разных назначениях.
 
 ### 7. Serial / SSH / board debugging
 
@@ -169,7 +181,8 @@ workflow.
 
 ## Текущий следующий шаг
 
-1. дождаться первого полного CI и исправить compile/test regressions;
+1. держать ветку зелёной через отдельный CI после каждого backend-среза;
 2. переключить desktop Orbita monitoring на station-owned `sample_source`;
 3. после этого физически удалить E20/Lusbapi из `liborbita`;
-4. затем начать вынос UBSI/KTMA domain из общего `station` target.
+4. в backend отделить logical resource/role от capability;
+5. затем начать вынос UBSI/KTMA domain из общего `station` target.

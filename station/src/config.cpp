@@ -107,6 +107,20 @@ ComponentProfile asComponent(const DeviceProfile& device)
     return component;
 }
 
+DeviceProfile asDevice(const ComponentProfile& component)
+{
+    if (component.kind != "equipment") {
+        throw std::invalid_argument("Only equipment components can be projected as DeviceProfile");
+    }
+    DeviceProfile device;
+    device.id = component.id;
+    device.pluginId = component.provider;
+    device.enabled = component.enabled;
+    device.bindCapabilities = component.bindings;
+    device.configuration = component.configuration;
+    return device;
+}
+
 bool hasComponentId(const std::vector<ComponentProfile>& components, const std::string& id)
 {
     return std::any_of(components.begin(), components.end(),
@@ -155,19 +169,28 @@ StandProfile loadStandProfile(const std::string& path)
             if (hasComponentId(profile.components, component.id)) {
                 throw yaml::Error("Duplicate profile component id: " + component.id);
             }
+            if (component.kind == "equipment") {
+                // Existing desktop/equipment code still consumes DeviceProfile.
+                // The view is generated from the canonical component declaration;
+                // the delivery no longer needs to duplicate equipment in `devices:`.
+                profile.devices.push_back(asDevice(component));
+            }
             profile.components.push_back(std::move(component));
         }
     }
 
-    // `devices:` остаётся совместимым входом старой схемы. Каждый legacy device
-    // одновременно появляется в общей component model как kind=equipment.
+    // Backward-compatible input only. Legacy deliveries may still contain
+    // `devices:`, but one instance must be declared in exactly one section.
+    // Each legacy device is projected into the canonical component model.
     if (const auto* devices = root.find("devices")) {
         if (!devices->isSequence()) throw yaml::Error("Profile devices must be a sequence");
         for (const auto& value : devices->sequence) {
             auto device = deviceProfile(value);
-            if (!hasComponentId(profile.components, device.id)) {
-                profile.components.push_back(asComponent(device));
+            if (hasComponentId(profile.components, device.id)) {
+                throw yaml::Error(
+                    "Component/device is declared twice; use only components: for " + device.id);
             }
+            profile.components.push_back(asComponent(device));
             profile.devices.push_back(std::move(device));
         }
     }
@@ -226,22 +249,16 @@ void instantiateProfile(
     registry.clear();
     devices.clear();
 
-    // Старый runtime пока создаёт только equipment. При этом equipment уже
-    // можно описывать как новым `components:`/kind=equipment, так и legacy
-    // `devices:`. Это позволяет мигрировать поставки без Big Bang.
+    // loadStandProfile() already projects canonical kind=equipment components
+    // into profile.devices for compatibility. Keep the merge below for callers
+    // that construct StandProfile directly in C++ instead of loading YAML.
     std::vector<DeviceProfile> equipmentDefinitions = profile.devices;
     for (const auto& component : profile.components) {
         if (component.kind != "equipment") continue;
         const bool alreadyPresent = std::any_of(equipmentDefinitions.begin(), equipmentDefinitions.end(),
             [&](const DeviceProfile& device) { return device.id == component.id; });
         if (alreadyPresent) continue;
-        DeviceProfile device;
-        device.id = component.id;
-        device.pluginId = component.provider;
-        device.enabled = component.enabled;
-        device.bindCapabilities = component.bindings;
-        device.configuration = component.configuration;
-        equipmentDefinitions.push_back(std::move(device));
+        equipmentDefinitions.push_back(asDevice(component));
     }
 
     for (const auto& definition : equipmentDefinitions) {

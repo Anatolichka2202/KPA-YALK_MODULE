@@ -1,6 +1,6 @@
 schema: 1
 id: ktma-main
-version: 2026.09.14-universal-1
+version: 2026.09.14-universal-2
 title: Основной стенд КТМА, Windows 11
 
 # Общие активные воздействия разрешены только для уже подтверждённых устройств.
@@ -8,11 +8,9 @@ title: Основной стенд КТМА, Windows 11
 # но их активные команды блокируются самим плагином.
 active_outputs_confirmed: true
 
-# Универсальная component model станции. Новые station-level составные части
-# объявляются поставкой здесь, а не внутри liborbita или desktop.
-#
-# `devices:` ниже остаётся compatibility section существующего Equipment runtime
-# и по мере миграции будет сведена к kind=equipment components.
+# Каноническая декларация состава станции. Поставка описывает здесь как
+# физическое оборудование, так и station-level сервисы/источники. Legacy
+# DeviceProfile для текущего desktop строится загрузчиком автоматически.
 components:
   - id: orbita-sample-input
     kind: sample_source
@@ -24,6 +22,112 @@ components:
       channel: 1
       sample_rate_khz: 10000
       buffer_words: 1048576
+
+  - id: ubsi-adapter
+    kind: equipment
+    provider: orbita.ktma_adapter_udp
+    bind:
+      - ulk.parameter_source
+    config:
+      # ЯЛК: четыре подтверждённые ROKT-команды и кадры 204.
+      # ЯТП: общая адресация, затем ROKT 0A 02 00 01 00 и кадры 68 байт.
+      # ЯВП: ROKT 0A 01 / 0A 03; payload пока не декодирован.
+      # Архивный legacy mode6 (44 01 06, кадры 120/200) сохранён в плагине.
+      host: 192.168.0.115
+      local_address: 192.168.0.50
+      data_port: 1113
+      protocol: rokt_yalk
+      timeout_ms: 800
+      queue_capacity: 4096
+      record_root: records
+      ytp_protocol: rokt_ytp68
+      ytp_endpoint: 1
+      # 29.08.2026: ROKT дал 100 reference204 без unknown/drop/timeout.
+      device.active_commands_confirmed: true
+
+  - id: isd
+    kind: equipment
+    provider: orbita.isd_http
+    bind:
+      - stand.switch_matrix
+    config:
+      # ЯЛК: подготовка type=4/type=7, напряжение type=5 в вольтах с bus=1.
+      # Старый type=1 с целым кодом остаётся только для иных маршрутов ИСД.
+      host: 192.168.0.101
+      port: 80
+      timeout_ms: 1500
+      switch_type: 2
+      # Форматы type=1/2/3/4/5/7 подтверждены Delphi и KPA.
+      # Точная карта ЯВП type/num пока не подтверждена.
+      device.active_commands_confirmed: true
+
+  - id: v7-reference
+    kind: equipment
+    provider: orbita.v7_visa
+    bind:
+      - measure.reference_voltage
+      - measure.dc_current
+      - measure.reference_ac_voltage
+      - measure.reference_frequency
+    config:
+      resource: USB[0-9]*::0x164E::0x0DAD::?*INSTR
+      fallback_resource: USB[0-9]*::5710::3501::?*INSTR
+      timeout_ms: 2000
+      voltage_command: READ?
+      current_command: MEAS:CURR:DC?
+      ac_voltage_command: MEAS:VOLT:AC?
+      frequency_command: MEAS:FREQ?
+
+  - id: dc-supply
+    kind: equipment
+    provider: orbita.akip_1160_pair
+    bind:
+      - power.dc_supply
+    # 01.09.2026 один АКИП-1160/6 аппаратно идентифицирован на COM15.
+    # Назначение второго источника ипБИ добавляется через port_bi после *IDN?.
+    # 04.09.2026 подтверждено: источник питает УБСИ; новый прогон должен
+    # восстановить 27 В после обязательного OUTP OFF предыдущего прогона.
+    # Для ЯВП этот АКИП не является источником сигнального воздействия.
+    config:
+      port: COM15
+      baud: 115200
+      expected_idn: AKIP-1160/6
+      timeout_ms: 1200
+      require_both: false
+      current_limit_is_total: true
+      max_voltage_v: 60
+      # OVP must exceed the 37 V survival point. The factory/display value
+      # observed for this instrument family is 31 V, which rejects 35/37 V.
+      overvoltage_limit_v: 40
+      max_current_a: 10
+      device.active_commands_confirmed: true
+
+  - id: generator
+    kind: equipment
+    provider: orbita.rigol_generator
+    bind:
+      - signal.generator
+    # Физически подключён: CH1 → вывод З кабеля ЯВП 8-2.
+    # Автоматическое воздействие разрешено для commissioning ЯВП-8.
+    # Методика задаёт амплитуду именно в Vpp; аварийный OUTPUT OFF выполняется
+    # плагином при остановке и при любой ошибке сценария.
+    enabled: true
+    config:
+      resource: USB0::0x1AB1::0x0642::DG1ZA252402338::INSTR
+      timeout_ms: 2000
+      device.active_commands_confirmed: true
+
+  - id: oscilloscope
+    kind: equipment
+    provider: orbita.rigol_dho8xx
+    bind:
+      - measure.waveform
+    # Подключён к схеме, но автоматический канал пока не подтверждён.
+    enabled: false
+    config:
+      disabled_reason: Осциллограф подключён к схеме, но программный захват ещё не подтверждён
+      resource: USB[0-9]*::0x1AB1::?*::?*INSTR
+      timeout_ms: 4000
 
 # Фактическая кабельная схема стенда. ЯВП-тракт уточнён после сборки 11.09.2026.
 connections:
@@ -39,8 +143,8 @@ connections:
 
 routes:
   # Legacy compatibility для текущего desktop. Каноническая декларация E20-10
-  # теперь находится в components/orbita-sample-input и после миграции UI эти
-  # два route будут удалены.
+  # находится в components/orbita-sample-input; после миграции desktop эти два
+  # route будут удалены.
   orbita_e20_channel: 1
   orbita_e20_rate_khz: 10000
   sensor_load_350ma:
@@ -100,99 +204,3 @@ routes:
     type: 2
     bus: 0
     safe: off
-
-devices:
-  - id: ubsi-adapter
-    plugin: orbita.ktma_adapter_udp
-    bind:
-      - ulk.parameter_source
-    config:
-      # ЯЛК: четыре подтверждённые ROKT-команды и кадры 204.
-      # ЯТП: общая адресация, затем ROKT 0A 02 00 01 00 и кадры 68 байт.
-      # ЯВП: ROKT 0A 01 / 0A 03; payload пока не декодирован.
-      # Архивный legacy mode6 (44 01 06, кадры 120/200) сохранён в плагине.
-      host: 192.168.0.115
-      local_address: 192.168.0.50
-      data_port: 1113
-      protocol: rokt_yalk
-      timeout_ms: 800
-      queue_capacity: 4096
-      record_root: records
-      ytp_protocol: rokt_ytp68
-      ytp_endpoint: 1
-      # 29.08.2026: ROKT дал 100 reference204 без unknown/drop/timeout.
-      device.active_commands_confirmed: true
-  - id: isd
-    plugin: orbita.isd_http
-    bind:
-      - stand.switch_matrix
-    config:
-      # ЯЛК: подготовка type=4/type=7, напряжение type=5 в вольтах с bus=1.
-      # Старый type=1 с целым кодом остаётся только для иных маршрутов ИСД.
-      host: 192.168.0.101
-      port: 80
-      timeout_ms: 1500
-      switch_type: 2
-      # Форматы type=1/2/3/4/5/7 подтверждены Delphi и KPA.
-      # Точная карта ЯВП type/num пока не подтверждена.
-      device.active_commands_confirmed: true
-  - id: v7-reference
-    plugin: orbita.v7_visa
-    bind:
-      - measure.reference_voltage
-      - measure.dc_current
-      - measure.reference_ac_voltage
-      - measure.reference_frequency
-    config:
-      resource: USB[0-9]*::0x164E::0x0DAD::?*INSTR
-      fallback_resource: USB[0-9]*::5710::3501::?*INSTR
-      timeout_ms: 2000
-      voltage_command: READ?
-      current_command: MEAS:CURR:DC?
-      ac_voltage_command: MEAS:VOLT:AC?
-      frequency_command: MEAS:FREQ?
-  - id: dc-supply
-    plugin: orbita.akip_1160_pair
-    bind:
-      - power.dc_supply
-    # 01.09.2026 один АКИП-1160/6 аппаратно идентифицирован на COM15.
-    # Назначение второго источника ипБИ добавляется через port_bi после *IDN?.
-    # 04.09.2026 подтверждено: источник питает УБСИ; новый прогон должен
-    # восстановить 27 В после обязательного OUTP OFF предыдущего прогона.
-    # Для ЯВП этот АКИП не является источником сигнального воздействия.
-    config:
-      port: COM15
-      baud: 115200
-      expected_idn: AKIP-1160/6
-      timeout_ms: 1200
-      require_both: false
-      current_limit_is_total: true
-      max_voltage_v: 60
-      # OVP must exceed the 37 V survival point. The factory/display value
-      # observed for this instrument family is 31 V, which rejects 35/37 V.
-      overvoltage_limit_v: 40
-      max_current_a: 10
-      device.active_commands_confirmed: true
-  - id: generator
-    plugin: orbita.rigol_generator
-    bind:
-      - signal.generator
-    # Физически подключён: CH1 → вывод З кабеля ЯВП 8-2.
-    # Автоматическое воздействие разрешено для commissioning ЯВП-8.
-    # Методика задаёт амплитуду именно в Vpp; аварийный OUTPUT OFF выполняется
-    # плагином при остановке и при любой ошибке сценария.
-    enabled: true
-    config:
-      resource: USB0::0x1AB1::0x0642::DG1ZA252402338::INSTR
-      timeout_ms: 2000
-      device.active_commands_confirmed: true
-  - id: oscilloscope
-    plugin: orbita.rigol_dho8xx
-    bind:
-      - measure.waveform
-    # Подключён к схеме, но автоматический канал пока не подтверждён.
-    enabled: false
-    config:
-      disabled_reason: Осциллограф подключён к схеме, но программный захват ещё не подтверждён
-      resource: USB[0-9]*::0x1AB1::?*::?*INSTR
-      timeout_ms: 4000
