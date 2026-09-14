@@ -181,7 +181,7 @@ isRecording()
 
 Поставка декларирует состав станции в `StandProfile`.
 
-Новая общая модель:
+Общая модель:
 
 ```cpp
 struct ComponentProfile {
@@ -189,27 +189,30 @@ struct ComponentProfile {
     std::string kind;
     std::string provider;
     bool enabled;
-    std::vector<std::string> bindCapabilities;
+    std::vector<std::string> bindings;
     std::map<std::string, std::string> configuration;
 };
 ```
 
-`kind` задаёт тип station-level компонента, а `provider` — конкретную
-реализацию.
+`kind` задаёт тип station-level компонента, `provider` — конкретную
+реализацию, а `bindings` — логические роли, по которым остальные части станции
+находят компонент.
 
-Текущие значения:
+Сейчас реализованы следующие component kinds:
 
 ```text
 equipment
 sample_source
+execution_runtime
 ```
 
-Модель специально не ограничена enum: будущие Lua/Python/external-process
-runtime и SSH/serial transport могут добавляться как новые виды компонентов
-без изменения базового формата профиля.
+Модель специально не ограничена enum. Появление Python, Lua, replay source,
+SSH transport или другой составной части не должно требовать изменения базовой
+схемы профиля.
 
 Legacy-секция `devices:` пока поддерживается и зеркалируется в component
-model как `kind=equipment`.
+model как `kind=equipment`. Для этих legacy-компонентов существующие
+capability-id временно становятся их `bindings`.
 
 Пример декларации входа телеметрии КТМА:
 
@@ -222,7 +225,7 @@ components:
       - telemetry.orbita.sample_source
 ```
 
-Для поиска используются:
+Для чтения декларации без инстанцирования используются:
 
 ```cpp
 findComponentById(...)
@@ -231,7 +234,54 @@ findComponentByBinding(...)
 
 ---
 
-# 3. Sample Source API MilTechStation
+# 3. Component Runtime MilTechStation
+
+Код:
+
+```text
+station/include/orbita_stand/component_runtime.h
+```
+
+`ComponentRuntime` — общий lifecycle-контейнер station-level компонентов.
+Он не знает о конкретных E20, Python, Lua или SSH. Runtime знает только `kind`,
+для которого зарегистрирована фабрика, и передаёт ей соответствующий
+`ComponentProfile`.
+
+Базовая граница:
+
+```cpp
+class IStationComponent {
+public:
+    virtual std::string_view componentKind() const noexcept = 0;
+    virtual void safeStop() noexcept = 0;
+};
+```
+
+Основные операции runtime:
+
+```cpp
+registerKindFactory(kind, factory)
+instantiate(profile)
+instantiate(profile, selectedKinds)
+findById(id)
+findByBinding(binding)
+safeStopAll()
+clear()
+```
+
+`instantiate(profile, selectedKinds)` используется для поэтапной миграции:
+например, можно перевести `sample_source` на общий runtime, пока старое
+`equipment` всё ещё работает через `EquipmentRegistry`.
+
+Один logical binding не может одновременно принадлежать двум активным
+компонентам одного runtime. Такая конфигурация отвергается как неоднозначная.
+
+`clear()` и разрушение runtime выполняют best-effort `safeStop()` для уже
+созданных компонентов.
+
+---
+
+# 4. Sample Source API MilTechStation
 
 Код:
 
@@ -239,8 +289,8 @@ findComponentByBinding(...)
 station/include/orbita_stand/sample_source.h
 ```
 
-`ISampleSource` владеет жизненным циклом физического источника сырых
-отсчётов:
+`ISampleSource` является `IStationComponent` вида `sample_source` и владеет
+жизненным циклом физического источника сырых отсчётов:
 
 ```text
 open / close
@@ -258,9 +308,104 @@ miltech.sample.e2010
 Он реализован на уровне station adapters. `liborbita` знает только о входном
 потоке `int16` и не должна включать E20-10 в свою продуктовую модель.
 
+Регистрация component kind:
+
+```cpp
+registerSampleSourceComponents(componentRuntime)
+```
+
 ---
 
-# 4. Внутренний Equipment API MilTechStation
+# 5. Execution Runtime MilTechStation
+
+Код:
+
+```text
+station/include/orbita_stand/execution_runtime.h
+```
+
+Этот контракт нужен для существующего стендового ПО, которое разумнее сначала
+запускать как готовую программу/скрипт, а не переписывать под встроенный
+ScenarioEngine.
+
+Общий запрос:
+
+```cpp
+struct ExecutionRequest {
+    std::string target;
+    std::vector<std::string> arguments;
+    std::map<std::string, std::string> environment;
+    std::string workingDirectory;
+    int timeoutMs;
+};
+```
+
+Результат:
+
+```cpp
+struct ExecutionResult {
+    int exitCode;
+    bool started;
+    bool cancelled;
+    bool timedOut;
+    std::string standardOutput;
+    std::string standardError;
+};
+```
+
+`IExecutionRuntime` является station component вида:
+
+```text
+execution_runtime
+```
+
+и предоставляет:
+
+```cpp
+execute(request)
+cancel()
+isRunning()
+```
+
+Первый provider:
+
+```text
+miltech.exec.process
+```
+
+Он использует отдельный процесс, поддерживает рабочий каталог, environment,
+аргументы, stdout/stderr, timeout и остановку. Это базовый путь для подключения
+существующего Python-приложения, интерпретатора со скриптом либо автономной
+стендовой программы без встраивания её логики в MilTechStation.
+
+Конфигурация provider поддерживает:
+
+```text
+program
+entrypoint
+working_directory
+timeout_ms
+start_timeout_ms
+terminate_grace_ms
+```
+
+Если `program` задан, `target` запуска передаётся первым аргументом программе.
+Это позволяет, например, декларативно задать интерпретатор, а конкретный
+скрипт передавать через request. Если `program` не задан, `target` является
+самим исполняемым файлом.
+
+Регистрация component kind:
+
+```cpp
+registerExecutionRuntimeComponents(componentRuntime)
+```
+
+Embedded Lua/Python providers пока не реализованы. Они должны реализовать тот
+же lifecycle/result contract, а не вводить отдельный способ управления run.
+
+---
+
+# 6. Внутренний Equipment API MilTechStation
 
 Этот API используется сценарием и runtime станции.
 
@@ -326,6 +471,11 @@ Capability может быть связана:
 Это позволяет использовать один сценарный контракт независимо от того,
 находится реализация внутри процесса или во внешней библиотеке.
 
+Это текущий equipment-specific контракт. Общий `ComponentRuntime` не должен
+смешивать понятие capability прибора с logical binding компонента. Такое
+разделение потребуется, в частности, когда в одной поставке появятся несколько
+устройств с одинаковой capability, но разными ролями.
+
 ## Аргументы
 
 На C++ уровне аргументы представлены:
@@ -342,7 +492,7 @@ std::map<std::string, std::string>
 
 ---
 
-# 5. Граница API и требований
+# 7. Граница API и требований
 
 API отвечает:
 
