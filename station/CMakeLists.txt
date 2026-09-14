@@ -15,6 +15,7 @@ add_library(orbita_stand_domain STATIC
     src/ubsi_procedures.cpp
     src/ubsi_procedures_current.cpp
     src/ubsi_procedures_rokt.cpp
+    src/ubsi_procedures_power_live.cpp
     src/ubsi_procedures_yvp_v7.cpp
     src/ubsi_procedures_entry.cpp
     src/telemetry_procedures.cpp
@@ -216,12 +217,4 @@ target_link_libraries(yalk_full_probe PRIVATE orbita_stand_adapters)
 
 if(WIN32)
     add_executable(visa_discover tools/visa_discover.cpp)
-endif()
-
-if(WIN32)
-    add_executable(v7_probe tools/v7_probe.cpp)
-    target_link_libraries(v7_probe PRIVATE orbita_stand_adapters)
-    if(MINGW)
-        target_link_options(v7_probe PRIVATE -static -static-libgcc -static-libstdc++)
-    endif()
 endif()
