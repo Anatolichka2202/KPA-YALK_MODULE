@@ -56,6 +56,7 @@ add_library(stand_reporting ALIAS orbita_stand_reporting)
 add_library(orbita_stand_runtime STATIC
     src/config.cpp
     src/equipment_runtime.cpp
+    src/component_runtime.cpp
 )
 target_include_directories(orbita_stand_runtime PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_compile_features(orbita_stand_runtime PUBLIC cxx_std_17)
@@ -66,6 +67,7 @@ target_link_libraries(orbita_stand_runtime PUBLIC
 add_library(orbita_stand_adapters STATIC
     adapters/equipment_adapters.cpp
     adapters/e2010_sample_source.cpp
+    adapters/sample_source_registry.cpp
     adapters/v7_visa_voltmeter.cpp
     adapters/visa_instrument.cpp
     adapters/dho_waveform.cpp
@@ -82,7 +84,7 @@ target_include_directories(orbita_stand_adapters
 )
 target_compile_features(orbita_stand_adapters PUBLIC cxx_std_17)
 target_link_libraries(orbita_stand_adapters
-    PUBLIC orbita_stand_domain Qt6::Core Qt6::Network Qt6::SerialPort
+    PUBLIC orbita_stand_domain orbita_stand_runtime Qt6::Core Qt6::Network Qt6::SerialPort
 )
 if(WIN32)
     target_link_libraries(orbita_stand_adapters PUBLIC
@@ -118,6 +120,13 @@ if(BUILD_TESTING)
     target_link_libraries(component_profile_test PRIVATE orbita_stand_runtime Qt6::Core)
     add_test(NAME stand.component_profile COMMAND component_profile_test)
 
+    add_executable(component_runtime_test tests/component_runtime_test.cpp)
+    target_compile_definitions(component_runtime_test PRIVATE
+        ORBITA_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+    target_link_libraries(component_runtime_test PRIVATE
+        orbita_stand_runtime orbita_stand_adapters Qt6::Core)
+    add_test(NAME stand.component_runtime COMMAND component_runtime_test)
+
     add_executable(ubsi_backend_contract_test tests/ubsi_backend_contract_test.cpp)
     target_compile_definitions(ubsi_backend_contract_test PRIVATE
         ORBITA_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
@@ -130,6 +139,7 @@ if(BUILD_TESTING)
             stand.equipment_protocol
             stand.scenario_runtime
             stand.component_profile
+            stand.component_runtime
             PROPERTIES ENVIRONMENT_MODIFICATION "${_orbita_qt_test_path}")
     endif()
 endif()
