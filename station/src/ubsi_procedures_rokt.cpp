@@ -324,6 +324,7 @@ std::map<std::string, std::string> trafficData(
     std::map<std::string, std::string> data;
     for (const char* key : {"last_sequence", "service4", "fast120", "slow200",
                             "reference204", "ytp_legacy65", "ytp_rokt68",
+                            "yvp_rokt136", "yvp_channel_rokt132",
                             "unknown", "dropped"}) {
         const auto found = stats.find(key);
         if (found != stats.end()) data[key] = found->second;
@@ -346,14 +347,13 @@ ProcedureResult yvpEnterMode(const ScenarioNode& node, ProcedureContext& context
     auto data = trafficData(stats);
     data["cell"] = std::to_string(cell);
     data["active_command"] = "ROKT_0A_01";
-    data["decoder"] = enabled(node, "readout_yalk", true)
-        ? "yalk_slow200" : "unclassified";
+    data["decoder"] = "raw_unscaled";
     context.eventSink({std::chrono::system_clock::now(), node.id, "YVP_MODE",
         "ROKT 0A 01 отправлена; выбранный тракт чтения ЯВП через ЯЛК активирован",
         RunVerdict::Ok, std::move(data)});
 
     return {RunVerdict::Ok,
-        "Режим ЯВП включён командой ROKT 0A 01; поток готов для чтения ЯЛК",
+        "Режим ЯВП включён командой ROKT 0A 01; получен сырой поток ЯВП 136 байт",
         {}};
 }
 

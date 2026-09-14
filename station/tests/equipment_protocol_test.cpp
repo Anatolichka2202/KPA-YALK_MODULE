@@ -85,11 +85,15 @@ int main()
                     && UlkUdpTransport::classify(200) == UlkFrameKind::Slow200
                     && UlkUdpTransport::classify(204) == UlkFrameKind::Reference204
                     && UlkUdpTransport::classify(65) == UlkFrameKind::YtpLegacy65
-                    && UlkUdpTransport::classify(68) == UlkFrameKind::YtpRokt68,
+                    && UlkUdpTransport::classify(68) == UlkFrameKind::YtpRokt68
+                    && UlkUdpTransport::classify(136) == UlkFrameKind::YvpRokt136
+                    && UlkUdpTransport::classify(132) == UlkFrameKind::YvpChannelRokt132,
                 "ULK frame classifier is wrong");
         require(static_cast<unsigned>(UlkFrameKind::Unknown) == 4
                     && static_cast<unsigned>(UlkFrameKind::YtpLegacy65) == 5
-                    && static_cast<unsigned>(UlkFrameKind::YtpRokt68) == 6,
+                    && static_cast<unsigned>(UlkFrameKind::YtpRokt68) == 6
+                    && static_cast<unsigned>(UlkFrameKind::YvpRokt136) == 7
+                    && static_cast<unsigned>(UlkFrameKind::YvpChannelRokt132) == 8,
                 "ULK raw-record kind ids must remain backward compatible");
         const auto ytpStart = UlkUdpTransport::ytpRoktStartCommand(1);
         require(ytpStart.size() == 128

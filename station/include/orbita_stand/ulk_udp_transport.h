@@ -25,6 +25,8 @@ enum class UlkFrameKind : std::uint8_t {
     Unknown,
     YtpLegacy65,
     YtpRokt68,
+    YvpRokt136,
+    YvpChannelRokt132,
 };
 
 struct UlkFrame {
@@ -44,6 +46,8 @@ struct UlkStreamStats {
     std::uint64_t reference204 = 0;
     std::uint64_t ytpLegacy65 = 0;
     std::uint64_t ytpRokt68 = 0;
+    std::uint64_t yvpRokt136 = 0;
+    std::uint64_t yvpChannelRokt132 = 0;
     std::uint64_t unknown = 0;
     std::uint64_t dropped = 0;
 };

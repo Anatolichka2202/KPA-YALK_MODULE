@@ -495,6 +495,14 @@ struct UlkUdpTransport::Impl {
                     ++counters.ytpRokt68;
                     break;
 
+                case UlkFrameKind::YvpRokt136:
+                    ++counters.yvpRokt136;
+                    break;
+
+                case UlkFrameKind::YvpChannelRokt132:
+                    ++counters.yvpChannelRokt132;
+                    break;
+
                 case UlkFrameKind::Unknown:
                     ++counters.unknown;
                     break;
@@ -503,7 +511,9 @@ struct UlkUdpTransport::Impl {
                     || frame.kind == UlkFrameKind::Slow200
                     || frame.kind == UlkFrameKind::Reference204
                     || frame.kind == UlkFrameKind::YtpLegacy65
-                    || frame.kind == UlkFrameKind::YtpRokt68)
+                    || frame.kind == UlkFrameKind::YtpRokt68
+                    || frame.kind == UlkFrameKind::YvpRokt136
+                    || frame.kind == UlkFrameKind::YvpChannelRokt132)
                     counters.streaming = true;
                 if (queue.size() == config.queueCapacity) {
                     queue.pop_front();
@@ -689,6 +699,8 @@ UlkFrameKind UlkUdpTransport::classify(std::size_t size) noexcept
     if (size == 204) return UlkFrameKind::Reference204;
     if (size == 65) return UlkFrameKind::YtpLegacy65;
     if (size == 68) return UlkFrameKind::YtpRokt68;
+    if (size == 136) return UlkFrameKind::YvpRokt136;
+    if (size == 132) return UlkFrameKind::YvpChannelRokt132;
     return UlkFrameKind::Unknown;
 }
 
@@ -701,6 +713,8 @@ const char* toString(UlkFrameKind kind) noexcept
     case UlkFrameKind::Reference204: return "reference204";
     case UlkFrameKind::YtpLegacy65: return "ytp_legacy65";
     case UlkFrameKind::YtpRokt68: return "ytp_rokt68";
+    case UlkFrameKind::YvpRokt136: return "yvp_rokt136";
+    case UlkFrameKind::YvpChannelRokt132: return "yvp_channel_rokt132";
     case UlkFrameKind::Unknown: return "unknown";
     }
     return "unknown";

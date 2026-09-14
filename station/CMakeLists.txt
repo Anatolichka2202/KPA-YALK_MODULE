@@ -196,11 +196,8 @@ if(WIN32)
     add_executable(orbita_yvp_rokt_probe
         tools/yvp_rokt_probe.cpp
     )
-    target_link_libraries(orbita_yvp_rokt_probe PRIVATE orbita_stand_adapters)
-    if(MINGW)
-        target_link_options(orbita_yvp_rokt_probe PRIVATE
-            -static -static-libgcc -static-libstdc++)
-    endif()
+    target_link_libraries(orbita_yvp_rokt_probe PRIVATE
+        orbita_stand_adapters orbita_stand_runtime Qt6::Core)
 endif()
 
 add_executable(yalk_timing_probe tools/yalk_timing_probe.cpp)

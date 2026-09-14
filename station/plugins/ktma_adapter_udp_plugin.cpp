@@ -47,6 +47,8 @@ std::string statsText(const UlkStreamStats& stats)
         << "\nreference204=" << stats.reference204
         << "\nytp_legacy65=" << stats.ytpLegacy65
         << "\nytp_rokt68=" << stats.ytpRokt68
+        << "\nyvp_rokt136=" << stats.yvpRokt136
+        << "\nyvp_channel_rokt132=" << stats.yvpChannelRokt132
         << "\nunknown=" << stats.unknown
         << "\ndropped=" << stats.dropped << '\n';
     return out.str();
@@ -56,7 +58,7 @@ UlkFrame waitYalk(Instance& instance, std::uint64_t after, unsigned timeoutMs)
 {
     if (instance.cancelled.load()) throw std::runtime_error("Operation cancelled");
     if (instance.ytpPassive || instance.ytpLegacyMode2 || instance.ytpRokt68
-        || (instance.yvpProbe && !instance.yvpReadoutYalk)) {
+        || instance.yvpProbe) {
         throw std::runtime_error("Активен поток с другим форматом; декодер ЯЛК неприменим");
     }
     return instance.transport->waitFrame(
@@ -429,7 +431,7 @@ orbita_plugin_status_v1 invoke(void* value, const char* capability, const char* 
             instance.ytpPassive = false;
             instance.ytpLegacyMode2 = false;
             instance.ytpRokt68 = false;
-            instance.yvpReadoutYalk = plugin::booleanValue(args, "readout_yalk", true);
+            instance.yvpReadoutYalk = false;
             const unsigned cell = plugin::unsignedValue(args, "cell", 1);
             if (cell < 1 || cell > 255) {
                 throw std::invalid_argument("Номер ячейки ЯВП должен быть 1..255");
@@ -443,16 +445,16 @@ orbita_plugin_status_v1 invoke(void* value, const char* capability, const char* 
                     static_cast<std::uint8_t>(channel), static_cast<std::uint8_t>(cell));
                 instance.yvpProbe = true;
                 instance.selectedMode = -7;
-                return std::string("status=capturing\nprotocol=rokt_yvp_unclassified\n")
+                return std::string("status=capturing\nprotocol=rokt_yvp_channel_132\n")
                     + "active_command=ROKT_0A_03\nchannel=" + std::to_string(channel)
-                    + "\ncell=" + std::to_string(cell) + "\ndecoder=unconfirmed\n";
+                    + "\ncell=" + std::to_string(cell) + "\ndecoder=raw_u8_unscaled\n";
             }
             instance.transport->startYvpRokt(static_cast<std::uint8_t>(cell));
             instance.yvpProbe = true;
             instance.selectedMode = -6;
-            return std::string("status=capturing\nprotocol=rokt_yvp_unclassified\n")
+            return std::string("status=capturing\nprotocol=rokt_yvp_136\n")
                 + "active_command=ROKT_0A_01\ncell=" + std::to_string(cell)
-                + "\ndecoder=unconfirmed\n";
+                + "\ndecoder=raw_unscaled\n";
         }
         if (command == "start_stream" || command == "probe") {
             plugin::requireActiveOutputs(instance.config);
@@ -499,6 +501,53 @@ orbita_plugin_status_v1 invoke(void* value, const char* capability, const char* 
             return std::string("status=ok\n");
         }
         if (command == "stats") return statsText(instance.transport->stats());
+        if (command == "read_yvp_channel_raw") {
+            if (!instance.yvpProbe || instance.selectedMode != -7) {
+                throw std::runtime_error("Поток выбранного канала ЯВП не запущен");
+            }
+            const unsigned channel = plugin::unsignedValue(args, "channel");
+            if (channel < 1 || channel > 8)
+                throw std::invalid_argument("Номер канала ЯВП должен быть 1..8");
+            std::uint64_t after = plugin::unsignedValue(args, "after_sequence",
+                static_cast<unsigned>(instance.transport->stats().lastSequence));
+            const auto deadline = std::chrono::steady_clock::now()
+                + std::chrono::milliseconds(timeout(instance, args));
+            while (std::chrono::steady_clock::now() < deadline) {
+                const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    deadline - std::chrono::steady_clock::now());
+                const auto frame = instance.transport->waitFrame(
+                    UlkFrameKind::YvpChannelRokt132, after,
+                    std::max(std::chrono::milliseconds(1), remaining));
+                after = frame.sequence;
+                if (frame.payload.size() != 132 || frame.payload[0] != 0x03
+                    || frame.payload[1] != 0x00 || frame.payload[2] != 0x2D)
+                    continue;
+                if (frame.payload[3] != channel - 1) continue;
+
+                const auto first = frame.payload.begin() + 4;
+                const auto last = frame.payload.end();
+                const auto [minimum, maximum] = std::minmax_element(first, last);
+                const double mean = std::accumulate(first, last, 0.0)
+                    / static_cast<double>(std::distance(first, last));
+                std::ostringstream out;
+                out << std::setprecision(12)
+                    << "status=ready\nprotocol=rokt_yvp_channel_132"
+                    << "\nsequence=" << frame.sequence
+                    << "\nchannel=" << channel
+                    << "\nwire_channel=" << static_cast<unsigned>(frame.payload[3])
+                    << "\nraw_sample_count=" << std::distance(first, last)
+                    << "\nraw_min=" << static_cast<unsigned>(*minimum)
+                    << "\nraw_max=" << static_cast<unsigned>(*maximum)
+                    << "\nraw_mean=" << mean << "\nraw_samples=";
+                for (auto item = first; item != last; ++item) {
+                    if (item != first) out << ',';
+                    out << static_cast<unsigned>(*item);
+                }
+                out << '\n';
+                return out.str();
+            }
+            throw std::runtime_error("Тайм-аут ожидания кадра выбранного канала ЯВП");
+        }
         if (command == "read_channel" || command == "read") return readChannel(instance, args);
         if (command == "read_ytp_channel") return readYtpChannel(instance, args);
         if (command == "read_ytp_snapshot") {
