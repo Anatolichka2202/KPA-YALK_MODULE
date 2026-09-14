@@ -62,8 +62,10 @@ target_include_directories(MilTechStation PRIVATE
 
 target_link_libraries(MilTechStation PRIVATE
     orbita
-    orbita_stand_adapters
     orbita_stand_runtime
+    orbita_stand_adapters
+    orbita_stand_domain
+    orbita_stand_reporting
     ktma_registrar
     ktma_ubsi
     ktma_ubsi_reporting
