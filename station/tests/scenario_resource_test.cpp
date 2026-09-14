@@ -31,6 +31,7 @@ public:
         const std::string&,
         const std::map<std::string, std::string>&) override
     {
+        legacyInvoked = true;
         throw std::runtime_error("legacy capability routing must not be used");
     }
 
@@ -66,6 +67,7 @@ public:
 
     bool resourceReady = false;
     bool resourceInvoked = false;
+    bool legacyInvoked = false;
     bool stopped = false;
 };
 
@@ -120,13 +122,12 @@ int main(int argc, char** argv)
 
         ScenarioEngine engine;
         engine.registerProcedure("test.resource_read",
-            [](const ScenarioNode& step, ProcedureContext& context) {
-                const auto& requirement = step.requiredResources.front();
-                const auto response = context.equipment.invokeResource(
-                    requirement.resource,
-                    requirement.capability,
-                    "read_state",
-                    {});
+            [](const ScenarioNode&, ProcedureContext& context) {
+                // Existing procedures still call the capability-only API. The
+                // engine must transparently route this call through the unique
+                // logical resource declared by the current scenario node.
+                const auto response = context.equipment.invoke(
+                    "power.dc_supply", "read_state", {});
                 if (response.find("status=ready") == std::string::npos) {
                     throw std::runtime_error("resource response is not ready");
                 }
@@ -139,6 +140,8 @@ int main(int argc, char** argv)
                 "missing logical resource must make the run incomplete");
         require(!equipment.resourceInvoked,
                 "procedure must not run when required resource is unavailable");
+        require(!equipment.legacyInvoked,
+                "missing-resource preflight must happen before any legacy invoke");
 
         equipment.resourceReady = true;
         equipment.stopped = false;
@@ -146,7 +149,9 @@ int main(int argc, char** argv)
         require(ready.verdict == RunVerdict::Ok,
                 "available resource/capability must permit the procedure");
         require(equipment.resourceInvoked,
-                "procedure did not use resource-aware routing");
+                "legacy procedure invoke was not routed through the declared resource");
+        require(!equipment.legacyInvoked,
+                "declared resource must bypass ambiguous global capability routing");
         require(equipment.stopped,
                 "successful run must still safe-stop equipment");
 
