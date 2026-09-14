@@ -1,15 +1,20 @@
 schema: 1
 id: ktma.ubsi.production.yvp
 title: Производство УБСИ · ЯВП-8
-version: 1.1.0
+version: 1.2.0
 catalog_version: 2026.08.29-yalk-1
 object_type: UBSI_468157_002
 state: published
 
-# Текущий подтверждённый тракт ЯВП — отдельные ROKT-команды адаптера.
-# Команды выбора режима и каналов подтверждены, формат полезной нагрузки
-# ещё не декодирован. Поэтому этот сценарий проверяет управление/наличие
-# свежего UDP-трафика и обязан завершаться INCOMPLETE, а не выдуманным НОРМА.
+# Текущий подтверждённый тракт:
+# Rigol DG-1022Z CH1 → вывод З кабеля ЯВП 8-2 → ЯВП-8 → адаптер КТМА → ROKT/UDP.
+# Вывод Н и АКИП-1160/6 в сигнальном тракте ЯВП не участвуют.
+#
+# На текущем commissioning Rigol должен быть подключён и доступен по VISA,
+# но 1 В выставляется оператором вручную. Автоматические set_sine/output пока
+# запрещены профилем до подтверждения трактовки амплитуды (Vpp/peak/RMS).
+# Команды ROKT выбора режима/каналов подтверждены, payload ещё не декодирован.
+# Поэтому сценарий проверяет транспорт и обязан завершаться INCOMPLETE.
 steps:
   - id: supply_status
     title: Включение и контроль питания перед проверкой ЯВП
@@ -26,15 +31,20 @@ steps:
       startup_settle_ms: 500
 
   - id: yvp_mode
-    title: Перевод адаптера в режим ЯВП · ROKT 0A 01
+    title: Готовность Rigol и перевод адаптера в режим ЯВП · ROKT 0A 01
     tu: PRODUCTION / YVP / ROKT_MODE
     procedure: yvp.enter_mode
     requires:
       - ulk.parameter_source
+      - signal.generator
     args:
       yvp_cell: 1
       timeout_ms: 3000
       technical_retries: 3
+      stimulus_source: rigol_ch1
+      stimulus_nominal_v: 1
+      stimulus_control: manual
+      stimulus_amplitude_definition: TODO_CONFIRM
 
   - id: yvp_channels
     title: ЯВП-8 · выбор 8 каналов командой ROKT 0A 03 и контроль свежего UDP-трафика

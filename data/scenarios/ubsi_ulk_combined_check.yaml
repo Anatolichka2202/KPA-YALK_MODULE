@@ -1,7 +1,7 @@
 schema: 1
 id: ubsi.468157.002.ulk.combined.check
 title: УБСИ · полная проверка по ТУ
-version: 2.2.0
+version: 2.2.1
 catalog_version: 2026.08.29-yalk-1
 object_type: UBSI_468157_002
 state: published
@@ -9,6 +9,8 @@ state: published
 # Канонический current TU backend. Не добавлять сюда 1.1.4.4, 1.1.4.6,
 # поканальный ток, sensor_supply 350/450 мА или external-evidence gates.
 # Для ЯВП текущий подтверждённый transport — отдельные ROKT 0A 01 / 0A 03.
+# Физический источник воздействия ЯВП — Rigol DG-1022Z CH1 через вывод З.
+# На текущем commissioning Rigol только проверяется по VISA; 1 В задаётся вручную.
 # Полезная нагрузка ЯВП пока не декодирована, поэтому ЯВП завершает run как
 # INCOMPLETE и не выдаёт выдуманный приёмочный verdict.
 steps:
@@ -232,15 +234,20 @@ steps:
       isd_route_channels: 3,9,12,17
 
   - id: yvp_mode
-    title: Перевод адаптера в режим ЯВП · ROKT 0A 01
+    title: Готовность Rigol и перевод адаптера в режим ЯВП · ROKT 0A 01
     tu: 5.6 / ЯВП
     procedure: yvp.enter_mode
     requires:
       - ulk.parameter_source
+      - signal.generator
     args:
       yvp_cell: 1
       timeout_ms: 3000
       technical_retries: 3
+      stimulus_source: rigol_ch1
+      stimulus_nominal_v: 1
+      stimulus_control: manual
+      stimulus_amplitude_definition: TODO_CONFIRM
 
   - id: yvp_channels
     title: ЯВП-8 · выбор 8 каналов ROKT 0A 03 и контроль свежего UDP-трафика
