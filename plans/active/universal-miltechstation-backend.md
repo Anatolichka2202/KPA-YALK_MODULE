@@ -116,26 +116,42 @@ liborbita
 
 ### 6. Resource/role model оборудования
 
-Статус: **TODO / NEXT BACKEND BOUNDARY**
+Статус: **PARTIAL**
 
 Канонический профиль уже описывает component instance отдельно от provider.
-Но для `kind=equipment` поле `bind` пока содержит capability-id ради
-совместимости с `EquipmentRegistry` и существующими сценариями.
-
-Текущий `EquipmentRegistry` адресует устройство capability-id и поэтому не
-может корректно представить два устройства с одной capability в разных ролях.
-Нужно перейти к модели:
+Для `kind=equipment` поле `bind` пока содержит capability-id ради
+совместимости с существующими сценариями, но `EquipmentRegistry` уже получил
+отдельный role/resource path:
 
 ```text
-logical resource/role
+resource id
     ↓
-конкретный component instance
+конкретный equipment endpoint
     ↓
-capabilities
+capability
+    ↓
+operation
 ```
 
-При этом сценарий обращается к роли, а runtime отдельно валидирует capability.
-Это нужно сделать до переноса PPB и других стендов, где одинаковые типы
+Сделано:
+
+- [x] `bindResource(resourceId, ...)` для plugin device и built-in endpoint;
+- [x] несколько resources могут иметь одинаковую capability без перезаписи;
+- [x] `resourceHasCapability()` валидирует контракт выбранного ресурса;
+- [x] `invokeResource()` адресует конкретную роль и capability отдельно;
+- [x] `resources()` даёт introspection для UI/runtime;
+- [x] `safeStopAll()` учитывает role-bound plugin devices без двойного stop;
+- [x] contract test доказывает два независимых источника `power.dc_supply`.
+
+Остаётся:
+
+- [ ] связать resource id с canonical `ComponentProfile` автоматически;
+- [ ] расширить scenario schema: шаг должен уметь требовать logical role + capability;
+- [ ] перевести существующие KTMA-сценарии постепенно, сохраняя legacy
+  capability-only путь на время миграции;
+- [ ] после миграции запретить неоднозначный default routing по capability.
+
+Это нужно завершить до переноса PPB и других стендов, где одинаковые типы
 приборов могут использоваться в разных назначениях.
 
 ### 7. Serial / SSH / board debugging
@@ -182,7 +198,7 @@ workflow.
 ## Текущий следующий шаг
 
 1. держать ветку зелёной через отдельный CI после каждого backend-среза;
-2. переключить desktop Orbita monitoring на station-owned `sample_source`;
-3. после этого физически удалить E20/Lusbapi из `liborbita`;
-4. в backend отделить logical resource/role от capability;
+2. связать canonical equipment components с role/resource registry;
+3. переключить desktop Orbita monitoring на station-owned `sample_source`;
+4. после этого физически удалить E20/Lusbapi из `liborbita`;
 5. затем начать вынос UBSI/KTMA domain из общего `station` target.
