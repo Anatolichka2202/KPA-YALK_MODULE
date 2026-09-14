@@ -31,8 +31,8 @@ add_executable(MilTechStation
     metadata_service.h
     tolerance_resolver.h
     tolerance_resolver.cpp
-    watch_set_widget.cpp
     watch_set_widget.h
+    watch_set_widget.cpp
     parameter_browser.cpp
     parameter_browser.h
     encoding_utils.cpp
@@ -168,12 +168,33 @@ if(BUILD_TESTING)
 
     add_test(NAME desktop.test_page_smoke COMMAND test_page_smoke_test -platform offscreen)
 
+    add_executable(test_page_yvp_event_test
+        tests/test_page_yvp_event_test.cpp
+        test_page.cpp
+        test_page.h
+        equipment_control_widget.cpp
+        equipment_control_widget.h
+    )
+
+    target_include_directories(test_page_yvp_event_test PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_SOURCE_DIR}/orbita/include
+    )
+
+    target_link_libraries(test_page_yvp_event_test PRIVATE
+        orbita_stand_domain
+        Qt6::Core
+        Qt6::Widgets
+    )
+
+    add_test(NAME desktop.test_page_yvp_event COMMAND test_page_yvp_event_test -platform offscreen)
+
     get_filename_component(QT_TEST_PLUGIN_DIR "${Qt6_DIR}/../../../plugins" ABSOLUTE)
-    set_tests_properties(desktop.test_page_smoke PROPERTIES
+    set_tests_properties(desktop.test_page_smoke desktop.test_page_yvp_event PROPERTIES
         ENVIRONMENT "QT_PLUGIN_PATH=${QT_TEST_PLUGIN_DIR}"
     )
     if(WIN32)
-        set_tests_properties(desktop.test_page_smoke PROPERTIES
+        set_tests_properties(desktop.test_page_smoke desktop.test_page_yvp_event PROPERTIES
             ENVIRONMENT_MODIFICATION
                 "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
         )
