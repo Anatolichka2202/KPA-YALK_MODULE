@@ -33,6 +33,14 @@ bool flag(const ScenarioNode& node, const std::string& key, bool fallback = fals
     throw std::invalid_argument("Некорректный логический аргумент " + key);
 }
 
+bool environmentFlag(const char* name)
+{
+    const char* raw = std::getenv(name);
+    if (!raw) return false;
+    const std::string value(raw);
+    return value == "1" || value == "true" || value == "yes" || value == "on";
+}
+
 unsigned natural(const ScenarioNode& node, const std::string& key, unsigned fallback = 0)
 {
     const auto text = argument(node, key);
@@ -192,10 +200,9 @@ ProcedureResult yvpV7Isd(const ScenarioNode& node, ProcedureContext& context)
         throw std::invalid_argument("ЯВП V7/ИСД: не заданы коэффициенты или частоты методики");
     for (const double gain : gains) (void)gainKey(gain);
 
-    // Новый production backend намеренно не использует адаптер КТМА/ROKT для
-    // измерения. До подтверждения Э3-карты ИСД никакие активные коммутации и
-    // OUTPUT генератора не выполняются.
-    if (!flag(node, "mapping_confirmed")) {
+    const bool simulation = environmentFlag("MILTECH_SIMULATION");
+    const bool mappingConfirmed = flag(node, "mapping_confirmed");
+    if (!mappingConfirmed && !simulation) {
         return {RunVerdict::Incomplete,
             "ЯВП V7/ИСД: backend выбран, но карта ИСД (входы, КУ и CH89..CH96 -> В7) ещё не подтверждена; воздействие не выполнялось",
             {}};
@@ -203,6 +210,107 @@ ProcedureResult yvpV7Isd(const ScenarioNode& node, ProcedureContext& context)
     if (!flag(node, "active_outputs_confirmed")) {
         return {RunVerdict::Incomplete,
             "ЯВП V7/ИСД: активное воздействие Rigol не разрешено сценарием", {}};
+    }
+
+    const double capacitancePf = number(node, "coupling_capacitance_pf", 1000.0);
+    if (!(capacitancePf > 0.0))
+        throw std::invalid_argument("ЯВП V7/ИСД: coupling_capacitance_pf должен быть > 0");
+    const unsigned settleMs = natural(node, "settle_ms", 200);
+    const auto selectedChannels = commissioningChannels(node, channelCount);
+
+    auto generatorOff = [&] {
+        context.equipment.invoke("signal.generator", "output", {
+            {"channel", "1"}, {"enabled", "false"}});
+    };
+
+    ProcedureResult result{RunVerdict::Incomplete,
+        simulation && !mappingConfirmed
+            ? "Имитатор ЯВП: точки V7/Rigol выполнены без реальной карты ИСД и без приёмочного verdict"
+            : "ЯВП V7/ИСД: измерительная матрица выполнена без приёмочного verdict; критерии будут подключены после commissioning",
+        {}};
+
+    auto measurePoint = [&](unsigned channel, double gain, double frequency) {
+        const double inputVpp = yvpStimulusVppForGain(gain);
+        context.equipment.invoke("signal.generator", "set_sine", {
+            {"channel", "1"},
+            {"frequency_hz", std::to_string(frequency)},
+            {"amplitude_vpp", std::to_string(inputVpp)},
+            {"offset_v", "0"}});
+        context.equipment.invoke("signal.generator", "output", {
+            {"channel", "1"}, {"enabled", "true"}});
+        waitScaled(context, settleMs);
+
+        const double measuredRms = responseNumber(context.equipment.invoke(
+            "measure.reference_ac_voltage", "read_ac_voltage", {}), "volts");
+        std::string measuredFrequencyText;
+        std::string frequencyVerification;
+        if (frequency >= 10.0) {
+            measuredFrequencyText = std::to_string(responseNumber(
+                context.equipment.invoke(
+                    "measure.reference_frequency", "read_frequency", {}),
+                "hertz"));
+            frequencyVerification = "v7";
+        } else {
+            frequencyVerification = "unavailable_by_v7";
+        }
+        const double outputVpp = measuredRms * 2.0 * std::sqrt(2.0);
+        const double chargePc = yvpChargePc(capacitancePf, inputVpp);
+        const double calculatedGain = yvpGainMvPerPc(outputVpp, chargePc);
+
+        MeasurementResult point;
+        point.parameterKey = "ubsi.yvp.v7_isd." + std::to_string(channel + 1);
+        point.title = "ЯВП " + std::to_string(channel + 1)
+            + ": K=" + std::to_string(gain)
+            + " мВ/пКл, " + std::to_string(frequency) + " Гц";
+        point.reference = gain;
+        point.measured = calculatedGain;
+        point.lowerLimit = 0.0;
+        point.upperLimit = 0.0;
+        point.unit = "мВ/пКл";
+        point.verdict = RunVerdict::NotRun;
+        point.message = simulation && !mappingConfirmed
+            ? "Simulation: виртуальная точка Rigol/V7; карта ИСД и приёмочный критерий не применялись"
+            : "Commissioning: измерение В7 сохранено без приёмочного критерия";
+        point.attributes = {
+            {"backend", "v7_isd"},
+            {"yvp_channel", std::to_string(channel + 1)},
+            {"gain_mv_per_pc", std::to_string(gain)},
+            {"set_frequency_hz", std::to_string(frequency)},
+            {"measured_frequency_hz", measuredFrequencyText},
+            {"frequency_verification", frequencyVerification},
+            {"rigol_input_vpp", std::to_string(inputVpp)},
+            {"v7_output_vrms", std::to_string(measuredRms)},
+            {"v7_output_vpp", std::to_string(outputVpp)},
+            {"capacitance_pf", std::to_string(capacitancePf)},
+            {"charge_pc_from_commanded_vpp", std::to_string(chargePc)},
+            {"calculated_gain_mv_per_pc", std::to_string(calculatedGain)},
+            {"mapping_confirmed", mappingConfirmed ? "true" : "false"},
+            {"simulation", simulation ? "true" : "false"},
+            {"acceptance", "not_applied"}};
+        context.eventSink({std::chrono::system_clock::now(), node.id,
+            "YVP_V7_POINT", point.title, RunVerdict::NotRun, point.attributes});
+        result.measurements.push_back(std::move(point));
+        generatorOff();
+    };
+
+    // The simulator is allowed to exercise the operator HMI before the real E3
+    // route is confirmed. It never invents or executes real ISD contacts: only
+    // the virtual Rigol/V7 capabilities are driven, and acceptance stays NOT_RUN.
+    if (simulation && !mappingConfirmed) {
+        try {
+            generatorOff();
+            for (const unsigned channel : selectedChannels) {
+                for (const double gain : gains) {
+                    for (const double frequency : frequencies)
+                        measurePoint(channel, gain, frequency);
+                }
+            }
+            generatorOff();
+        } catch (...) {
+            try { generatorOff(); } catch (...) {}
+            throw;
+        }
+        return result;
     }
 
     const unsigned inputType = natural(node, "input_switch_type");
@@ -223,12 +331,6 @@ ProcedureResult yvpV7Isd(const ScenarioNode& node, ProcedureContext& context)
     for (const double gain : gains)
         gainMap[gain] = contacts(node, gainKey(gain), true);
 
-    const double capacitancePf = number(node, "coupling_capacitance_pf", 1000.0);
-    if (!(capacitancePf > 0.0))
-        throw std::invalid_argument("ЯВП V7/ИСД: coupling_capacitance_pf должен быть > 0");
-    const unsigned settleMs = natural(node, "settle_ms", 200);
-    const auto selectedChannels = commissioningChannels(node, channelCount);
-
     std::set<unsigned> allInputContacts;
     std::set<unsigned> allMeasurementContacts;
     std::set<unsigned> allGainContacts;
@@ -247,10 +349,6 @@ ProcedureResult yvpV7Isd(const ScenarioNode& node, ProcedureContext& context)
     const auto allMeasurements = asVector(allMeasurementContacts);
     const auto allGains = asVector(allGainContacts);
 
-    auto generatorOff = [&] {
-        context.equipment.invoke("signal.generator", "output", {
-            {"channel", "1"}, {"enabled", "false"}});
-    };
     auto safeReset = [&] {
         try { generatorOff(); } catch (...) {}
         try { setContacts(context, measurementType, allMeasurements, false); } catch (...) {}
@@ -258,10 +356,6 @@ ProcedureResult yvpV7Isd(const ScenarioNode& node, ProcedureContext& context)
         try { setContacts(context, inputType, allInputs, false); } catch (...) {}
         try { context.equipment.invoke("stand.switch_matrix", "full_reset", {}); } catch (...) {}
     };
-
-    ProcedureResult result{RunVerdict::Incomplete,
-        "ЯВП V7/ИСД: измерительная матрица выполнена без приёмочного verdict; критерии будут подключены после commissioning",
-        {}};
 
     try {
         safeReset();
@@ -273,67 +367,8 @@ ProcedureResult yvpV7Isd(const ScenarioNode& node, ProcedureContext& context)
                 generatorOff();
                 setContacts(context, gainType, allGains, false);
                 setContacts(context, gainType, gainMap.at(gain), true);
-                const double inputVpp = yvpStimulusVppForGain(gain);
-
-                for (const double frequency : frequencies) {
-                    context.equipment.invoke("signal.generator", "set_sine", {
-                        {"channel", "1"},
-                        {"frequency_hz", std::to_string(frequency)},
-                        {"amplitude_vpp", std::to_string(inputVpp)},
-                        {"offset_v", "0"}});
-                    context.equipment.invoke("signal.generator", "output", {
-                        {"channel", "1"}, {"enabled", "true"}});
-                    waitScaled(context, settleMs);
-
-                    const double measuredRms = responseNumber(context.equipment.invoke(
-                        "measure.reference_ac_voltage", "read_ac_voltage", {}), "volts");
-                    std::string measuredFrequencyText;
-                    std::string frequencyVerification;
-                    if (frequency >= 10.0) {
-                        measuredFrequencyText = std::to_string(responseNumber(
-                            context.equipment.invoke(
-                                "measure.reference_frequency", "read_frequency", {}),
-                            "hertz"));
-                        frequencyVerification = "v7";
-                    } else {
-                        frequencyVerification = "unavailable_by_v7";
-                    }
-                    const double outputVpp = measuredRms * 2.0 * std::sqrt(2.0);
-                    const double chargePc = yvpChargePc(capacitancePf, inputVpp);
-                    const double calculatedGain = yvpGainMvPerPc(outputVpp, chargePc);
-
-                    MeasurementResult point;
-                    point.parameterKey = "ubsi.yvp.v7_isd." + std::to_string(channel + 1);
-                    point.title = "ЯВП " + std::to_string(channel + 1)
-                        + ": K=" + std::to_string(gain)
-                        + " мВ/пКл, " + std::to_string(frequency) + " Гц";
-                    point.reference = gain;
-                    point.measured = calculatedGain;
-                    point.lowerLimit = 0.0;
-                    point.upperLimit = 0.0;
-                    point.unit = "мВ/пКл";
-                    point.verdict = RunVerdict::NotRun;
-                    point.message = "Commissioning: измерение В7 сохранено без приёмочного критерия";
-                    point.attributes = {
-                        {"backend", "v7_isd"},
-                        {"yvp_channel", std::to_string(channel + 1)},
-                        {"gain_mv_per_pc", std::to_string(gain)},
-                        {"set_frequency_hz", std::to_string(frequency)},
-                        {"measured_frequency_hz", measuredFrequencyText},
-                        {"frequency_verification", frequencyVerification},
-                        {"rigol_input_vpp", std::to_string(inputVpp)},
-                        {"v7_output_vrms", std::to_string(measuredRms)},
-                        {"v7_output_vpp", std::to_string(outputVpp)},
-                        {"capacitance_pf", std::to_string(capacitancePf)},
-                        {"charge_pc_from_commanded_vpp", std::to_string(chargePc)},
-                        {"calculated_gain_mv_per_pc", std::to_string(calculatedGain)},
-                        {"acceptance", "not_applied"}};
-                    context.eventSink({std::chrono::system_clock::now(), node.id,
-                        "YVP_V7_POINT", point.title, RunVerdict::NotRun, point.attributes});
-                    result.measurements.push_back(std::move(point));
-
-                    generatorOff();
-                }
+                for (const double frequency : frequencies)
+                    measurePoint(channel, gain, frequency);
             }
 
             generatorOff();
