@@ -1,5 +1,7 @@
 #pragma once
 
+#include "orbita_stand/equipment_contracts.h"
+
 #include <cstddef>
 #include <optional>
 #include <string>
@@ -58,40 +60,14 @@ struct YalkProcedureResult {
     std::string message;
 };
 
-class IIsdRouter {
-public:
-    virtual ~IIsdRouter() = default;
-    virtual void reset() = 0;
-    virtual void connectChannel(unsigned channel) = 0;
-    virtual void disconnectChannel(unsigned channel) = 0;
-};
-
-class IVoltageSource {
-public:
-    virtual ~IVoltageSource() = default;
-    virtual void setVoltage(double volts) = 0;
-    virtual void outputOn() = 0;
-    virtual void outputOff() = 0;
-};
-
-class IReferenceVoltmeter {
-public:
-    virtual ~IReferenceVoltmeter() = default;
-    virtual double readVoltage() = 0;
-};
-
+// YALK-specific reader contract stays with the YALK procedure because its
+// calibration and raw-code semantics are part of this delivery/domain model.
 class IYalkReader {
 public:
     virtual ~IYalkReader() = default;
     virtual YalkCalibration readCalibration(unsigned channel) = 0;
     virtual std::vector<double> readRawCodes(unsigned channel, std::size_t count) = 0;
     virtual bool readSignal(unsigned channel) = 0;
-};
-
-class IProcedureWaiter {
-public:
-    virtual ~IProcedureWaiter() = default;
-    virtual void waitMilliseconds(unsigned milliseconds) = 0;
 };
 
 class CheckYalkAnalogChannel {
