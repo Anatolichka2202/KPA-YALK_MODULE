@@ -23,7 +23,8 @@ ktma::ubsi::ProductionRunContext context()
     ktma::ubsi::ProductionRunContext value;
     value.productId = "product-1";
     value.productSerial = "UBSI-001";
-    value.stage = ktma::registrar::Stage::Primary;
+    value.stage = ktma::registrar::Stage::ClimateMinus;
+    value.stageComment = "−40 °C, цикл 1";
     value.package = ktma::ubsi::ProductionPackage::Yvp;
     value.scenarioCode = "PROD_YVP";
     value.composition = {
@@ -119,6 +120,15 @@ int main(int argc, char** argv)
         require(body.contains("<svg") && body.contains("400 мА")
                     && body.contains("Отклонения измерений"),
             "production report must contain current and measurement charts");
+        require(body.contains("Климатические испытания — отрицательная температура")
+                    && body.contains("−40 °C, цикл 1"),
+            "production report must contain Russian production stage and operator comment");
+
+        QFile csv(QString::fromStdString(paths.csv));
+        require(csv.open(QIODevice::ReadOnly), "cannot read production CSV");
+        const QByteArray csvBody = csv.readAll();
+        require(csvBody.contains("Комментарий этапа") && csvBody.contains("−40 °C, цикл 1"),
+            "production CSV must contain stage comment");
 
         std::cout << "KTMA UBSI production report contract OK\n";
         return 0;
