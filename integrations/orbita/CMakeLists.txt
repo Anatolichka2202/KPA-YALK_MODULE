@@ -26,4 +26,8 @@ if(BUILD_TESTING)
         orbita_stand_runtime
     )
     add_test(NAME integration.orbita_sample_bridge COMMAND orbita_sample_bridge_test)
+    if(WIN32)
+        set_tests_properties(integration.orbita_sample_bridge PROPERTIES
+            ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+    endif()
 endif()
