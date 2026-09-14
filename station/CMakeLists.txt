@@ -15,15 +15,20 @@ add_library(orbita_stand_domain STATIC
     src/ubsi_procedures.cpp
     src/ubsi_procedures_current.cpp
     src/ubsi_procedures_rokt.cpp
+    src/ubsi_procedures_v7.cpp
     src/telemetry_procedures.cpp
 )
 
-# Keep the validated legacy callbacks available, then layer current-delivery
-# overrides and finally the confirmed ROKT YVP control path.
+# Layer the historical implementation, current KTMA overrides and ROKT
+# commissioning helpers first. ubsi_procedures_v7.cpp owns the final public
+# registerUbsiProcedures() symbol and installs the production V7+ISD YVP alias
+# last, so `ubsi.yvp` can never silently fall back to the adapter/ROKT path.
 set_source_files_properties(src/ubsi_procedures.cpp PROPERTIES
     COMPILE_DEFINITIONS "registerUbsiProcedures=registerLegacyUbsiProcedures")
 set_source_files_properties(src/ubsi_procedures_current.cpp PROPERTIES
     COMPILE_DEFINITIONS "registerUbsiProcedures=registerCurrentUbsiProcedures")
+set_source_files_properties(src/ubsi_procedures_rokt.cpp PROPERTIES
+    COMPILE_DEFINITIONS "registerUbsiProcedures=registerRoktUbsiProcedures")
 
 target_include_directories(orbita_stand_domain
     PUBLIC
