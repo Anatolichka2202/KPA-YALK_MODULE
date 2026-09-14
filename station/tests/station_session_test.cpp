@@ -61,6 +61,56 @@ int main(int argc, char** argv)
                 "station component survived session clear");
         require(session.profile().id.empty(), "station profile survived session clear");
 
+        // A delivery may contain equipment whose construction must be delayed
+        // until the operator selects a scenario and the readiness flow establishes
+        // a safe power-up order. Deferred mode must therefore configure the
+        // session even when the corresponding equipment provider is unavailable.
+        auto deferredProfile = profile;
+        deferredProfile.id = "deferred-session-test";
+        deferredProfile.components.push_back(ComponentProfile{
+            "bench-power",
+            "equipment",
+            "missing.equipment.provider",
+            true,
+            {"power.dut"},
+            {},
+            {"power.dc_supply"},
+        });
+
+        StationSession deferred;
+        registerExecutionRuntimeComponents(deferred.components());
+        deferred.configure(
+            deferredProfile,
+            pluginDirectory.path().toUtf8().toStdString(),
+            {},
+            EquipmentInstantiation::Deferred);
+        require(deferred.configured(), "deferred station session was not configured");
+        require(deferred.profile().components.size() == 2,
+                "deferred station session lost equipment declaration");
+        require(deferred.equipmentDevices().empty(),
+                "deferred station session instantiated physical equipment");
+        require(deferred.equipment().resources().empty(),
+                "deferred station session exported equipment resources before readiness");
+        require(deferred.components().findAs<IExecutionRuntime>("runtime.legacy_bench") != nullptr,
+                "deferred station session did not instantiate non-equipment components");
+
+        StationSession immediate;
+        registerExecutionRuntimeComponents(immediate.components());
+        bool immediateRejectedMissingProvider = false;
+        try {
+            immediate.configure(
+                deferredProfile,
+                pluginDirectory.path().toUtf8().toStdString(),
+                {},
+                EquipmentInstantiation::Immediate);
+        } catch (const std::exception&) {
+            immediateRejectedMissingProvider = true;
+        }
+        require(immediateRejectedMissingProvider,
+                "immediate equipment mode accepted a missing equipment provider");
+        require(!immediate.configured(),
+                "failed immediate configuration left session marked configured");
+
         std::cout << "station session contract OK\n";
         return 0;
     } catch (const std::exception& error) {

@@ -11,6 +11,15 @@
 
 namespace orbita::stand {
 
+// Equipment instances may be created immediately from the profile or deferred
+// until an application readiness/commissioning flow selects and probes the
+// concrete devices it actually needs. Deferred mode is important for stations
+// where device construction claims ports or where power/boot ordering matters.
+enum class EquipmentInstantiation {
+    Immediate,
+    Deferred,
+};
+
 // Application-neutral composition/lifecycle root for one configured station.
 // UI code should depend on this object instead of owning plugin manager,
 // equipment registry, devices and component runtime independently.
@@ -46,13 +55,24 @@ public:
 
     // `componentKinds` intentionally excludes equipment while the Equipment
     // Plugin ABI is still on its compatibility runtime. Empty means "all
-    // registered/non-equipment kinds in the profile" and is therefore best
-    // avoided during the staged migration; callers should normally pass an
-    // explicit set such as {"sample_source", "execution_runtime"}.
+    // registered/non-equipment kinds in the profile".
+    //
+    // Immediate preserves the original StationSession behaviour. Deferred
+    // loads plugin providers and non-equipment components but leaves physical
+    // equipment uninstantiated so a readiness flow can create only the devices
+    // required by the selected scenario and in the required power-up order.
     void configure(
         StandProfile profile,
         const std::string& pluginDirectory,
-        const std::set<std::string>& componentKinds);
+        const std::set<std::string>& componentKinds,
+        EquipmentInstantiation equipmentInstantiation = EquipmentInstantiation::Immediate);
+
+    // Used by deferred readiness flows after they create/probe a device through
+    // equipmentPlugins(). The registry owns devices that are bound, while this
+    // retention list also keeps successfully created but intentionally unbound
+    // devices alive until the next equipment reset/session clear.
+    void retainEquipmentDevice(std::shared_ptr<EquipmentDevice> device);
+    void clearEquipment() noexcept;
 
     void safeStopAll() noexcept;
     void clear() noexcept;

@@ -1,5 +1,6 @@
 #include "orbita_stand/station_session.h"
 
+#include <algorithm>
 #include <stdexcept>
 #include <utility>
 
@@ -8,12 +9,15 @@ namespace orbita::stand {
 void StationSession::configure(
     StandProfile profile,
     const std::string& pluginDirectory,
-    const std::set<std::string>& componentKinds)
+    const std::set<std::string>& componentKinds,
+    EquipmentInstantiation equipmentInstantiation)
 {
     clear();
     try {
         equipmentPlugins_.loadDirectory(pluginDirectory);
-        instantiateProfile(profile, equipmentPlugins_, equipment_, equipmentDevices_);
+        if (equipmentInstantiation == EquipmentInstantiation::Immediate) {
+            instantiateProfile(profile, equipmentPlugins_, equipment_, equipmentDevices_);
+        }
 
         std::set<std::string> selectedKinds = componentKinds;
         if (selectedKinds.count("equipment")) {
@@ -42,6 +46,33 @@ void StationSession::configure(
     }
 }
 
+void StationSession::retainEquipmentDevice(std::shared_ptr<EquipmentDevice> device)
+{
+    if (!device) {
+        throw std::invalid_argument("Cannot retain an empty equipment device");
+    }
+    const auto duplicate = std::find_if(
+        equipmentDevices_.begin(), equipmentDevices_.end(),
+        [&](const auto& existing) {
+            return existing && existing->instanceId() == device->instanceId();
+        });
+    if (duplicate != equipmentDevices_.end()) {
+        throw std::invalid_argument(
+            "Equipment instance is already retained: " + device->instanceId());
+    }
+    equipmentDevices_.push_back(std::move(device));
+}
+
+void StationSession::clearEquipment() noexcept
+{
+    // EquipmentRegistry::clear() performs the registry-level best-effort
+    // safe-stop. EquipmentDevice destruction also invokes plugin safe_stop,
+    // preserving safety for devices retained after a passive probe but not
+    // exported into the registry.
+    equipment_.clear();
+    equipmentDevices_.clear();
+}
+
 void StationSession::safeStopAll() noexcept
 {
     // Stop non-equipment station components first so producers/runtimes cease
@@ -54,10 +85,9 @@ void StationSession::clear() noexcept
 {
     // Both clear() implementations already perform their own best-effort
     // safe-stop. Do not call safeStopAll() first: active hardware must not
-    // receive duplicate stop commands merely because a session is reloaded.
+    // receive an extra registry-level stop merely because a session is reloaded.
     components_.clear();
-    equipment_.clear();
-    equipmentDevices_.clear();
+    clearEquipment();
     profile_ = {};
     configured_ = false;
 }
