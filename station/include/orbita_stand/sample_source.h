@@ -1,5 +1,7 @@
 #pragma once
 
+#include "orbita_stand/component_runtime.h"
+
 #include <cstdint>
 #include <functional>
 #include <map>
@@ -12,12 +14,22 @@ namespace orbita::stand {
 // Потоковый источник сырых 16-битных отсчётов принадлежит станции, а не
 // декодеру конкретного протокола. liborbita является потребителем такого
 // потока и не должна знать, E20-10 это, replay-файл или другой АЦП.
-class ISampleSource {
+class ISampleSource : public IStationComponent {
 public:
     using SamplesCallback = std::function<void(const std::vector<int16_t>&)>;
     using ErrorCallback = std::function<void(const std::string&)>;
 
-    virtual ~ISampleSource() = default;
+    ~ISampleSource() override = default;
+
+    std::string_view componentKind() const noexcept final
+    {
+        return "sample_source";
+    }
+
+    void safeStop() noexcept final
+    {
+        close();
+    }
 
     virtual bool open() = 0;
     virtual void close() noexcept = 0;
@@ -38,5 +50,10 @@ public:
 std::unique_ptr<ISampleSource> createSampleSource(
     const std::string& provider,
     const std::map<std::string, std::string>& configuration);
+
+// Регистрирует kind=sample_source в общем ComponentRuntime. Runtime остаётся
+// независим от конкретных providers; выбор E20/replay/другого АЦП делает эта
+// фабрика по provider из профиля поставки.
+void registerSampleSourceComponents(ComponentRuntime& runtime);
 
 } // namespace orbita::stand
