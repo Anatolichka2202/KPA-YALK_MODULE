@@ -1,12 +1,29 @@
 schema: 1
 id: ktma-main
-version: 2026.09.11-yvp-1
+version: 2026.09.14-universal-1
 title: Основной стенд КТМА, Windows 11
 
 # Общие активные воздействия разрешены только для уже подтверждённых устройств.
 # Устройства с device.active_commands_confirmed: false остаются доступными для probe,
 # но их активные команды блокируются самим плагином.
 active_outputs_confirmed: true
+
+# Универсальная component model станции. Новые station-level составные части
+# объявляются поставкой здесь, а не внутри liborbita или desktop.
+#
+# `devices:` ниже остаётся compatibility section существующего Equipment runtime
+# и по мере миграции будет сведена к kind=equipment components.
+components:
+  - id: orbita-sample-input
+    kind: sample_source
+    provider: miltech.sample.e2010
+    bind:
+      - telemetry.orbita.sample_source
+    config:
+      slot: 0
+      channel: 1
+      sample_rate_khz: 10000
+      buffer_words: 1048576
 
 # Фактическая кабельная схема стенда. ЯВП-тракт уточнён после сборки 11.09.2026.
 connections:
@@ -21,8 +38,9 @@ connections:
   yvp_signal_source: АКИП-1160/6 не участвует в сигнальном тракте ЯВП
 
 routes:
-  # Подтверждено безопасным чтением 28.08.2026: поток КТМА приходит на AI1.
-  # Это параметр ПЭВМ/E20, не команда ИСД.
+  # Legacy compatibility для текущего desktop. Каноническая декларация E20-10
+  # теперь находится в components/orbita-sample-input и после миграции UI эти
+  # два route будут удалены.
   orbita_e20_channel: 1
   orbita_e20_rate_khz: 10000
   sensor_load_350ma:

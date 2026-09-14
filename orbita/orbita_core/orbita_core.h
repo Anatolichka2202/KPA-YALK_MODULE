@@ -30,7 +30,12 @@ public:
     Context& operator=(const Context&) = delete;
     Context(Context&&) = delete;
 
-    // Источник данных
+    // Основной station-independent входной поток. Новый код станции должен
+    // передавать сюда отсчёты от выбранного delivery-level sample source.
+    void pushSamples(const std::vector<int16_t>& samples) { pushToQueue(samples); }
+
+    // Legacy источник данных. Останется только до переключения desktop на
+    // station-owned sample source.
     void setDeviceE2010(int channel, double rate_khz);
     void setDeviceNone();
 
@@ -61,7 +66,7 @@ public:
     void setDataCallback(DataCallback cb);
 
 private:
-    // Компоненты
+    // Legacy device ownership; переносится в station/runtime следующим этапом.
     std::unique_ptr<ISampleSource>    device_;
     std::unique_ptr<FrameDecoderM16>  decoder_;
 
@@ -87,7 +92,7 @@ private:
     std::thread       decoder_thread_;
     std::atomic<bool> stop_worker_{false};
 
-    // Очередь отсчётов: Device → декодерный поток
+    // Очередь отсчётов: station sample source → декодерный поток
     std::queue<std::vector<int16_t>> sample_queue_;
     std::mutex               queue_mutex_;
     std::condition_variable  queue_cv_;

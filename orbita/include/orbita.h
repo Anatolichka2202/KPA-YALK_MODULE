@@ -1,23 +1,19 @@
 /**
  * @file orbita.h
- * @brief Публичный API библиотеки сбора телеметрии «Орбита-IV» (C++17).
+ * @brief Публичный API декодера телеметрии «Орбита-IV» (C++17).
  *
- * Контракт (заморожен 2026-06-15):
- *   • Ядро НЕ знает про файлы, кодировки, SQLite, Qt, графики, пороги.
- *   • Вход — std::vector<ChannelSpec> (адрес уже нормализован UI-слоем).
- *   • Выход — Snapshot со значениями ПО АДРЕСУ (а не по индексу).
+ * Архитектурная граница:
+ *   • liborbita декодирует поток отсчётов и НЕ должна выбирать физическое
+ *     оборудование станции;
+ *   • основной путь подачи данных — pushSamples(); источник выбирает
+ *     MilTechStation по профилю конкретной поставки;
+ *   • legacy setDeviceE2010()/setDeviceNone() пока оставлены только для
+ *     совместимости старого desktop-кода и будут удалены после миграции.
  *
- * Пример:
- *   orbita::Orbita orb;
- *   orb.setDeviceE2010(0, 10000.0);
- *   orb.setChannels({ {"M16P1A70B12C10D10T01", "Давление БС", "Давления"} });
- *   orb.start();
- *   while (orb.waitForData(std::chrono::milliseconds(1000))) {
- *       auto snap = orb.getSnapshot();
- *       for (const auto& v : snap.values)
- *           if (v.valid) use(v.address, v.value);
- *   }
- *   orb.stop();
+ * Контракт ядра:
+ *   • ядро НЕ знает про файлы конфигурации поставки, SQLite, Qt, UI, допуски;
+ *   • вход — raw int16 samples + std::vector<ChannelSpec>;
+ *   • выход — Snapshot со значениями ПО АДРЕСУ (а не по индексу).
  */
 
 #pragma once
@@ -93,13 +89,18 @@ public:
     Orbita(Orbita&&) noexcept;
     Orbita& operator=(Orbita&&) noexcept;
 
-    // ----- Источник данных -----
-    /// АЦП E20-10. @param channel 0..3, @param rate_khz частота кГц (обычно 10000).
-    /// @throws orbita_error при ошибке инициализации (окно UI должно это пережить).
+    // ----- Входной поток -----
+    /// Основной station-independent путь: передать очередную порцию сырых
+    /// отсчётов. Физический источник создаётся и обслуживается MilTechStation.
+    void pushSamples(const std::vector<int16_t>& samples);
+
+    // ----- Legacy источник данных -----
+    /// Временный compatibility path старого desktop. Не использовать в новом
+    /// station code: выбор E20-10 должен выполняться уровнем станции.
     void setDeviceE2010(int channel, double rate_khz);
 
-    /// Без устройства (значения только через декодирование внешнего потока).
-    /// Безопасный режим по умолчанию — приложение стартует без оборудования.
+    /// Legacy decode-only switch. После миграции desktop отдельный device mode
+    /// внутри liborbita будет удалён.
     void setDeviceNone();
 
     // ----- Каналы (горячая замена на лету) -----

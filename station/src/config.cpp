@@ -64,6 +64,55 @@ std::map<std::string, std::string> routeMap(const yaml::Node* node)
     return result;
 }
 
+ComponentProfile componentProfile(const yaml::Node& value)
+{
+    if (!value.isMap()) throw yaml::Error("Profile component must be a mapping");
+    ComponentProfile component;
+    component.id = value.value("id");
+    component.kind = value.value("kind");
+    component.provider = value.value("provider");
+    component.enabled = boolean(value.value("enabled", "true"), true);
+    component.bindCapabilities = stringSequence(value.find("bind"));
+    component.configuration = stringMap(value.find("config"));
+    if (component.id.empty() || component.kind.empty() || component.provider.empty()) {
+        throw yaml::Error("Every profile component requires id, kind and provider");
+    }
+    return component;
+}
+
+DeviceProfile deviceProfile(const yaml::Node& value)
+{
+    if (!value.isMap()) throw yaml::Error("Profile device must be a mapping");
+    DeviceProfile device;
+    device.id = value.value("id");
+    device.pluginId = value.value("plugin");
+    device.enabled = boolean(value.value("enabled", "true"), true);
+    device.bindCapabilities = stringSequence(value.find("bind"));
+    device.configuration = stringMap(value.find("config"));
+    if (device.id.empty() || device.pluginId.empty()) {
+        throw yaml::Error("Every profile device requires id and plugin");
+    }
+    return device;
+}
+
+ComponentProfile asComponent(const DeviceProfile& device)
+{
+    ComponentProfile component;
+    component.id = device.id;
+    component.kind = "equipment";
+    component.provider = device.pluginId;
+    component.enabled = device.enabled;
+    component.bindCapabilities = device.bindCapabilities;
+    component.configuration = device.configuration;
+    return component;
+}
+
+bool hasComponentId(const std::vector<ComponentProfile>& components, const std::string& id)
+{
+    return std::any_of(components.begin(), components.end(),
+        [&](const ComponentProfile& component) { return component.id == id; });
+}
+
 ScenarioNode scenarioNode(const yaml::Node& value)
 {
     if (!value.isMap()) throw yaml::Error("Scenario step must be a mapping");
@@ -98,21 +147,31 @@ StandProfile loadStandProfile(const std::string& path)
     profile.activeOutputsConfirmed = boolean(root.value("active_outputs_confirmed"), false);
     profile.routes = routeMap(root.find("routes"));
     profile.connections = stringMap(root.find("connections"));
-    const auto& devices = root.at("devices");
-    if (!devices.isSequence()) throw yaml::Error("Profile devices must be a sequence");
-    for (const auto& value : devices.sequence) {
-        if (!value.isMap()) throw yaml::Error("Profile device must be a mapping");
-        DeviceProfile device;
-        device.id = value.value("id");
-        device.pluginId = value.value("plugin");
-        device.enabled = boolean(value.value("enabled", "true"), true);
-        device.bindCapabilities = stringSequence(value.find("bind"));
-        device.configuration = stringMap(value.find("config"));
-        if (device.id.empty() || device.pluginId.empty()) {
-            throw yaml::Error("Every profile device requires id and plugin");
+
+    if (const auto* components = root.find("components")) {
+        if (!components->isSequence()) throw yaml::Error("Profile components must be a sequence");
+        for (const auto& value : components->sequence) {
+            auto component = componentProfile(value);
+            if (hasComponentId(profile.components, component.id)) {
+                throw yaml::Error("Duplicate profile component id: " + component.id);
+            }
+            profile.components.push_back(std::move(component));
         }
-        profile.devices.push_back(std::move(device));
     }
+
+    // `devices:` остаётся совместимым входом старой схемы. Каждый legacy device
+    // одновременно появляется в общей component model как kind=equipment.
+    if (const auto* devices = root.find("devices")) {
+        if (!devices->isSequence()) throw yaml::Error("Profile devices must be a sequence");
+        for (const auto& value : devices->sequence) {
+            auto device = deviceProfile(value);
+            if (!hasComponentId(profile.components, device.id)) {
+                profile.components.push_back(asComponent(device));
+            }
+            profile.devices.push_back(std::move(device));
+        }
+    }
+
     if (profile.id.empty() || profile.version.empty()) {
         throw yaml::Error("Stand profile requires id and version");
     }
@@ -138,6 +197,26 @@ ScenarioDefinition loadScenarioYaml(const std::string& path)
     return scenario;
 }
 
+const ComponentProfile* findComponentById(
+    const StandProfile& profile, const std::string& id) noexcept
+{
+    const auto iterator = std::find_if(profile.components.begin(), profile.components.end(),
+        [&](const ComponentProfile& component) { return component.id == id; });
+    return iterator == profile.components.end() ? nullptr : &*iterator;
+}
+
+const ComponentProfile* findComponentByBinding(
+    const StandProfile& profile, const std::string& binding) noexcept
+{
+    const auto iterator = std::find_if(profile.components.begin(), profile.components.end(),
+        [&](const ComponentProfile& component) {
+            return component.enabled
+                && std::find(component.bindCapabilities.begin(), component.bindCapabilities.end(), binding)
+                    != component.bindCapabilities.end();
+        });
+    return iterator == profile.components.end() ? nullptr : &*iterator;
+}
+
 void instantiateProfile(
     const StandProfile& profile,
     EquipmentPluginManager& manager,
@@ -146,7 +225,26 @@ void instantiateProfile(
 {
     registry.clear();
     devices.clear();
-    for (const auto& definition : profile.devices) {
+
+    // Старый runtime пока создаёт только equipment. При этом equipment уже
+    // можно описывать как новым `components:`/kind=equipment, так и legacy
+    // `devices:`. Это позволяет мигрировать поставки без Big Bang.
+    std::vector<DeviceProfile> equipmentDefinitions = profile.devices;
+    for (const auto& component : profile.components) {
+        if (component.kind != "equipment") continue;
+        const bool alreadyPresent = std::any_of(equipmentDefinitions.begin(), equipmentDefinitions.end(),
+            [&](const DeviceProfile& device) { return device.id == component.id; });
+        if (alreadyPresent) continue;
+        DeviceProfile device;
+        device.id = component.id;
+        device.pluginId = component.provider;
+        device.enabled = component.enabled;
+        device.bindCapabilities = component.bindCapabilities;
+        device.configuration = component.configuration;
+        equipmentDefinitions.push_back(std::move(device));
+    }
+
+    for (const auto& definition : equipmentDefinitions) {
         if (!definition.enabled) continue;
         auto config = definition.configuration;
         config["profile.active_outputs_confirmed"] = profile.activeOutputsConfirmed ? "true" : "false";

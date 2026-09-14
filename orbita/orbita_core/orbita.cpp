@@ -8,6 +8,8 @@ Orbita::~Orbita() = default;
 Orbita::Orbita(Orbita&&) noexcept = default;
 Orbita& Orbita::operator=(Orbita&&) noexcept = default;
 
+void Orbita::pushSamples(const std::vector<int16_t>& samples) { ctx_->pushSamples(samples); }
+
 void Orbita::setDeviceE2010(int channel, double rate_khz) { ctx_->setDeviceE2010(channel, rate_khz); }
 void Orbita::setDeviceNone() { ctx_->setDeviceNone(); }
 

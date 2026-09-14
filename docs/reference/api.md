@@ -47,18 +47,29 @@ struct ChannelSpec {
 - таблицами;
 - графиками;
 - допусками;
-- нормативной оценкой изделия.
+- нормативной оценкой изделия;
+- выбором физического АЦП/источника телеметрии.
 
-## Источник данных
+## Входной поток
 
-Основные варианты:
+Новый основной путь:
+
+```cpp
+pushSamples(const std::vector<int16_t>& samples)
+```
+
+Источник отсчётов выбирает runtime MilTechStation из профиля поставки и
+передаёт полученные порции данных в `liborbita`.
+
+Переходно остаются legacy-методы:
 
 ```cpp
 setDeviceE2010(channel, rate_khz);
 setDeviceNone();
 ```
 
-`setDeviceNone()` является безопасным режимом без физического источника.
+Они нужны существующему desktop-коду до завершения миграции. Новый station
+code не должен привязывать `liborbita` к E20-10 через эти методы.
 
 ## Каналы
 
@@ -166,7 +177,90 @@ isRecording()
 
 ---
 
-# 2. Внутренний Equipment API MilTechStation
+# 2. Component Profile MilTechStation
+
+Поставка декларирует состав станции в `StandProfile`.
+
+Новая общая модель:
+
+```cpp
+struct ComponentProfile {
+    std::string id;
+    std::string kind;
+    std::string provider;
+    bool enabled;
+    std::vector<std::string> bindCapabilities;
+    std::map<std::string, std::string> configuration;
+};
+```
+
+`kind` задаёт тип station-level компонента, а `provider` — конкретную
+реализацию.
+
+Текущие значения:
+
+```text
+equipment
+sample_source
+```
+
+Модель специально не ограничена enum: будущие Lua/Python/external-process
+runtime и SSH/serial transport могут добавляться как новые виды компонентов
+без изменения базового формата профиля.
+
+Legacy-секция `devices:` пока поддерживается и зеркалируется в component
+model как `kind=equipment`.
+
+Пример декларации входа телеметрии КТМА:
+
+```yaml
+components:
+  - id: orbita-sample-input
+    kind: sample_source
+    provider: miltech.sample.e2010
+    bind:
+      - telemetry.orbita.sample_source
+```
+
+Для поиска используются:
+
+```cpp
+findComponentById(...)
+findComponentByBinding(...)
+```
+
+---
+
+# 3. Sample Source API MilTechStation
+
+Код:
+
+```text
+station/include/orbita_stand/sample_source.h
+```
+
+`ISampleSource` владеет жизненным циклом физического источника сырых
+отсчётов:
+
+```text
+open / close
+start / stop
+samples callback
+error callback
+```
+
+Первый provider:
+
+```text
+miltech.sample.e2010
+```
+
+Он реализован на уровне station adapters. `liborbita` знает только о входном
+потоке `int16` и не должна включать E20-10 в свою продуктовую модель.
+
+---
+
+# 4. Внутренний Equipment API MilTechStation
 
 Этот API используется сценарием и runtime станции.
 
@@ -248,7 +342,7 @@ std::map<std::string, std::string>
 
 ---
 
-# 3. Граница API и требований
+# 5. Граница API и требований
 
 API отвечает:
 
@@ -261,5 +355,5 @@ API отвечает:
 Наличие операции в API не означает, что она должна использоваться в
 конкретном испытании УБСИ.
 
-Аналогично существование плагина не делает прибор обязательным для
-конкретного сценария.
+Аналогично существование плагина или component provider не делает прибор
+обязательным для конкретного сценария.
