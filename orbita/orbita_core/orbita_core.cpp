@@ -74,22 +74,6 @@ void Context::ensureDecoder() {
 }
 
 // ------------------------------------------------------------------
-//  Источник данных
-// ------------------------------------------------------------------
-void Context::setDeviceE2010(int channel, double rate_khz) {
-    auto dev = std::make_unique<E2010Device>();
-    if (!dev->init(0, channel, rate_khz))
-        throw orbita_error("E2010 init failed");
-    device_ = std::move(dev);
-    LOG_INFO("Device E20-10 set (channel %d, %.0f kHz)", channel, rate_khz);
-}
-
-void Context::setDeviceNone() {
-    device_.reset();
-    LOG_INFO("Device: none (decode-only mode)");
-}
-
-// ------------------------------------------------------------------
 //  Каналы (горячая замена)
 // ------------------------------------------------------------------
 void Context::setChannels(const std::vector<ChannelSpec>& specs) {
@@ -139,7 +123,7 @@ std::vector<ChannelSpec> Context::getChannels() const {
 }
 
 // ------------------------------------------------------------------
-//  Жизненный цикл
+//  Жизненный цикл декодера
 // ------------------------------------------------------------------
 void Context::start() {
     if (is_running_.load()) throw orbita_error("Already running");
@@ -152,28 +136,13 @@ void Context::start() {
     samples_processed_ = 0;
     start_time_ = std::chrono::steady_clock::now();
 
-    if (device_) {
-        device_->setSamplesCallback([this](const std::vector<int16_t>& s) {
-            pushToQueue(s);
-        });
-        device_->setErrorCallback([](const std::string& msg) {
-            LOG_ERROR("Device error: %s", msg.c_str());
-        });
-        if (!device_->start())
-            throw orbita_error("Failed to start device");
-    } else {
-        LOG_INFO("Starting in decode-only mode (no device)");
-    }
-
     decoder_thread_ = std::thread(&Context::decoderLoop, this);
     is_running_ = true;
-    LOG_INFO("Orbita started");
+    LOG_INFO("Orbita decoder started; raw samples are supplied through pushSamples()");
 }
 
 void Context::stop() {
     if (!is_running_.load()) return;
-
-    if (device_) device_->stop();   // больше колбэков не будет
 
     stop_worker_ = true;
     queue_cv_.notify_all();

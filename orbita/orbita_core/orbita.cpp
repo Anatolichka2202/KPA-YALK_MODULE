@@ -10,9 +10,6 @@ Orbita& Orbita::operator=(Orbita&&) noexcept = default;
 
 void Orbita::pushSamples(const std::vector<int16_t>& samples) { ctx_->pushSamples(samples); }
 
-void Orbita::setDeviceE2010(int channel, double rate_khz) { ctx_->setDeviceE2010(channel, rate_khz); }
-void Orbita::setDeviceNone() { ctx_->setDeviceNone(); }
-
 void Orbita::setChannels(const std::vector<ChannelSpec>& specs) { ctx_->setChannels(specs); }
 std::vector<ChannelSpec> Orbita::getChannels() const { return ctx_->getChannels(); }
 

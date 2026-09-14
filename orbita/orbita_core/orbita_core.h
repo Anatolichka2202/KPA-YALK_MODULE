@@ -12,8 +12,6 @@
 #include <optional>
 
 #include "../include/orbita.h"           // ChannelSpec, Snapshot, Stats, DataCallback
-#include "../device/e2010_device.h"
-#include "../device/sample_source.h"
 #include "../decoder/frame_decoder_m16.h"
 #include "../decoder/bitstream_recover.h"
 #include "../decoder/fifo_buffer.h"
@@ -30,20 +28,15 @@ public:
     Context& operator=(const Context&) = delete;
     Context(Context&&) = delete;
 
-    // Основной station-independent входной поток. Новый код станции должен
-    // передавать сюда отсчёты от выбранного delivery-level sample source.
+    // Единственный вход raw samples. Владение физическим sample source находится
+    // выше, на уровне Station/integration.
     void pushSamples(const std::vector<int16_t>& samples) { pushToQueue(samples); }
-
-    // Legacy источник данных. Останется только до переключения desktop на
-    // station-owned sample source.
-    void setDeviceE2010(int channel, double rate_khz);
-    void setDeviceNone();
 
     // Каналы (горячая замена)
     void setChannels(const std::vector<ChannelSpec>& specs);
     std::vector<ChannelSpec> getChannels() const;
 
-    // Жизненный цикл
+    // Жизненный цикл декодера
     void start();
     void stop();
     void pause();
@@ -66,9 +59,7 @@ public:
     void setDataCallback(DataCallback cb);
 
 private:
-    // Legacy device ownership; переносится в station/runtime следующим этапом.
-    std::unique_ptr<ISampleSource>    device_;
-    std::unique_ptr<FrameDecoderM16>  decoder_;
+    std::unique_ptr<FrameDecoderM16> decoder_;
 
     // Битовый конвейер
     FifoBuffer          bitFifo_;
@@ -92,7 +83,7 @@ private:
     std::thread       decoder_thread_;
     std::atomic<bool> stop_worker_{false};
 
-    // Очередь отсчётов: station sample source → декодерный поток
+    // Очередь отсчётов: внешний station sample source → декодерный поток
     std::queue<std::vector<int16_t>> sample_queue_;
     std::mutex               queue_mutex_;
     std::condition_variable  queue_cv_;

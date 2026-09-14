@@ -17,7 +17,6 @@ add_library(orbita STATIC
     address/address_parser.cpp
     address/address_manager.cpp
     value/value_converter.cpp
-    device/e2010_device.cpp
     tlm/tlm_writer.cpp
 )
 
@@ -26,16 +25,7 @@ target_include_directories(orbita
         ${CMAKE_CURRENT_SOURCE_DIR}/include        # orbita.h для потребителей
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}                # decoder/, address/, orbita_core/, ...
-        ${CMAKE_SOURCE_DIR}/third_party/lusbapi    # Lusbapi.h
 )
-
-if(WIN32)
-    target_link_libraries(orbita PRIVATE
-        ${CMAKE_SOURCE_DIR}/third_party/lusbapi/libLusbapi64.a
-        ws2_32
-        winmm
-    )
-endif()
 
 option(ORBITA_BUILD_TESTS "Build unit tests" OFF)
 if(ORBITA_BUILD_TESTS)
