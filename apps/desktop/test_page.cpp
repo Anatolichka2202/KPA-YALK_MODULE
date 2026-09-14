@@ -56,6 +56,24 @@ TestPage::TestPage(QWidget* parent)
 {
     rebuildScopes();
 
+    // Power is still one stage of the persistent runtime shell, but the
+    // operator also needs to see how all 80 YALK analogue channels behave
+    // while the supply is being stressed. The widget is fed only by fresh
+    // POWER_YALK backend events; old data is visibly disabled when freshness is lost.
+    if (auto* powerPage = impl_->workStack->widget(static_cast<int>(TopStage::Power))) {
+        if (auto* powerLayout = qobject_cast<QVBoxLayout*>(powerPage->layout())) {
+            auto* status = subtitleLabel(QStringLiteral("ЯЛК · ожидание свежего снимка 80 каналов"));
+            status->setObjectName(QStringLiteral("powerYalkStatus"));
+            auto* overview = new ChannelOverview(powerPage);
+            overview->setObjectName(QStringLiteral("powerYalkOverview"));
+            overview->configure(80, QStringLiteral("В"));
+            overview->setMinimumHeight(175);
+            const int beforeSteps = std::max(0, powerLayout->count() - 1);
+            powerLayout->insertWidget(beforeSteps, status);
+            powerLayout->insertWidget(beforeSteps + 1, overview, 1);
+        }
+    }
+
     // The route at the left is navigation through one persistent test window.
     // Backend RunEvent remains the only authority that advances the real run.
     for (int i = 0; i < impl_->stageLabels.size(); ++i) {
@@ -547,6 +565,34 @@ void TestPage::setRunEvent(const orbita::stand::RunEvent& event)
         return;
     }
 
+    if (event.stage == "POWER_YALK") {
+        impl_->setTopStage(TopStage::Power);
+        auto* status = findChild<QLabel*>(QStringLiteral("powerYalkStatus"));
+        auto* overview = findChild<ChannelOverview*>(QStringLiteral("powerYalkOverview"));
+        const bool fresh = eventValue(event, "fresh") == QStringLiteral("true");
+        const QString setpoint = eventValue(event, "setpoint_v");
+        if (overview) {
+            overview->setProperty("fresh", fresh);
+            overview->setEnabled(fresh);
+        }
+        if (fresh) {
+            const QVector<double> values = csvNumbers(eventValue(event, "values_v"));
+            if (overview && values.size() == 80)
+                overview->setBackground(values, values, values);
+            if (status) {
+                status->setText(QStringLiteral("ЯЛК · свежий снимок 80 каналов · питание %1 В").arg(setpoint));
+                status->setStyleSheet(QStringLiteral("color:#70d79b;"));
+            }
+        } else if (status) {
+            const QString detail = eventValue(event, "detail");
+            status->setText(QStringLiteral("ЯЛК · НЕТ СВЕЖИХ ДАННЫХ · питание %1 В%2")
+                .arg(setpoint,
+                     detail.isEmpty() ? QString() : QStringLiteral(" · ") + detail));
+            status->setStyleSheet(QStringLiteral("color:#d7a95b;font-weight:700;"));
+        }
+        return;
+    }
+
     if (event.stage == "OVERLOAD") {
         impl_->setTopStage(TopStage::Yalk);
         impl_->setYalkPhase(YalkPhase::Overload);
@@ -733,11 +779,11 @@ void TestPage::setRunEvent(const orbita::stand::RunEvent& event)
         ChannelSample sample{address,
                              QStringLiteral("%1 В").arg(command, 0, 'f', 1),
                              v7,
-                              yalk,
-                              signal != 0,
-                              event.verdict == orbita::stand::RunVerdict::Ok,
-                              warning,
-                              valueSamples};
+                             yalk,
+                             signal != 0,
+                             event.verdict == orbita::stand::RunVerdict::Ok,
+                             warning,
+                             valueSamples};
         impl_->yalkOverview->add(std::move(sample));
 
         if (impl_->yalkPhase == YalkPhase::Discrete) {
