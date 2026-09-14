@@ -1,0 +1,66 @@
+name: universal MilTechStation CI
+
+on:
+  push:
+    branches:
+      - universal_miltechstation
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: universal-miltechstation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Windows UCRT64 · Qt 6 · GCC
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up MSYS2 UCRT64
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            git
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-qt6-base
+            mingw-w64-ucrt-x86_64-qt6-svg
+            mingw-w64-ucrt-x86_64-qt6-serialport
+
+      - name: Configure
+        shell: msys2 {0}
+        run: >-
+          cmake -S . -B build-universal -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DBUILD_TESTING=ON
+
+      - name: Build
+        shell: msys2 {0}
+        run: cmake --build build-universal --parallel 4
+
+      - name: Run CTest
+        shell: msys2 {0}
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --test-dir build-universal --output-on-failure -C Release
+
+      - name: Preserve CTest failure log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: universal-miltechstation-ctest-failure-log
+          path: build-universal/Testing/Temporary/LastTest.log
+          if-no-files-found: warn
+          retention-days: 3
