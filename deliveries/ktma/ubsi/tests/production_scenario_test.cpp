@@ -47,24 +47,24 @@ bool componentProvides(
 void verifyNode(const ScenarioNode& node, const StandProfile& profile)
 {
     require(node.title.find("\xEF\xBF\xBD") == std::string::npos,
-        "Production stage title contains a UTF-8 replacement character");
+        "Scenario stage title contains a UTF-8 replacement character");
     require(node.title.find(u8"Рџ") == std::string::npos
             && node.title.find(u8"С‚") == std::string::npos,
-        "Production stage title contains UTF-8/CP1251 mojibake");
+        "Scenario stage title contains UTF-8/CP1251 mojibake");
     for (const auto& capability : node.requiredCapabilities) {
         require(capability != "orbita.parameter_source",
-            "Production scenario must not require legacy Orbita/E20");
+            "KTMA acceptance scenario must not require legacy Orbita/E20");
     }
     for (const auto& requirement : node.requiredResources) {
         require(requirement.capability != "orbita.parameter_source",
-            "Production scenario resource must not require legacy Orbita/E20");
+            "KTMA acceptance scenario resource must not require legacy Orbita/E20");
 
         const auto* component = findComponentByBinding(profile, requirement.resource);
         require(component != nullptr,
-            "Production scenario resource is not declared by KTMA profile: "
+            "Scenario resource is not declared by KTMA profile: "
                 + requirement.resource);
         require(component->kind == "equipment",
-            "Production scenario physical resource must resolve to equipment: "
+            "Physical scenario resource must resolve to equipment: "
                 + requirement.resource);
         require(componentProvides(*component, requirement.capability),
             "KTMA resource " + requirement.resource
@@ -127,7 +127,19 @@ int main()
             for (const auto& node : scenario.steps) verifyNode(node, profile);
         }
 
-        std::cout << "KTMA UBSI production scenarios OK\n";
+        const auto canonicalTu = loadScenarioYaml(
+            std::string(KTMA_SOURCE_DIR) + "/data/scenarios/ubsi_ulk_combined_check.yaml");
+        require(canonicalTu.publicationState == PublicationState::Published,
+            "Canonical TU scenario must be published");
+        const auto tuErrors = engine.validate(canonicalTu);
+        if (!tuErrors.empty()) {
+            std::string message = "Canonical TU scenario validation failed";
+            for (const auto& error : tuErrors) message += "\n - " + error;
+            throw std::runtime_error(message);
+        }
+        for (const auto& node : canonicalTu.steps) verifyNode(node, profile);
+
+        std::cout << "KTMA UBSI production/TU resource contracts OK\n";
         return 0;
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
