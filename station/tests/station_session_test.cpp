@@ -40,10 +40,13 @@ int main(int argc, char** argv)
 
         StationSession session;
         registerExecutionRuntimeComponents(session.components());
+
+        // Empty kind selection must instantiate all registered non-equipment
+        // kinds, while never trying to send equipment through ComponentRuntime.
         session.configure(
             profile,
             pluginDirectory.path().toUtf8().toStdString(),
-            {"execution_runtime"});
+            {});
 
         require(session.configured(), "station session was not marked configured");
         require(session.profile().id == "session-test", "station session lost delivery profile");
