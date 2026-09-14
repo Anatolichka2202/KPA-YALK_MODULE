@@ -2,6 +2,7 @@
 #include "orbita_stand/component_runtime.h"
 #include "orbita_stand/config.h"
 #include "orbita_stand/sample_source.h"
+#include "miltech/orbita_sample_bridge.h"
 
 #include <algorithm>
 #include <chrono>
@@ -108,11 +109,9 @@ int main(int argc, char** argv)
         orbita::Orbita decoder;
         const auto channels = loadChannels(argv[2]);
         decoder.setChannels(channels);
-        sampleSource->setSamplesCallback(
-            [&decoder](const std::vector<int16_t>& samples) {
-                decoder.pushSamples(samples);
-            });
-        sampleSource->setErrorCallback([](const std::string& message) {
+
+        miltech::integration::OrbitaSampleBridge bridge(*sampleSource, decoder);
+        bridge.setErrorCallback([](const std::string& message) {
             std::cerr << "SOURCE_ERROR " << message << '\n';
         });
 
@@ -121,13 +120,11 @@ int main(int argc, char** argv)
                   << " profile_version=" << profile.version
                   << " source_binding=" << kOrbitaSampleSourceBinding << '\n';
 
-        // Decoder starts first so no source samples can be lost before its
-        // consumer thread is ready. The station-owned source is stopped first
-        // for the symmetric shutdown order.
-        decoder.start();
-        if (!sampleSource->start()) {
-            decoder.stop();
-            throw std::runtime_error("Station sample source failed to start");
+        if (!bridge.start()) {
+            throw std::runtime_error(
+                bridge.lastError().empty()
+                    ? "Station sample source / Orbita bridge failed to start"
+                    : bridge.lastError());
         }
 
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(seconds);
@@ -149,8 +146,7 @@ int main(int argc, char** argv)
         }
 
         const auto finalSnapshot = decoder.getSnapshot();
-        sampleSource->stop();
-        decoder.stop();
+        bridge.stop();
         lastValid = printSnapshot("FINAL", finalSnapshot);
         std::cout << "RESULT received=" << (received ? "true" : "false")
                   << " valid=" << lastValid << '/' << channels.size()
