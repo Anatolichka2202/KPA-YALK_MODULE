@@ -266,11 +266,10 @@ bool E2010SampleSource::start()
 
 void E2010SampleSource::stop() noexcept
 {
-    if (!running_.exchange(false)) {
-        if (readerThread_.joinable()) readerThread_.join();
-        return;
-    }
-
+    // The reader thread can terminate itself after an I/O error and clear
+    // running_. Cleanup must therefore not depend on the value of running_.
+    // Always signal, join and release the OVERLAPPED/stop event handles.
+    running_ = false;
     stopRequested_ = true;
     if (stopEvent_) SetEvent(stopEvent_);
     if (readerThread_.joinable()) readerThread_.join();
