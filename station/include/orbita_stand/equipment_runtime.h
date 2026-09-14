@@ -94,12 +94,12 @@ public:
     bool hasResource(const std::string& resourceId) const;
     bool resourceHasCapability(
         const std::string& resourceId,
-        const std::string& capability) const;
+        const std::string& capability) const override;
     std::string invokeResource(
         const std::string& resourceId,
         const std::string& capability,
         const std::string& operation,
-        const std::map<std::string, std::string>& arguments = {});
+        const std::map<std::string, std::string>& arguments = {}) override;
     std::vector<EquipmentResourceDescriptor> resources() const;
 
     void clear();
