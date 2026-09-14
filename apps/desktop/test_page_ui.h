@@ -35,6 +35,7 @@
 #include <QVBoxLayout>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
 #include <utility>
@@ -786,6 +787,282 @@ private:
     QVector<double> backgroundMaximum_;
     QHash<QString, int> discreteStates_;
     bool selectionPinned_ = false;
+};
+
+class ContactThresholdOverview final : public QWidget
+{
+public:
+    explicit ContactThresholdOverview(QWidget* parent = nullptr) : QWidget(parent)
+    {
+        setObjectName(QStringLiteral("yalkContactThresholdOverview"));
+        setMinimumHeight(430);
+        states_.resize(3);
+        for (auto& row : states_) row.fill(-1, 80);
+    }
+
+    void clear()
+    {
+        for (auto& row : states_) row.fill(-1, 80);
+        backgroundMean_.clear(); backgroundMinimum_.clear(); backgroundMaximum_.clear();
+        currentAddress_ = 0; currentPoint_ = -1;
+        setProperty("contactMeasurementCount", 0);
+        update();
+    }
+
+    void setBackground(QVector<double> mean, QVector<double> minimum, QVector<double> maximum)
+    {
+        backgroundMean_ = std::move(mean);
+        backgroundMinimum_ = std::move(minimum);
+        backgroundMaximum_ = std::move(maximum);
+        update();
+    }
+
+    void setCurrent(int address, double command, int signal, int expected)
+    {
+        const int channel = channelKeys().indexOf(address);
+        if (channel < 0) return;
+        const std::array<double, 3> points{0.0, 0.9, 2.5};
+        int point = 0;
+        for (int index = 1; index < 3; ++index)
+            if (std::abs(command - points[index]) < std::abs(command - points[point])) point = index;
+        states_[point][channel] = signal == expected ? 1 : 0;
+        currentAddress_ = address; currentPoint_ = point;
+        int count = 0;
+        for (const auto& row : states_)
+            count += std::count_if(row.cbegin(), row.cend(), [](int state) { return state >= 0; });
+        setProperty("contactMeasurementCount", count);
+        update();
+    }
+
+protected:
+    void paintEvent(QPaintEvent*) override
+    {
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing);
+        painter.fillRect(rect(), QColor("#0f1318"));
+        const auto keys = channelKeys();
+        const double left = 58.0, right = 12.0;
+        const double widthAvailable = width() - left - right;
+        const double cellWidth = widthAvailable / 80.0;
+
+        painter.setPen(QColor("#dfe6ee"));
+        painter.setFont(QFont("Segoe UI", 10, QFont::DemiBold));
+        painter.drawText(QRectF(left, 4, widthAvailable, 22), Qt::AlignLeft,
+                         QStringLiteral("Контактные признаки всех 80 каналов"));
+        painter.setFont(QFont("Segoe UI", 8));
+        painter.setPen(QColor("#8b95a3"));
+        painter.drawText(QRectF(left, 4, widthAvailable, 22), Qt::AlignRight,
+                         QStringLiteral("зелёный — ожидаемое состояние  ·  красный — несоответствие"));
+
+        const std::array<QString, 3> captions{QStringLiteral("0,0 В"), QStringLiteral("0,9 В"), QStringLiteral("2,5 В")};
+        const double matrixTop = 32.0, rowHeight = 42.0;
+        for (int point = 0; point < 3; ++point) {
+            const double y = matrixTop + point * rowHeight;
+            painter.setPen(QColor("#9aafbf"));
+            painter.setFont(QFont("Segoe UI", 8, QFont::DemiBold));
+            painter.drawText(QRectF(0, y, left - 8, rowHeight), Qt::AlignRight | Qt::AlignVCenter, captions[point]);
+            for (int channel = 0; channel < 80; ++channel) {
+                QRectF cell(left + channel * cellWidth + 1, y + 4,
+                            std::max(2.0, cellWidth - 2), rowHeight - 8);
+                QColor fill("#18212a");
+                if (states_[point][channel] == 1) fill = QColor("#2f875f");
+                else if (states_[point][channel] == 0) fill = QColor("#b84f55");
+                painter.fillRect(cell, fill);
+                painter.setPen(keys[channel] == currentAddress_ && point == currentPoint_
+                    ? QPen(QColor("#69aee6"), 2) : QPen(QColor("#27313c"), 1));
+                painter.drawRect(cell);
+                if (cellWidth >= 12.0 && states_[point][channel] >= 0) {
+                    painter.setPen(QColor("#f3f6f9"));
+                    painter.setFont(QFont("Segoe UI", 7, QFont::DemiBold));
+                    painter.drawText(cell, Qt::AlignCenter, states_[point][channel] == 1 ? QStringLiteral("✓") : QStringLiteral("×"));
+                }
+            }
+        }
+
+        const double numberY = matrixTop + 3 * rowHeight + 1;
+        painter.setFont(QFont("Segoe UI", 7));
+        painter.setPen(QColor("#8293a4"));
+        for (int channel = 0; channel < 80; ++channel) {
+            const int address = keys[channel];
+            if (channel == 0 || channel == 79 || address % 5 == 0)
+                painter.drawText(QRectF(left + channel * cellWidth - cellWidth, numberY,
+                                        cellWidth * 3, 15), Qt::AlignCenter, QString::number(address));
+        }
+
+        const double chartTop = numberY + 30.0;
+        const QRectF chart(left, chartTop, widthAvailable, height() - chartTop - 24.0);
+        painter.setPen(QColor("#dfe6ee"));
+        painter.setFont(QFont("Segoe UI", 9, QFont::DemiBold));
+        painter.drawText(QRectF(left, chart.top() - 22, widthAvailable, 18),
+                         Qt::AlignLeft, QStringLiteral("Аналоговый обзор тех же каналов, В"));
+        painter.setPen(QPen(QColor("#27313c"), 1));
+        painter.drawRect(chart);
+        auto y = [&chart](double value) {
+            return chart.bottom() - std::clamp(value / 6.2, 0.0, 1.0) * chart.height();
+        };
+        for (double value : {0.0, 3.1, 6.2}) {
+            painter.setPen(QPen(QColor("#27313c"), 1, Qt::DashLine));
+            painter.drawLine(QPointF(chart.left(), y(value)), QPointF(chart.right(), y(value)));
+            painter.setPen(QColor("#8293a4"));
+            painter.setFont(QFont("Segoe UI", 7));
+            painter.drawText(QRectF(0, y(value) - 8, left - 8, 16), Qt::AlignRight,
+                             QString::number(value, 'f', 1));
+        }
+        int available = 0;
+        for (int channel = 0; channel < 80; ++channel) {
+            const int source = keys[channel] - 1;
+            if (source < 0 || source >= backgroundMean_.size()) continue;
+            ++available;
+            const double x = chart.left() + channel * cellWidth;
+            const double mean = backgroundMean_[source];
+            const double minimum = source < backgroundMinimum_.size() ? backgroundMinimum_[source] : mean;
+            const double maximum = source < backgroundMaximum_.size() ? backgroundMaximum_[source] : mean;
+            QColor color("#4f9f78");
+            for (const auto& row : states_)
+                if (row[channel] == 0) color = QColor("#cf5d62");
+            painter.fillRect(QRectF(x + cellWidth * .18, y(mean), std::max(2.0, cellWidth * .64), chart.bottom() - y(mean)), color);
+            painter.setPen(QPen(QColor("#e6edf3"), keys[channel] == currentAddress_ ? 2.0 : 1.0));
+            painter.drawLine(QPointF(x + cellWidth / 2, y(minimum)), QPointF(x + cellWidth / 2, y(maximum)));
+        }
+        setProperty("contactAnalogChannelCount", available);
+    }
+
+private:
+    static QVector<int> channelKeys()
+    {
+        QVector<int> keys;
+        for (int address = 1; address <= 87; ++address)
+            if (address <= 28 || (address >= 32 && address <= 43)
+                || (address >= 45 && address <= 70) || address >= 74)
+                keys.push_back(address);
+        return keys;
+    }
+    QVector<QVector<int>> states_;
+    QVector<double> backgroundMean_, backgroundMinimum_, backgroundMaximum_;
+    int currentAddress_ = 0;
+    int currentPoint_ = -1;
+};
+
+class OverloadOverview final : public QWidget
+{
+public:
+    explicit OverloadOverview(QWidget* parent = nullptr) : QWidget(parent)
+    {
+        setObjectName(QStringLiteral("yalkOverloadOverview"));
+        setMinimumHeight(410);
+        values_.fill(0.0, 88); known_.fill(false, 88); passed_.fill(true, 88);
+    }
+
+    void clear()
+    {
+        values_.fill(0.0); known_.fill(false); passed_.fill(true);
+        stressed_ = impactIndex_ = impactCount_ = 0; polarity_.clear();
+        lower_ = -2.0; upper_ = 2.0;
+        setProperty("overloadMeasurementCount", 0);
+        update();
+    }
+
+    void beginImpact(int stressed, QString polarity, int impactIndex, int impactCount, int settleMs)
+    {
+        if (stressed != stressed_ || polarity != polarity_) {
+            values_.fill(0.0); known_.fill(false); passed_.fill(true);
+        }
+        stressed_ = stressed; polarity_ = std::move(polarity);
+        impactIndex_ = impactIndex; impactCount_ = impactCount; settleMs_ = settleMs;
+        setProperty("overloadMeasurementCount", 0);
+        update();
+    }
+
+    void setMeasurement(int observed, double delta, double lower, double upper, bool passed)
+    {
+        if (observed < 1 || observed > 88) return;
+        values_[observed - 1] = delta; known_[observed - 1] = true; passed_[observed - 1] = passed;
+        lower_ = lower; upper_ = upper;
+        setProperty("overloadMeasurementCount",
+                    std::count(known_.cbegin(), known_.cend(), true));
+        update();
+    }
+
+    double maximumAbsoluteDelta() const
+    {
+        double maximum = 0.0;
+        for (int i = 0; i < values_.size(); ++i)
+            if (known_[i]) maximum = std::max(maximum, std::abs(values_[i]));
+        return maximum;
+    }
+
+protected:
+    void paintEvent(QPaintEvent*) override
+    {
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing);
+        painter.fillRect(rect(), QColor("#0f1318"));
+        painter.setFont(QFont("Segoe UI", 10, QFont::DemiBold));
+        painter.setPen(QColor("#dfe6ee"));
+        painter.drawText(QRectF(58, 6, width() - 70, 22), Qt::AlignLeft,
+            QStringLiteral("Отклонение 88 каналов от baseline, код"));
+        painter.setFont(QFont("Segoe UI", 8));
+        painter.setPen(QColor("#9ac7ff"));
+        painter.drawText(QRectF(58, 6, width() - 70, 22), Qt::AlignRight,
+            QStringLiteral("воздействие %1 · канал %2 · %3/%4 · выдержка %5 с")
+                .arg(polarity_.isEmpty() ? QStringLiteral("±12 В") : polarity_)
+                .arg(stressed_ > 0 ? QString::number(stressed_) : QStringLiteral("—"))
+                .arg(impactIndex_).arg(impactCount_).arg(settleMs_ / 1000.0, 0, 'f', 1));
+
+        const QRectF area(58, 38, width() - 70, height() - 92);
+        double scale = std::max({6.0, std::abs(lower_) * 1.5, std::abs(upper_) * 1.5,
+                                 maximumAbsoluteDelta() * 1.15});
+        auto y = [&area, scale](double value) {
+            return area.center().y() - std::clamp(value / scale, -1.0, 1.0) * area.height() / 2.0;
+        };
+        painter.fillRect(QRectF(area.left(), y(upper_), area.width(), y(lower_) - y(upper_)), QColor(48, 112, 79, 34));
+        for (double tick : {-scale, lower_, 0.0, upper_, scale}) {
+            painter.setPen(QPen(tick == 0.0 ? QColor("#8795a3") : QColor("#27313c"),
+                                tick == 0.0 ? 2 : 1, tick == 0.0 ? Qt::SolidLine : Qt::DashLine));
+            painter.drawLine(QPointF(area.left(), y(tick)), QPointF(area.right(), y(tick)));
+            painter.setPen(QColor("#8293a4"));
+            painter.setFont(QFont("Segoe UI", 7));
+            painter.drawText(QRectF(0, y(tick) - 8, 52, 16), Qt::AlignRight,
+                             QString::number(tick, 'f', 1));
+        }
+        const double cellWidth = area.width() / 88.0;
+        for (int index = 0; index < 88; ++index) {
+            const double x = area.left() + index * cellWidth;
+            if (index + 1 == stressed_) {
+                painter.fillRect(QRectF(x, area.top(), cellWidth, area.height()), QColor(94, 147, 184, 32));
+                painter.setPen(QPen(QColor("#69aee6"), 2));
+                painter.drawRect(QRectF(x + 1, area.top() + 1, std::max(2.0, cellWidth - 2), area.height() - 2));
+            }
+            if (known_[index]) {
+                const double valueY = y(values_[index]);
+                const double zeroY = y(0.0);
+                const bool nearLimit = passed_[index]
+                    && std::abs(values_[index]) >= .75 * std::max(std::abs(lower_), std::abs(upper_));
+                const QColor color = !passed_[index] ? QColor("#cf5d62")
+                    : nearLimit ? QColor("#c48a32") : QColor("#4fbd83");
+                painter.fillRect(QRectF(x + cellWidth * .18, std::min(valueY, zeroY),
+                                        std::max(2.0, cellWidth * .64), std::max(2.0, std::abs(valueY - zeroY))), color);
+            }
+            if (index == 0 || index == 87 || (index + 1) % 5 == 0) {
+                painter.setPen(QColor("#9aafbf")); painter.setFont(QFont("Segoe UI", 7));
+                painter.drawText(QRectF(x - cellWidth, area.bottom() + 5, cellWidth * 3, 15),
+                                 Qt::AlignCenter, QString::number(index + 1));
+            }
+        }
+        painter.setPen(QColor("#8b95a3"));
+        painter.setFont(QFont("Segoe UI", 8));
+        painter.drawText(QRectF(area.left(), height() - 28, area.width(), 18), Qt::AlignLeft,
+            QStringLiteral("допуск %1…%2 кода · получено %3 из %4 наблюдаемых каналов")
+                .arg(lower_, 0, 'f', 0).arg(upper_, 0, 'f', 0)
+                .arg(property("overloadMeasurementCount").toInt()).arg(stressed_ > 0 ? 87 : 88));
+    }
+
+private:
+    QVector<double> values_;
+    QVector<bool> known_, passed_;
+    int stressed_ = 0, impactIndex_ = 0, impactCount_ = 0, settleMs_ = 0;
+    QString polarity_;
+    double lower_ = -2.0, upper_ = 2.0;
 };
 
 class StateGrid final : public QWidget

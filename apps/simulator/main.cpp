@@ -134,6 +134,21 @@ private:
             "Смещение применяется поверх реального воздействия ИСД. Контакт: авто / 0 / 1.")));
         row->addStretch();
         layout->addLayout(row);
+        auto* overloadRow = new QHBoxLayout;
+        overloadObserved_ = new QSpinBox;
+        overloadObserved_->setRange(1, 88);
+        overloadObserved_->setValue(30);
+        overloadDeltaCode_ = new QSpinBox;
+        overloadDeltaCode_->setRange(-20, 20);
+        overloadDeltaCode_->setValue(0);
+        overloadDeltaCode_->setSuffix(QStringLiteral(" код"));
+        overloadRow->addWidget(new QLabel(QStringLiteral("При перегрузке изменить наблюдаемый канал")));
+        overloadRow->addWidget(overloadObserved_);
+        overloadRow->addWidget(new QLabel(QStringLiteral("на")));
+        overloadRow->addWidget(overloadDeltaCode_);
+        overloadRow->addWidget(new QLabel(QStringLiteral("0 — все остальные каналы в норме")));
+        overloadRow->addStretch();
+        layout->addLayout(overloadRow);
         yalkTable_ = new QTableWidget(100, 3);
         yalkTable_->setHorizontalHeaderLabels({QStringLiteral("Адрес"), QStringLiteral("Смещение, код"), QStringLiteral("Контакт")});
         yalkTable_->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
@@ -222,6 +237,7 @@ private:
         current_->setValue(0.24); voltageError_->setValue(0); referenceError_->setValue(0);
         yalkNoise_->setValue(1); ytpNoise_->setValue(1); acVoltage_->setValue(0.137); frequencyError_->setValue(0);
         for (int i = 0; i < 100; ++i) { yalkTable_->item(i, 1)->setText("0"); yalkTable_->item(i, 2)->setText(QStringLiteral("авто")); }
+        overloadObserved_->setValue(30); overloadDeltaCode_->setValue(0);
         for (int i = 0; i < 30; ++i) ytpTable_->item(i, 1)->setText("0");
         appendLog(QStringLiteral("Установлен профиль «Все в норме»"));
     }
@@ -263,10 +279,21 @@ private:
             bool contact = true;
             if (i == 96) { code = 160; contact = false; }
             else if (i == 97 || i == 98) { code = 960; contact = true; }
-            else if (i < 80 && yalkEnabled_[i]) {
+            else if (yalkDirectEnabled_[i]) {
+                code = yalkDirectCode_[i];
+                contact = code >= 500.0;
+            } else if (i < 80 && yalkEnabled_[i]) {
                 code = 160.0 + yalkVoltage_[i] / 6.2 * 800.0;
                 contact = yalkVoltage_[i] >= 2.0;
             }
+            int overloadTarget = 0;
+            if (type3Enabled_[94] || type3Enabled_[95]) {
+                for (int channel = 1; channel <= 88; ++channel)
+                    if (type3Enabled_[channel - 1]) { overloadTarget = channel; break; }
+            }
+            if (overloadTarget > 0 && i + 1 == overloadObserved_->value()
+                && i + 1 != overloadTarget)
+                code += overloadDeltaCode_->value();
             bool ok = false;
             const double offset = yalkTable_->item(i, 1)->text().toDouble(&ok);
             if (ok) code += offset;
@@ -311,6 +338,8 @@ private:
         const QString path = QString::fromLatin1(request.mid(firstSpace + 1, secondSpace - firstSpace - 1));
         if (path.contains("type=4")) {
             yalkEnabled_.fill(false); yalkVoltage_.fill(0.0);
+            yalkDirectEnabled_.fill(false); yalkDirectCode_.fill(0.0);
+            type3Enabled_.fill(false);
         } else {
             QRegularExpression re(QStringLiteral("type=(\\d+)num=(\\d+)(?:val=([0-9.+-]+))?(?:work=(\\d))?"));
             const auto match = re.match(path);
@@ -325,8 +354,14 @@ private:
                     ? yalkAddress[channel - 1] : channel;
                 if (address >= 1 && address <= 100 && type == 5) {
                     yalkVoltage_[address-1]=match.captured(3).toDouble(); yalkEnabled_[address-1]=true;
-                } else if (address >= 1 && address <= 100 && type == 1 && match.captured(4)=="0") {
-                    yalkVoltage_[address-1]=0; yalkEnabled_[address-1]=false;
+                    yalkDirectEnabled_[address-1]=false;
+                } else if (address >= 1 && address <= 100 && type == 1) {
+                    const bool enabled = match.captured(4)=="1";
+                    yalkDirectCode_[address-1]=match.captured(3).toDouble();
+                    yalkDirectEnabled_[address-1]=enabled;
+                    if (!enabled) { yalkVoltage_[address-1]=0; yalkEnabled_[address-1]=false; }
+                } else if (address >= 1 && address <= 100 && type == 3) {
+                    type3Enabled_[address-1]=match.captured(3)=="1";
                 }
             }
         }
@@ -370,11 +405,14 @@ private:
     QUdpSocket udp_; QTcpServer isdServer_, scpiServer_; QTimer frameTimer_;
     int adapterMode_=0, frameCounter_=0;
     std::array<double,100> yalkVoltage_{}; std::array<bool,100> yalkEnabled_{};
+    std::array<double,100> yalkDirectCode_{}; std::array<bool,100> yalkDirectEnabled_{};
+    std::array<bool,100> type3Enabled_{};
     double supplySetVoltage_=0, supplyCurrentLimit_=0, generatorFrequency_=1000;
     bool supplyOutput_=false, generatorOutput_=false;
     QCheckBox *streamEnabled_=nullptr,*isdOnline_=nullptr,*scpiOnline_=nullptr;
     QDoubleSpinBox *current_=nullptr,*voltageError_=nullptr,*referenceError_=nullptr,*acVoltage_=nullptr,*frequencyError_=nullptr;
     QDoubleSpinBox *yalkNoise_=nullptr,*ytpResistance_=nullptr,*ytpNoise_=nullptr;
+    QSpinBox *overloadObserved_=nullptr,*overloadDeltaCode_=nullptr;
     QLabel *supplyVoltage_=nullptr,*outputState_=nullptr;
     QTableWidget *yalkTable_=nullptr,*ytpTable_=nullptr;
     QPlainTextEdit* log_=nullptr;

@@ -547,8 +547,16 @@ void TestPage::setRunEvent(const orbita::stand::RunEvent& event)
         const QString polarity = eventValue(event, "polarity");
         const QString channel = eventValue(event, "stressed_channel");
         const QString count = eventValue(event, "target_count");
+        const int impactIndex = eventValue(event, "impact_index").toInt();
+        const int impactCount = eventValue(event, "impact_count").toInt();
+        const int settleMs = eventValue(event, "settle_ms").toInt();
         impl_->overloadChannel->setText(channel.isEmpty() ? QStringLiteral("—") : channel);
         impl_->overloadPolarity->setText(polarity.isEmpty() ? QStringLiteral("±12 В") : polarity);
+        impl_->overloadProgress->setText(impactCount > 0
+            ? QStringLiteral("%1 / %2 · %3 с").arg(impactIndex).arg(impactCount).arg(settleMs / 1000.0, 0, 'f', 1)
+            : QStringLiteral("ожидание данных"));
+        impl_->overloadDelta->setText(QStringLiteral("—"));
+        impl_->overloadOverview->beginImpact(channel.toInt(), polarity, impactIndex, impactCount, settleMs);
         setRouteDetail(static_cast<int>(TopStage::Yalk),
             QStringLiteral("Перегрузка %1 · канал %2 / %3")
                 .arg(polarity.isEmpty() ? QStringLiteral("±12 В") : polarity,
@@ -580,8 +588,11 @@ void TestPage::setRunEvent(const orbita::stand::RunEvent& event)
         };
         const QString section = eventValue(event, "section");
         if (section == QStringLiteral("YALK")) {
-            impl_->yalkOverview->setBackground(
-                values("background_mean"), values("background_min"), values("background_max"));
+            auto mean = values("background_mean");
+            auto minimum = values("background_min");
+            auto maximum = values("background_max");
+            impl_->yalkOverview->setBackground(mean, minimum, maximum);
+            impl_->yalkContacts->setBackground(std::move(mean), std::move(minimum), std::move(maximum));
         } else if (section == QStringLiteral("YTP")) {
             impl_->ytpOverview->setBackground(
                 values("background_mean"), values("background_min"), values("background_max"));
@@ -589,6 +600,21 @@ void TestPage::setRunEvent(const orbita::stand::RunEvent& event)
         return;
     }
     if (event.stage != "MEASUREMENT") return;
+
+    if (!eventValue(event, "observed_channel").isEmpty()
+        && !eventValue(event, "delta_code").isEmpty()) {
+        impl_->setTopStage(TopStage::Yalk);
+        impl_->setYalkPhase(YalkPhase::Overload);
+        const int observed = eventValue(event, "observed_channel").toInt();
+        const double delta = eventValue(event, "delta_code").toDouble();
+        const double lower = eventValue(event, "lower_delta_code").toDouble();
+        const double upper = eventValue(event, "upper_delta_code").toDouble();
+        impl_->overloadOverview->setMeasurement(observed, delta, lower, upper,
+            event.verdict == orbita::stand::RunVerdict::Ok);
+        impl_->overloadDelta->setText(QStringLiteral("%1 кода")
+            .arg(impl_->overloadOverview->maximumAbsoluteDelta(), 0, 'f', 1));
+        return;
+    }
 
     if (!eventValue(event, "ytp_channel").isEmpty()) {
         impl_->setTopStage(TopStage::Ytp);
@@ -656,8 +682,7 @@ void TestPage::setRunEvent(const orbita::stand::RunEvent& event)
             impl_->yalkDiscretePoint->setText(QStringLiteral("%1 В").arg(command, 0, 'f', 1));
             impl_->yalkExpected->setText(QString::number(expected));
             impl_->yalkDiscreteChannel->setText(address);
-            impl_->yalkDiscrete->setCurrent(address, signal, expected);
-            impl_->yalkDiscreteSteps->setActiveValue(command);
+            impl_->yalkContacts->setCurrent(address.toInt(), command, signal, expected);
             setRouteDetail(static_cast<int>(TopStage::Yalk),
                 QStringLiteral("Дискретные пороги · канал %1 · %2 В")
                     .arg(address).arg(command, 0, 'f', 1));

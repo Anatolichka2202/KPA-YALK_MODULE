@@ -9,6 +9,7 @@
 #include <QTableWidget>
 
 #include <cstdlib>
+#include <cmath>
 #include <iostream>
 
 namespace {
@@ -38,10 +39,12 @@ int main(int argc, char** argv)
     auto* session = page.findChild<QTableWidget*>(QStringLiteral("productionSessionTable"));
     auto* equipment = page.findChild<QTableWidget*>(QStringLiteral("equipmentTable"));
     auto* histogram = page.findChild<QWidget*>(QStringLiteral("yalkChannelHistogram"));
+    auto* contacts = page.findChild<QWidget*>(QStringLiteral("yalkContactThresholdOverview"));
+    auto* overloadOverview = page.findChild<QWidget*>(QStringLiteral("yalkOverloadOverview"));
     auto* ytpHistogram = page.findChild<QWidget*>(QStringLiteral("ytpChannelHistogram"));
 
     require(object && scope && test && mode && serial && operatorEdit && operatorHistory && session
-                && equipment && histogram && ytpHistogram,
+                && equipment && histogram && contacts && overloadOverview && ytpHistogram,
             "new operator UI controls not found");
     require(operatorEdit->placeholderText() == QStringLiteral("Фамилия Имя Отчество"),
             "operator name must not be mixed with personnel number");
@@ -162,12 +165,29 @@ int main(int argc, char** argv)
     overload.nodeId = "yalk_overload_positive";
     overload.stage = "OVERLOAD";
     overload.data = {{"polarity", "+12 V"}, {"stressed_channel", "37"},
-                     {"target_count", "80"}};
+                     {"target_count", "88"}, {"impact_index", "37"},
+                     {"impact_count", "176"}, {"settle_ms", "10000"}};
     page.setRunEvent(overload);
+    for (int observed = 1; observed <= 88; ++observed) {
+        if (observed == 37) continue;
+        const double delta = observed == 30 ? 3.0 : observed == 20 ? 1.7
+            : (observed % 5 - 2) * 0.35;
+        orbita::stand::RunEvent measurement;
+        measurement.nodeId = "yalk_overload_positive";
+        measurement.stage = "MEASUREMENT";
+        measurement.verdict = std::abs(delta) <= 2.0
+            ? orbita::stand::RunVerdict::Ok : orbita::stand::RunVerdict::Fail;
+        measurement.data = {{"polarity", "+12 V"}, {"stressed_channel", "37"},
+            {"observed_channel", std::to_string(observed)},
+            {"baseline_code", "1800"}, {"current_code", std::to_string(1800.0 + delta)},
+            {"delta_code", std::to_string(delta)}, {"lower_delta_code", "-2"},
+            {"upper_delta_code", "2"}};
+        page.setRunEvent(measurement);
+    }
     QApplication::processEvents();
-    require(!histogram->isHidden(), "YALK histogram must remain available during overload");
-    require(histogram->property("renderedChannelCount").toInt() == 80,
-            "overload transition must retain YALK background channels");
+    require(!overloadOverview->isHidden(), "overload must have its own visible workspace");
+    require(overloadOverview->property("overloadMeasurementCount").toInt() == 87,
+            "overload workspace must show every observed channel of the current impact");
 
     if (!screenshot.isEmpty() && scene == QStringLiteral("YALK_BACKGROUND")) {
         page.resize(1664, 935);
@@ -231,6 +251,38 @@ int main(int argc, char** argv)
         ytpMean += std::to_string(mean);
         ytpMinimum += std::to_string(mean - 0.12);
         ytpMaximum += std::to_string(mean + 0.12);
+    }
+
+    orbita::stand::RunEvent contactsStart;
+    contactsStart.nodeId = "yalk_contacts";
+    contactsStart.stage = "START";
+    page.setRunEvent(contactsStart);
+    for (double command : {0.0, 0.9, 2.5}) {
+        for (int address = 1; address <= 87; ++address) {
+            if (!(address <= 28 || (address >= 32 && address <= 43)
+                    || (address >= 45 && address <= 70) || address >= 74)) continue;
+            orbita::stand::RunEvent contact;
+            contact.nodeId = "yalk_contacts";
+            contact.stage = "MEASUREMENT";
+            contact.verdict = orbita::stand::RunVerdict::Ok;
+            contact.data = {{"ulk_address", std::to_string(address)},
+                {"command_v", std::to_string(command)}, {"v7_v", std::to_string(command)},
+                {"yalk_v", std::to_string(command)}, {"signal", command >= 2.0 ? "1" : "0"},
+                {"lower_limit_v", std::to_string(command - .031)},
+                {"upper_limit_v", std::to_string(command + .031)},
+                {"value_samples", std::to_string(command)}};
+            page.setRunEvent(contact);
+        }
+    }
+    QApplication::processEvents();
+    require(!contacts->isHidden(), "contact thresholds must have their own visible workspace");
+    require(contacts->property("contactMeasurementCount").toInt() == 240,
+            "contact workspace must retain all three threshold states for 80 channels");
+    if (!screenshot.isEmpty() && scene == QStringLiteral("YALK_CONTACT")) {
+        page.resize(1664, 935);
+        page.show();
+        QApplication::processEvents();
+        require(page.grab().save(screenshot), "cannot save YALK contact screenshot");
     }
     ytpBackground.data["background_mean"] = ytpMean;
     ytpBackground.data["background_min"] = ytpMinimum;

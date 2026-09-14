@@ -264,6 +264,8 @@ ProcedureResult yalkOverloadWithProgress(const ScenarioNode& node, ProcedureCont
                             {"delta_code", std::to_string(delta)},
                             {"lower_delta_code", std::to_string(-static_cast<int>(maximumCodeDelta))},
                             {"upper_delta_code", std::to_string(maximumCodeDelta)}};
+                        context.eventSink({std::chrono::system_clock::now(), node.id,
+                            "MEASUREMENT", value.title, value.verdict, value.attributes});
                         append(result, std::move(value));
                     }
                     targetConnected = false;

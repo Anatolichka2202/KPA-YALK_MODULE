@@ -591,6 +591,12 @@ void yalkOverloadSequenceRegression()
     require(run.verdict == RunVerdict::Ok && run.steps.size() == 3
                 && run.steps.back().measurements.size() == 4,
             "YALK overload must test both polarities for every physical channel");
+    require(std::count_if(run.events.cbegin(), run.events.cend(), [](const RunEvent& event) {
+                return event.nodeId == "overload" && event.stage == "MEASUREMENT"
+                    && event.data.count("observed_channel")
+                    && event.data.count("delta_code");
+            }) == 4,
+            "YALK overload must publish every observed-channel result as a live measurement event");
     require(std::count(equipment.operations.begin(), equipment.operations.end(),
                 "ulk.parameter_source:read_snapshot") == 5,
             "YALK overload must save one baseline and read one fresh snapshot per impact");
