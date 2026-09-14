@@ -15,6 +15,7 @@ add_library(orbita_stand_domain STATIC
     src/ubsi_procedures.cpp
     src/ubsi_procedures_current.cpp
     src/ubsi_procedures_rokt.cpp
+    src/ubsi_procedures_yalk_point_major.cpp
     src/ubsi_procedures_power_live.cpp
     src/ubsi_procedures_yvp_v7.cpp
     src/ubsi_procedures_entry.cpp
@@ -97,6 +98,12 @@ if(BUILD_TESTING)
     )
     target_link_libraries(yalk_analog_procedure_test PRIVATE orbita_stand_domain)
     add_test(NAME stand.yalk_analog_procedure COMMAND yalk_analog_procedure_test)
+
+    add_executable(yalk_point_major_contract_test
+        tests/yalk_point_major_contract_test.cpp
+    )
+    target_link_libraries(yalk_point_major_contract_test PRIVATE orbita_stand_domain)
+    add_test(NAME stand.yalk_point_major_contract COMMAND yalk_point_major_contract_test)
 
     add_executable(equipment_protocol_test
         tests/equipment_protocol_test.cpp
