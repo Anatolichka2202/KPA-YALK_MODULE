@@ -277,7 +277,13 @@ struct Akip1160Serial::Impl {
             && !port.waitForBytesWritten(static_cast<int>(config.timeoutMilliseconds))) {
             throw qtError("AKIP-1160/6 COM write timeout", port.errorString());
         }
-        if (!expectReply) return {};
+        if (!expectReply) {
+            // The CH340-backed AKIP accepts the bytes before the instrument has
+            // applied the SCPI command.  Closing and reopening the port for the
+            // immediate verification query can otherwise lose that reply.
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            return {};
+        }
 
         QElapsedTimer timer;
         timer.start();
@@ -296,14 +302,30 @@ struct Akip1160Serial::Impl {
 
     double number(const std::string& command, const char* valueName) const
     {
-        const auto reply = exchange(command, true);
-        std::size_t parsed = 0;
-        const double value = std::stod(reply, &parsed);
-        if (parsed != reply.size() || !std::isfinite(value)) {
-            throw std::runtime_error(std::string("AKIP-1160/6 returned invalid ")
-                + valueName + ": " + reply);
+        std::string lastFailure;
+        for (unsigned attempt = 0; attempt < 3; ++attempt) {
+            try {
+                const auto reply = exchange(command, true);
+                std::size_t parsed = 0;
+                double value = 0.0;
+                try {
+                    value = std::stod(reply, &parsed);
+                } catch (const std::exception&) {
+                    throw std::runtime_error(std::string("AKIP-1160/6 returned invalid ")
+                        + valueName + ": " + reply);
+                }
+                if (parsed != reply.size() || !std::isfinite(value)) {
+                    throw std::runtime_error(std::string("AKIP-1160/6 returned invalid ")
+                        + valueName + ": " + reply);
+                }
+                return value;
+            } catch (const std::exception& error) {
+                lastFailure = error.what();
+                if (attempt < 2)
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
         }
-        return value;
+        throw std::runtime_error(lastFailure);
     }
 };
 
