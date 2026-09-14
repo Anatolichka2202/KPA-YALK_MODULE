@@ -92,8 +92,12 @@ ComponentProfile componentProfile(const yaml::Node& value)
     component.enabled = boolean(value.value("enabled", "true"), true);
     component.bindings = stringSequence(value.find("bind"));
     component.configuration = stringMap(value.find("config"));
+    component.capabilities = stringSequence(value.find("capabilities"));
     if (component.id.empty() || component.kind.empty() || component.provider.empty()) {
         throw yaml::Error("Every profile component requires id, kind and provider");
+    }
+    if (component.kind != "equipment" && !component.capabilities.empty()) {
+        throw yaml::Error("Only equipment components may declare capabilities: " + component.id);
     }
     return component;
 }
@@ -120,6 +124,9 @@ ComponentProfile asComponent(const DeviceProfile& device)
     component.kind = "equipment";
     component.provider = device.pluginId;
     component.enabled = device.enabled;
+    // Legacy `devices:` never had a separate role dimension. Keep bind as the
+    // historical capability list and leave capabilities empty so callers can
+    // distinguish this compatibility representation from the canonical form.
     component.bindings = device.bindCapabilities;
     component.configuration = device.configuration;
     return component;
@@ -134,7 +141,9 @@ DeviceProfile asDevice(const ComponentProfile& component)
     device.id = component.id;
     device.pluginId = component.provider;
     device.enabled = component.enabled;
-    device.bindCapabilities = component.bindings;
+    device.bindCapabilities = component.capabilities.empty()
+        ? component.bindings
+        : component.capabilities;
     device.configuration = component.configuration;
     return device;
 }
@@ -287,11 +296,24 @@ void instantiateProfile(
         for (const auto& [key, value] : profile.routes) config["route." + key] = value;
         auto device = manager.createDevice(definition.pluginId, definition.id, config);
 
-        // Resource identity and capability are separate dimensions. Component
-        // id is the stable default resource id; legacy scenarios still receive
-        // the old capability-only bindings below during the migration period.
+        // Every component can be addressed by its concrete instance id. A
+        // canonical equipment component may additionally expose stable delivery
+        // roles through `bind`; those roles are separate from capabilities.
         registry.bindResource(definition.id, device);
-        for (const auto& capability : definition.bindCapabilities) registry.bind(capability, device);
+        if (const auto* component = findComponentById(profile, definition.id);
+            component && !component->capabilities.empty()) {
+            for (const auto& role : component->bindings) {
+                if (role.empty() || role == definition.id) continue;
+                registry.bindResource(role, device);
+            }
+        }
+
+        // Capability-only routing remains during migration. DeviceProfile was
+        // projected from explicit `capabilities:` for canonical declarations or
+        // from legacy `bind:` when loading an old profile.
+        for (const auto& capability : definition.bindCapabilities) {
+            registry.bind(capability, device);
+        }
         devices.push_back(std::move(device));
     }
 }
