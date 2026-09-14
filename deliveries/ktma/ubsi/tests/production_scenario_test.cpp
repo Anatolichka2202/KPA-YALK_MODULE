@@ -1,6 +1,7 @@
 #include "orbita_stand/config.h"
 #include "orbita_stand/ubsi_procedures.h"
 
+#include <algorithm>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -19,6 +20,19 @@ void require(bool condition, const std::string& message)
     if (!condition) throw std::runtime_error(message);
 }
 
+bool hasResourceRequirement(
+    const ScenarioNode& node,
+    const std::string& resource,
+    const std::string& capability)
+{
+    return std::any_of(
+        node.requiredResources.begin(), node.requiredResources.end(),
+        [&](const ResourceRequirement& requirement) {
+            return requirement.resource == resource
+                && requirement.capability == capability;
+        });
+}
+
 void verifyNode(const ScenarioNode& node)
 {
     require(node.title.find("\xEF\xBF\xBD") == std::string::npos,
@@ -30,6 +44,10 @@ void verifyNode(const ScenarioNode& node)
         require(capability != "orbita.parameter_source",
             "Production scenario must not require legacy Orbita/E20");
     }
+    for (const auto& requirement : node.requiredResources) {
+        require(requirement.capability != "orbita.parameter_source",
+            "Production scenario resource must not require legacy Orbita/E20");
+    }
     if (node.procedure == "ubsi.yvp") {
         const auto count = node.arguments.find("channel_count");
         require(count != node.arguments.end() && count->second == "8",
@@ -37,10 +55,13 @@ void verifyNode(const ScenarioNode& node)
         require(node.arguments.find("yvp_cell") == node.arguments.end()
                 && node.arguments.find("yalk_addresses") == node.arguments.end(),
             "YVP V7/ISD scenario must not depend on adapter/YALK addressing");
-        require(node.requiredCapabilities.count("measure.reference_ac_voltage")
-                    && node.requiredCapabilities.count("measure.reference_frequency")
-                    && node.requiredCapabilities.count("stand.switch_matrix"),
-            "YVP V7/ISD scenario must require V7 and ISD capabilities");
+        require(hasResourceRequirement(
+                    node, "measure.reference", "measure.reference_ac_voltage")
+                && hasResourceRequirement(
+                    node, "measure.reference", "measure.reference_frequency")
+                && hasResourceRequirement(
+                    node, "switch_matrix.primary", "stand.switch_matrix"),
+            "YVP V7/ISD scenario must require V7 and ISD delivery resources");
     }
     for (const auto& child : node.children) verifyNode(child);
 }
