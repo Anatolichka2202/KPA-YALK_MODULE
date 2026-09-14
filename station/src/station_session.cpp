@@ -32,7 +32,9 @@ void StationSession::safeStopAll() noexcept
 
 void StationSession::clear() noexcept
 {
-    safeStopAll();
+    // Both clear() implementations already perform their own best-effort
+    // safe-stop. Do not call safeStopAll() first: active hardware must not
+    // receive duplicate stop commands merely because a session is reloaded.
     components_.clear();
     equipment_.clear();
     equipmentDevices_.clear();
