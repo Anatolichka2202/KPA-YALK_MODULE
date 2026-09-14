@@ -86,6 +86,9 @@ liborbita
 - [x] `sample_source` подключён к `ComponentRuntime`;
 - [x] `E2010SampleSource::stop()` освобождает I/O events даже после аварийного
   завершения acquisition thread;
+- [x] `orbita_telemetry_probe` больше не создаёт E20 через `liborbita`: probe
+  загружает delivery profile, берёт `telemetry.orbita.sample_source` из
+  `ComponentRuntime` и подаёт raw samples в `Orbita::pushSamples()`;
 - [ ] desktop должен брать `telemetry.orbita.sample_source` из runtime;
 - [ ] удалить legacy `setDeviceE2010()/setDeviceNone()` из liborbita;
 - [ ] удалить `orbita/device/e2010_device.*` и старый `ISampleSource`;
@@ -120,7 +123,9 @@ liborbita
   `IReferenceVoltmeter`, `IProcedureWaiter`) вынесены из YALK-заголовка в
   `equipment_contracts.h`;
 - [x] desktop теперь явно объявляет зависимость от текущего KTMA/UBSI domain,
-  вместо получения её через generic runtime.
+  вместо получения её через generic runtime;
+- [x] UBSI production scenario test явно линкует текущий procedure domain,
+  поэтому generic runtime не требуется снова загрязнять KTMA-процедурами.
 
 Остаётся:
 
@@ -132,12 +137,10 @@ liborbita
 
 ### 6. Resource/role model оборудования
 
-Статус: **PARTIAL**
+Статус: **PARTIAL / CONTRACT READY**
 
-Канонический профиль уже описывает component instance отдельно от provider.
-Для `kind=equipment` поле `bind` пока содержит capability-id ради
-совместимости с существующими сценариями, но `EquipmentRegistry` уже получил
-отдельный role/resource path:
+Канонический профиль описывает component instance отдельно от provider.
+`EquipmentRegistry` и ScenarioEngine теперь имеют отдельный role/resource path:
 
 ```text
 resource id
@@ -159,13 +162,24 @@ operation
 - [x] `safeStopAll()` учитывает role-bound plugin devices без двойного stop;
 - [x] contract test доказывает два независимых источника `power.dc_supply`;
 - [x] generic `instantiateProfile()` автоматически регистрирует equipment
-  component id как resource id и параллельно сохраняет legacy capability route.
+  component id как resource id и параллельно сохраняет legacy capability route;
+- [x] `ScenarioNode` поддерживает `requiredResources` как пары
+  `resource + capability`;
+- [x] YAML schema шага принимает `resources:` с явными `resource` и
+  `capability`;
+- [x] ScenarioEngine проверяет resource/capability до запуска процедуры и
+  возвращает `INCOMPLETE`, если конкретный ресурс недоступен;
+- [x] procedure получает resource-aware вызов через
+  `ICapabilityProvider::invokeResource()`;
+- [x] отдельный contract test проверяет YAML parsing, missing-resource preflight
+  и вызов конкретного logical resource.
 
 Остаётся:
 
-- [ ] расширить scenario schema: шаг должен уметь требовать logical role + capability;
 - [ ] перевести существующие KTMA-сценарии постепенно, сохраняя legacy
   capability-only путь на время миграции;
+- [ ] определить стабильные delivery role-id там, где component instance id не
+  должен становиться публичным именем сценария;
 - [ ] после миграции запретить неоднозначный default routing по capability.
 
 Это нужно завершить до переноса PPB и других стендов, где одинаковые типы
@@ -215,8 +229,7 @@ workflow.
 ## Текущий следующий шаг
 
 1. держать ветку зелёной через отдельный CI после каждого backend-среза;
-2. переключить desktop Orbita monitoring на station-owned `sample_source`;
-3. после этого физически удалить E20/Lusbapi из `liborbita`;
-4. расширить scenario schema до resource + capability и постепенно перевести
-   KTMA-сценарии;
+2. постепенно перевести KTMA scenario YAML на explicit resource + capability;
+3. переключить desktop Orbita monitoring на station-owned `sample_source`;
+4. после этого физически удалить E20/Lusbapi из `liborbita`;
 5. затем физически вынести UBSI/KTMA domain из общего `station` target.
