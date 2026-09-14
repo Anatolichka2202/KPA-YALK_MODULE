@@ -2,6 +2,7 @@
 
 #include "ktma/ubsi/production_ledger.h"
 #include "ktma/ubsi/production_report.h"
+#include "orbita_stand/config.h"
 
 #include <QComboBox>
 #include <QCoreApplication>
@@ -40,6 +41,13 @@ QStringList equipmentRoles(const orbita::stand::ScenarioDefinition& scenario)
             const QString role = roles.value(QString::fromStdString(capability));
             if (!role.isEmpty()) result.insert(role);
         }
+        // Resource-aware scenarios no longer duplicate physical requirements in
+        // requiredCapabilities. The Preparation page still shows instruments by
+        // capability, therefore derive the UI row from each resource contract.
+        for (const auto& requirement : node.requiredResources) {
+            const QString role = roles.value(QString::fromStdString(requirement.capability));
+            if (!role.isEmpty()) result.insert(role);
+        }
         for (const auto& child : node.children) collect(child);
     };
     for (const auto& node : scenario.steps) collect(node);
@@ -55,6 +63,25 @@ bool enabledFlag(const std::map<std::string, std::string>& config,
     if (found == config.end()) return false;
     return found->second == "true" || found->second == "1"
         || found->second == "yes" || found->second == "on";
+}
+
+void bindDeliveryResources(
+    const orbita::stand::StandProfile& profile,
+    orbita::stand::EquipmentRegistry& registry,
+    const std::shared_ptr<orbita::stand::EquipmentDevice>& device)
+{
+    if (!device) return;
+
+    // The concrete component id is always a valid resource. Canonical `bind:`
+    // aliases are the stable delivery roles used by resource-aware scenarios.
+    registry.bindResource(device->instanceId(), device);
+    const auto* component = orbita::stand::findComponentById(profile, device->instanceId());
+    if (!component || component->kind != "equipment") return;
+    for (const auto& role : component->bindings) {
+        if (!role.empty() && role != device->instanceId()) {
+            registry.bindResource(role, device);
+        }
+    }
 }
 
 } // namespace
@@ -329,6 +356,16 @@ void KtmaMainWindow::checkSelectedEquipment()
     // unrelated hardware while preserving the existing safe-stop/bind logic.
     integrationLegacyEquipmentCheck();
     profile.devices = savedDevices;
+
+    // MainWindow's compatibility checker still binds devices by capability.
+    // Recreate the canonical delivery resource aliases for every device that it
+    // actually instantiated, so resource-aware production scenarios address the
+    // exact same checked hardware rather than a second hidden device instance.
+    if (auto* registry = integrationEquipmentRegistry()) {
+        for (const auto& device : integrationEquipmentDevices()) {
+            bindDeliveryResources(profile, *registry, device);
+        }
+    }
 
     if (required.contains(QStringLiteral("RIGOL"))) checkRigolGenerator();
 }
@@ -619,6 +656,7 @@ void KtmaMainWindow::checkRigolGenerator()
                 QStringLiteral("Связь есть, но активный выход заблокирован профилем стенда"));
             return;
         }
+        bindDeliveryResources(profile, *registry, device);
         for (const auto& bound : definition->bindCapabilities)
             registry->bind(bound, device);
         page->setEquipmentStatus(QStringLiteral("RIGOL"), true,
