@@ -165,6 +165,7 @@ devices:
     # плагином при остановке и при любой ошибке сценария.
     enabled: true
     config:
+      resource: USB0::0x1AB1::0x0642::DG1ZA252402338::INSTR
       timeout_ms: 2000
       device.active_commands_confirmed: true
   - id: oscilloscope
