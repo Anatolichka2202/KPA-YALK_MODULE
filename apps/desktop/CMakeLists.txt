@@ -21,6 +21,8 @@ add_executable(MilTechStation
     registrar_page.h
     test_page.cpp
     test_page.h
+    tu_flow_widget.cpp
+    tu_flow_widget.h
     plot_widget.cpp
     plot_widget.h
     qcustomplot.cpp
@@ -151,6 +153,8 @@ if(BUILD_TESTING)
         tests/test_page_smoke_test.cpp
         test_page.cpp
         test_page.h
+        tu_flow_widget.cpp
+        tu_flow_widget.h
         equipment_control_widget.cpp
         equipment_control_widget.h
     )
@@ -172,6 +176,8 @@ if(BUILD_TESTING)
         tests/test_page_yvp_event_test.cpp
         test_page.cpp
         test_page.h
+        tu_flow_widget.cpp
+        tu_flow_widget.h
         equipment_control_widget.cpp
         equipment_control_widget.h
     )
@@ -193,6 +199,8 @@ if(BUILD_TESTING)
         tests/test_page_power_yalk_event_test.cpp
         test_page.cpp
         test_page.h
+        tu_flow_widget.cpp
+        tu_flow_widget.h
         equipment_control_widget.cpp
         equipment_control_widget.h
     )
