@@ -42,6 +42,24 @@ std::map<std::string, std::string> stringMap(const yaml::Node* node)
     return result;
 }
 
+std::vector<ResourceRequirement> resourceRequirements(const yaml::Node* node)
+{
+    std::vector<ResourceRequirement> result;
+    if (!node) return result;
+    if (!node->isSequence()) throw yaml::Error("Scenario resources must be a YAML sequence");
+    for (const auto& item : node->sequence) {
+        if (!item.isMap()) throw yaml::Error("Scenario resource requirement must be a mapping");
+        ResourceRequirement requirement;
+        requirement.resource = item.value("resource");
+        requirement.capability = item.value("capability");
+        if (requirement.resource.empty() || requirement.capability.empty()) {
+            throw yaml::Error("Scenario resource requirement needs resource and capability");
+        }
+        result.push_back(std::move(requirement));
+    }
+    return result;
+}
+
 std::map<std::string, std::string> routeMap(const yaml::Node* node)
 {
     std::map<std::string, std::string> result;
@@ -140,6 +158,7 @@ ScenarioNode scenarioNode(const yaml::Node& value)
         node.requiredCapabilities.insert(capability);
     }
     node.arguments = stringMap(value.find("args"));
+    node.requiredResources = resourceRequirements(value.find("resources"));
     if (const auto* children = value.find("steps")) {
         if (!children->isSequence()) throw yaml::Error("Scenario steps must be a sequence");
         for (const auto& child : children->sequence) node.children.push_back(scenarioNode(child));
