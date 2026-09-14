@@ -58,6 +58,9 @@ target_compile_features(orbita_stand_reporting PUBLIC cxx_std_17)
 target_link_libraries(orbita_stand_reporting PUBLIC orbita_stand_core Qt6::Core Qt6::Sql Qt6::Gui)
 add_library(stand_reporting ALIAS orbita_stand_reporting)
 
+# Universal station runtime. This target deliberately does not depend on the
+# KTMA/UBSI procedure domain or reporting. It owns profile loading, component
+# lifecycle and equipment/execution runtime only.
 add_library(orbita_stand_runtime STATIC
     src/config.cpp
     src/equipment_runtime.cpp
@@ -67,9 +70,10 @@ add_library(orbita_stand_runtime STATIC
 target_include_directories(orbita_stand_runtime PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_compile_features(orbita_stand_runtime PUBLIC cxx_std_17)
 target_link_libraries(orbita_stand_runtime PUBLIC
-    orbita_stand_domain orbita_stand_catalog orbita_stand_reporting
-    Qt6::Core Qt6::Sql Qt6::Gui)
+    orbita_stand_core orbita_stand_catalog Qt6::Core)
 
+# Hardware/protocol adapters are reusable station IO. Product procedures must
+# depend on these adapters when needed, never the other way around.
 add_library(orbita_stand_adapters STATIC
     adapters/equipment_adapters.cpp
     adapters/e2010_sample_source.cpp
@@ -90,7 +94,7 @@ target_include_directories(orbita_stand_adapters
 )
 target_compile_features(orbita_stand_adapters PUBLIC cxx_std_17)
 target_link_libraries(orbita_stand_adapters
-    PUBLIC orbita_stand_domain orbita_stand_runtime Qt6::Core Qt6::Network Qt6::SerialPort
+    PUBLIC orbita_stand_runtime Qt6::Core Qt6::Network Qt6::SerialPort
 )
 if(WIN32)
     target_link_libraries(orbita_stand_adapters PUBLIC
@@ -117,7 +121,12 @@ if(BUILD_TESTING)
     target_compile_definitions(scenario_runtime_test PRIVATE
         ORBITA_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
     target_link_libraries(scenario_runtime_test PRIVATE
-        orbita_stand_runtime orbita_stand_adapters Qt6::Core Qt6::Sql)
+        orbita_stand_runtime
+        orbita_stand_adapters
+        orbita_stand_domain
+        orbita_stand_reporting
+        Qt6::Core
+        Qt6::Sql)
     add_test(NAME stand.scenario_runtime COMMAND scenario_runtime_test)
 
     add_executable(component_profile_test tests/component_profile_test.cpp)
