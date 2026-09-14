@@ -191,12 +191,43 @@ struct ComponentProfile {
     bool enabled;
     std::vector<std::string> bindings;
     std::map<std::string, std::string> configuration;
+    std::vector<std::string> capabilities;
 };
 ```
 
 `kind` задаёт тип station-level компонента, `provider` — конкретную
 реализацию, а `bindings` — логические роли, по которым остальные части станции
 находят компонент.
+
+Для `kind=equipment` поле `capabilities` отдельно описывает контракты
+оборудования. Роль и capability — разные измерения:
+
+```text
+power.dut             = роль в конкретной поставке
+power.dc_supply       = контракт оборудования
+orbita.akip_1160_pair = provider конкретной реализации
+```
+
+Поэтому две поставки могут назначить разные приборы роли `power.dut`, а одна
+поставка может иметь `power.dut` и `power.aux` с одной capability
+`power.dc_supply`.
+
+Пример:
+
+```yaml
+components:
+  - id: dc-supply
+    kind: equipment
+    provider: orbita.akip_1160_pair
+    bind:
+      - power.dut
+    capabilities:
+      - power.dc_supply
+```
+
+Legacy-профили, где у equipment нет `capabilities:`, всё ещё поддерживаются:
+в них `bind:` трактуется как старый список capability. Такой формат является
+compatibility input и не должен использоваться для новых поставок.
 
 Сейчас реализованы следующие component kinds:
 
@@ -209,10 +240,6 @@ execution_runtime
 Модель специально не ограничена enum. Появление Python, Lua, replay source,
 SSH transport или другой составной части не должно требовать изменения базовой
 схемы профиля.
-
-Legacy-секция `devices:` пока поддерживается и зеркалируется в component
-model как `kind=equipment`. Для этих legacy-компонентов существующие
-capability-id временно становятся их `bindings`.
 
 Пример декларации входа телеметрии КТМА:
 
@@ -314,6 +341,10 @@ miltech.sample.e2010
 registerSampleSourceComponents(componentRuntime)
 ```
 
+`orbita_telemetry_probe` уже использует именно этот путь: загружает профиль
+поставки, находит `telemetry.orbita.sample_source` и подаёт отсчёты через
+`Orbita::pushSamples()`.
+
 ---
 
 # 5. Execution Runtime MilTechStation
@@ -390,9 +421,9 @@ terminate_grace_ms
 ```
 
 Если `program` задан, `target` запуска передаётся первым аргументом программе.
-Это позволяет, например, декларативно задать интерпретатор, а конкретный
-скрипт передавать через request. Если `program` не задан, `target` является
-самим исполняемым файлом.
+Это позволяет декларативно задать интерпретатор, а конкретный скрипт передавать
+через request. Если `program` не задан, `target` является самим исполняемым
+файлом.
 
 Регистрация component kind:
 
@@ -405,78 +436,115 @@ Embedded Lua/Python providers пока не реализованы. Они до�
 
 ---
 
-# 6. Внутренний Equipment API MilTechStation
+# 6. Equipment resources MilTechStation
 
-Этот API используется сценарием и runtime станции.
+`EquipmentRegistry` поддерживает два пути одновременно.
 
-Основная идея:
+Legacy/default routing:
 
 ```text
-сценарий
-   ↓
 capability
-   ↓
+    ↓
 operation
-   ↓
-конкретное устройство
+    ↓
+device
 ```
 
-Сценарий не обязан знать имя DLL.
-
-Он спрашивает возможность:
+Resource-aware routing:
 
 ```text
-power.dc_supply
-measure.reference_voltage
-stand.switch_matrix
-ulk.parameter_source
-signal.generator
-...
+logical resource role
+    ↓
+capability
+    ↓
+operation
+    ↓
+конкретный component instance
 ```
-
-## EquipmentRegistry
 
 Код:
 
 ```text
-stand/include/orbita_stand/equipment_runtime.h
+station/include/orbita_stand/equipment_runtime.h
 ```
 
-Основные операции:
+Legacy API:
 
 ```cpp
 hasCapability(capability)
 invoke(capability, operation, arguments)
-safeStopAll()
 ```
 
-Пример концептуально:
+Resource API:
+
+```cpp
+resourceHasCapability(resource, capability)
+invokeResource(resource, capability, operation, arguments)
+resources()
+```
+
+Поставка автоматически регистрирует concrete component id как resource id. Для
+канонического equipment-профиля все значения `bind:` также регистрируются как
+логические resource roles.
+
+Например:
 
 ```text
+resource   = power.dut
 capability = power.dc_supply
 operation  = set_voltage
 arguments  = volts=27
 ```
 
-Registry находит устройство, которому назначена эта capability, и
-передаёт вызов ему.
+Это позволяет иметь несколько независимых устройств с одной capability без
+перезаписи друг друга в registry.
 
-## Binding
+Capability-only routing временно сохраняется для существующих сценариев и
+UI. После миграции сценариев неоднозначный default routing должен быть удалён
+или запрещён.
 
-Capability может быть связана:
+---
 
-1. с DLL-плагином;
-2. со встроенным источником приложения.
+# 7. Resource requirements ScenarioEngine
 
-Это позволяет использовать один сценарный контракт независимо от того,
-находится реализация внутри процесса или во внешней библиотеке.
+`ScenarioNode` может требовать конкретный logical resource вместе с
+capability:
 
-Это текущий equipment-specific контракт. Общий `ComponentRuntime` не должен
-смешивать понятие capability прибора с logical binding компонента. Такое
-разделение потребуется, в частности, когда в одной поставке появятся несколько
-устройств с одинаковой capability, но разными ролями.
+```cpp
+struct ResourceRequirement {
+    std::string resource;
+    std::string capability;
+};
+```
 
-## Аргументы
+YAML:
+
+```yaml
+resources:
+  - resource: power.dut
+    capability: power.dc_supply
+```
+
+До вызова процедуры `ScenarioEngine` проверяет
+`resourceHasCapability(resource, capability)`. Если конкретный ресурс не
+доступен, шаг получает `INCOMPLETE`; процедура не запускается.
+
+Внутри процедуры resource-aware вызов выполняется через:
+
+```cpp
+context.equipment.invokeResource(
+    resource,
+    capability,
+    operation,
+    arguments);
+```
+
+Старый `requires:` с capability-only проверкой пока остаётся совместимым
+параллельным механизмом.
+
+---
+
+# 8. Аргументы Equipment API
 
 На C++ уровне аргументы представлены:
 
@@ -484,7 +552,7 @@ Capability может быть связана:
 std::map<std::string, std::string>
 ```
 
-Через ABI они сериализуются в простой текстовый формат.
+Через Equipment Plugin ABI они сериализуются в простой текстовый формат.
 
 Формат описан в:
 
@@ -492,7 +560,7 @@ std::map<std::string, std::string>
 
 ---
 
-# 7. Граница API и требований
+# 9. Граница API и требований
 
 API отвечает:
 
