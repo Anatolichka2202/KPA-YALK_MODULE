@@ -66,8 +66,12 @@ void yvpScenarioContract()
             && contains(standalone, "stand.switch_matrix")
             && contains(standalone, "signal.generator"),
         "V7+ISD production YVP must require Rigol, ISD and V7");
-    require(contains(standalone, "mapping_confirmed: false"),
-        "YVP production must stay fail-safe until the ISD E3 map is commissioned");
+    require(contains(standalone, "mapping_confirmed: true"),
+        "YVP production must use the confirmed ISD E3/firmware map");
+    require(contains(standalone, "input_1_contacts: 33,37")
+            && contains(standalone, "measurement_8_contacts: 35")
+            && contains(standalone, "channel_8_gain_contacts: 29,30,31,32"),
+        "YVP production must retain explicit input, output and per-channel KU maps");
     require(contains(standalone, "gains_mv_per_pcl: 0.25,0.5,1,2,4,8,32"),
         "YVP method must use the seven confirmed gain values");
     require(contains(standalone, "frequencies_hz: 0.15,20,250,500,1800,2000,4000"),
@@ -237,7 +241,7 @@ void procedureRuntimeContract()
     ContractEquipment v7Equipment;
     const auto v7Run = engine.run(oneStep("yvp.v7_isd", {
         {"channel_count", "8"},
-        {"commissioning_channels", "1"},
+        {"commissioning_channels", "2"},
         {"gains_mv_per_pcl", "1"},
         {"frequencies_hz", "0.15,20"},
         {"mapping_confirmed", "true"},
@@ -245,6 +249,7 @@ void procedureRuntimeContract()
         {"input_switch_type", "2"},
         {"gain_switch_type", "2"},
         {"measurement_switch_type", "2"},
+        {"measurement_analog_type", "1"},
         {"input_1_contacts", "101"},
         {"input_2_contacts", "102"},
         {"input_3_contacts", "103"},
@@ -261,7 +266,15 @@ void procedureRuntimeContract()
         {"measurement_6_contacts", "206"},
         {"measurement_7_contacts", "207"},
         {"measurement_8_contacts", "208"},
-        {"gain_1_contacts", "none"},
+        {"channel_1_gain_contacts", "1,2,3,4"},
+        {"channel_2_gain_contacts", "5,6,7,8"},
+        {"channel_3_gain_contacts", "9,10,11,12"},
+        {"channel_4_gain_contacts", "13,14,15,16"},
+        {"channel_5_gain_contacts", "17,18,19,20"},
+        {"channel_6_gain_contacts", "21,22,23,24"},
+        {"channel_7_gain_contacts", "25,26,27,28"},
+        {"channel_8_gain_contacts", "29,30,31,32"},
+        {"gain_1_bits", "2"},
         {"settle_ms", "0"}}), v7Equipment, "p", "", false);
     require(v7Run.verdict == RunVerdict::Incomplete
                 && v7Run.steps.front().measurements.size() == 2,
@@ -271,6 +284,9 @@ void procedureRuntimeContract()
     require(std::count(v7Equipment.operations.begin(), v7Equipment.operations.end(),
                        "signal.generator:output") >= 4,
         "V7+ISD commissioning must switch Rigol safely around both points");
+    require(std::count(v7Equipment.operations.begin(), v7Equipment.operations.end(),
+                       "stand.switch_matrix:analog") >= 4,
+        "V7+ISD measurement routing must program the analog line before the V7 bus");
     for (const auto& measurement : v7Run.steps.front().measurements) {
         if (measurement.attributes.at("set_frequency_hz") == "0.150000") {
             require(measurement.attributes.at("frequency_verification")

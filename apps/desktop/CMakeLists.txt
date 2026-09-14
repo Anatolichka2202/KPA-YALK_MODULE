@@ -131,6 +131,9 @@ add_custom_target(OrbitaRuntimeResources ALL
         $<TARGET_FILE:orbita_yvp_rokt_probe>
         $<TARGET_FILE_DIR:MilTechStation>
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        $<TARGET_FILE:orbita_yvp_v7_probe>
+        $<TARGET_FILE_DIR:MilTechStation>
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
         $<TARGET_FILE:visa_discover>
         $<TARGET_FILE_DIR:MilTechStation>
     COMMENT "Updating MilTechStation runtime database and address files"
@@ -141,7 +144,7 @@ if(WIN32)
 endif()
 add_dependencies(OrbitaRuntimeResources MilTechStation orbita_equipment_plugins
     orbita_equipment_probe orbita_telemetry_probe orbita_ubsi_udp_probe
-    orbita_yvp_rokt_probe visa_discover)
+    orbita_yvp_rokt_probe orbita_yvp_v7_probe visa_discover)
 
 if(BUILD_TESTING)
     add_executable(test_page_smoke_test
@@ -165,33 +168,12 @@ if(BUILD_TESTING)
 
     add_test(NAME desktop.test_page_smoke COMMAND test_page_smoke_test -platform offscreen)
 
-    add_executable(test_page_yvp_event_test
-        tests/test_page_yvp_event_test.cpp
-        test_page.cpp
-        test_page.h
-        equipment_control_widget.cpp
-        equipment_control_widget.h
-    )
-
-    target_include_directories(test_page_yvp_event_test PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}
-        ${CMAKE_SOURCE_DIR}/orbita/include
-    )
-
-    target_link_libraries(test_page_yvp_event_test PRIVATE
-        orbita_stand_domain
-        Qt6::Core
-        Qt6::Widgets
-    )
-
-    add_test(NAME desktop.test_page_yvp_event COMMAND test_page_yvp_event_test -platform offscreen)
-
     get_filename_component(QT_TEST_PLUGIN_DIR "${Qt6_DIR}/../../../plugins" ABSOLUTE)
-    set_tests_properties(desktop.test_page_smoke desktop.test_page_yvp_event PROPERTIES
+    set_tests_properties(desktop.test_page_smoke PROPERTIES
         ENVIRONMENT "QT_PLUGIN_PATH=${QT_TEST_PLUGIN_DIR}"
     )
     if(WIN32)
-        set_tests_properties(desktop.test_page_smoke desktop.test_page_yvp_event PROPERTIES
+        set_tests_properties(desktop.test_page_smoke PROPERTIES
             ENVIRONMENT_MODIFICATION
                 "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
         )

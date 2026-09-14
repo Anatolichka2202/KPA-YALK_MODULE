@@ -205,6 +205,9 @@ if(WIN32)
         orbita_stand_adapters orbita_stand_runtime Qt6::Core)
 endif()
 
+add_executable(orbita_yvp_v7_probe tools/yvp_v7_probe.cpp)
+target_link_libraries(orbita_yvp_v7_probe PRIVATE orbita_stand_runtime Qt6::Core)
+
 add_executable(yalk_timing_probe tools/yalk_timing_probe.cpp)
 target_link_libraries(yalk_timing_probe PRIVATE orbita_stand_adapters)
 

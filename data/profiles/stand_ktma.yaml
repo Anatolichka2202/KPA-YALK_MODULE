@@ -1,6 +1,6 @@
 schema: 1
 id: ktma-main
-version: 2026.09.11-yvp-1
+version: 2026.09.14-yvp-v7-1
 title: Основной стенд КТМА, Windows 11
 
 # Общие активные воздействия разрешены только для уже подтверждённых устройств.
@@ -116,7 +116,7 @@ devices:
       timeout_ms: 1500
       switch_type: 2
       # Форматы type=1/2/3/4/5/7 подтверждены Delphi и KPA.
-      # Точная карта ЯВП type/num пока не подтверждена.
+      # Карта ЯВП type/num задаётся явными таблицами в сценариях.
       device.active_commands_confirmed: true
   - id: v7-reference
     plugin: orbita.v7_visa
