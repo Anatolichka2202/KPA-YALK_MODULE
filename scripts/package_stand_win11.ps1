@@ -53,7 +53,7 @@ if (-not (Test-Path -LiteralPath $deployTool -PathType Leaf)) {
 
 New-Item -ItemType Directory -Path $packageRoot | Out-Null
 foreach ($name in @(
-    'MilTechStation.exe', 'Lusbapi64.dll', 'Qt6SerialPort.dll',
+    'MilTechStation.exe', 'MilTechStationSimulator.exe', 'Lusbapi64.dll', 'Qt6SerialPort.dll',
     'parameters.db', 'stand.ini',
     'orbita_equipment_probe.exe', 'orbita_telemetry_probe.exe',
     'orbita_ubsi_udp_probe.exe', 'orbita_yvp_rokt_probe.exe',
@@ -93,7 +93,7 @@ foreach ($plugin in Get-ChildItem -LiteralPath (Join-Path $packageRoot 'plugins'
 }
 
 $required = @(
-    'MilTechStation.exe', 'parameters.db', 'profiles\stand_ktma.yaml',
+    'MilTechStation.exe', 'MilTechStationSimulator.exe', 'parameters.db', 'profiles\stand_ktma.yaml',
     'scenarios\ubsi_production_full.yaml', 'scenarios\ubsi_production_power.yaml',
     'scenarios\ubsi_production_yalk.yaml', 'scenarios\ubsi_production_ytp.yaml',
     'scenarios\ubsi_production_yvp.yaml',
