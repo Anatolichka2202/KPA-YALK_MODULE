@@ -42,10 +42,6 @@ public:
         if (defaultTimeoutMs_ < 0 || startTimeoutMs_ <= 0 || terminateGraceMs_ < 0) {
             throw std::invalid_argument("Invalid external process timeout configuration");
         }
-        if (program_.empty() && defaultEntrypoint_.empty()) {
-            // Допускается runtime без заранее закреплённого executable, если
-            // target будет передан при execute().
-        }
     }
 
     ExecutionResult execute(const ExecutionRequest& request) override
@@ -68,7 +64,7 @@ public:
         QStringList arguments;
         if (!program_.empty()) {
             executable = program_;
-            if (!target.empty()) arguments.push_back(QString::fromUtf8(target));
+            if (!target.empty()) arguments.push_back(QString::fromStdString(target));
         } else {
             executable = target;
         }
@@ -77,23 +73,23 @@ public:
                 "Execution runtime requires program or request/default target");
         }
         for (const auto& argument : request.arguments) {
-            arguments.push_back(QString::fromUtf8(argument));
+            arguments.push_back(QString::fromStdString(argument));
         }
 
         QProcess process;
         const std::string workingDirectory = request.workingDirectory.empty()
             ? defaultWorkingDirectory_ : request.workingDirectory;
         if (!workingDirectory.empty()) {
-            process.setWorkingDirectory(QString::fromUtf8(workingDirectory));
+            process.setWorkingDirectory(QString::fromStdString(workingDirectory));
         }
 
         auto environment = QProcessEnvironment::systemEnvironment();
         for (const auto& [key, value] : request.environment) {
-            environment.insert(QString::fromUtf8(key), QString::fromUtf8(value));
+            environment.insert(QString::fromStdString(key), QString::fromStdString(value));
         }
         process.setProcessEnvironment(environment);
         process.setProcessChannelMode(QProcess::SeparateChannels);
-        process.start(QString::fromUtf8(executable), arguments);
+        process.start(QString::fromStdString(executable), arguments);
 
         if (!process.waitForStarted(startTimeoutMs_)) {
             result.standardError = process.errorString().toUtf8().toStdString();
