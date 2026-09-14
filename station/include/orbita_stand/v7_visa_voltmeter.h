@@ -1,6 +1,6 @@
 #pragma once
 
-#include "orbita_stand/yalk_analog_procedure.h"
+#include "orbita_stand/equipment_contracts.h"
 
 #include <memory>
 #include <string>
@@ -21,7 +21,7 @@ struct V7VisaConfig {
 };
 
 // Windows adapter for the V7-78/1. NI-VISA is loaded at runtime, so the
-// portable domain library does not require vendor headers or import libraries.
+// portable station contract does not require vendor headers or import libraries.
 class V7VisaVoltmeter final : public IReferenceVoltmeter {
 public:
     explicit V7VisaVoltmeter(V7VisaConfig config = {});
