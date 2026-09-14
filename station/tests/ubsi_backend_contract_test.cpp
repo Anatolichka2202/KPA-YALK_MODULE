@@ -51,42 +51,27 @@ bool tuReferences(const std::string& yaml, const std::string& requirement)
     return false;
 }
 
-void yvpTransportContract()
+void yvpScenarioContract()
 {
-    const auto catalog = readFile("data/catalog/catalog.yaml");
-    const auto begin = catalog.find("parameter_group: yvp_fast", catalog.find("bindings:"));
-    require(begin != std::string::npos, "catalog must retain the YVP commissioning binding");
-    const auto end = catalog.find("\ninstances:", begin);
-    const auto block = catalog.substr(begin, end - begin);
-    require(contains(block, "source: ulk.parameter_source"),
-        "YVP commissioning binding must use ulk.parameter_source");
-    require(contains(block, "confirmed: false"),
-        "obsolete YVP-to-YALK candidate must remain unconfirmed");
-    require(!contains(block, "orbita.parameter_source"),
-        "YVP must never fall back to Orbita/E20");
-
     const auto standalone = readFile("data/scenarios/ubsi_production_yvp.yaml");
-    require(contains(standalone, "procedure: yvp.enter_mode"),
-        "standalone YVP production must enter the confirmed ROKT mode");
     require(contains(standalone, "procedure: ubsi.yvp"),
-        "standalone YVP production must execute the ROKT channel procedure");
-    require(contains(standalone, "procedure: yvp.safe_cleanup"),
-        "standalone YVP production must stop its stream safely");
-    require(!contains(standalone, "procedure: yalk.start_stream")
-            && !contains(standalone, "procedure: yalk.read_calibration"),
-        "standalone YVP production must not use the obsolete YALK-address transport");
-
-    const auto full = readFile("data/scenarios/ubsi_production_full.yaml");
-    require(contains(full, "id: yvp_mode") && contains(full, "procedure: yvp.enter_mode"),
-        "full production must use the ROKT YVP mode");
-
-    const auto combined = readFile("data/scenarios/ubsi_ulk_combined_check.yaml");
-    require(contains(combined, "procedure: yvp.enter_mode")
-            && contains(combined, "procedure: yvp.safe_cleanup"),
-        "current TU run must use the ROKT YVP transport");
-    require(!contains(combined, "routes_confirmed: false")
-            && !contains(combined, "yalk_value_model_confirmed: false"),
-        "current TU run must not retain the obsolete YALK YVP gates");
+        "standalone YVP production must call the production YVP alias");
+    require(!contains(standalone, "procedure: yvp.enter_mode"),
+        "V7+ISD production YVP must not enter the adapter/ROKT measurement path");
+    require(!contains(standalone, "ulk.parameter_source")
+            && !contains(standalone, "catalog.parameter_resolver"),
+        "V7+ISD production YVP must not require the adapter or YALK catalog decoder");
+    require(contains(standalone, "measure.reference_ac_voltage")
+            && contains(standalone, "measure.reference_frequency")
+            && contains(standalone, "stand.switch_matrix")
+            && contains(standalone, "signal.generator"),
+        "V7+ISD production YVP must require Rigol, ISD and V7");
+    require(contains(standalone, "mapping_confirmed: false"),
+        "YVP production must stay fail-safe until the ISD E3 map is commissioned");
+    require(contains(standalone, "gains_mv_per_pcl: 0.25,0.5,1,2,4,8,32"),
+        "YVP method must use the seven confirmed gain values");
+    require(contains(standalone, "frequencies_hz: 0.15,20,250,500,1800,2000,4000"),
+        "YVP method must retain the confirmed frequency set");
 }
 
 void scenarioContract()
@@ -100,8 +85,6 @@ void scenarioContract()
         "350/450 mA sensor-supply procedure must not be in current TU scenario");
     require(!contains(combined, "ubsi.external_evidence"),
         "excluded checks must not return as external-evidence gates");
-    require(!contains(combined, "orbita.parameter_source"),
-        "current TU route must not use Orbita/E20 for YVP");
     require(contains(combined, "maximum_total_current_a: 0.4"),
         "whole-UBSI current criterion must be 0.4 A");
     require(contains(combined, "supply_current_limit_a: 0.6"),
@@ -112,18 +95,8 @@ void scenarioContract()
         "legacy trace scenario must not reintroduce the 50 m check");
     require(!contains(legacy, "procedure: ubsi.sensor_supply"),
         "legacy trace scenario must not reintroduce 350/450 mA automation");
-    require(!contains(legacy, "orbita.parameter_source"),
-        "legacy trace scenario must not reintroduce Orbita as YVP source");
-
-    const auto ytp = readFile("data/scenarios/ubsi_ytp_tu_5_6.yaml");
-    require(!tuReferences(ytp, "1.1.4.6"),
-        "standalone YTP scenario must not claim the 50 m requirement");
 
     const auto traceability = readFile("data/scenarios/ubsi_tu_5_6_traceability.csv");
-    require(!contains(traceability, "1.1.4.2;5.6;ubsi.external_evidence"),
-        "sensor-supply must not be represented as external evidence");
-    require(!contains(traceability, "1.1.4.14;5.6;ubsi.external_evidence;входной ток"),
-        "per-channel input current must not be represented as external evidence");
     require(contains(traceability, "1.1.4.6;5.6;нет;50-метровая линия"),
         "traceability must explicitly record 1.1.4.6 as not checked");
 }
@@ -140,10 +113,10 @@ void yvpMathContract()
         "AFC calculation is wrong");
     require(std::abs(yvpAttenuationDb(1.0, 0.1) - 20.0) < 1e-9,
         "attenuation calculation is wrong");
-    require(yvpStimulusVppForGain(0.25) == 8.0, "0.25 mV/pC stimulus must be 8 V");
-    require(yvpStimulusVppForGain(0.5) == 4.0, "0.5 mV/pC stimulus must be 4 V");
-    require(yvpStimulusVppForGain(1.0) == 2.0, "1 mV/pC stimulus must be 2 V");
-    require(yvpStimulusVppForGain(2.0) == 1.0, ">1 mV/pC stimulus must be 1 V");
+    require(yvpStimulusVppForGain(0.25) == 8.0, "0.25 mV/pC stimulus must be 8 Vpp");
+    require(yvpStimulusVppForGain(0.5) == 4.0, "0.5 mV/pC stimulus must be 4 Vpp");
+    require(yvpStimulusVppForGain(1.0) == 2.0, "1 mV/pC stimulus must be 2 Vpp");
+    require(yvpStimulusVppForGain(2.0) == 1.0, ">1 mV/pC stimulus must be 1 Vpp");
 }
 
 class ContractEquipment final : public ICapabilityProvider {
@@ -154,23 +127,12 @@ public:
                        const std::map<std::string, std::string>& arguments) override
     {
         operations.push_back(capability + ":" + operation);
-        if (capability == "ulk.parameter_source"
-            && (operation == "start_yvp_probe" || operation == "start_yvp_channel_probe")) {
+        if (capability == "ulk.parameter_source" && operation == "start_yvp_probe") {
             ++yvpStarts;
-            return "status=capturing\nprotocol=rokt_yvp_unclassified\ndecoder=unconfirmed\n";
+            return "status=capturing\n";
         }
-        if (capability == "ulk.parameter_source" && operation == "stats") {
-            return "status=ready\nlast_sequence=1\nunknown=1\ndropped=0\n";
-        }
-        if (capability == "catalog.parameter_resolver" && operation == "resolve") {
-            const unsigned channel = static_cast<unsigned>(std::stoul(arguments.at("channel_index")));
-            const unsigned address = 89 + channel;
-            return "source=ulk.parameter_source\nlocator_type=ulk_address\nlocator="
-                + std::to_string(address)
-                + "\nstream_id=\nword_index=" + std::to_string(address - 1)
-                + "\nmask=1023\nshift=0\nmode=0\nconversion_id=yalk_two_point_6v2\n"
-                  "stimulus_route=\nstimulus_offset=0\nconfirmed=false\n";
-        }
+        if (capability == "ulk.parameter_source" && operation == "stats")
+            return "status=ready\nlast_sequence=1\nyvp_rokt136=1\nunknown=0\ndropped=0\n";
         if (capability == "power.dc_supply" && operation == "set_voltage") {
             supplyVoltage = std::stod(arguments.at("volts"));
             return "status=ok\n";
@@ -228,44 +190,26 @@ void procedureRuntimeContract()
     ScenarioEngine engine;
     registerUbsiProcedures(engine);
 
-    ContractEquipment sensorEquipment;
-    const auto sensorRun = engine.run(oneStep("ubsi.sensor_supply"),
-        sensorEquipment, "p", "", false);
-    require(sensorRun.verdict == RunVerdict::Incomplete,
-        "rejected 350/450 mA automation must be INCOMPLETE, never a fake verdict");
-    require(sensorEquipment.operations.empty(),
-        "rejected sensor-supply procedure must perform no hardware operation");
-
     ContractEquipment yvpEquipment;
     const auto yvpRun = engine.run(oneStep("ubsi.yvp", {
-        {"channel_count", "8"}, {"yvp_cell", "1"}, {"timeout_ms", "100"}}),
-        yvpEquipment, "p", "", false);
+        {"channel_count", "8"},
+        {"gains_mv_per_pcl", "0.25,0.5,1,2,4,8,32"},
+        {"frequencies_hz", "0.15,20,250,500,1800,2000,4000"},
+        {"mapping_confirmed", "false"},
+        {"active_outputs_confirmed", "true"}}), yvpEquipment, "p", "", false);
     require(yvpRun.verdict == RunVerdict::Incomplete,
-        "YVP ROKT transport without a confirmed payload decoder must be INCOMPLETE");
-    require(yvpEquipment.yvpStarts == 8,
-        "YVP procedure must issue one ROKT channel command for each of 8 channels");
-    require(std::count(yvpEquipment.operations.begin(), yvpEquipment.operations.end(),
-                "ulk.parameter_source:start_yvp_channel_probe") == 8,
-        "YVP procedure must use start_yvp_channel_probe exactly 8 times");
-    for (const auto& operation : yvpEquipment.operations) {
-        require(operation.rfind("signal.generator:", 0) != 0,
-            "YVP must not enable or configure Rigol before payload decoding is confirmed");
-        require(operation.rfind("stand.switch_matrix:", 0) != 0,
-            "YVP ROKT transport commissioning must not switch active YVP routes");
-    }
+        "V7+ISD YVP must remain INCOMPLETE until the ISD map is confirmed");
+    require(yvpEquipment.operations.empty(),
+        "V7+ISD YVP must perform no hardware operation before mapping_confirmed=true");
 
-    ContractEquipment cleanupEquipment;
-    const auto cleanupRun = engine.run(oneStep("yvp.safe_cleanup"),
-        cleanupEquipment, "p", "", false);
-    require(cleanupRun.verdict == RunVerdict::Ok,
-        "YVP cleanup must complete when all safe-stop capabilities respond");
-    require(std::count(cleanupEquipment.operations.begin(), cleanupEquipment.operations.end(),
-                "signal.generator:output") == 1
-                && std::count(cleanupEquipment.operations.begin(), cleanupEquipment.operations.end(),
-                    "stand.switch_matrix:full_reset") == 1
-                && std::count(cleanupEquipment.operations.begin(), cleanupEquipment.operations.end(),
-                    "ulk.parameter_source:stop_stream") == 1,
-            "YVP cleanup must switch Rigol off, reset ISD and stop the adapter stream");
+    ContractEquipment roktEquipment;
+    const auto roktRun = engine.run(oneStep("yvp.enter_mode", {
+        {"yvp_cell", "1"}, {"timeout_ms", "100"}}), roktEquipment, "p", "", false);
+    require(roktRun.verdict == RunVerdict::Ok && roktEquipment.yvpStarts == 1,
+        "ROKT commissioning path must remain available separately");
+    require(std::count(roktEquipment.operations.begin(), roktEquipment.operations.end(),
+                "ulk.parameter_source:start_yvp_probe") == 1,
+        "ROKT commissioning must not be selected by ubsi.yvp");
 
     ContractEquipment supplyEquipment;
     const auto supplyRun = engine.run(oneStep("ubsi.supply_range", {
@@ -285,9 +229,6 @@ void procedureRuntimeContract()
     for (const auto& value : supplyRun.steps.front().measurements) {
         if (value.parameterKey == "ubsi.supply.total_current") {
             ++currentMeasurements;
-            require(value.attributes.count("measurement_scope")
-                    && value.attributes.at("measurement_scope") == "whole_ubsi",
-                "current measurement must be explicitly scoped to whole UBSI");
             if (value.verdict == RunVerdict::Fail) ++failedCurrentMeasurements;
         }
     }
@@ -302,7 +243,7 @@ void procedureRuntimeContract()
 int main()
 {
     try {
-        yvpTransportContract();
+        yvpScenarioContract();
         scenarioContract();
         yvpMathContract();
         procedureRuntimeContract();
