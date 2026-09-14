@@ -33,7 +33,18 @@ bool hasResourceRequirement(
         });
 }
 
-void verifyNode(const ScenarioNode& node)
+bool componentProvides(
+    const ComponentProfile& component,
+    const std::string& capability)
+{
+    const auto& capabilities = component.capabilities.empty()
+        ? component.bindings
+        : component.capabilities;
+    return std::find(capabilities.begin(), capabilities.end(), capability)
+        != capabilities.end();
+}
+
+void verifyNode(const ScenarioNode& node, const StandProfile& profile)
 {
     require(node.title.find("\xEF\xBF\xBD") == std::string::npos,
         "Production stage title contains a UTF-8 replacement character");
@@ -47,6 +58,17 @@ void verifyNode(const ScenarioNode& node)
     for (const auto& requirement : node.requiredResources) {
         require(requirement.capability != "orbita.parameter_source",
             "Production scenario resource must not require legacy Orbita/E20");
+
+        const auto* component = findComponentByBinding(profile, requirement.resource);
+        require(component != nullptr,
+            "Production scenario resource is not declared by KTMA profile: "
+                + requirement.resource);
+        require(component->kind == "equipment",
+            "Production scenario physical resource must resolve to equipment: "
+                + requirement.resource);
+        require(componentProvides(*component, requirement.capability),
+            "KTMA resource " + requirement.resource
+                + " does not provide required capability " + requirement.capability);
     }
     if (node.procedure == "ubsi.yvp") {
         const auto count = node.arguments.find("channel_count");
@@ -63,7 +85,7 @@ void verifyNode(const ScenarioNode& node)
                     node, "switch_matrix.primary", "stand.switch_matrix"),
             "YVP V7/ISD scenario must require V7 and ISD delivery resources");
     }
-    for (const auto& child : node.children) verifyNode(child);
+    for (const auto& child : node.children) verifyNode(child, profile);
 }
 
 } // namespace
@@ -73,6 +95,9 @@ int main()
     try {
         ScenarioEngine engine;
         registerUbsiProcedures(engine);
+
+        const auto profile = loadStandProfile(
+            std::string(KTMA_SOURCE_DIR) + "/data/profiles/stand_ktma.yaml");
 
         const std::vector<std::string> files = {
             "data/scenarios/ubsi_production_full.yaml",
@@ -99,7 +124,7 @@ int main()
                 for (const auto& error : errors) message += "\n - " + error;
                 throw std::runtime_error(message);
             }
-            for (const auto& node : scenario.steps) verifyNode(node);
+            for (const auto& node : scenario.steps) verifyNode(node, profile);
         }
 
         std::cout << "KTMA UBSI production scenarios OK\n";
