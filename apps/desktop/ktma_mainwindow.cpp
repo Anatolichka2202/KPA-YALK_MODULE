@@ -7,14 +7,20 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
+#include <QFrame>
+#include <QHBoxLayout>
+#include <QLabel>
+#include <QLineEdit>
 #include <QMessageBox>
 #include <QMetaObject>
 #include <QSet>
 #include <QSignalBlocker>
 #include <QTimer>
+#include <QVBoxLayout>
 #include <QtConcurrent/QtConcurrentRun>
 
 #include <algorithm>
+#include <array>
 #include <functional>
 #include <stdexcept>
 
@@ -57,6 +63,86 @@ bool enabledFlag(const std::map<std::string, std::string>& config,
         || found->second == "yes" || found->second == "on";
 }
 
+QFrame* installProductionStageControls(TestPage* page)
+{
+    if (!page) return nullptr;
+    if (auto* existing = page->findChild<QFrame*>(QStringLiteral("productionStagePanel")))
+        return existing;
+
+    auto* operatorEdit = page->findChild<QLineEdit*>(QStringLiteral("operatorName"));
+    auto* sessionDataPanel = operatorEdit ? operatorEdit->parentWidget() : nullptr;
+    auto* sessionPage = sessionDataPanel ? sessionDataPanel->parentWidget() : nullptr;
+    auto* sessionLayout = sessionPage
+        ? qobject_cast<QVBoxLayout*>(sessionPage->layout()) : nullptr;
+    if (!sessionDataPanel || !sessionLayout) return nullptr;
+
+    auto* panel = new QFrame(sessionPage);
+    panel->setObjectName(QStringLiteral("productionStagePanel"));
+    panel->setStyleSheet(QStringLiteral(
+        "#productionStagePanel{background:#111820;border:1px solid #2d3946;"
+        "border-radius:7px;}"
+        "#productionStagePanel QLabel{color:#9fb0c1;}"
+        "#productionStagePanel QLabel[role='caption']{color:#dbe5ee;font-weight:700;}"));
+
+    auto* row = new QHBoxLayout(panel);
+    row->setContentsMargins(13, 9, 13, 9);
+    row->setSpacing(14);
+
+    auto* stageBox = new QVBoxLayout;
+    stageBox->setSpacing(4);
+    auto* stageCaption = new QLabel(QStringLiteral("ЭТАП ИСПЫТАНИЯ"), panel);
+    stageCaption->setProperty("role", QStringLiteral("caption"));
+    auto* stageCombo = new QComboBox(panel);
+    stageCombo->setObjectName(QStringLiteral("productionStage"));
+    stageCombo->setMinimumWidth(410);
+    const std::array<ktma::registrar::Stage, 7> stages = {
+        ktma::registrar::Stage::Primary,
+        ktma::registrar::Stage::ClimateNormal,
+        ktma::registrar::Stage::ClimateMinus,
+        ktma::registrar::Stage::ClimatePlus,
+        ktma::registrar::Stage::PottingClimateNormal,
+        ktma::registrar::Stage::PottingClimatePlus,
+        ktma::registrar::Stage::PottingClimateMinus};
+    for (const auto stage : stages) {
+        stageCombo->addItem(
+            QString::fromUtf8(ktma::ubsi::productionStageDisplayName(stage).c_str()),
+            QString::fromUtf8(ktma::registrar::toString(stage)));
+    }
+    stageBox->addWidget(stageCaption);
+    stageBox->addWidget(stageCombo);
+    row->addLayout(stageBox, 2);
+
+    auto* commentBox = new QVBoxLayout;
+    commentBox->setSpacing(4);
+    auto* commentCaption = new QLabel(QStringLiteral("КОММЕНТАРИЙ ИСПЫТАТЕЛЯ"), panel);
+    commentCaption->setProperty("role", QStringLiteral("caption"));
+    auto* commentEdit = new QLineEdit(panel);
+    commentEdit->setObjectName(QStringLiteral("productionStageComment"));
+    commentEdit->setPlaceholderText(QStringLiteral("Например: −40 °C, цикл 1"));
+    commentEdit->setClearButtonEnabled(true);
+    commentEdit->setMinimumWidth(330);
+    commentBox->addWidget(commentCaption);
+    commentBox->addWidget(commentEdit);
+    row->addLayout(commentBox, 2);
+
+    auto* hint = new QLabel(
+        QStringLiteral("Температура и номер цикла фиксируются в комментарии.\n"
+                       "Повторный климатический прогон сохраняется отдельной записью."), panel);
+    hint->setWordWrap(true);
+    hint->setMinimumWidth(260);
+    row->addWidget(hint, 1);
+
+    const int index = sessionLayout->indexOf(sessionDataPanel);
+    sessionLayout->insertWidget(index >= 0 ? index + 1 : 1, panel);
+    return panel;
+}
+
+void setProductionStageControlsVisible(TestPage* page, bool visible)
+{
+    if (!page) return;
+    if (auto* panel = installProductionStageControls(page)) panel->setVisible(visible);
+}
+
 } // namespace
 
 KtmaMainWindow::KtmaMainWindow(QWidget* parent)
@@ -66,6 +152,7 @@ KtmaMainWindow::KtmaMainWindow(QWidget* parent)
     auto* page = integrationTestPage();
     if (!page) return;
     integrationUseUbsiEngineering();
+    setProductionStageControlsVisible(page, integrationProductionWorkflowActive());
 
     page->registerEquipmentRow(QStringLiteral("RIGOL"),
         QStringLiteral("Rigol DG-1022Z / ДГ10.2"), QStringLiteral("USB / VISA"),
@@ -91,9 +178,18 @@ KtmaMainWindow::KtmaMainWindow(QWidget* parent)
     };
 
     connect(integrationRegistrarPage(), &RegistrarPage::productionRequested, this,
-            [this, loadRegisteredProducts] {
+            [this, page, loadRegisteredProducts] {
         integrationOpenTests();
         configureProductionSelector();
+        if (auto* registrarPage = integrationRegistrarPage()) {
+            if (const auto selection = registrarPage->selectedProductionProduct()) {
+                if (auto* stage = page->findChild<QComboBox*>(QStringLiteral("productionStage"))) {
+                    const int index = stage->findData(
+                        QString::fromUtf8(ktma::registrar::toString(selection->stage)));
+                    if (index >= 0) stage->setCurrentIndex(index);
+                }
+            }
+        }
         loadRegisteredProducts();
     });
 
@@ -236,6 +332,7 @@ void KtmaMainWindow::configureProductionSelector()
     auto* test = page->findChild<QComboBox*>(QStringLiteral("testType"));
     if (!scope || !test) return;
 
+    setProductionStageControlsVisible(page, true);
     const QString previous = scope->currentData().toString();
     const QSignalBlocker blocker(scope);
     scope->clear();
@@ -268,7 +365,7 @@ void KtmaMainWindow::applyProductionScenario()
     else if (code == QStringLiteral("PROD_YTP"))
         title = QStringLiteral("Полная ЯТП · 0 / 120 / 240 Ом");
     else if (code == QStringLiteral("PROD_YVP"))
-        title = QStringLiteral("Полная ЯВП-8 · ROKT");
+        title = QStringLiteral("Полная ЯВП-8 · V7 / ИСД");
 
     const QSignalBlocker blocker(test);
     test->clear();
@@ -281,6 +378,7 @@ void KtmaMainWindow::restoreTuSelector()
 {
     auto* page = integrationTestPage();
     if (!page || !integrationTuWorkflowActive()) return;
+    setProductionStageControlsVisible(page, false);
     QMetaObject::invokeMethod(page, "rebuildScopes", Qt::DirectConnection);
     if (auto* scope = page->findChild<QComboBox*>(QStringLiteral("testScope"))) {
         if (scope->parentWidget()) scope->parentWidget()->setVisible(false);
@@ -364,11 +462,21 @@ void KtmaMainWindow::runScenario(
                     "Изделие отсутствует в registrar.db. Регистрация выполняется только в разделе Администрирование");
             }
 
+            auto productionStage = ktma::registrar::Stage::Primary;
+            if (auto* stage = page->findChild<QComboBox*>(QStringLiteral("productionStage"))) {
+                productionStage = ktma::registrar::stageFromString(
+                    stage->currentData().toString().toStdString());
+            }
             const auto package = ktma::ubsi::productionPackageFromCode(
                 requestedCode.toStdString());
             const auto report = registrar->productReport(product->id);
             productionContext = ktma::ubsi::buildProductionRunContext(
-                report, ktma::registrar::Stage::Primary, package);
+                report, productionStage, package);
+            if (auto* comment = page->findChild<QLineEdit*>(
+                    QStringLiteral("productionStageComment"))) {
+                productionContext->stageComment =
+                    comment->text().trimmed().toUtf8().toStdString();
+            }
             effectiveCode = QString::fromStdString(productionContext->scenarioCode);
             serial = productionContext->productSerial;
         } else if (integrationTuWorkflowActive()) {
