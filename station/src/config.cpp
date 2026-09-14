@@ -72,7 +72,7 @@ ComponentProfile componentProfile(const yaml::Node& value)
     component.kind = value.value("kind");
     component.provider = value.value("provider");
     component.enabled = boolean(value.value("enabled", "true"), true);
-    component.bindCapabilities = stringSequence(value.find("bind"));
+    component.bindings = stringSequence(value.find("bind"));
     component.configuration = stringMap(value.find("config"));
     if (component.id.empty() || component.kind.empty() || component.provider.empty()) {
         throw yaml::Error("Every profile component requires id, kind and provider");
@@ -102,7 +102,7 @@ ComponentProfile asComponent(const DeviceProfile& device)
     component.kind = "equipment";
     component.provider = device.pluginId;
     component.enabled = device.enabled;
-    component.bindCapabilities = device.bindCapabilities;
+    component.bindings = device.bindCapabilities;
     component.configuration = device.configuration;
     return component;
 }
@@ -211,8 +211,8 @@ const ComponentProfile* findComponentByBinding(
     const auto iterator = std::find_if(profile.components.begin(), profile.components.end(),
         [&](const ComponentProfile& component) {
             return component.enabled
-                && std::find(component.bindCapabilities.begin(), component.bindCapabilities.end(), binding)
-                    != component.bindCapabilities.end();
+                && std::find(component.bindings.begin(), component.bindings.end(), binding)
+                    != component.bindings.end();
         });
     return iterator == profile.components.end() ? nullptr : &*iterator;
 }
@@ -239,7 +239,7 @@ void instantiateProfile(
         device.id = component.id;
         device.pluginId = component.provider;
         device.enabled = component.enabled;
-        device.bindCapabilities = component.bindCapabilities;
+        device.bindCapabilities = component.bindings;
         device.configuration = component.configuration;
         equipmentDefinitions.push_back(std::move(device));
     }
