@@ -143,9 +143,9 @@ liborbita
 `EquipmentRegistry` и ScenarioEngine теперь имеют отдельный role/resource path:
 
 ```text
-resource id
+logical resource role
     ↓
-конкретный equipment endpoint
+component instance
     ↓
 capability
     ↓
@@ -161,8 +161,15 @@ operation
 - [x] `resources()` даёт introspection для UI/runtime;
 - [x] `safeStopAll()` учитывает role-bound plugin devices без двойного stop;
 - [x] contract test доказывает два независимых источника `power.dc_supply`;
-- [x] generic `instantiateProfile()` автоматически регистрирует equipment
-  component id как resource id и параллельно сохраняет legacy capability route;
+- [x] `ComponentProfile` разделяет `bind` (delivery roles) и
+  `capabilities` (equipment contracts); старый equipment-формат без
+  `capabilities:` остаётся compatibility input;
+- [x] KTMA profile уже объявляет стабильные роли `power.dut`,
+  `dut.parameter_source`, `switch_matrix.primary`, `measure.reference`,
+  `signal.primary`, `measure.waveform.primary` отдельно от plugin capabilities;
+- [x] generic `instantiateProfile()` регистрирует concrete component id и все
+  canonical delivery roles как resources, параллельно сохраняя legacy
+  capability-only route;
 - [x] `ScenarioNode` поддерживает `requiredResources` как пары
   `resource + capability`;
 - [x] YAML schema шага принимает `resources:` с явными `resource` и
@@ -172,14 +179,14 @@ operation
 - [x] procedure получает resource-aware вызов через
   `ICapabilityProvider::invokeResource()`;
 - [x] отдельный contract test проверяет YAML parsing, missing-resource preflight
-  и вызов конкретного logical resource.
+  и вызов конкретного logical resource;
+- [x] component-profile contract test проверяет, что role не протекает в
+  legacy capability view и что explicit capability сохраняется отдельно.
 
 Остаётся:
 
-- [ ] перевести существующие KTMA-сценарии постепенно, сохраняя legacy
-  capability-only путь на время миграции;
-- [ ] определить стабильные delivery role-id там, где component instance id не
-  должен становиться публичным именем сценария;
+- [ ] перевести существующие KTMA-сценарии и процедуры постепенно, сохраняя
+  legacy capability-only путь на время миграции;
 - [ ] после миграции запретить неоднозначный default routing по capability.
 
 Это нужно завершить до переноса PPB и других стендов, где одинаковые типы
@@ -229,7 +236,8 @@ workflow.
 ## Текущий следующий шаг
 
 1. держать ветку зелёной через отдельный CI после каждого backend-среза;
-2. постепенно перевести KTMA scenario YAML на explicit resource + capability;
+2. постепенно перевести KTMA scenario YAML и procedures на explicit
+   resource + capability;
 3. переключить desktop Orbita monitoring на station-owned `sample_source`;
 4. после этого физически удалить E20/Lusbapi из `liborbita`;
 5. затем физически вынести UBSI/KTMA domain из общего `station` target.
