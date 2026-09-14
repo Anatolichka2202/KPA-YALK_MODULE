@@ -2,6 +2,8 @@
 #include "orbita_stand/config.h"
 #include "orbita_stand/execution_runtime.h"
 
+#include <QCoreApplication>
+
 #include <iostream>
 #include <stdexcept>
 
@@ -40,6 +42,26 @@ void executionRuntimeFactoryContract()
             "execution provider was not preserved");
 }
 
+void realProcessContract()
+{
+    auto runtime = createExecutionRuntime("miltech.exec.process", {});
+    ExecutionRequest request;
+    request.target = QCoreApplication::applicationFilePath().toUtf8().toStdString();
+    request.arguments = {"--execution-child"};
+    request.timeoutMs = 5000;
+
+    const auto result = runtime->execute(request);
+    require(result.started, "external process did not start");
+    require(!result.cancelled, "normal external process was marked cancelled");
+    require(!result.timedOut, "normal external process was marked timed out");
+    require(result.exitCode == 7, "external process exit code was not preserved");
+    require(result.standardOutput.find("child-stdout") != std::string::npos,
+            "external process stdout was not captured");
+    require(result.standardError.find("child-stderr") != std::string::npos,
+            "external process stderr was not captured");
+    require(!runtime->isRunning(), "execution runtime remained busy after child exit");
+}
+
 void unknownProviderIsRejected()
 {
     bool rejected = false;
@@ -54,10 +76,19 @@ void unknownProviderIsRejected()
 
 } // namespace
 
-int main()
+int main(int argc, char** argv)
 {
+    QCoreApplication app(argc, argv);
+
+    if (argc == 2 && std::string(argv[1]) == "--execution-child") {
+        std::cout << "child-stdout\n" << std::flush;
+        std::cerr << "child-stderr\n" << std::flush;
+        return 7;
+    }
+
     try {
         executionRuntimeFactoryContract();
+        realProcessContract();
         unknownProviderIsRejected();
         std::cout << "execution runtime contract OK\n";
         return 0;
