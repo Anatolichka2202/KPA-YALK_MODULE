@@ -1,7 +1,7 @@
 schema: 1
 id: ktma.ubsi.production.full
 title: Производство УБСИ · полная проверка
-version: 1.0.4
+version: 1.1.0
 catalog_version: 2026.08.29-yalk-1
 object_type: UBSI_468157_002
 state: published
@@ -13,9 +13,11 @@ steps:
     title: Готовность после холодного включения
     tu: PRODUCTION / READINESS
     procedure: ubsi.readiness
-    requires:
-      - power.dc_supply
-      - ulk.parameter_source
+    resources:
+      - resource: power.dut
+        capability: power.dc_supply
+      - resource: dut.parameter_source
+        capability: ulk.parameter_source
     args:
       voltage_v: 27
       current_limit_a: 0.6
@@ -27,9 +29,11 @@ steps:
     title: Питание / потребление / предельные напряжения
     tu: PRODUCTION / POWER_CONSUMPTION
     procedure: ubsi.supply_range
-    requires:
-      - power.dc_supply
-      - ulk.parameter_source
+    resources:
+      - resource: power.dut
+        capability: power.dc_supply
+      - resource: dut.parameter_source
+        capability: ulk.parameter_source
     args:
       voltage_points_v: 24,27,35
       maximum_total_current_a: 0.4
@@ -45,9 +49,11 @@ steps:
     title: Запуск потока ЯЛК
     tu: PRODUCTION / YALK / STREAM
     procedure: yalk.start_stream
-    requires:
-      - ulk.parameter_source
-      - stand.switch_matrix
+    resources:
+      - resource: dut.parameter_source
+        capability: ulk.parameter_source
+      - resource: switch_matrix.primary
+        capability: stand.switch_matrix
     args:
       configure_settle_ms: 500
       timeout_ms: 3000
@@ -59,9 +65,13 @@ steps:
     procedure: yalk.read_calibration
     requires:
       - catalog.parameter_resolver
-      - ulk.parameter_source
-      - stand.switch_matrix
-      - measure.reference_voltage
+    resources:
+      - resource: dut.parameter_source
+        capability: ulk.parameter_source
+      - resource: switch_matrix.primary
+        capability: stand.switch_matrix
+      - resource: measure.reference
+        capability: measure.reference_voltage
     args:
       channel_count: 80
       sample_count: 16
@@ -74,8 +84,11 @@ steps:
     procedure: yalk.check_initial_state
     requires:
       - catalog.parameter_resolver
-      - ulk.parameter_source
-      - stand.switch_matrix
+    resources:
+      - resource: dut.parameter_source
+        capability: ulk.parameter_source
+      - resource: switch_matrix.primary
+        capability: stand.switch_matrix
     args:
       channel_count: 80
       sample_count: 4
@@ -88,9 +101,13 @@ steps:
     procedure: yalk.check_channels
     requires:
       - catalog.parameter_resolver
-      - ulk.parameter_source
-      - stand.switch_matrix
-      - measure.reference_voltage
+    resources:
+      - resource: dut.parameter_source
+        capability: ulk.parameter_source
+      - resource: switch_matrix.primary
+        capability: stand.switch_matrix
+      - resource: measure.reference
+        capability: measure.reference_voltage
     args:
       channel_count: 80
       point_volts: 0,3.1,6.2
@@ -106,9 +123,13 @@ steps:
     procedure: yalk.check_channels
     requires:
       - catalog.parameter_resolver
-      - ulk.parameter_source
-      - stand.switch_matrix
-      - measure.reference_voltage
+    resources:
+      - resource: dut.parameter_source
+        capability: ulk.parameter_source
+      - resource: switch_matrix.primary
+        capability: stand.switch_matrix
+      - resource: measure.reference
+        capability: measure.reference_voltage
     args:
       channel_count: 80
       point_volts: 0,0.9,2.5
@@ -123,9 +144,11 @@ steps:
     title: ЯЛК · перегрузка ±12 В
     tu: PRODUCTION / YALK / OVERLOAD
     procedure: yalk.check_overload
-    requires:
-      - ulk.parameter_source
-      - stand.switch_matrix
+    resources:
+      - resource: dut.parameter_source
+        capability: ulk.parameter_source
+      - resource: switch_matrix.primary
+        capability: stand.switch_matrix
     args:
       mapping_confirmed: true
       physical_channel_count: 88
@@ -143,9 +166,12 @@ steps:
     tu: PRODUCTION / YALK / REFERENCE_6V2
     procedure: ubsi.reference_voltage
     requires:
-      - measure.reference_voltage
       - catalog.parameter_resolver
-      - ulk.parameter_source
+    resources:
+      - resource: measure.reference
+        capability: measure.reference_voltage
+      - resource: dut.parameter_source
+        capability: ulk.parameter_source
     args:
       nominal_v: 6.2
       tolerance_v: 0.03
@@ -159,10 +185,14 @@ steps:
     tu: PRODUCTION / YALK / SAFE_CLEANUP
     procedure: yalk.safe_cleanup
     requires:
-      - ulk.parameter_source
-      - stand.switch_matrix
       - catalog.parameter_resolver
-      - measure.reference_voltage
+    resources:
+      - resource: dut.parameter_source
+        capability: ulk.parameter_source
+      - resource: switch_matrix.primary
+        capability: stand.switch_matrix
+      - resource: measure.reference
+        capability: measure.reference_voltage
     args:
       channel_count: 80
       maximum_residual_voltage_v: 0.2
@@ -173,9 +203,11 @@ steps:
     title: Запуск потока ЯТП
     tu: PRODUCTION / YTP / STREAM
     procedure: ytp.start_stream
-    requires:
-      - ulk.parameter_source
-      - stand.switch_matrix
+    resources:
+      - resource: dut.parameter_source
+        capability: ulk.parameter_source
+      - resource: switch_matrix.primary
+        capability: stand.switch_matrix
     args:
       protocol: rokt_ytp68
       ytp_endpoint: 1
@@ -191,7 +223,9 @@ steps:
     procedure: ytp.read_calibration
     requires:
       - catalog.parameter_resolver
-      - ulk.parameter_source
+    resources:
+      - resource: dut.parameter_source
+        capability: ulk.parameter_source
     args:
       calibration_zero_parameter: ytp_calibration_zero
       calibration_full_parameter: ytp_calibration_full
@@ -204,8 +238,10 @@ steps:
     procedure: ytp.check_channels
     requires:
       - catalog.parameter_resolver
-      - ulk.parameter_source
       - operator.manual_input
+    resources:
+      - resource: dut.parameter_source
+        capability: ulk.parameter_source
     args:
       channel_count: 30
       parameter_group: ytp_temperature
@@ -221,9 +257,11 @@ steps:
     title: Безопасная остановка ЯТП
     tu: PRODUCTION / YTP / SAFE_CLEANUP
     procedure: ytp.safe_cleanup
-    requires:
-      - ulk.parameter_source
-      - stand.switch_matrix
+    resources:
+      - resource: dut.parameter_source
+        capability: ulk.parameter_source
+      - resource: switch_matrix.primary
+        capability: stand.switch_matrix
     args:
       isd_switch_type: 7
       isd_route_channels: 3,9,12,17
@@ -232,11 +270,15 @@ steps:
     title: ЯВП-8 · Rigol, ИСД и измерение В7
     tu: PRODUCTION / YVP / V7_ISD
     procedure: ubsi.yvp
-    requires:
-      - stand.switch_matrix
-      - measure.reference_ac_voltage
-      - measure.reference_frequency
-      - signal.generator
+    resources:
+      - resource: signal.primary
+        capability: signal.generator
+      - resource: switch_matrix.primary
+        capability: stand.switch_matrix
+      - resource: measure.reference
+        capability: measure.reference_ac_voltage
+      - resource: measure.reference
+        capability: measure.reference_frequency
     args:
       channel_count: 8
       gains_mv_per_pcl: 0.25,0.5,1,2,4,8,32
@@ -249,5 +291,6 @@ steps:
     title: Отключение питания
     tu: PRODUCTION / SAFE_CLEANUP
     procedure: ubsi.power_safe_off
-    requires:
-      - power.dc_supply
+    resources:
+      - resource: power.dut
+        capability: power.dc_supply
