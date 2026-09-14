@@ -50,6 +50,22 @@ void validateNode(
     if (!node.children.empty() && !node.procedure.empty()) {
         errors.emplace_back("Шаг " + node.id + " не может одновременно быть процедурой и группой");
     }
+
+    std::set<std::string> resourceRequirements;
+    for (const auto& requirement : node.requiredResources) {
+        if (requirement.resource.empty() || requirement.capability.empty()) {
+            errors.emplace_back(
+                "У шага " + node.id + " некорректное требование ресурса: нужны resource и capability");
+            continue;
+        }
+        const std::string key = requirement.resource + "\n" + requirement.capability;
+        if (!resourceRequirements.insert(key).second) {
+            errors.emplace_back(
+                "У шага " + node.id + " повторяется требование ресурса "
+                + requirement.resource + ":" + requirement.capability);
+        }
+    }
+
     if (node.children.empty()) {
         if (node.procedure.empty()) errors.emplace_back("У конечного шага " + node.id + " отсутствует процедура");
         else if (!procedures.count(node.procedure)) {
@@ -151,12 +167,32 @@ StepRunResult ScenarioEngine::runNode(
         for (const auto& capability : node.requiredCapabilities) {
             if (!context.equipment.hasCapability(capability)) missing.push_back(capability);
         }
-        if (!missing.empty()) {
+
+        std::vector<ResourceRequirement> missingResources;
+        for (const auto& requirement : node.requiredResources) {
+            if (!context.equipment.resourceHasCapability(
+                    requirement.resource, requirement.capability)) {
+                missingResources.push_back(requirement);
+            }
+        }
+
+        if (!missing.empty() || !missingResources.empty()) {
             std::ostringstream message;
-            message << "Недоступны возможности: ";
-            for (std::size_t i = 0; i < missing.size(); ++i) {
-                if (i) message << ", ";
-                message << missing[i];
+            if (!missing.empty()) {
+                message << "Недоступны возможности: ";
+                for (std::size_t i = 0; i < missing.size(); ++i) {
+                    if (i) message << ", ";
+                    message << missing[i];
+                }
+            }
+            if (!missingResources.empty()) {
+                if (!missing.empty()) message << "; ";
+                message << "Недоступны ресурсы: ";
+                for (std::size_t i = 0; i < missingResources.size(); ++i) {
+                    if (i) message << ", ";
+                    message << missingResources[i].resource << ':'
+                            << missingResources[i].capability;
+                }
             }
             result.verdict = RunVerdict::Incomplete;
             result.message = message.str();
