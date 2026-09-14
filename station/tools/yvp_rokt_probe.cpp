@@ -113,10 +113,15 @@ void printResponse(const std::string& stage, const std::string& response)
 void bindLiveDevices(const StandProfile& profile,
                      EquipmentPluginManager& manager,
                      EquipmentRegistry& registry,
-                     std::vector<std::shared_ptr<EquipmentDevice>>& devices)
+                     std::vector<std::shared_ptr<EquipmentDevice>>& devices,
+                     bool activeStimulus)
 {
-    const std::set<std::string> required{
+    std::set<std::string> required{
         "ulk.parameter_source", "power.dc_supply"};
+    if (activeStimulus) {
+        required.insert("stand.switch_matrix");
+        required.insert("signal.generator");
+    }
     std::set<std::string> bound;
 
     for (const auto& definition : profile.devices) {
@@ -154,9 +159,10 @@ void bindLiveDevices(const StandProfile& profile,
 
 int runLiveProbe(int argc, char** argv)
 {
-    if (argc < 4 || argc > 7) {
+    if (argc < 4 || argc > 8) {
         std::cerr << "Usage: orbita_yvp_rokt_probe --live <stand-profile.yaml> "
-                     "<plugin-directory> [output-directory] [cell] [capture-ms]\n";
+                     "<plugin-directory> [output-directory] [cell] [capture-ms] "
+                     "[--stimulus]\n";
         return 1;
     }
 
@@ -166,6 +172,9 @@ int runLiveProbe(int argc, char** argv)
         ? std::filesystem::path(argv[4]) : std::filesystem::path("yvp-live-capture");
     const unsigned cell = argc >= 6 ? static_cast<unsigned>(std::stoul(argv[5])) : 1;
     const unsigned captureMs = argc >= 7 ? static_cast<unsigned>(std::stoul(argv[6])) : 1500;
+    const bool activeStimulus = argc >= 8 && std::string(argv[7]) == "--stimulus";
+    if (argc >= 8 && !activeStimulus)
+        throw std::invalid_argument("Expected --stimulus as the final argument");
     if (cell < 1 || cell > 255) throw std::invalid_argument("cell must be 1..255");
     if (!captureMs) throw std::invalid_argument("capture_ms must be > 0");
 
@@ -180,12 +189,14 @@ int runLiveProbe(int argc, char** argv)
     manager.loadDirectory(pluginDirectory.string());
     EquipmentRegistry registry;
     std::vector<std::shared_ptr<EquipmentDevice>> devices;
-    bindLiveDevices(profile, manager, registry, devices);
+    bindLiveDevices(profile, manager, registry, devices, activeStimulus);
 
     std::cout << "YVP LIVE ADAPTER PROBE\n"
               << "profile=" << profile.id << ' ' << profile.version << '\n'
               << "capture=" << capturePath.string() << '\n'
-              << "stimulus=not applied; adapter transport only\n"
+              << (activeStimulus
+                      ? "stimulus=ISD input 1/contact 33; K=1/contact 2; Rigol CH1 20 Hz, 2 Vpp\n"
+                      : "stimulus=not applied; adapter transport only\n")
               << "supply=27 V; current limit=0.6 A; OVP=28 V (live AKIP limit)\n"
               << "decoder=disabled; verdict=not produced; V7=not used\n";
 
@@ -202,6 +213,11 @@ int runLiveProbe(int argc, char** argv)
             recording = false;
         }
         try { registry.invoke("ulk.parameter_source", "stop_stream", {}); } catch (...) {}
+        if (activeStimulus) {
+            try { registry.invoke("signal.generator", "output",
+                                  {{"channel", "1"}, {"enabled", "false"}}); } catch (...) {}
+            try { registry.invoke("stand.switch_matrix", "full_reset", {}); } catch (...) {}
+        }
         try { registry.invoke("power.dc_supply", "output", {{"enabled", "false"}}); } catch (...) {}
         registry.safeStopAll();
     };
@@ -228,10 +244,42 @@ int runLiveProbe(int argc, char** argv)
             std::cout << "YALK_PREPARE_FAILED " << error.what() << '\n';
         }
 
+        if (activeStimulus) {
+            invoke("stand.switch_matrix", "full_reset");
+            std::cout << "WAIT isd_reset_settle_ms=400\n";
+            std::this_thread::sleep_for(std::chrono::milliseconds(400));
+            invoke("stand.switch_matrix", "switch",
+                   {{"type", "2"}, {"channel", "33"}, {"enabled", "true"}});
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            invoke("stand.switch_matrix", "switch",
+                   {{"type", "2"}, {"channel", "2"}, {"enabled", "true"}});
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            invoke("signal.generator", "set_sine",
+                   {{"channel", "1"}, {"frequency_hz", "20"},
+                    {"amplitude_vpp", "2"}, {"offset_v", "0"}});
+            invoke("signal.generator", "output",
+                   {{"channel", "1"}, {"enabled", "false"}});
+        }
+
         invoke("ulk.parameter_source", "start_yvp_probe",
                {{"cell", std::to_string(cell)}, {"readout_yalk", "false"}});
         std::this_thread::sleep_for(std::chrono::milliseconds(captureMs));
         invoke("ulk.parameter_source", "stats");
+        invoke("ulk.parameter_source", "read_yvp_raw",
+               {{"frame_count", "32"}, {"timeout_ms", "3000"}});
+
+        if (activeStimulus) {
+            invoke("signal.generator", "output",
+                   {{"channel", "1"}, {"enabled", "true"}});
+            std::cout << "WAIT stimulus_settle_ms=500\n";
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            invoke("ulk.parameter_source", "start_yvp_probe",
+                   {{"cell", std::to_string(cell)}, {"readout_yalk", "false"}});
+            std::this_thread::sleep_for(std::chrono::milliseconds(captureMs));
+            invoke("ulk.parameter_source", "stats");
+            invoke("ulk.parameter_source", "read_yvp_raw",
+                   {{"frame_count", "32"}, {"timeout_ms", "3000"}});
+        }
 
         for (unsigned channel = 1; channel <= 8; ++channel) {
             invoke("ulk.parameter_source", "start_yvp_channel_probe",
@@ -241,6 +289,14 @@ int runLiveProbe(int argc, char** argv)
             invoke("ulk.parameter_source", "stats");
             invoke("ulk.parameter_source", "read_yvp_channel_raw",
                    {{"channel", std::to_string(channel)}, {"timeout_ms", "1000"}});
+
+            // 0A 03 is the channel-selection exchange.  Re-enter 0A 01 and
+            // inspect its 128-byte measurement stream after the selection.
+            invoke("ulk.parameter_source", "start_yvp_probe",
+                   {{"cell", std::to_string(cell)}, {"readout_yalk", "false"}});
+            std::this_thread::sleep_for(std::chrono::milliseconds(250));
+            invoke("ulk.parameter_source", "read_yvp_raw",
+                   {{"frame_count", "16"}, {"timeout_ms", "2000"}});
         }
 
         cleanup();

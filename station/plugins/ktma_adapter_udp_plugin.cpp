@@ -5,6 +5,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <iomanip>
 #include <filesystem>
 #include <memory>
@@ -501,6 +502,63 @@ orbita_plugin_status_v1 invoke(void* value, const char* capability, const char* 
             return std::string("status=ok\n");
         }
         if (command == "stats") return statsText(instance.transport->stats());
+        if (command == "read_yvp_raw") {
+            if (!instance.yvpProbe || instance.selectedMode != -6) {
+                throw std::runtime_error("Общий поток ЯВП не запущен");
+            }
+            const unsigned frameCount = plugin::unsignedValue(args, "frame_count", 16);
+            if (!frameCount || frameCount > 1024)
+                throw std::invalid_argument("Число кадров ЯВП должно быть 1..1024");
+            std::uint64_t after = plugin::unsignedValue(args, "after_sequence",
+                static_cast<unsigned>(instance.transport->stats().lastSequence));
+            const auto deadline = std::chrono::steady_clock::now()
+                + std::chrono::milliseconds(timeout(instance, args));
+            std::vector<unsigned> samples;
+            samples.reserve(static_cast<std::size_t>(frameCount) * 128);
+            unsigned framesRead = 0;
+            while (framesRead < frameCount && std::chrono::steady_clock::now() < deadline) {
+                const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    deadline - std::chrono::steady_clock::now());
+                const auto frame = instance.transport->waitFrame(
+                    UlkFrameKind::YvpRokt136, after,
+                    std::max(std::chrono::milliseconds(1), remaining));
+                after = frame.sequence;
+                if (frame.payload.size() != 136 || frame.payload[0] != 0x00
+                    || frame.payload[1] != 0x00 || frame.payload[2] != 0x2B
+                    || frame.payload[3] != 0x08)
+                    continue;
+                for (auto item = frame.payload.begin() + 4;
+                     item != frame.payload.begin() + 132; ++item) {
+                    samples.push_back(static_cast<unsigned>(*item));
+                }
+                ++framesRead;
+            }
+            if (framesRead != frameCount)
+                throw std::runtime_error("Тайм-аут накопления общего потока ЯВП");
+
+            const auto [minimum, maximum] = std::minmax_element(samples.begin(), samples.end());
+            const double mean = std::accumulate(samples.begin(), samples.end(), 0.0)
+                / static_cast<double>(samples.size());
+            const double squareSum = std::accumulate(
+                samples.begin(), samples.end(), 0.0,
+                [mean](double sum, unsigned sample) {
+                    const double centered = static_cast<double>(sample) - mean;
+                    return sum + centered * centered;
+                });
+            const double acRms = std::sqrt(squareSum / static_cast<double>(samples.size()));
+            std::ostringstream out;
+            out << std::setprecision(12)
+                << "status=ready\nprotocol=rokt_yvp_136"
+                << "\nfirst_sequence=" << (after - framesRead + 1)
+                << "\nlast_sequence=" << after
+                << "\nframe_count=" << framesRead
+                << "\nraw_sample_count=" << samples.size()
+                << "\nraw_min=" << *minimum
+                << "\nraw_max=" << *maximum
+                << "\nraw_mean=" << mean
+                << "\nraw_ac_rms=" << acRms << '\n';
+            return out.str();
+        }
         if (command == "read_yvp_channel_raw") {
             if (!instance.yvpProbe || instance.selectedMode != -7) {
                 throw std::runtime_error("Поток выбранного канала ЯВП не запущен");
