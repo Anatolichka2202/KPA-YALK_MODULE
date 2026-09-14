@@ -1,7 +1,7 @@
 schema: 1
 id: ktma.ubsi.production.yvp
 title: Производство УБСИ · ЯВП-8
-version: 1.3.0
+version: 1.4.0
 catalog_version: 2026.08.29-yalk-1
 object_type: UBSI_468157_002
 state: published
@@ -20,8 +20,9 @@ steps:
     title: Включение и контроль питания перед проверкой ЯВП
     tu: PRODUCTION / YVP / POWER
     procedure: ubsi.supply_status
-    requires:
-      - power.dc_supply
+    resources:
+      - resource: power.dut
+        capability: power.dc_supply
     args:
       nominal_voltage_v: 27
       minimum_voltage_v: 24
@@ -34,11 +35,15 @@ steps:
     title: ЯВП-8 · прямое измерение через ИСД и В7
     tu: PRODUCTION / YVP / V7_ISD
     procedure: ubsi.yvp
-    requires:
-      - signal.generator
-      - stand.switch_matrix
-      - measure.reference_ac_voltage
-      - measure.reference_frequency
+    resources:
+      - resource: signal.primary
+        capability: signal.generator
+      - resource: switch_matrix.primary
+        capability: stand.switch_matrix
+      - resource: measure.reference
+        capability: measure.reference_ac_voltage
+      - resource: measure.reference
+        capability: measure.reference_frequency
     args:
       channel_count: 8
       gains_mv_per_pcl: 0.25,0.5,1,2,4,8,32
@@ -71,5 +76,6 @@ steps:
     title: Отключение питания УБСИ
     tu: PRODUCTION / SAFE_CLEANUP
     procedure: ubsi.power_safe_off
-    requires:
-      - power.dc_supply
+    resources:
+      - resource: power.dut
+        capability: power.dc_supply
