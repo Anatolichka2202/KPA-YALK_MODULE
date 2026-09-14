@@ -58,6 +58,7 @@ public:
         tabs->addTab(makeCommonTab(), QStringLiteral("Оборудование"));
         tabs->addTab(makeYalkTab(), QStringLiteral("ЯЛК · 100 слов"));
         tabs->addTab(makeYtpTab(), QStringLiteral("ЯТП · 30 каналов"));
+        tabs->addTab(makeYvpTab(), QStringLiteral("ЯВП-8 · ИСД + В7"));
         root->addWidget(tabs, 1);
 
         log_ = new QPlainTextEdit;
@@ -190,6 +191,47 @@ private:
         return page;
     }
 
+    QWidget* makeYvpTab()
+    {
+        auto* page = new QWidget;
+        auto* layout = new QVBoxLayout(page);
+
+        auto* state = new QGroupBox(QStringLiteral("Фактическое состояние тракта"));
+        auto* form = new QFormLayout(state);
+        yvpInputState_ = new QLabel(QStringLiteral("не выбран"));
+        yvpGainState_ = new QLabel(QStringLiteral("не выбран"));
+        yvpMeasurementState_ = new QLabel(QStringLiteral("не выбран"));
+        yvpGeneratorState_ = new QLabel(QStringLiteral("выключен"));
+        yvpV7State_ = new QLabel(QStringLiteral("0 В RMS"));
+        form->addRow(QStringLiteral("Вход ЯВП"), yvpInputState_);
+        form->addRow(QStringLiteral("Коэффициент"), yvpGainState_);
+        form->addRow(QStringLiteral("Выход ЯВП → В7"), yvpMeasurementState_);
+        form->addRow(QStringLiteral("Rigol CH1"), yvpGeneratorState_);
+        form->addRow(QStringLiteral("Расчёт В7"), yvpV7State_);
+        layout->addWidget(state);
+
+        auto* controls = new QGroupBox(QStringLiteral("Управляемые отклонения"));
+        auto* controlsForm = new QFormLayout(controls);
+        yvpGainError_ = number(0.0, -100.0, 100.0, 2, QStringLiteral(" %"));
+        yvpRouteFault_ = new QCheckBox(QStringLiteral("Разорвать тракт перед В7"));
+        controlsForm->addRow(QStringLiteral("Ошибка коэффициента ЯВП"), yvpGainError_);
+        controlsForm->addRow(QStringLiteral("Неисправность коммутации"), yvpRouteFault_);
+        layout->addWidget(controls);
+
+        auto* explanation = new QLabel(QStringLiteral(
+            "Модель независима от MilTech Station: она декодирует реальные HTTP-команды ИСД "
+            "type=2/type=1/type=3 и SCPI-команды Rigol. В7 выдаёт напряжение только когда вход, "
+            "KU и выход CH89…CH96 образуют согласованный тракт одного канала."));
+        explanation->setWordWrap(true);
+        layout->addWidget(explanation);
+        layout->addStretch();
+
+        connect(yvpGainError_, qOverload<double>(&QDoubleSpinBox::valueChanged),
+                this, [this] { updateYvpState(); });
+        connect(yvpRouteFault_, &QCheckBox::toggled, this, [this] { updateYvpState(); });
+        return page;
+    }
+
     QDoubleSpinBox* number(double value, double low, double high, int decimals, const QString& suffix)
     {
         auto* box = new QDoubleSpinBox;
@@ -236,9 +278,11 @@ private:
         streamEnabled_->setChecked(true); isdOnline_->setChecked(true); scpiOnline_->setChecked(true);
         current_->setValue(0.24); voltageError_->setValue(0); referenceError_->setValue(0);
         yalkNoise_->setValue(1); ytpNoise_->setValue(1); acVoltage_->setValue(0.137); frequencyError_->setValue(0);
+        yvpGainError_->setValue(0); yvpRouteFault_->setChecked(false);
         for (int i = 0; i < 100; ++i) { yalkTable_->item(i, 1)->setText("0"); yalkTable_->item(i, 2)->setText(QStringLiteral("авто")); }
         overloadObserved_->setValue(30); overloadDeltaCode_->setValue(0);
         for (int i = 0; i < 30; ++i) ytpTable_->item(i, 1)->setText("0");
+        updateYvpState();
         appendLog(QStringLiteral("Установлен профиль «Все в норме»"));
     }
 
@@ -340,11 +384,18 @@ private:
             yalkEnabled_.fill(false); yalkVoltage_.fill(0.0);
             yalkDirectEnabled_.fill(false); yalkDirectCode_.fill(0.0);
             type3Enabled_.fill(false);
+            isdType1Enabled_.fill(false); isdType2Enabled_.fill(false);
+            isdType3Enabled_.fill(false);
         } else {
             QRegularExpression re(QStringLiteral("type=(\\d+)num=(\\d+)(?:val=([0-9.+-]+))?(?:work=(\\d))?"));
             const auto match = re.match(path);
             if (match.hasMatch()) {
                 const int type=match.captured(1).toInt(), channel=match.captured(2).toInt();
+                if (channel >= 1 && channel <= 100) {
+                    if (type == 1) isdType1Enabled_[channel - 1] = match.captured(4) == "1";
+                    else if (type == 2) isdType2Enabled_[channel - 1] = match.captured(3) == "1";
+                    else if (type == 3) isdType3Enabled_[channel - 1] = match.captured(3) == "1";
+                }
                 static constexpr std::array<int, 80> yalkAddress{
                     1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
                     21,22,23,24,25,26,27,28,32,33,34,35,36,37,38,39,40,41,42,43,
@@ -365,6 +416,7 @@ private:
                 }
             }
         }
+        updateYvpState();
         socket->write("HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nOK");
         socket->disconnectFromHost();
     }
@@ -382,13 +434,109 @@ private:
         else if (cmd=="MEAS:VOLT?") answer=QByteArray::number(supplyOutput_ ? supplySetVoltage_+voltageError_->value() : 0.0, 'g', 12);
         else if (cmd=="MEAS:CURR?" || cmd=="MEAS:CURR:DC?") answer=QByteArray::number(supplyOutput_ ? current_->value() : 0.0, 'g', 12);
         else if (cmd=="MEAS:VOLT:DC?") answer=QByteArray::number(referenceVoltage()+referenceError_->value(), 'g', 12);
-        else if (cmd=="MEAS:VOLT:AC?") answer=QByteArray::number(acVoltage_->value(), 'g', 12);
+        else if (cmd=="MEAS:VOLT:AC?") answer=QByteArray::number(yvpAcVoltage(), 'g', 12);
         else if (cmd=="MEAS:FREQ?") answer=QByteArray::number(generatorFrequency_+frequencyError_->value(), 'g', 12);
-        else if (cmd.startsWith("SOUR1:APPL:SIN ")) generatorFrequency_=cmd.mid(15).split(',').value(0).toDouble();
+        else if (cmd.startsWith("SOUR1:APPL:SIN ")) {
+            const auto arguments = cmd.mid(15).split(',');
+            generatorFrequency_=arguments.value(0).toDouble();
+            generatorAmplitudeVpp_=arguments.value(1).toDouble();
+        }
         else if (cmd=="OUTP1 ON") generatorOutput_=true;
         else if (cmd=="OUTP1 OFF") generatorOutput_=false;
         else answer="ERR unsupported command";
+        updateYvpState();
         socket->write(answer+'\n'); socket->disconnectFromHost();
+    }
+
+    struct YvpRouteState {
+        int inputChannel = 0;
+        int measurementChannel = 0;
+        double gain = 0.0;
+        bool gainValid = false;
+        bool routeValid = false;
+    };
+
+    YvpRouteState yvpRouteState() const
+    {
+        static constexpr std::array<std::array<int, 2>, 8> inputContacts{{
+            {{33,37}}, {{34,38}}, {{35,39}}, {{36,40}},
+            {{44,48}}, {{43,47}}, {{42,46}}, {{41,45}}
+        }};
+        static constexpr std::array<int, 8> measurementContacts{
+            43,42,40,41,39,38,37,35
+        };
+
+        YvpRouteState state;
+        for (int channel = 0; channel < 8; ++channel) {
+            const auto& pair = inputContacts[channel];
+            if (isdType2Enabled_[pair[0] - 1] && isdType2Enabled_[pair[1] - 1]) {
+                if (state.inputChannel != 0) return {};
+                state.inputChannel = channel + 1;
+            }
+            const int output = measurementContacts[channel];
+            if (isdType1Enabled_[output - 1] && isdType3Enabled_[output - 1]) {
+                if (state.measurementChannel != 0) return {};
+                state.measurementChannel = channel + 1;
+            }
+        }
+        if (state.inputChannel == 0) return state;
+
+        const int firstKu = (state.inputChannel - 1) * 4 + 1;
+        unsigned bits = 0;
+        for (int bit = 0; bit < 4; ++bit)
+            if (isdType2Enabled_[firstKu + bit - 1]) bits |= 1u << bit;
+        switch (bits) {
+        case 0x0: state.gain = 0.25; state.gainValid = true; break;
+        case 0x1: state.gain = 0.5; state.gainValid = true; break;
+        case 0x2: state.gain = 1.0; state.gainValid = true; break;
+        case 0x4: state.gain = 2.0; state.gainValid = true; break;
+        case 0x5: state.gain = 4.0; state.gainValid = true; break;
+        case 0x8: state.gain = 8.0; state.gainValid = true; break;
+        case 0xA: state.gain = 32.0; state.gainValid = true; break;
+        default: break;
+        }
+        state.routeValid = state.gainValid
+            && state.inputChannel == state.measurementChannel
+            && !yvpRouteFault_->isChecked();
+        return state;
+    }
+
+    double yvpAcVoltage() const
+    {
+        const auto state = yvpRouteState();
+        if (state.inputChannel == 0) {
+            bool hasYvpInputContact = false;
+            for (const int contact : {33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48})
+                hasYvpInputContact = hasYvpInputContact || isdType2Enabled_[contact - 1];
+            if (!hasYvpInputContact) return acVoltage_->value();
+        }
+        if (!supplyOutput_ || !generatorOutput_ || !state.routeValid) return 0.0;
+        const double outputVpp = generatorAmplitudeVpp_ * state.gain
+            * (1.0 + yvpGainError_->value() / 100.0);
+        return outputVpp / (2.0 * std::sqrt(2.0));
+    }
+
+    void updateYvpState()
+    {
+        if (!yvpInputState_) return;
+        const auto state = yvpRouteState();
+        yvpInputState_->setText(state.inputChannel
+            ? QStringLiteral("канал %1").arg(state.inputChannel)
+            : QStringLiteral("не выбран / конфликт"));
+        yvpGainState_->setText(state.gainValid
+            ? QStringLiteral("%1 мВ/пКл").arg(state.gain, 0, 'g', 4)
+            : QStringLiteral("не выбран / недопустимый KU"));
+        yvpMeasurementState_->setText(state.measurementChannel
+            ? QStringLiteral("CH%1, канал ЯВП %2%3")
+                .arg(88 + state.measurementChannel).arg(state.measurementChannel)
+                .arg(state.routeValid ? QStringLiteral(" · тракт согласован")
+                                      : QStringLiteral(" · тракт не согласован"))
+            : QStringLiteral("не выбран"));
+        yvpGeneratorState_->setText(QStringLiteral("%1 · %2 Гц · %3 Vpp")
+            .arg(generatorOutput_ ? QStringLiteral("ВКЛ") : QStringLiteral("ВЫКЛ"))
+            .arg(generatorFrequency_, 0, 'g', 8)
+            .arg(generatorAmplitudeVpp_, 0, 'g', 8));
+        yvpV7State_->setText(QStringLiteral("%1 В RMS").arg(yvpAcVoltage(), 0, 'g', 8));
     }
 
     double referenceVoltage() const
@@ -407,13 +555,19 @@ private:
     std::array<double,100> yalkVoltage_{}; std::array<bool,100> yalkEnabled_{};
     std::array<double,100> yalkDirectCode_{}; std::array<bool,100> yalkDirectEnabled_{};
     std::array<bool,100> type3Enabled_{};
+    std::array<bool,100> isdType1Enabled_{}, isdType2Enabled_{}, isdType3Enabled_{};
     double supplySetVoltage_=0, supplyCurrentLimit_=0, generatorFrequency_=1000;
+    double generatorAmplitudeVpp_=0;
     bool supplyOutput_=false, generatorOutput_=false;
     QCheckBox *streamEnabled_=nullptr,*isdOnline_=nullptr,*scpiOnline_=nullptr;
     QDoubleSpinBox *current_=nullptr,*voltageError_=nullptr,*referenceError_=nullptr,*acVoltage_=nullptr,*frequencyError_=nullptr;
+    QDoubleSpinBox *yvpGainError_=nullptr;
+    QCheckBox *yvpRouteFault_=nullptr;
     QDoubleSpinBox *yalkNoise_=nullptr,*ytpResistance_=nullptr,*ytpNoise_=nullptr;
     QSpinBox *overloadObserved_=nullptr,*overloadDeltaCode_=nullptr;
     QLabel *supplyVoltage_=nullptr,*outputState_=nullptr;
+    QLabel *yvpInputState_=nullptr,*yvpGainState_=nullptr,*yvpMeasurementState_=nullptr;
+    QLabel *yvpGeneratorState_=nullptr,*yvpV7State_=nullptr;
     QTableWidget *yalkTable_=nullptr,*ytpTable_=nullptr;
     QPlainTextEdit* log_=nullptr;
 };
