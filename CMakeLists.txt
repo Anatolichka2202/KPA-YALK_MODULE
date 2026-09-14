@@ -25,6 +25,10 @@ endif()
 
 add_subdirectory(orbita)
 add_subdirectory(station)
+# Protocol integrations connect universal station components to protocol
+# consumers without making station-core depend on a concrete protocol library
+# or making that protocol library select physical station equipment.
+add_subdirectory(integrations/orbita)
 add_subdirectory(deliveries/ktma/registrar)
 add_subdirectory(deliveries/ktma/ubsi)
 add_subdirectory(apps/desktop)
