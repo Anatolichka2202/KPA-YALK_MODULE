@@ -40,8 +40,11 @@ if(BUILD_TESTING)
     )
     target_compile_definitions(ktma_ubsi_production_scenario_test PRIVATE
         KTMA_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+    # registerUbsiProcedures() belongs to the current KTMA/UBSI procedure
+    # domain. Keep this dependency explicit after the universal runtime was
+    # decoupled from product procedure implementations.
     target_link_libraries(ktma_ubsi_production_scenario_test PRIVATE
-        ktma_ubsi orbita_stand_runtime)
+        ktma_ubsi orbita_stand_runtime orbita_stand_domain)
     add_test(NAME ktma.ubsi.production_scenarios COMMAND ktma_ubsi_production_scenario_test)
 endif()
 
