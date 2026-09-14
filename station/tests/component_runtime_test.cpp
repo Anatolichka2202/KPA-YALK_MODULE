@@ -1,5 +1,6 @@
 #include "orbita_stand/component_runtime.h"
 #include "orbita_stand/config.h"
+#include "orbita_stand/equipment_runtime.h"
 #include "orbita_stand/sample_source.h"
 
 #include <QCoreApplication>
@@ -93,6 +94,55 @@ void duplicateBindingIsRejected()
     require(runtime.components().empty(), "failed instantiate must roll back runtime state");
 }
 
+void equipmentResourceRoutingContract()
+{
+    EquipmentRegistry registry;
+    int stopCount = 0;
+
+    registry.bindResource("supply.primary", {"power.dc_supply"},
+        [](const std::string& capability, const std::string& operation,
+           const std::map<std::string, std::string>&) {
+            return std::string("primary:") + capability + ":" + operation;
+        },
+        [&stopCount] { ++stopCount; });
+    registry.bindResource("supply.aux", {"power.dc_supply"},
+        [](const std::string& capability, const std::string& operation,
+           const std::map<std::string, std::string>&) {
+            return std::string("aux:") + capability + ":" + operation;
+        },
+        [&stopCount] { ++stopCount; });
+
+    require(registry.hasResource("supply.primary"), "primary resource was not registered");
+    require(registry.hasResource("supply.aux"), "aux resource was not registered");
+    require(registry.resourceHasCapability("supply.primary", "power.dc_supply"),
+            "primary resource lost its capability");
+    require(registry.resourceHasCapability("supply.aux", "power.dc_supply"),
+            "aux resource lost its capability");
+    require(!registry.hasCapability("power.dc_supply"),
+            "role binding must not silently select a legacy default capability target");
+
+    require(registry.invokeResource("supply.primary", "power.dc_supply", "probe")
+                == "primary:power.dc_supply:probe",
+            "primary resource routed to the wrong endpoint");
+    require(registry.invokeResource("supply.aux", "power.dc_supply", "probe")
+                == "aux:power.dc_supply:probe",
+            "aux resource routed to the wrong endpoint");
+
+    bool wrongCapabilityRejected = false;
+    try {
+        (void)registry.invokeResource("supply.primary", "measure.reference_voltage", "read");
+    } catch (const std::invalid_argument&) {
+        wrongCapabilityRejected = true;
+    }
+    require(wrongCapabilityRejected,
+            "resource routing must validate the capability before invocation");
+
+    const auto resources = registry.resources();
+    require(resources.size() == 2, "resource registry descriptor count is wrong");
+    registry.clear();
+    require(stopCount == 2, "clear must safe-stop every independent resource");
+}
+
 void ktmaSampleSourceContract()
 {
     const auto profilePath = QDir(QString::fromUtf8(ORBITA_SOURCE_DIR))
@@ -121,6 +171,7 @@ int main(int argc, char** argv)
     try {
         genericRuntimeContract();
         duplicateBindingIsRejected();
+        equipmentResourceRoutingContract();
         ktmaSampleSourceContract();
         std::cout << "component runtime contract OK\n";
         return 0;
