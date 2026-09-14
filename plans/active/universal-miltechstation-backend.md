@@ -104,7 +104,8 @@ liborbita
 - [x] working directory / env / args / stdout / stderr;
 - [x] timeout / cancel / terminate / kill fallback;
 - [x] factory contract test;
-- [ ] интеграционный тест реального запуска процесса;
+- [x] интеграционный test запускает реальный дочерний процесс и проверяет
+  exit code, stdout/stderr и возврат runtime в idle;
 - [ ] связать execution runtime с run lifecycle/evidence;
 - [ ] добавить Python provider/профиль после подключения первого реального Python-стенда;
 - [ ] добавить Lua provider/adapter при миграции PPB;
@@ -137,7 +138,7 @@ liborbita
 
 ### 6. Resource/role model оборудования
 
-Статус: **PARTIAL / CONTRACT READY**
+Статус: **PARTIAL / FIRST DELIVERY SLICE MIGRATED**
 
 Канонический профиль описывает component instance отдельно от provider.
 `EquipmentRegistry` и ScenarioEngine теперь имеют отдельный role/resource path:
@@ -164,7 +165,7 @@ operation
 - [x] `ComponentProfile` разделяет `bind` (delivery roles) и
   `capabilities` (equipment contracts); старый equipment-формат без
   `capabilities:` остаётся compatibility input;
-- [x] KTMA profile уже объявляет стабильные роли `power.dut`,
+- [x] KTMA profile объявляет стабильные роли `power.dut`,
   `dut.parameter_source`, `switch_matrix.primary`, `measure.reference`,
   `signal.primary`, `measure.waveform.primary` отдельно от plugin capabilities;
 - [x] generic `instantiateProfile()` регистрирует concrete component id и все
@@ -176,17 +177,27 @@ operation
   `capability`;
 - [x] ScenarioEngine проверяет resource/capability до запуска процедуры и
   возвращает `INCOMPLETE`, если конкретный ресурс недоступен;
-- [x] procedure получает resource-aware вызов через
+- [x] procedure может вызывать конкретный ресурс через
   `ICapabilityProvider::invokeResource()`;
-- [x] отдельный contract test проверяет YAML parsing, missing-resource preflight
-  и вызов конкретного logical resource;
+- [x] для миграции старых procedures ScenarioEngine создаёт на каждый leaf
+  node resource-router: обычный `invoke(capability, ...)` автоматически идёт
+  через единственный resource, объявленный этим шагом;
+- [x] если один leaf объявляет несколько resources с одной capability,
+  capability-only invoke считается неоднозначным и требует явного
+  `invokeResource()`;
+- [x] `ktma.ubsi.production.power` переведён на `power.dut` и
+  `dut.parameter_source`; старые `ubsi.supply_range`/`ubsi.power_safe_off`
+  используют выбранные роли без переписывания процедуры;
+- [x] contract tests проверяют YAML parsing, missing-resource preflight,
+  transparent routing старого procedure invoke и роли production power;
 - [x] component-profile contract test проверяет, что role не протекает в
   legacy capability view и что explicit capability сохраняется отдельно.
 
 Остаётся:
 
-- [ ] перевести существующие KTMA-сценарии и процедуры постепенно, сохраняя
-  legacy capability-only путь на время миграции;
+- [ ] перевести остальные KTMA-сценарии на explicit resource + capability;
+- [ ] procedures, которым действительно нужны два ресурса одинаковой
+  capability, перевести на явный `invokeResource()`;
 - [ ] после миграции запретить неоднозначный default routing по capability.
 
 Это нужно завершить до переноса PPB и других стендов, где одинаковые типы
@@ -209,12 +220,14 @@ station-level contracts для транспорта/remote session, когда �
 
 ### 8. Desktop / application composition
 
-Статус: **TODO**
+Статус: **PARTIAL**
 
-После backend boundaries:
-
+- [x] добавлен application-neutral `StationSession`, который владеет профилем,
+  `ComponentRuntime`, EquipmentPluginManager/Registry и общим safe-stop;
+- [x] contract test проверяет configure/clear и автоматический выбор
+  non-equipment component kinds из профиля;
+- [ ] переключить текущий desktop на `StationSession`;
 - [ ] убрать lifecycle оборудования из `MainWindow`;
-- [ ] вынести station/application session;
 - [ ] product/delivery package подключать композицией, а не разрастанием
   `integration*()` protected API;
 - [ ] сохранить существующую операторскую модель УБСИ без нового redesign.
@@ -236,8 +249,7 @@ workflow.
 ## Текущий следующий шаг
 
 1. держать ветку зелёной через отдельный CI после каждого backend-среза;
-2. постепенно перевести KTMA scenario YAML и procedures на explicit
-   resource + capability;
-3. переключить desktop Orbita monitoring на station-owned `sample_source`;
-4. после этого физически удалить E20/Lusbapi из `liborbita`;
+2. переключить desktop Orbita monitoring на station-owned `sample_source`;
+3. после этого физически удалить E20/Lusbapi из `liborbita`;
+4. параллельно переводить остальные KTMA scenario YAML на delivery roles;
 5. затем физически вынести UBSI/KTMA domain из общего `station` target.
