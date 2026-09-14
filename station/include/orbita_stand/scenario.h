@@ -5,6 +5,7 @@
 #include <functional>
 #include <map>
 #include <set>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -43,6 +44,15 @@ struct ProcedureResult {
     std::vector<MeasurementResult> measurements;
 };
 
+// Explicit station-resource requirement. `resource` identifies the logical
+// component/role selected by the delivery profile; `capability` describes the
+// contract that this particular resource must implement. This removes the
+// assumption that one capability uniquely identifies one physical device.
+struct ResourceRequirement {
+    std::string resource;
+    std::string capability;
+};
+
 struct ScenarioNode {
     std::string id;
     std::string title;
@@ -51,6 +61,11 @@ struct ScenarioNode {
     std::set<std::string> requiredCapabilities;
     std::map<std::string, std::string> arguments;
     std::vector<ScenarioNode> children;
+
+    // Appended after the legacy aggregate fields deliberately: existing C++
+    // scenario initializers keep their meaning while scenarios migrate from
+    // capability-only routing to explicit delivery resource roles.
+    std::vector<ResourceRequirement> requiredResources;
 };
 
 struct ScenarioDefinition {
@@ -100,11 +115,39 @@ struct ScenarioRunResult {
 class ICapabilityProvider {
 public:
     virtual ~ICapabilityProvider() = default;
+
+    // Legacy/default routing. Retained while existing scenarios are migrated.
     virtual bool hasCapability(const std::string& capability) const = 0;
     virtual std::string invoke(
         const std::string& capability,
         const std::string& operation,
         const std::map<std::string, std::string>& arguments) = 0;
+
+    // Resource-aware routing. Default implementations keep old providers
+    // source-compatible; a provider that supports logical resources overrides
+    // these methods. Procedures may then address two devices implementing the
+    // same capability without relying on ambiguous global routing.
+    virtual bool resourceHasCapability(
+        const std::string& resource,
+        const std::string& capability) const
+    {
+        (void)resource;
+        (void)capability;
+        return false;
+    }
+
+    virtual std::string invokeResource(
+        const std::string& resource,
+        const std::string& capability,
+        const std::string& operation,
+        const std::map<std::string, std::string>& arguments)
+    {
+        (void)capability;
+        (void)operation;
+        (void)arguments;
+        throw std::runtime_error("Equipment resource routing is unavailable: " + resource);
+    }
+
     virtual void safeStopAll() noexcept = 0;
 };
 
