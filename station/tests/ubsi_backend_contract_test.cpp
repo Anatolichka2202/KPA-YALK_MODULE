@@ -145,6 +145,16 @@ public:
             outputEnabled = arguments.at("enabled") == "true";
             return "status=ok\n";
         }
+        if (capability == "measure.reference_ac_voltage"
+            && operation == "read_ac_voltage") {
+            ++acVoltageReads;
+            return "status=ready\nvolts=1.41421356237\n";
+        }
+        if (capability == "measure.reference_frequency"
+            && operation == "read_frequency") {
+            ++frequencyReads;
+            return "status=ready\nhertz=20\n";
+        }
         if (capability == "power.dc_supply" && operation == "read_state") {
             const double current = std::abs(supplyVoltage - 35.0) < 0.01 ? 0.41 : 0.20;
             return "status=ready\nvolts=" + std::to_string(supplyVoltage)
@@ -164,6 +174,8 @@ public:
     bool outputEnabled = false;
     bool stopped = false;
     unsigned yvpStarts = 0;
+    unsigned acVoltageReads = 0;
+    unsigned frequencyReads = 0;
 };
 
 ScenarioDefinition oneStep(std::string procedure,
@@ -221,6 +233,52 @@ void procedureRuntimeContract()
                        roktBackendEquipment.operations.end(),
                        "ulk.parameter_source:start_yvp_channel_probe") == 8,
         "The explicit yvp.rokt alias must execute the retained channel probe");
+
+    ContractEquipment v7Equipment;
+    const auto v7Run = engine.run(oneStep("yvp.v7_isd", {
+        {"channel_count", "8"},
+        {"commissioning_channels", "1"},
+        {"gains_mv_per_pcl", "1"},
+        {"frequencies_hz", "0.15,20"},
+        {"mapping_confirmed", "true"},
+        {"active_outputs_confirmed", "true"},
+        {"input_switch_type", "2"},
+        {"gain_switch_type", "2"},
+        {"measurement_switch_type", "2"},
+        {"input_1_contacts", "101"},
+        {"input_2_contacts", "102"},
+        {"input_3_contacts", "103"},
+        {"input_4_contacts", "104"},
+        {"input_5_contacts", "105"},
+        {"input_6_contacts", "106"},
+        {"input_7_contacts", "107"},
+        {"input_8_contacts", "108"},
+        {"measurement_1_contacts", "201"},
+        {"measurement_2_contacts", "202"},
+        {"measurement_3_contacts", "203"},
+        {"measurement_4_contacts", "204"},
+        {"measurement_5_contacts", "205"},
+        {"measurement_6_contacts", "206"},
+        {"measurement_7_contacts", "207"},
+        {"measurement_8_contacts", "208"},
+        {"gain_1_contacts", "none"},
+        {"settle_ms", "0"}}), v7Equipment, "p", "", false);
+    require(v7Run.verdict == RunVerdict::Incomplete
+                && v7Run.steps.front().measurements.size() == 2,
+        "V7+ISD commissioning filter must execute one channel and retain both points");
+    require(v7Equipment.acVoltageReads == 2 && v7Equipment.frequencyReads == 1,
+        "V7 must skip frequency read at 0.15 Hz and read it at 20 Hz");
+    require(std::count(v7Equipment.operations.begin(), v7Equipment.operations.end(),
+                       "signal.generator:output") >= 4,
+        "V7+ISD commissioning must switch Rigol safely around both points");
+    for (const auto& measurement : v7Run.steps.front().measurements) {
+        if (measurement.attributes.at("set_frequency_hz") == "0.150000") {
+            require(measurement.attributes.at("frequency_verification")
+                        == "unavailable_by_v7"
+                        && measurement.attributes.at("measured_frequency_hz").empty(),
+                "0.15 Hz must remain unverified by V7 frequency readout");
+        }
+    }
 
     ContractEquipment supplyEquipment;
     const auto supplyRun = engine.run(oneStep("ubsi.supply_range", {

@@ -89,6 +89,38 @@ std::vector<unsigned> contacts(const ScenarioNode& node, const std::string& key,
     return result;
 }
 
+std::vector<unsigned> commissioningChannels(const ScenarioNode& node,
+                                            unsigned channelCount)
+{
+    const auto found = node.arguments.find("commissioning_channels");
+    if (found == node.arguments.end() || found->second.empty()) {
+        std::vector<unsigned> result;
+        for (unsigned channel = 1; channel <= channelCount; ++channel)
+            result.push_back(channel - 1);
+        return result;
+    }
+
+    std::vector<unsigned> result;
+    std::set<unsigned> unique;
+    std::stringstream stream(found->second);
+    std::string item;
+    while (std::getline(stream, item, ',')) {
+        if (item.empty())
+            throw std::invalid_argument("ЯВП V7/ИСД: пустой commissioning channel");
+        std::size_t parsed = 0;
+        const auto value = std::stoul(item, &parsed, 0);
+        if (parsed != item.size() || value < 1 || value > channelCount
+            || !unique.insert(static_cast<unsigned>(value)).second) {
+            throw std::invalid_argument(
+                "ЯВП V7/ИСД: commissioning_channels должен содержать уникальные номера 1..8");
+        }
+        result.push_back(static_cast<unsigned>(value - 1));
+    }
+    if (result.empty())
+        throw std::invalid_argument("ЯВП V7/ИСД: commissioning_channels не задан");
+    return result;
+}
+
 std::map<std::string, std::string> responseValues(const std::string& response)
 {
     std::map<std::string, std::string> result;
@@ -195,6 +227,7 @@ ProcedureResult yvpV7Isd(const ScenarioNode& node, ProcedureContext& context)
     if (!(capacitancePf > 0.0))
         throw std::invalid_argument("ЯВП V7/ИСД: coupling_capacitance_pf должен быть > 0");
     const unsigned settleMs = natural(node, "settle_ms", 200);
+    const auto selectedChannels = commissioningChannels(node, channelCount);
 
     std::set<unsigned> allInputContacts;
     std::set<unsigned> allMeasurementContacts;
@@ -232,7 +265,7 @@ ProcedureResult yvpV7Isd(const ScenarioNode& node, ProcedureContext& context)
 
     try {
         safeReset();
-        for (unsigned channel = 0; channel < channelCount; ++channel) {
+        for (const unsigned channel : selectedChannels) {
             setContacts(context, inputType, inputMap[channel], true);
             setContacts(context, measurementType, measurementMap[channel], true);
 
@@ -254,8 +287,17 @@ ProcedureResult yvpV7Isd(const ScenarioNode& node, ProcedureContext& context)
 
                     const double measuredRms = responseNumber(context.equipment.invoke(
                         "measure.reference_ac_voltage", "read_ac_voltage", {}), "volts");
-                    const double measuredFrequency = responseNumber(context.equipment.invoke(
-                        "measure.reference_frequency", "read_frequency", {}), "hertz");
+                    std::string measuredFrequencyText;
+                    std::string frequencyVerification;
+                    if (frequency >= 10.0) {
+                        measuredFrequencyText = std::to_string(responseNumber(
+                            context.equipment.invoke(
+                                "measure.reference_frequency", "read_frequency", {}),
+                            "hertz"));
+                        frequencyVerification = "v7";
+                    } else {
+                        frequencyVerification = "unavailable_by_v7";
+                    }
                     const double outputVpp = measuredRms * 2.0 * std::sqrt(2.0);
                     const double chargePc = yvpChargePc(capacitancePf, inputVpp);
                     const double calculatedGain = yvpGainMvPerPc(outputVpp, chargePc);
@@ -277,7 +319,8 @@ ProcedureResult yvpV7Isd(const ScenarioNode& node, ProcedureContext& context)
                         {"yvp_channel", std::to_string(channel + 1)},
                         {"gain_mv_per_pc", std::to_string(gain)},
                         {"set_frequency_hz", std::to_string(frequency)},
-                        {"measured_frequency_hz", std::to_string(measuredFrequency)},
+                        {"measured_frequency_hz", measuredFrequencyText},
+                        {"frequency_verification", frequencyVerification},
                         {"rigol_input_vpp", std::to_string(inputVpp)},
                         {"v7_output_vrms", std::to_string(measuredRms)},
                         {"v7_output_vpp", std::to_string(outputVpp)},
