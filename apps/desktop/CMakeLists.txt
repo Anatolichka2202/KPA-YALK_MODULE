@@ -131,6 +131,9 @@ add_custom_target(OrbitaRuntimeResources ALL
         $<TARGET_FILE:orbita_yvp_rokt_probe>
         $<TARGET_FILE_DIR:MilTechStation>
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        $<TARGET_FILE:orbita_yvp_v7_probe>
+        $<TARGET_FILE_DIR:MilTechStation>
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
         $<TARGET_FILE:visa_discover>
         $<TARGET_FILE_DIR:MilTechStation>
     COMMENT "Updating MilTechStation runtime database and address files"
@@ -141,7 +144,7 @@ if(WIN32)
 endif()
 add_dependencies(OrbitaRuntimeResources MilTechStation orbita_equipment_plugins
     orbita_equipment_probe orbita_telemetry_probe orbita_ubsi_udp_probe
-    orbita_yvp_rokt_probe visa_discover)
+    orbita_yvp_rokt_probe orbita_yvp_v7_probe visa_discover)
 
 if(BUILD_TESTING)
     add_executable(test_page_smoke_test

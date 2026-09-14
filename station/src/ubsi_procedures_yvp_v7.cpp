@@ -180,6 +180,36 @@ void setContacts(ProcedureContext& context, unsigned type,
     }
 }
 
+std::string gainBitsKey(double gain)
+{
+    auto key = gainKey(gain);
+    const auto suffix = key.rfind("_contacts");
+    key.replace(suffix, std::string("_contacts").size(), "_bits");
+    return key;
+}
+
+void setMeasurementContacts(ProcedureContext& context, unsigned analogType,
+                            unsigned switchType, const std::vector<unsigned>& values,
+                            bool enabled)
+{
+    // The Delphi/KPA reference routes a YVP output through two ISD commands:
+    // type=1 selects the analog measurement line (work=1/0), then type=3
+    // connects/disconnects that line to the V7 bus.  Keep the generic type=2
+    // path available for synthetic/legacy maps that do not declare an analog
+    // measurement type.
+    for (const unsigned channel : values) {
+        if (analogType) {
+            context.equipment.invoke("stand.switch_matrix", "analog", {
+                {"channel", std::to_string(channel)}, {"value", "0"},
+                {"enabled", enabled ? "true" : "false"}});
+        }
+        context.equipment.invoke("stand.switch_matrix", "switch", {
+            {"type", std::to_string(switchType)},
+            {"channel", std::to_string(channel)},
+            {"enabled", enabled ? "true" : "false"}});
+    }
+}
+
 ProcedureResult yvpV7Isd(const ScenarioNode& node, ProcedureContext& context)
 {
     const unsigned channelCount = natural(node, "channel_count", 8);
@@ -210,6 +240,7 @@ ProcedureResult yvpV7Isd(const ScenarioNode& node, ProcedureContext& context)
     const unsigned measurementType = natural(node, "measurement_switch_type");
     if (!inputType || !gainType || !measurementType)
         throw std::invalid_argument("ЯВП V7/ИСД: нужны подтверждённые input/gain/measurement switch type");
+    const unsigned measurementAnalogType = natural(node, "measurement_analog_type", 0);
 
     std::vector<std::vector<unsigned>> inputMap(channelCount);
     std::vector<std::vector<unsigned>> measurementMap(channelCount);
@@ -219,9 +250,46 @@ ProcedureResult yvpV7Isd(const ScenarioNode& node, ProcedureContext& context)
             node, "measurement_" + std::to_string(channel + 1) + "_contacts");
     }
 
-    std::map<double, std::vector<unsigned>> gainMap;
-    for (const double gain : gains)
-        gainMap[gain] = contacts(node, gainKey(gain), true);
+    // Four KU controls are physically separate for every YVP channel.  The
+    // reference KPA scenarios define the coefficient as a KU-bit pattern;
+    // the E3/firmware map defines which HTTP type=2 contact implements each
+    // KU bit on each channel.  Keep both parts explicit instead of deriving
+    // contacts with base+offset arithmetic.
+    std::vector<std::map<double, std::vector<unsigned>>> gainMap(channelCount);
+    const bool hasPerChannelGainMap =
+        node.arguments.count("channel_1_gain_contacts") != 0;
+    if (hasPerChannelGainMap) {
+        std::vector<std::vector<unsigned>> channelGainContacts(channelCount);
+        for (unsigned channel = 0; channel < channelCount; ++channel) {
+            const auto key = "channel_" + std::to_string(channel + 1)
+                + "_gain_contacts";
+            channelGainContacts[channel] = contacts(node, key);
+            if (channelGainContacts[channel].size() != 4)
+                throw std::invalid_argument(
+                    "ЯВП V7/ИСД: " + key + " должен содержать KU1..KU4");
+        }
+        for (const double gain : gains) {
+            const auto bits = contacts(node, gainBitsKey(gain), true);
+            std::set<unsigned> uniqueBits;
+            for (const unsigned bit : bits) {
+                if (bit < 1 || bit > 4 || !uniqueBits.insert(bit).second)
+                    throw std::invalid_argument(
+                        "ЯВП V7/ИСД: карта " + gainBitsKey(gain)
+                        + " должна содержать уникальные KU-биты 1..4");
+            }
+            for (unsigned channel = 0; channel < channelCount; ++channel) {
+                auto& row = gainMap[channel][gain];
+                for (const unsigned bit : bits)
+                    row.push_back(channelGainContacts[channel][bit - 1]);
+            }
+        }
+    } else {
+        // Compatibility for synthetic and retained commissioning scenarios.
+        for (const double gain : gains) {
+            const auto row = contacts(node, gainKey(gain), true);
+            for (auto& channelMap : gainMap) channelMap[gain] = row;
+        }
+    }
 
     const double capacitancePf = number(node, "coupling_capacitance_pf", 1000.0);
     if (!(capacitancePf > 0.0))
@@ -235,9 +303,11 @@ ProcedureResult yvpV7Isd(const ScenarioNode& node, ProcedureContext& context)
     for (const auto& row : inputMap) allInputContacts.insert(row.begin(), row.end());
     for (const auto& row : measurementMap)
         allMeasurementContacts.insert(row.begin(), row.end());
-    for (const auto& [gain, row] : gainMap) {
-        (void)gain;
-        allGainContacts.insert(row.begin(), row.end());
+    for (const auto& channelMap : gainMap) {
+        for (const auto& [gain, row] : channelMap) {
+            (void)gain;
+            allGainContacts.insert(row.begin(), row.end());
+        }
     }
 
     const auto asVector = [](const std::set<unsigned>& values) {
@@ -253,7 +323,8 @@ ProcedureResult yvpV7Isd(const ScenarioNode& node, ProcedureContext& context)
     };
     auto safeReset = [&] {
         try { generatorOff(); } catch (...) {}
-        try { setContacts(context, measurementType, allMeasurements, false); } catch (...) {}
+        try { setMeasurementContacts(context, measurementAnalogType, measurementType,
+                                     allMeasurements, false); } catch (...) {}
         try { setContacts(context, gainType, allGains, false); } catch (...) {}
         try { setContacts(context, inputType, allInputs, false); } catch (...) {}
         try { context.equipment.invoke("stand.switch_matrix", "full_reset", {}); } catch (...) {}
@@ -267,12 +338,13 @@ ProcedureResult yvpV7Isd(const ScenarioNode& node, ProcedureContext& context)
         safeReset();
         for (const unsigned channel : selectedChannels) {
             setContacts(context, inputType, inputMap[channel], true);
-            setContacts(context, measurementType, measurementMap[channel], true);
+            setMeasurementContacts(context, measurementAnalogType, measurementType,
+                                   measurementMap[channel], true);
 
             for (const double gain : gains) {
                 generatorOff();
                 setContacts(context, gainType, allGains, false);
-                setContacts(context, gainType, gainMap.at(gain), true);
+                setContacts(context, gainType, gainMap[channel].at(gain), true);
                 const double inputVpp = yvpStimulusVppForGain(gain);
 
                 for (const double frequency : frequencies) {
@@ -338,7 +410,8 @@ ProcedureResult yvpV7Isd(const ScenarioNode& node, ProcedureContext& context)
 
             generatorOff();
             setContacts(context, gainType, allGains, false);
-            setContacts(context, measurementType, measurementMap[channel], false);
+            setMeasurementContacts(context, measurementAnalogType, measurementType,
+                                   measurementMap[channel], false);
             setContacts(context, inputType, inputMap[channel], false);
         }
         safeReset();
