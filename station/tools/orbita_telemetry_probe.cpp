@@ -1,4 +1,7 @@
 #include "orbita.h"
+#include "orbita_stand/component_runtime.h"
+#include "orbita_stand/config.h"
+#include "orbita_stand/sample_source.h"
 
 #include <algorithm>
 #include <chrono>
@@ -6,11 +9,14 @@
 #include <fstream>
 #include <iostream>
 #include <map>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
 
 namespace {
+
+constexpr const char* kOrbitaSampleSourceBinding = "telemetry.orbita.sample_source";
 
 std::string normalizeAddress(std::string line)
 {
@@ -72,30 +78,58 @@ int main(int argc, char** argv)
             return 1;
         }
     }
-    if (argc < 2 || argc > 6) {
-        std::cerr << "Usage: orbita_telemetry_probe <address-file> [seconds] [interval-ms] [adc-channel] [rate-khz]\n"
-                  << "   or: orbita_telemetry_probe --validate <address-file>\n";
+
+    if (argc < 3 || argc > 5) {
+        std::cerr
+            << "Usage: orbita_telemetry_probe <stand-profile> <address-file> [seconds] [interval-ms]\n"
+            << "   or: orbita_telemetry_probe --validate <address-file>\n";
         return 2;
     }
-    const int seconds = argc >= 3 ? std::max(1, std::atoi(argv[2])) : 10;
-    const int intervalMilliseconds = argc >= 4
-        ? std::max(100, std::atoi(argv[3]))
+
+    const int seconds = argc >= 4 ? std::max(1, std::atoi(argv[3])) : 10;
+    const int intervalMilliseconds = argc >= 5
+        ? std::max(100, std::atoi(argv[4]))
         : 1000;
-    const unsigned adcChannel = argc >= 5
-        ? std::min(15u, static_cast<unsigned>(std::max(0, std::atoi(argv[4]))))
-        : 0;
-    const double rateKhz = argc == 6
-        ? std::max(1.0, std::atof(argv[5]))
-        : 10000.0;
+
     try {
-        orbita::Orbita source;
-        source.setDeviceE2010(adcChannel, rateKhz);
-        const auto channels = loadChannels(argv[1]);
-        source.setChannels(channels);
+        const auto profile = orbita::stand::loadStandProfile(argv[1]);
+        orbita::stand::ComponentRuntime components;
+        orbita::stand::registerSampleSourceComponents(components);
+        components.instantiate(profile, {"sample_source"});
+
+        auto* sampleSource = components.findAs<orbita::stand::ISampleSource>(
+            kOrbitaSampleSourceBinding);
+        if (!sampleSource) {
+            throw std::runtime_error(
+                std::string("Stand profile has no sample source bound to ")
+                + kOrbitaSampleSourceBinding);
+        }
+
+        orbita::Orbita decoder;
+        const auto channels = loadChannels(argv[2]);
+        decoder.setChannels(channels);
+        sampleSource->setSamplesCallback(
+            [&decoder](const std::vector<int16_t>& samples) {
+                decoder.pushSamples(samples);
+            });
+        sampleSource->setErrorCallback([](const std::string& message) {
+            std::cerr << "SOURCE_ERROR " << message << '\n';
+        });
+
         std::cout << "CHANNELS " << channels.size()
-                  << " adc_channel=" << adcChannel
-                  << " rate_khz=" << rateKhz << '\n';
-        source.start();
+                  << " profile=" << profile.id
+                  << " profile_version=" << profile.version
+                  << " source_binding=" << kOrbitaSampleSourceBinding << '\n';
+
+        // Decoder starts first so no source samples can be lost before its
+        // consumer thread is ready. The station-owned source is stopped first
+        // for the symmetric shutdown order.
+        decoder.start();
+        if (!sampleSource->start()) {
+            decoder.stop();
+            throw std::runtime_error("Station sample source failed to start");
+        }
+
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(seconds);
         auto nextSnapshot = std::chrono::steady_clock::now();
         bool received = false;
@@ -106,15 +140,17 @@ int main(int argc, char** argv)
                 std::this_thread::sleep_until(std::min(nextSnapshot, deadline));
                 continue;
             }
-            if (source.waitForData(std::chrono::milliseconds(intervalMilliseconds))) {
-                lastValid = printSnapshot("SNAPSHOT", source.getSnapshot());
+            if (decoder.waitForData(std::chrono::milliseconds(intervalMilliseconds))) {
+                lastValid = printSnapshot("SNAPSHOT", decoder.getSnapshot());
                 received = true;
                 nextSnapshot = std::chrono::steady_clock::now()
                     + std::chrono::milliseconds(intervalMilliseconds);
             }
         }
-        const auto finalSnapshot = source.getSnapshot();
-        source.stop();
+
+        const auto finalSnapshot = decoder.getSnapshot();
+        sampleSource->stop();
+        decoder.stop();
         lastValid = printSnapshot("FINAL", finalSnapshot);
         std::cout << "RESULT received=" << (received ? "true" : "false")
                   << " valid=" << lastValid << '/' << channels.size()
