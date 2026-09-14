@@ -38,6 +38,78 @@ int technicalRetryLimit(const ScenarioNode& node)
     }
 }
 
+// A migrated scenario may already select a logical delivery resource while an
+// existing procedure still calls the historical capability-only API. Route
+// that call through the unique resource declared by the current leaf node.
+// This lets scenario data migrate incrementally without silently returning to
+// a global "last device wins" capability binding.
+class NodeCapabilityRouter final : public ICapabilityProvider {
+public:
+    NodeCapabilityRouter(ICapabilityProvider& upstream, const ScenarioNode& node)
+        : upstream_(upstream), node_(node)
+    {
+    }
+
+    bool hasCapability(const std::string& capability) const override
+    {
+        const auto matches = matchingResources(capability);
+        if (matches.empty()) return upstream_.hasCapability(capability);
+        if (matches.size() != 1) return false;
+        return upstream_.resourceHasCapability(matches.front()->resource, capability);
+    }
+
+    std::string invoke(
+        const std::string& capability,
+        const std::string& operation,
+        const std::map<std::string, std::string>& arguments) override
+    {
+        const auto matches = matchingResources(capability);
+        if (matches.empty()) return upstream_.invoke(capability, operation, arguments);
+        if (matches.size() != 1) {
+            throw std::runtime_error(
+                "Неоднозначный вызов capability " + capability + " в шаге " + node_.id
+                + ": сценарий объявляет несколько ресурсов; процедура должна вызвать invokeResource явно");
+        }
+        return upstream_.invokeResource(
+            matches.front()->resource, capability, operation, arguments);
+    }
+
+    bool resourceHasCapability(
+        const std::string& resource,
+        const std::string& capability) const override
+    {
+        return upstream_.resourceHasCapability(resource, capability);
+    }
+
+    std::string invokeResource(
+        const std::string& resource,
+        const std::string& capability,
+        const std::string& operation,
+        const std::map<std::string, std::string>& arguments) override
+    {
+        return upstream_.invokeResource(resource, capability, operation, arguments);
+    }
+
+    void safeStopAll() noexcept override
+    {
+        upstream_.safeStopAll();
+    }
+
+private:
+    std::vector<const ResourceRequirement*> matchingResources(
+        const std::string& capability) const
+    {
+        std::vector<const ResourceRequirement*> result;
+        for (const auto& requirement : node_.requiredResources) {
+            if (requirement.capability == capability) result.push_back(&requirement);
+        }
+        return result;
+    }
+
+    ICapabilityProvider& upstream_;
+    const ScenarioNode& node_;
+};
+
 void validateNode(
     const ScenarioNode& node,
     const std::map<std::string, ProcedureFunction>& procedures,
@@ -204,10 +276,22 @@ StepRunResult ScenarioEngine::runNode(
                 result.message = "Процедура не зарегистрирована: " + node.procedure;
                 if (!allowPartial) stopTraversal = true;
             } else {
+                // Preserve procedure state semantics while routing historical
+                // capability-only invokes through the resources selected by
+                // this particular scenario node.
+                NodeCapabilityRouter routedEquipment(context.equipment, node);
+                ProcedureContext routedContext{
+                    routedEquipment,
+                    context.stopRequested,
+                    context.eventSink,
+                    context.runId,
+                    context.state,
+                };
+
                 const int retryLimit = technicalRetryLimit(node);
                 for (int attempt = 0; attempt <= retryLimit; ++attempt) {
                     try {
-                        auto procedureResult = procedure->second(node, context);
+                        auto procedureResult = procedure->second(node, routedContext);
                         result.verdict = procedureResult.verdict;
                         result.message = std::move(procedureResult.message);
                         result.measurements = std::move(procedureResult.measurements);
@@ -236,6 +320,7 @@ StepRunResult ScenarioEngine::runNode(
                          {"max_retries", std::to_string(retryLimit)},
                          {"error", result.message}}});
                 }
+                context.state = std::move(routedContext.state);
                 if (isTerminalError(result.verdict)) stopTraversal = true;
             }
         }
