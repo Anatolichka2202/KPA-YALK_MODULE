@@ -1,6 +1,7 @@
 #include "test_page.h"
 #include "test_page_ui.h"
 #include "test_page_impl.h"
+#include "tu_flow_widget.h"
 
 #include <QEvent>
 
@@ -74,6 +75,74 @@ TestPage::TestPage(QWidget* parent)
         }
     }
 
+    // TU has a separate entry/readiness shell. It never exposes the Production
+    // preparation table. Choosing an object immediately starts the scoped stand
+    // check; the ready state is deliberately only SN + STAND READY + Start.
+    tuFlow_ = new TuFlowWidget(impl_->pages);
+    impl_->pages->addWidget(tuFlow_);
+    connect(tuFlow_, &TuFlowWidget::homeRequested, this, &TestPage::homeRequested);
+
+    const auto beginTuStandCheck = [this](const QString& serial) {
+        impl_->serialEdit->setText(serial);
+        const QStringList required = currentRequiredEquipment();
+        for (const auto& code : required) {
+            if (code == QStringLiteral("R4831") || code == QStringLiteral("SCHEME")) continue;
+            const auto row = impl_->equipmentRows.find(code);
+            if (row == impl_->equipmentRows.end() || row->operatorConfirmation) continue;
+            row->ready = false;
+            if (auto* state = impl_->equipmentTable->item(row->row, 3)) {
+                state->setText(QStringLiteral("ПРОВЕРКА…"));
+                state->setForeground(QColor("#d7a95b"));
+            }
+        }
+        tuFlow_->beginStandCheck(serial, required);
+        emit equipmentCheckRequested();
+    };
+    connect(tuFlow_, &TuFlowWidget::serialChosen, this, beginTuStandCheck);
+    connect(tuFlow_, &TuFlowWidget::retryRequested, this, beginTuStandCheck);
+    connect(tuFlow_, &TuFlowWidget::startRequested, this, [this](const QString& serial) {
+        impl_->activeSerial = serial.trimmed();
+        impl_->activeOperator = QStringLiteral("—");
+        impl_->serialEdit->setText(impl_->activeSerial);
+        impl_->resetWorkspace();
+        if (auto* serialLabel = findChild<QLabel*>(QStringLiteral("tuRuntimeSerial")))
+            serialLabel->setText(QStringLiteral("УБСИ SN %1").arg(impl_->activeSerial));
+        if (auto* stateLabel = findChild<QLabel*>(QStringLiteral("tuRuntimeState")))
+            stateLabel->setText(QStringLiteral("ПРОВЕРКА ПО ТУ · выполняется"));
+        if (auto* header = findChild<QFrame*>(QStringLiteral("tuRuntimeHeader"))) header->show();
+        impl_->pages->setCurrentWidget(impl_->workspacePage);
+        impl_->setTopStage(TopStage::Power);
+        startSelectedTest();
+    });
+
+    // Separate TU runtime header. The Production header controls stay hidden in
+    // TU mode; measurement widgets in workStack are reused unchanged.
+    if (auto* workspaceLayout = qobject_cast<QVBoxLayout*>(impl_->workspacePage->layout())) {
+        auto* header = panel();
+        header->setObjectName(QStringLiteral("tuRuntimeHeader"));
+        auto* row = new QHBoxLayout(header);
+        row->setContentsMargins(12, 7, 12, 7);
+        auto* serial = new QLabel(QStringLiteral("УБСИ"), header);
+        serial->setObjectName(QStringLiteral("tuRuntimeSerial"));
+        QFont serialFont = serial->font();
+        serialFont.setBold(true);
+        serialFont.setPointSize(13);
+        serial->setFont(serialFont);
+        auto* state = new QLabel(QStringLiteral("ПРОВЕРКА ПО ТУ"), header);
+        state->setObjectName(QStringLiteral("tuRuntimeState"));
+        state->setStyleSheet(QStringLiteral("color:#9ac7ff;font-weight:700;"));
+        auto* stop = new QPushButton(QStringLiteral("Остановить"), header);
+        stop->setObjectName(QStringLiteral("danger"));
+        connect(stop, &QPushButton::clicked, this, &TestPage::stopRequested);
+        row->addWidget(serial);
+        row->addSpacing(18);
+        row->addWidget(state);
+        row->addStretch();
+        row->addWidget(stop);
+        header->hide();
+        workspaceLayout->insertWidget(0, header);
+    }
+
     // The route at the left is navigation through one persistent test window.
     // Backend RunEvent remains the only authority that advances the real run.
     for (int i = 0; i < impl_->stageLabels.size(); ++i) {
@@ -83,7 +152,6 @@ TestPage::TestPage(QWidget* parent)
         label->setToolTip(QStringLiteral("Открыть экран «%1»").arg(routeStageName(i)));
         label->installEventFilter(this);
     }
-
 }
 
 TestPage::~TestPage() = default;
@@ -133,6 +201,7 @@ void TestPage::registerEquipmentRow(const QString& code,
 
 void TestPage::setEquipmentStatus(const QString& code, bool ready, const QString& detail)
 {
+    if (!impl_->productionMode && tuFlow_) tuFlow_->setEquipmentStatus(code, ready, detail);
     const auto it = impl_->equipmentRows.find(code);
     if (it == impl_->equipmentRows.end()) return;
     if (!it->operatorConfirmation) it->ready = ready;
@@ -158,6 +227,7 @@ void TestPage::setEquipmentMissingPlugin(const QString& code, const QString& det
 
 void TestPage::setEquipmentChecking(const QString& code, const QString& detail)
 {
+    if (!impl_->productionMode && tuFlow_) tuFlow_->setEquipmentChecking(code);
     const auto it = impl_->equipmentRows.find(code);
     if (it == impl_->equipmentRows.end() || it->operatorConfirmation) return;
     it->ready = false;
@@ -175,6 +245,8 @@ void TestPage::setScenarioInfo(const QString& code,
                                const QString& detail)
 {
     impl_->scenarios.insert(code, {available, diagnostic, requiredEquipment, detail});
+    if (tuFlow_ && code == QStringLiteral("ULK_COMBINED_CHECK"))
+        tuFlow_->setScenarioAvailable(available, detail);
     updateSelectionSummary();
 }
 
@@ -198,7 +270,7 @@ void TestPage::setProductionMode(bool enabled)
         : QStringLiteral("Проверка УБСИ по ТУ"));
     impl_->sessionSubtitle->setText(enabled
         ? QStringLiteral("Выберите зарегистрированное УБСИ из registrar.db. Один оператор может последовательно проверить несколько изделий.")
-        : QStringLiteral("Проверка по ТУ: оператор видит измерительные графики и итоговый вердикт; служебные калибровки остаются внутри сценария."));
+        : QStringLiteral("Проверка по ТУ"));
     impl_->workflowBadge->setText(enabled
         ? QStringLiteral("ПРОИЗВОДСТВО")
         : QStringLiteral("ПРОВЕРКА ПО ТУ"));
@@ -208,8 +280,6 @@ void TestPage::setProductionMode(bool enabled)
 
     impl_->operatorCaption->setVisible(enabled);
     impl_->operatorEdit->setVisible(enabled);
-    // Production never registers products from the test screen. The queue is
-    // populated from registrar.db by KtmaMainWindow. TU keeps one serial input.
     impl_->serialCaption->setVisible(!enabled);
     impl_->serialEdit->setVisible(!enabled);
     impl_->addProduct->setVisible(false);
@@ -217,6 +287,16 @@ void TestPage::setProductionMode(bool enabled)
     impl_->scopeButtons.value(QStringLiteral("ЯВП-8"))->setVisible(enabled);
     impl_->yalkSubPanel->setVisible(false);
     impl_->includeYvpCheck->setChecked(enabled);
+
+    // Production and TU deliberately use different runtime chrome.
+    impl_->backSession->setVisible(enabled);
+    impl_->workspaceTitle->setVisible(enabled);
+    impl_->workspaceSubtitle->setVisible(enabled);
+    impl_->operatorBadge->setVisible(enabled);
+    impl_->stopButton->setVisible(enabled);
+    if (auto* header = findChild<QFrame*>(QStringLiteral("tuRuntimeHeader"))) header->hide();
+    if (impl_->elapsed && impl_->elapsed->parentWidget())
+        impl_->elapsed->parentWidget()->setVisible(enabled);
 
     const auto setMetricVisible = [](QLabel* value) {
         if (value && value->parentWidget()) value->parentWidget()->setVisible(true);
@@ -249,14 +329,20 @@ void TestPage::setProductionMode(bool enabled)
         ? QStringLiteral("Открыть отчёт")
         : QStringLiteral("Открыть протокол ТУ"));
 
-    impl_->pages->setCurrentWidget(impl_->sessionPage);
     rebuildScopes();
     updateSelectionSummary();
     impl_->configureRouteVisibility();
+    if (enabled) {
+        impl_->pages->setCurrentWidget(impl_->sessionPage);
+    } else {
+        tuFlow_->resetToSelection();
+        impl_->pages->setCurrentWidget(tuFlow_);
+    }
 }
 
 void TestPage::setAvailableProductionProducts(const QStringList& serials)
 {
+    if (tuFlow_) tuFlow_->setRegisteredSerials(serials);
     if (!impl_->productionMode) return;
     const QString selected = impl_->productTable->currentRow() >= 0
         ? impl_->productTable->item(impl_->productTable->currentRow(), 0)->text()
@@ -524,6 +610,8 @@ void TestPage::setRunEvent(const orbita::stand::RunEvent& event)
             } else {
                 impl_->mapNode(node);
             }
+            if (auto* state = findChild<QLabel*>(QStringLiteral("tuRuntimeState")))
+                state->setText(QStringLiteral("ПРОВЕРКА ПО ТУ · %1").arg(QString::fromStdString(event.message)));
         }
         if (node.startsWith(QStringLiteral("yalk_")) && !node.startsWith(QStringLiteral("yvp_")))
             setRouteDetail(static_cast<int>(TopStage::Yalk), yalkStepText(node));
