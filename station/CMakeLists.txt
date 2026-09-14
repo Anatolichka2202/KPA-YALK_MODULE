@@ -128,6 +128,10 @@ if(BUILD_TESTING)
         orbita_stand_runtime orbita_stand_adapters Qt6::Core)
     add_test(NAME stand.component_runtime COMMAND component_runtime_test)
 
+    add_executable(execution_runtime_test tests/execution_runtime_test.cpp)
+    target_link_libraries(execution_runtime_test PRIVATE orbita_stand_runtime Qt6::Core)
+    add_test(NAME stand.execution_runtime COMMAND execution_runtime_test)
+
     add_executable(ubsi_backend_contract_test tests/ubsi_backend_contract_test.cpp)
     target_compile_definitions(ubsi_backend_contract_test PRIVATE
         ORBITA_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
@@ -141,6 +145,7 @@ if(BUILD_TESTING)
             stand.scenario_runtime
             stand.component_profile
             stand.component_runtime
+            stand.execution_runtime
             PROPERTIES ENVIRONMENT_MODIFICATION "${_orbita_qt_test_path}")
     endif()
 endif()
