@@ -1733,6 +1733,9 @@ void registerUbsiProcedures(ScenarioEngine& engine)
     engine.registerProcedure("ytp.check_channels", ytpCheckChannels);
     engine.registerProcedure("ytp.safe_cleanup", ytpSafeCleanup);
     engine.registerProcedure("ubsi.ytp", ytpLegacyStub);
+    // Keep the historical YVP callback addressable for diagnostics. The
+    // production alias is layered later by the V7+ISD registrar.
+    engine.registerProcedure("yvp.legacy", yvp);
     engine.registerProcedure("ubsi.yvp", yvp);
 }
 

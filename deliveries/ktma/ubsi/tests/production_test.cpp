@@ -281,12 +281,14 @@ void separationContract()
     }
 
     const auto yvpScenario = readFile("data/scenarios/ubsi_production_yvp.yaml");
-    require(yvpScenario.find("procedure: yvp.enter_mode") != std::string::npos
-            && yvpScenario.find("procedure: yvp.safe_cleanup") != std::string::npos,
-        "YVP production scenario must use confirmed ROKT mode/channel control");
-    require(yvpScenario.find("procedure: yalk.start_stream") == std::string::npos
-            && yvpScenario.find("yalk_address_min") == std::string::npos,
-        "YVP production scenario must not use obsolete YALK-address transport");
+    require(yvpScenario.find("procedure: ubsi.yvp") != std::string::npos
+            && yvpScenario.find("measure.reference_ac_voltage") != std::string::npos
+            && yvpScenario.find("measure.reference_frequency") != std::string::npos,
+        "YVP production scenario must use the V7+ISD backend");
+    require(yvpScenario.find("procedure: yvp.enter_mode") == std::string::npos
+            && yvpScenario.find("procedure: yvp.safe_cleanup") == std::string::npos
+            && yvpScenario.find("ulk.parameter_source") == std::string::npos,
+        "YVP production scenario must not use the adapter/ROKT path");
 
     const auto catalog = readFile("data/catalog/catalog.yaml");
     const auto yvp = catalog.find("parameter_group: yvp_fast", catalog.find("bindings:"));
