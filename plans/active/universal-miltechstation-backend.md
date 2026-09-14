@@ -84,6 +84,8 @@ liborbita
 - [x] E20-10 реализован как station provider `miltech.sample.e2010`;
 - [x] `liborbita::pushSamples()` добавлен как независимый вход;
 - [x] `sample_source` подключён к `ComponentRuntime`;
+- [x] `E2010SampleSource::stop()` освобождает I/O events даже после аварийного
+  завершения acquisition thread;
 - [ ] desktop должен брать `telemetry.orbita.sample_source` из runtime;
 - [ ] удалить legacy `setDeviceE2010()/setDeviceNone()` из liborbita;
 - [ ] удалить `orbita/device/e2010_device.*` и старый `ISampleSource`;
@@ -107,12 +109,26 @@ liborbita
 
 ### 5. Границы домена
 
-Статус: **TODO**
+Статус: **PARTIAL**
 
-- [ ] убрать `ubsi_*` и `yalk_*` из общего station domain target;
+Сделано:
+
+- [x] универсальный `orbita_stand_runtime` больше не линкует
+  `orbita_stand_domain` и `orbita_stand_reporting`;
+- [x] station IO/adapters больше не получают UBSI domain транзитивно;
+- [x] общие typed-контракты оборудования (`IIsdRouter`, `IVoltageSource`,
+  `IReferenceVoltmeter`, `IProcedureWaiter`) вынесены из YALK-заголовка в
+  `equipment_contracts.h`;
+- [x] desktop теперь явно объявляет зависимость от текущего KTMA/UBSI domain,
+  вместо получения её через generic runtime.
+
+Остаётся:
+
+- [ ] убрать `ubsi_*` и `yalk_*` из самого `orbita_stand_domain` target;
 - [ ] перенести KTMA/UBSI procedures в delivery/object package;
 - [ ] определить место общих процедур протокола «Орбита» вне core станции;
-- [ ] KTMA-specific ROKT/ULK/ISD adapters не должны считаться общей частью платформы.
+- [ ] разнести KTMA-specific ROKT/ULK/ISD implementations и действительно
+  универсальные station adapters по отдельным targets/packages.
 
 ### 6. Resource/role model оборудования
 
@@ -141,11 +157,12 @@ operation
 - [x] `invokeResource()` адресует конкретную роль и capability отдельно;
 - [x] `resources()` даёт introspection для UI/runtime;
 - [x] `safeStopAll()` учитывает role-bound plugin devices без двойного stop;
-- [x] contract test доказывает два независимых источника `power.dc_supply`.
+- [x] contract test доказывает два независимых источника `power.dc_supply`;
+- [x] generic `instantiateProfile()` автоматически регистрирует equipment
+  component id как resource id и параллельно сохраняет legacy capability route.
 
 Остаётся:
 
-- [ ] связать resource id с canonical `ComponentProfile` автоматически;
 - [ ] расширить scenario schema: шаг должен уметь требовать logical role + capability;
 - [ ] перевести существующие KTMA-сценарии постепенно, сохраняя legacy
   capability-only путь на время миграции;
@@ -198,7 +215,8 @@ workflow.
 ## Текущий следующий шаг
 
 1. держать ветку зелёной через отдельный CI после каждого backend-среза;
-2. связать canonical equipment components с role/resource registry;
-3. переключить desktop Orbita monitoring на station-owned `sample_source`;
-4. после этого физически удалить E20/Lusbapi из `liborbita`;
-5. затем начать вынос UBSI/KTMA domain из общего `station` target.
+2. переключить desktop Orbita monitoring на station-owned `sample_source`;
+3. после этого физически удалить E20/Lusbapi из `liborbita`;
+4. расширить scenario schema до resource + capability и постепенно перевести
+   KTMA-сценарии;
+5. затем физически вынести UBSI/KTMA domain из общего `station` target.
