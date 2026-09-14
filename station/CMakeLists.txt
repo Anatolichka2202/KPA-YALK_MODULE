@@ -57,6 +57,7 @@ add_library(orbita_stand_runtime STATIC
     src/config.cpp
     src/equipment_runtime.cpp
     src/component_runtime.cpp
+    src/execution_runtime.cpp
 )
 target_include_directories(orbita_stand_runtime PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_compile_features(orbita_stand_runtime PUBLIC cxx_std_17)
