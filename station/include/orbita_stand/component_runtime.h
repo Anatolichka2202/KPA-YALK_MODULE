@@ -39,6 +39,11 @@ public:
     using KindFactory = std::function<std::unique_ptr<IStationComponent>(
         const ComponentProfile&)>;
 
+    ComponentRuntime() = default;
+    ~ComponentRuntime() { clear(); }
+    ComponentRuntime(const ComponentRuntime&) = delete;
+    ComponentRuntime& operator=(const ComponentRuntime&) = delete;
+
     void registerKindFactory(std::string kind, KindFactory factory);
     bool hasKindFactory(const std::string& kind) const noexcept;
 
