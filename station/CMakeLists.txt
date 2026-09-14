@@ -60,12 +60,13 @@ add_library(stand_reporting ALIAS orbita_stand_reporting)
 
 # Universal station runtime. This target deliberately does not depend on the
 # KTMA/UBSI procedure domain or reporting. It owns profile loading, component
-# lifecycle and equipment/execution runtime only.
+# lifecycle, equipment/execution runtime and the application-neutral session.
 add_library(orbita_stand_runtime STATIC
     src/config.cpp
     src/equipment_runtime.cpp
     src/component_runtime.cpp
     src/execution_runtime.cpp
+    src/station_session.cpp
 )
 target_include_directories(orbita_stand_runtime PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_compile_features(orbita_stand_runtime PUBLIC cxx_std_17)
@@ -150,6 +151,10 @@ if(BUILD_TESTING)
     target_link_libraries(execution_runtime_test PRIVATE orbita_stand_runtime Qt6::Core)
     add_test(NAME stand.execution_runtime COMMAND execution_runtime_test)
 
+    add_executable(station_session_test tests/station_session_test.cpp)
+    target_link_libraries(station_session_test PRIVATE orbita_stand_runtime Qt6::Core)
+    add_test(NAME stand.station_session COMMAND station_session_test)
+
     add_executable(ubsi_backend_contract_test tests/ubsi_backend_contract_test.cpp)
     target_compile_definitions(ubsi_backend_contract_test PRIVATE
         ORBITA_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
@@ -165,6 +170,7 @@ if(BUILD_TESTING)
             stand.component_profile
             stand.component_runtime
             stand.execution_runtime
+            stand.station_session
             PROPERTIES ENVIRONMENT_MODIFICATION "${_orbita_qt_test_path}")
     endif()
 endif()
