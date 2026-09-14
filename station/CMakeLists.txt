@@ -15,11 +15,13 @@ add_library(orbita_stand_domain STATIC
     src/ubsi_procedures.cpp
     src/ubsi_procedures_current.cpp
     src/ubsi_procedures_rokt.cpp
+    src/ubsi_procedures_yvp_v7.cpp
     src/telemetry_procedures.cpp
 )
 
 # Keep the validated legacy callbacks available, then layer current-delivery
-# overrides and finally the confirmed ROKT YVP control path.
+# overrides. The final production YVP alias is registered by the dedicated
+# V7+ISD backend; adapter/ROKT implementations remain diagnostic code paths.
 set_source_files_properties(src/ubsi_procedures.cpp PROPERTIES
     COMPILE_DEFINITIONS "registerUbsiProcedures=registerLegacyUbsiProcedures")
 set_source_files_properties(src/ubsi_procedures_current.cpp PROPERTIES
