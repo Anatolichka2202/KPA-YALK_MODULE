@@ -211,6 +211,58 @@ protected:
         const double latestFirst = first_.isEmpty() ? std::numeric_limits<double>::quiet_NaN() : first_.last();
         const double latestSecond = second_.isEmpty() ? std::numeric_limits<double>::quiet_NaN() : second_.last();
         const int decimals = unit_ == QStringLiteral("Ом") ? 2 : 3;
+        if (std::max(first_.size(), second_.size()) >= 2) {
+            double lower = *mm.first;
+            double upper = *mm.second;
+            double padding = (upper - lower) * 0.15;
+            if (padding < 1.0e-6) padding = std::max(0.001, std::abs(upper) * 0.01);
+            lower -= padding;
+            upper += padding;
+            const QRectF plot(48, 30, width() - 58, height() - 42);
+            const auto y = [&](double value) {
+                return plot.bottom() - (value - lower) / (upper - lower) * plot.height();
+            };
+            painter.setFont(QFont("Segoe UI", 8));
+            for (int tick = 0; tick <= 3; ++tick) {
+                const double value = lower + (upper - lower) * tick / 3.0;
+                const double yy = y(value);
+                painter.setPen(QPen(QColor("#27313c"), 1, Qt::DashLine));
+                painter.drawLine(QPointF(plot.left(), yy), QPointF(plot.right(), yy));
+                painter.setPen(QColor("#7e8a98"));
+                painter.drawText(QRectF(0, yy - 8, 43, 16), Qt::AlignRight | Qt::AlignVCenter,
+                                 QString::number(value, 'f', decimals));
+            }
+            const int pointCount = std::max(first_.size(), second_.size());
+            const auto drawSeries = [&](const QVector<double>& series, const QColor& color) {
+                if (series.isEmpty()) return;
+                QPainterPath path;
+                bool started = false;
+                for (int index = 0; index < series.size(); ++index) {
+                    if (!std::isfinite(series[index])) { started = false; continue; }
+                    const double xx = pointCount <= 1 ? plot.left()
+                        : plot.left() + plot.width() * index / static_cast<double>(pointCount - 1);
+                    const QPointF point(xx, y(series[index]));
+                    if (started) path.lineTo(point); else { path.moveTo(point); started = true; }
+                }
+                painter.setPen(QPen(color, 2.0));
+                painter.setBrush(Qt::NoBrush);
+                painter.drawPath(path);
+            };
+            drawSeries(first_, QColor("#70d79b"));
+            drawSeries(second_, QColor("#69aee6"));
+            painter.setPen(QColor("#aebdcb"));
+            painter.setFont(QFont("Segoe UI", 8, QFont::DemiBold));
+            const QString latest = second_.isEmpty()
+                ? QStringLiteral("%1 %2   min %3   max %4")
+                    .arg(QString::number(latestFirst, 'f', decimals), unit_,
+                         QString::number(*mm.first, 'f', decimals),
+                         QString::number(*mm.second, 'f', decimals))
+                : QStringLiteral("%1 %2   %3 %4")
+                    .arg(firstName_, QString::number(latestFirst, 'f', decimals),
+                         secondName_, QString::number(latestSecond, 'f', decimals));
+            painter.drawText(QRectF(width() - 420, 4, 410, 20), Qt::AlignRight | Qt::AlignVCenter, latest);
+            return;
+        }
         const auto drawValue = [&](const QRectF& area, const QString& caption, double value,
                                    const QColor& color) {
             painter.setPen(QPen(QColor("#27313c"), 1));
@@ -326,6 +378,7 @@ struct ChannelSample {
     double measured = 0.0;
     bool signal = false;
     bool passed = true;
+    bool warning = false;
     QVector<double> samples;
 };
 
@@ -359,6 +412,7 @@ public:
         selectionPinned_ = false;
         setProperty("backgroundChannelCount", 0);
         setProperty("renderedChannelCount", 0);
+        setProperty("warningChannelCount", 0);
         update();
     }
 
@@ -394,7 +448,10 @@ public:
         currentPoint_ = sample.point;
         discreteStates_.insert(sample.key, sample.signal ? 1 : 0);
         if (!selectionPinned_) selectedKey_ = currentKey_;
-        setProperty("renderedChannelCount", displayChannels().size());
+        const auto channels = displayChannels();
+        setProperty("renderedChannelCount", channels.size());
+        setProperty("warningChannelCount", std::count_if(channels.cbegin(), channels.cend(),
+            [](const auto& channel) { return channel.warning; }));
         update();
     }
 
@@ -450,9 +507,23 @@ protected:
         hits_.clear();
         painter.setPen(QColor("#dce6ef"));
         QFont font = painter.font(); font.setBold(true); painter.setFont(font);
-        painter.drawText(QRectF(10, 4, width() - 20, 20), Qt::AlignLeft,
-            QStringLiteral("Все каналы · %1 · столбец: текущее · риска: min…max")
-                .arg(currentPoint_.isEmpty() ? QStringLiteral("ожидание") : currentPoint_));
+        painter.drawText(QRectF(10, 4, 260, 20), Qt::AlignLeft,
+            QStringLiteral("Все %1 каналов · %2")
+                .arg(count_).arg(currentPoint_.isEmpty() ? QStringLiteral("ожидание") : currentPoint_));
+        if (unit_ != QStringLiteral("Ом")) {
+            const struct { QColor color; QString text; } legend[] = {
+                {QColor("#4f9f78"), QStringLiteral("норма")},
+                {QColor("#c48a32"), QStringLiteral("колебания")},
+                {QColor("#cf5d62"), QStringLiteral("не норма")}};
+            double legendX = 278.0;
+            painter.setFont(QFont("Segoe UI", 8));
+            for (const auto& entry : legend) {
+                painter.fillRect(QRectF(legendX, 9, 8, 8), entry.color);
+                painter.setPen(QColor("#8b95a3"));
+                painter.drawText(QRectF(legendX + 12, 4, 74, 20), Qt::AlignLeft | Qt::AlignVCenter, entry.text);
+                legendX += entry.text == QStringLiteral("колебания") ? 96.0 : 80.0;
+            }
+        }
 
         const auto samples = displayChannels();
         if (selectedKey_.isEmpty() && !samples.isEmpty()) selectedKey_ = samples.first().key;
@@ -469,17 +540,24 @@ protected:
             const QString discrete = unit_ == QStringLiteral("Ом")
                 ? QString() : QStringLiteral("   D=%1")
                     .arg(selected->signalKnown ? QString::number(selected->signal) : QStringLiteral("?"));
-            painter.drawText(QRectF(width() - 570, 4, 560, 20), Qt::AlignRight,
-                QStringLiteral("Канал %1   %2 %3   min…max %4…%5   Δ %6%7")
-                    .arg(selected->key, QString::number(selected->value, 'f', unit_ == QStringLiteral("Ом") ? 2 : 3), unit_,
+            const QString channelRole = selected->key == currentKey_
+                ? QStringLiteral("Текущий канал %1").arg(selected->key)
+                : QStringLiteral("Просматриваемый %1 · текущий %2").arg(selected->key, currentKey_);
+            painter.drawText(QRectF(width() - 650, 4, 640, 20), Qt::AlignRight,
+                QStringLiteral("%1   %2 %3   min…max %4…%5   Δ %6%7")
+                    .arg(channelRole, QString::number(selected->value, 'f', unit_ == QStringLiteral("Ом") ? 2 : 3), unit_,
                          QString::number(selected->minimum, 'f', unit_ == QStringLiteral("Ом") ? 2 : 3),
                          QString::number(selected->maximum, 'f', unit_ == QStringLiteral("Ом") ? 2 : 3),
                          QString::number(selected->maximum - selected->minimum, 'f', unit_ == QStringLiteral("Ом") ? 2 : 3),
                          discrete));
         }
 
-        const double footerHeight = unit_ == QStringLiteral("Ом") ? 72.0 : 88.0;
-        const QRectF area(58, 31, width() - 70, height() - 31 - footerHeight);
+        const bool showDiscrete = unit_ != QStringLiteral("Ом");
+        const double valueBandTop = 29.0;
+        const double valueBandHeight = count_ > 40 ? 38.0 : 22.0;
+        const double footerHeight = showDiscrete ? 89.0 : 66.0;
+        const QRectF area(58, valueBandTop + valueBandHeight + 3.0,
+                          width() - 70, height() - valueBandTop - valueBandHeight - 3.0 - footerHeight);
         painter.setPen(QPen(QColor("#27313c"), 1));
         painter.drawRect(area);
         const int dataCount = std::count_if(samples.cbegin(), samples.cend(),
@@ -514,17 +592,46 @@ protected:
         }
 
         const double cellWidth = area.width() / std::max(1, static_cast<int>(samples.size()));
+        const QRectF valueBand(area.left(), valueBandTop, area.width(), valueBandHeight);
+        painter.fillRect(valueBand, QColor("#111820"));
+        painter.setPen(QColor("#667484"));
+        painter.setFont(QFont("Segoe UI", 7));
+        painter.drawText(QRectF(0, valueBandTop, 52, valueBandHeight), Qt::AlignRight | Qt::AlignVCenter,
+                         QStringLiteral("знач., %1").arg(unit_));
         for (int index = 0; index < samples.size(); ++index) {
             const auto& sample = samples[index];
             const double x = area.left() + index * cellWidth;
             hits_.push_back({QRectF(x, area.top(), cellWidth, area.height() + 34), sample.key});
-            if (sample.key == selectedKey_)
-                painter.fillRect(QRectF(x, area.top(), cellWidth, area.height()), QColor(94,147,184,28));
+            if (sample.key == selectedKey_) {
+                painter.fillRect(QRectF(x, valueBandTop, cellWidth, area.bottom() - valueBandTop),
+                                 QColor(94,147,184,28));
+                painter.fillRect(QRectF(x, valueBandTop, cellWidth, 2), QColor("#5e93b8"));
+            }
+            if (sample.hasData) {
+                const int precision = unit_ == QStringLiteral("Ом") ? 1 : 3;
+                painter.setPen(sample.measured
+                    ? (!sample.passed ? QColor("#ff9a9f") : sample.warning ? QColor("#e1ae55") : QColor("#dce6ef"))
+                    : QColor("#9ac7ff"));
+                QFont valueFont("Segoe UI", 7, QFont::DemiBold);
+                painter.setFont(valueFont);
+                const QString valueText = QString::number(sample.value, 'f', precision);
+                if (count_ > 40) {
+                    painter.save();
+                    painter.translate(x + cellWidth / 2.0, valueBand.top() + valueBand.height() - 2.0);
+                    painter.rotate(-90.0);
+                    painter.drawText(QRectF(0, -cellWidth / 2.0, valueBand.height() - 3.0, cellWidth),
+                                     Qt::AlignLeft | Qt::AlignVCenter, valueText);
+                    painter.restore();
+                } else {
+                    painter.drawText(QRectF(x - 1, valueBandTop, cellWidth + 2, valueBandHeight),
+                                     Qt::AlignCenter, valueText);
+                }
+            }
             if (sample.hasData) {
                 const double measuredY = y(sample.value);
                 painter.setPen(Qt::NoPen);
                 painter.setBrush(sample.measured
-                    ? (sample.passed ? QColor("#4f9f78") : QColor("#cf5d62"))
+                    ? (!sample.passed ? QColor("#cf5d62") : sample.warning ? QColor("#c48a32") : QColor("#4f9f78"))
                     : QColor("#3e7da1"));
                 painter.drawRect(QRectF(x + cellWidth * 0.18, measuredY,
                                         std::max(2.0, cellWidth * 0.64), area.bottom() - measuredY));
@@ -541,11 +648,28 @@ protected:
             painter.setFont(QFont("Segoe UI", count_ > 40 ? 7 : 8));
             painter.drawText(QRectF(x, area.bottom() + 3, cellWidth, 14),
                              Qt::AlignCenter, sample.key);
-            if (unit_ != QStringLiteral("Ом")) {
-                painter.setPen(sample.signalKnown && sample.signal ? QColor("#70d79b") : QColor("#8b95a3"));
-                painter.drawText(QRectF(x, area.bottom() + 18, cellWidth, 13), Qt::AlignCenter,
-                                 sample.signalKnown ? QString::number(sample.signal) : QStringLiteral("?"));
+        }
+
+        double footerTop = area.bottom() + 20.0;
+        if (showDiscrete) {
+            const QRectF discreteArea(area.left(), footerTop, area.width(), 19.0);
+            painter.fillRect(discreteArea, QColor("#111820"));
+            painter.setPen(QColor("#8b95a3"));
+            painter.setFont(QFont("Segoe UI", 8, QFont::DemiBold));
+            painter.drawText(QRectF(0, discreteArea.top(), 52, discreteArea.height()),
+                             Qt::AlignRight | Qt::AlignVCenter, QStringLiteral("D"));
+            for (int index = 0; index < samples.size(); ++index) {
+                const auto& sample = samples[index];
+                const double x = discreteArea.left() + index * cellWidth;
+                const QColor color = !sample.signalKnown ? QColor("#586574")
+                    : sample.signal ? QColor("#70d79b") : QColor("#9aafbf");
+                painter.setPen(color);
+                painter.setFont(QFont("Segoe UI", 7, QFont::DemiBold));
+                painter.drawText(QRectF(x, discreteArea.top(), cellWidth, discreteArea.height()),
+                                 Qt::AlignCenter,
+                                 sample.signalKnown ? QString::number(sample.signal) : QStringLiteral("·"));
             }
+            footerTop = discreteArea.bottom() + 5.0;
         }
 
         QVector<double> spans;
@@ -555,7 +679,7 @@ protected:
             spans.push_back(sample.hasData ? std::max(0.0, sample.maximum - sample.minimum) : 0.0);
             maximumSpan = std::max(maximumSpan, spans.last());
         }
-        const QRectF spanArea(area.left(), area.bottom() + 34, area.width(), 20);
+        const QRectF spanArea(area.left(), footerTop, area.width(), 22);
         painter.setPen(QColor("#8b95a3"));
         painter.setFont(QFont("Segoe UI", 8));
         painter.drawText(QRectF(0, spanArea.top(), 52, 18), Qt::AlignRight,
@@ -586,6 +710,7 @@ private:
         bool hasData = false;
         bool measured = false;
         bool passed = true;
+        bool warning = false;
         bool signalKnown = false;
         int signal = 0;
     };
@@ -626,6 +751,7 @@ private:
                 channel.value = item->measured;
                 channel.measured = true;
                 channel.passed = item->passed;
+                channel.warning = item->warning;
                 channel.hasData = true;
                 if (!hasBackground) {
                     channel.minimum = item->measured;

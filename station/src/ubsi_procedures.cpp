@@ -954,6 +954,8 @@ ProcedureResult yalkCheckChannels(const ScenarioNode& node, ProcedureContext& co
                 {"sample_count", std::to_string(natural(node, "sample_count", 16))},
                 {"signal", reading.signal ? "1" : "0"}, {"v7_v", std::to_string(v7)},
                 {"yalk_v", std::to_string(volts)}, {"absolute_error_v", std::to_string(absolute)},
+                {"lower_limit_v", std::to_string(analog.lowerLimit)},
+                {"upper_limit_v", std::to_string(analog.upperLimit)},
                 {"reduced_error_percent", std::to_string(reduced)},
                 {"relative_error_percent", std::abs(v7) > 0.01
                     ? std::to_string(absolute / std::abs(v7) * 100.0) : ""}};

@@ -66,58 +66,6 @@ TestPage::TestPage(QWidget* parent)
         label->installEventFilter(this);
     }
 
-    // Agreed timing belongs to the upper status line as a separate text block,
-    // not inside the consumption chart. Until ScenarioEngine exposes a planned
-    // duration, total/remaining are explicitly shown as estimates from run
-    // progress rather than invented fixed numbers.
-    if (auto* workspaceLayout = qobject_cast<QVBoxLayout*>(impl_->workspacePage->layout())) {
-        auto* status = new QFrame(impl_->workspacePage);
-        status->setObjectName(QStringLiteral("testWindowStatus"));
-        status->setStyleSheet(QStringLiteral(
-            "#testWindowStatus{background:#10151b;border:1px solid #27313c;border-radius:5px;}"
-            "#testWindowStatus QLabel{color:#aebdcb;padding:4px 8px;}"));
-        auto* line = new QHBoxLayout(status);
-        line->setContentsMargins(8, 3, 8, 3);
-        line->setSpacing(14);
-        auto makeTime = [status, line](const QString& name, const QString& text) {
-            auto* label = new QLabel(text, status);
-            label->setObjectName(name);
-            line->addWidget(label);
-            return label;
-        };
-        makeTime(QStringLiteral("runtimeElapsed"), QStringLiteral("Текущее время: 00:00:00"));
-        makeTime(QStringLiteral("runtimeTotal"), QStringLiteral("Общая длительность: —"));
-        makeTime(QStringLiteral("runtimeRemaining"), QStringLiteral("Осталось: —"));
-        line->addStretch();
-        workspaceLayout->insertWidget(1, status);
-    }
-
-    // Time is no longer duplicated in the bottom telemetry strip.
-    if (impl_->elapsed && impl_->elapsed->parentWidget())
-        impl_->elapsed->parentWidget()->hide();
-
-    QObject::connect(impl_->runClockTimer, &QTimer::timeout, this, [this] {
-        auto* current = findChild<QLabel*>(QStringLiteral("runtimeElapsed"));
-        auto* total = findChild<QLabel*>(QStringLiteral("runtimeTotal"));
-        auto* remaining = findChild<QLabel*>(QStringLiteral("runtimeRemaining"));
-        if (!current || !total || !remaining || !impl_->runClock.isValid()) return;
-        const qint64 elapsedMs = std::max<qint64>(0, impl_->runClock.elapsed());
-        current->setText(QStringLiteral("Текущее время: %1").arg(elapsedText(elapsedMs)));
-        const int percent = impl_->progress->value();
-        if (percent >= 5 && percent < 100) {
-            const qint64 estimatedTotal = elapsedMs * 100 / percent;
-            total->setText(QStringLiteral("Общая длительность: ≈ %1")
-                .arg(elapsedText(estimatedTotal)));
-            remaining->setText(QStringLiteral("Осталось: ≈ %1")
-                .arg(elapsedText(std::max<qint64>(0, estimatedTotal - elapsedMs))));
-        } else if (percent >= 100) {
-            total->setText(QStringLiteral("Общая длительность: %1").arg(elapsedText(elapsedMs)));
-            remaining->setText(QStringLiteral("Осталось: 00:00:00"));
-        } else {
-            total->setText(QStringLiteral("Общая длительность: —"));
-            remaining->setText(QStringLiteral("Осталось: —"));
-        }
-    });
 }
 
 TestPage::~TestPage() = default;
@@ -252,9 +200,8 @@ void TestPage::setProductionMode(bool enabled)
     impl_->yalkSubPanel->setVisible(false);
     impl_->includeYvpCheck->setChecked(enabled);
 
-    const bool showEngineeringDetail = enabled;
-    const auto setMetricVisible = [showEngineeringDetail](QLabel* value) {
-        if (value && value->parentWidget()) value->parentWidget()->setVisible(showEngineeringDetail);
+    const auto setMetricVisible = [](QLabel* value) {
+        if (value && value->parentWidget()) value->parentWidget()->setVisible(true);
     };
 
     for (auto* value : {
@@ -273,10 +220,10 @@ void TestPage::setProductionMode(bool enabled)
         setMetricVisible(value);
     }
 
-    impl_->yalkPhaseStrip->setVisible(enabled);
-    impl_->yalkPhaseTitle->setVisible(enabled);
-    impl_->ytpPhaseTitle->setVisible(enabled);
-    impl_->yvpStatus->setVisible(enabled);
+    impl_->yalkPhaseStrip->hide();
+    impl_->yalkPhaseTitle->setVisible(true);
+    impl_->ytpPhaseTitle->setVisible(true);
+    impl_->yvpStatus->setVisible(true);
     impl_->ytpOperatorBanner->setVisible(false);
     impl_->finishDetail->setVisible(enabled);
     impl_->nextProduct->setVisible(enabled);
@@ -287,6 +234,7 @@ void TestPage::setProductionMode(bool enabled)
     impl_->pages->setCurrentWidget(impl_->sessionPage);
     rebuildScopes();
     updateSelectionSummary();
+    impl_->configureRouteVisibility();
 }
 
 void TestPage::setAvailableProductionProducts(const QStringList& serials)
@@ -503,12 +451,6 @@ void TestPage::setRunInProgress(bool running, const QString& stage)
         impl_->stopButton->setEnabled(true);
         impl_->progress->setRange(0, 100);
         impl_->footerStage->setText(stage.isEmpty() ? QStringLiteral("Выполняется…") : stage);
-        if (auto* label = findChild<QLabel*>(QStringLiteral("runtimeElapsed")))
-            label->setText(QStringLiteral("Текущее время: 00:00:00"));
-        if (auto* label = findChild<QLabel*>(QStringLiteral("runtimeTotal")))
-            label->setText(QStringLiteral("Общая длительность: —"));
-        if (auto* label = findChild<QLabel*>(QStringLiteral("runtimeRemaining")))
-            label->setText(QStringLiteral("Осталось: —"));
     } else {
         impl_->runClockTimer->stop();
         impl_->stopButton->setEnabled(false);
@@ -665,6 +607,7 @@ void TestPage::setRunEvent(const orbita::stand::RunEvent& event)
                              measured,
                              false,
                              event.verdict == orbita::stand::RunVerdict::Ok,
+                             false,
                              csvNumbers(eventValue(event, "value_samples"))};
         impl_->ytpOverview->add(std::move(sample));
         setRouteDetail(static_cast<int>(TopStage::Ytp),
@@ -686,6 +629,14 @@ void TestPage::setRunEvent(const orbita::stand::RunEvent& event)
         const double v7 = eventValue(event, "v7_v").toDouble();
         const double yalk = eventValue(event, "yalk_v").toDouble();
         const int signal = eventValue(event, "signal").toInt();
+        const QVector<double> valueSamples = csvNumbers(eventValue(event, "value_samples"));
+        const QString lowerText = eventValue(event, "lower_limit_v");
+        const QString upperText = eventValue(event, "upper_limit_v");
+        const auto sampleRange = std::minmax_element(valueSamples.cbegin(), valueSamples.cend());
+        const bool warning = event.verdict == orbita::stand::RunVerdict::Ok
+            && !valueSamples.isEmpty() && !lowerText.isEmpty() && !upperText.isEmpty()
+            && (*sampleRange.first < lowerText.toDouble()
+                || *sampleRange.second > upperText.toDouble());
 
         impl_->yalkChannel->setText(address);
         impl_->yalkPoint->setText(QStringLiteral("%1 В").arg(command, 0, 'f', 1));
@@ -693,10 +644,11 @@ void TestPage::setRunEvent(const orbita::stand::RunEvent& event)
         ChannelSample sample{address,
                              QStringLiteral("%1 В").arg(command, 0, 'f', 1),
                              v7,
-                             yalk,
-                             signal != 0,
-                             event.verdict == orbita::stand::RunVerdict::Ok,
-                             csvNumbers(eventValue(event, "value_samples"))};
+                              yalk,
+                              signal != 0,
+                              event.verdict == orbita::stand::RunVerdict::Ok,
+                              warning,
+                              valueSamples};
         impl_->yalkOverview->add(std::move(sample));
 
         if (impl_->yalkPhase == YalkPhase::Discrete) {
@@ -728,14 +680,6 @@ void TestPage::setRunResult(const orbita::stand::ScenarioRunResult& result,
     impl_->productionReportPath = productionReportPath;
     impl_->setTopStage(TopStage::Finish);
     impl_->progress->setValue(100);
-
-    const qint64 elapsedMs = impl_->runClock.isValid() ? impl_->runClock.elapsed() : 0;
-    if (auto* label = findChild<QLabel*>(QStringLiteral("runtimeElapsed")))
-        label->setText(QStringLiteral("Текущее время: %1").arg(elapsedText(elapsedMs)));
-    if (auto* label = findChild<QLabel*>(QStringLiteral("runtimeTotal")))
-        label->setText(QStringLiteral("Общая длительность: %1").arg(elapsedText(elapsedMs)));
-    if (auto* label = findChild<QLabel*>(QStringLiteral("runtimeRemaining")))
-        label->setText(QStringLiteral("Осталось: 00:00:00"));
 
     const QString verdict = verdictText(result.verdict);
     impl_->finishVerdict->setText(impl_->productionMode

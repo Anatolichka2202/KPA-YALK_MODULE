@@ -263,9 +263,13 @@ struct TestPage::Impl
         body->setSpacing(8);
         auto* side=panel();side->setFixedWidth(238);
         auto* sideLayout=new QVBoxLayout(side);sideLayout->setContentsMargins(9,9,9,9);
-        sideLayout->addWidget(sectionLabel(QStringLiteral("Маршрут УБСИ")));
+        sideTitle=sectionLabel(QStringLiteral("Маршрут проверки"));sideLayout->addWidget(sideTitle);
         const QStringList names={QStringLiteral("Подготовка"),QStringLiteral("Питание / потребление"),QStringLiteral("ЯЛК-96"),QStringLiteral("ЯТП"),QStringLiteral("ЯВП-8"),QStringLiteral("Завершение")};
-        for(int i=0;i<names.size();++i){auto*l=new QLabel(QStringLiteral("%1. %2").arg(i+1).arg(names[i]));l->setObjectName(QStringLiteral("stage"));l->setMinimumHeight(46);l->setWordWrap(true);stageLabels.push_back(l);sideLayout->addWidget(l);} sideLayout->addStretch();
+        for(int i=0;i<names.size();++i){auto*l=new QLabel(QStringLiteral("%1. %2").arg(i+1).arg(names[i]));l->setObjectName(QStringLiteral("stage"));l->setMinimumHeight(46);l->setWordWrap(true);l->setProperty("includedInRoute",true);stageLabels.push_back(l);sideLayout->addWidget(l);}
+        const QStringList yalkNames={QStringLiteral("Инициализация потока"),QStringLiteral("Калибровка 97 / 99"),QStringLiteral("Исходное состояние"),QStringLiteral("Аналоговые каналы"),QStringLiteral("Контактные пороги"),QStringLiteral("Перегрузка ±12 В"),QStringLiteral("Эталон 6,2 В")};
+        for(int i=0;i<yalkNames.size();++i){auto*l=new QLabel(QStringLiteral("%1. %2").arg(i+1).arg(yalkNames[i]));l->setObjectName(QStringLiteral("stage"));l->setMinimumHeight(42);l->setWordWrap(true);l->hide();yalkPhaseLabels.push_back(l);sideLayout->addWidget(l);} sideLayout->addStretch();
+        const QStringList tuNames={QStringLiteral("ТУ 1.1.4.3, 1.1.4.5 — питание"),QStringLiteral("ТУ 1.1.4.1 — аналоговые каналы"),QStringLiteral("ТУ 1.1.4.1 — дискретные каналы"),QStringLiteral("ТУ 1.1.4.1 — проверка ЯТП"),QStringLiteral("ТУ 1.1.4.1 — проверка ЯВП-8"),QStringLiteral("ТУ 1.1.4.2 — эталон 6,2 В"),QStringLiteral("ТУ 1.1.7 — исходное состояние")};
+        for(int i=0;i<tuNames.size();++i){auto*l=new QLabel(QStringLiteral("%1. %2").arg(i+1).arg(tuNames[i]));l->setObjectName(QStringLiteral("stage"));l->setMinimumHeight(46);l->setWordWrap(true);l->setProperty("tuCheckIndex",i);l->hide();tuCheckLabels.push_back(l);sideLayout->insertWidget(sideLayout->count()-1,l);}
         body->addWidget(side);
 
         auto* work=new QVBoxLayout;
@@ -323,7 +327,7 @@ struct TestPage::Impl
     QWidget* buildYalk()
     {
         auto* page=new QWidget;auto* l=new QVBoxLayout(page);l->setContentsMargins(0,0,0,0);l->setSpacing(6);
-        auto* head=new QHBoxLayout;auto* titles=new QVBoxLayout;titles->setSpacing(0);titles->addWidget(titleLabel(QStringLiteral("ЯЛК-96")));yalkPhaseTitle=subtitleLabel(QStringLiteral("Инициализация"));titles->addWidget(yalkPhaseTitle);head->addLayout(titles,1);yalkPhaseStrip=new QLabel;yalkPhaseStrip->setStyleSheet(QStringLiteral("background:#10151b;border:1px solid #27313c;border-radius:5px;color:#8b95a3;padding:7px 10px;"));head->addWidget(yalkPhaseStrip);l->addLayout(head);
+        auto* head=new QHBoxLayout;auto* titles=new QVBoxLayout;titles->setSpacing(0);titles->addWidget(titleLabel(QStringLiteral("ЯЛК-96")));yalkPhaseTitle=subtitleLabel(QStringLiteral("Инициализация"));titles->addWidget(yalkPhaseTitle);head->addLayout(titles,1);yalkPhaseStrip=new QLabel(page);yalkPhaseStrip->hide();l->addLayout(head);
         auto* current=new QHBoxLayout;current->addWidget(metricCard(QStringLiteral("Текущий адрес"),yalkChannel),1);current->addWidget(metricCard(QStringLiteral("Точка"),yalkPoint),1);current->addWidget(metricCard(QStringLiteral("U ИСД по В7"),yalkV7),1);l->addLayout(current);
         yalkOverview=new ChannelOverview;yalkOverview->setObjectName(QStringLiteral("yalkChannelHistogram"));yalkOverview->configure(80,QStringLiteral("В"));l->addWidget(yalkOverview,3);
         yalkStack=new QStackedWidget;
@@ -392,7 +396,7 @@ struct TestPage::Impl
 
     void configureRouteVisibility()
     {
-        for(auto*l:stageLabels)l->setVisible(true);const QString scope=scopeCombo->currentData().toString();if(scope==QStringLiteral("ЯЛК-96")){stageLabels[static_cast<int>(TopStage::Ytp)]->hide();stageLabels[static_cast<int>(TopStage::Yvp)]->hide();}else if(scope==QStringLiteral("ЯТП")){stageLabels[static_cast<int>(TopStage::Yalk)]->hide();stageLabels[static_cast<int>(TopStage::Yvp)]->hide();}else if(scope==QStringLiteral("ЯВП-8")){stageLabels[static_cast<int>(TopStage::Power)]->hide();stageLabels[static_cast<int>(TopStage::Yalk)]->hide();stageLabels[static_cast<int>(TopStage::Ytp)]->hide();}updateStageLabels();
+        for(auto*l:stageLabels)l->setProperty("includedInRoute",true);const QString scope=scopeCombo->currentData().toString();if(scope==QStringLiteral("ЯЛК-96")){stageLabels[static_cast<int>(TopStage::Ytp)]->setProperty("includedInRoute",false);stageLabels[static_cast<int>(TopStage::Yvp)]->setProperty("includedInRoute",false);}else if(scope==QStringLiteral("ЯТП")){stageLabels[static_cast<int>(TopStage::Yalk)]->setProperty("includedInRoute",false);stageLabels[static_cast<int>(TopStage::Yvp)]->setProperty("includedInRoute",false);}else if(scope==QStringLiteral("ЯВП-8")){stageLabels[static_cast<int>(TopStage::Power)]->setProperty("includedInRoute",false);stageLabels[static_cast<int>(TopStage::Yalk)]->setProperty("includedInRoute",false);stageLabels[static_cast<int>(TopStage::Ytp)]->setProperty("includedInRoute",false);}updateStageLabels();
     }
 
     void setTopStage(TopStage stage)
@@ -402,19 +406,29 @@ struct TestPage::Impl
 
     void setYalkPhase(YalkPhase phase)
     {
-        yalkPhase=phase;yalkStack->setCurrentIndex(static_cast<int>(phase));const QStringList names={QStringLiteral("Инициализация"),QStringLiteral("Калибровка"),QStringLiteral("Исходное состояние"),QStringLiteral("Аналоговые каналы"),QStringLiteral("Дискретные пороги"),QStringLiteral("Перегрузка ±12 В"),QStringLiteral("Эталон 6,2 В")};yalkPhaseTitle->setText(names[static_cast<int>(phase)]);QStringList parts;for(int i=0;i<names.size();++i)parts<<(i<static_cast<int>(phase)?QStringLiteral("✓ %1").arg(names[i]):i==static_cast<int>(phase)?QStringLiteral("▶ %1").arg(names[i]):names[i]);yalkPhaseStrip->setText(parts.join(QStringLiteral("  ·  ")));
+        yalkPhase=phase;yalkStack->setCurrentIndex(static_cast<int>(phase));const QStringList names={QStringLiteral("Инициализация"),QStringLiteral("Калибровка"),QStringLiteral("Исходное состояние"),QStringLiteral("Аналоговые каналы"),QStringLiteral("Дискретные пороги"),QStringLiteral("Перегрузка ±12 В"),QStringLiteral("Эталон 6,2 В")};yalkPhaseTitle->setText(names[static_cast<int>(phase)]);QStringList parts;for(int i=0;i<names.size();++i)parts<<(i<static_cast<int>(phase)?QStringLiteral("✓ %1").arg(names[i]):i==static_cast<int>(phase)?QStringLiteral("▶ %1").arg(names[i]):names[i]);yalkPhaseStrip->setText(parts.join(QStringLiteral("  ·  ")));updateYalkPhaseLabels();
     }
 
     void setYtpPhase(YtpPhase phase){ytpPhase=phase;ytpStack->setCurrentIndex(static_cast<int>(phase));const QStringList names={QStringLiteral("Инициализация"),QStringLiteral("Калибровка"),QStringLiteral("30 каналов")};ytpPhaseTitle->setText(names[static_cast<int>(phase)]);}
 
     void updateStageLabels()
     {
-        const QStringList names={QStringLiteral("Подготовка"),QStringLiteral("Питание / потребление"),QStringLiteral("ЯЛК-96"),QStringLiteral("ЯТП"),QStringLiteral("ЯВП-8"),QStringLiteral("Завершение")};int visibleNumber=0;for(int i=0;i<stageLabels.size();++i){auto*l=stageLabels[i];if(l->isHidden())continue;++visibleNumber;if(i<static_cast<int>(topStage)){l->setObjectName(QStringLiteral("stageDone"));l->setText(QStringLiteral("✓  %1. %2\nзавершено").arg(visibleNumber).arg(names[i]));}else if(i==static_cast<int>(topStage)){l->setObjectName(QStringLiteral("stageActive"));l->setText(QStringLiteral("▶  %1. %2\nтекущий этап").arg(visibleNumber).arg(names[i]));}else{l->setObjectName(QStringLiteral("stage"));l->setText(QStringLiteral("○  %1. %2").arg(visibleNumber).arg(names[i]));}l->style()->unpolish(l);l->style()->polish(l);}
+        const bool showTuChecks=!productionMode;const bool showYalkPhases=productionMode&&topStage==TopStage::Yalk;sideTitle->setText(showTuChecks?QStringLiteral("Процедуры / проверки"):showYalkPhases?QStringLiteral("Ход ЯЛК-96"):QStringLiteral("Маршрут производства"));const QStringList names={QStringLiteral("Подготовка"),QStringLiteral("Питание / потребление"),QStringLiteral("ЯЛК-96"),QStringLiteral("ЯТП"),QStringLiteral("ЯВП-8"),QStringLiteral("Завершение")};int visibleNumber=0;for(int i=0;i<stageLabels.size();++i){auto*l=stageLabels[i];const bool included=l->property("includedInRoute").toBool();l->setVisible(productionMode&&!showYalkPhases&&included);if(!included)continue;++visibleNumber;if(i<static_cast<int>(topStage)){l->setObjectName(QStringLiteral("stageDone"));l->setText(QStringLiteral("✓  %1. %2\nзавершено").arg(visibleNumber).arg(names[i]));}else if(i==static_cast<int>(topStage)){l->setObjectName(QStringLiteral("stageActive"));l->setText(QStringLiteral("▶  %1. %2\nтекущий этап").arg(visibleNumber).arg(names[i]));}else{l->setObjectName(QStringLiteral("stage"));l->setText(QStringLiteral("○  %1. %2").arg(visibleNumber).arg(names[i]));}l->style()->unpolish(l);l->style()->polish(l);}for(auto*l:yalkPhaseLabels)l->setVisible(showYalkPhases);for(auto*l:tuCheckLabels)l->setVisible(showTuChecks);if(showYalkPhases)updateYalkPhaseLabels();if(showTuChecks)updateTuCheckLabels();
+    }
+
+    void updateYalkPhaseLabels()
+    {
+        const QStringList names={QStringLiteral("Инициализация потока"),QStringLiteral("Калибровка 97 / 99"),QStringLiteral("Исходное состояние"),QStringLiteral("Аналоговые каналы"),QStringLiteral("Контактные пороги"),QStringLiteral("Перегрузка ±12 В"),QStringLiteral("Эталон 6,2 В")};const int active=static_cast<int>(yalkPhase);for(int i=0;i<yalkPhaseLabels.size();++i){auto*l=yalkPhaseLabels[i];if(i<active){l->setObjectName(QStringLiteral("stageDone"));l->setText(QStringLiteral("✓  %1. %2").arg(i+1).arg(names[i]));}else if(i==active){l->setObjectName(QStringLiteral("stageActive"));l->setText(QStringLiteral("▶  %1. %2\nвыполняется").arg(i+1).arg(names[i]));}else{l->setObjectName(QStringLiteral("stage"));l->setText(QStringLiteral("○  %1. %2").arg(i+1).arg(names[i]));}l->style()->unpolish(l);l->style()->polish(l);}
+    }
+
+    void updateTuCheckLabels()
+    {
+        int active=0;if(topStage==TopStage::Yalk){active=yalkPhase==YalkPhase::Discrete?2:yalkPhase==YalkPhase::Reference?5:1;}else if(topStage==TopStage::Ytp)active=3;else if(topStage==TopStage::Yvp)active=4;else if(topStage==TopStage::Finish)active=6;const QStringList names={QStringLiteral("ТУ 1.1.4.3, 1.1.4.5 — питание"),QStringLiteral("ТУ 1.1.4.1 — аналоговые каналы"),QStringLiteral("ТУ 1.1.4.1 — дискретные каналы"),QStringLiteral("ТУ 1.1.4.1 — проверка ЯТП"),QStringLiteral("ТУ 1.1.4.1 — проверка ЯВП-8"),QStringLiteral("ТУ 1.1.4.2 — эталон 6,2 В"),QStringLiteral("ТУ 1.1.7 — исходное состояние")};for(int i=0;i<tuCheckLabels.size();++i){auto*l=tuCheckLabels[i];if(i<active){l->setObjectName(QStringLiteral("stageDone"));l->setText(QStringLiteral("✓  %1").arg(names[i]));}else if(i==active){l->setObjectName(QStringLiteral("stageActive"));l->setText(QStringLiteral("▶  %1\nвыполняется").arg(names[i]));}else{l->setObjectName(QStringLiteral("stage"));l->setText(QStringLiteral("○  %1").arg(names[i]));}l->style()->unpolish(l);l->style()->polish(l);}
     }
 
     int visibleRouteNumber(int stageIndex) const
     {
-        int number=0;for(int i=0;i<=stageIndex&&i<stageLabels.size();++i)if(!stageLabels[i]->isHidden())++number;return number;
+        int number=0;for(int i=0;i<=stageIndex&&i<stageLabels.size();++i)if(stageLabels[i]->property("includedInRoute").toBool())++number;return number;
     }
 
     void mapNode(const QString& node)
@@ -475,7 +489,7 @@ struct TestPage::Impl
     QVBoxLayout* root=nullptr;QStackedWidget* pages=nullptr;QWidget* bridge=nullptr;QWidget* sessionPage=nullptr;QWidget* workspacePage=nullptr;
     QComboBox* objectCombo=nullptr;QComboBox* scopeCombo=nullptr;QComboBox* testCombo=nullptr;QComboBox* modeCombo=nullptr;QCheckBox* partial=nullptr;QCheckBox* includeYvpCheck=nullptr;QCheckBox* includeOverload=nullptr;QCheckBox* includeSurvival=nullptr;
     QPushButton* home=nullptr;QLabel* sessionTitle=nullptr;QLabel* sessionSubtitle=nullptr;QLabel* workflowBadge=nullptr;QFrame* sessionDataPanel=nullptr;QLabel* operatorCaption=nullptr;QLineEdit* operatorEdit=nullptr;QComboBox* operatorHistory=nullptr;QLabel* serialCaption=nullptr;QLineEdit* serialEdit=nullptr;QPushButton* addProduct=nullptr;QFrame* productsPanel=nullptr;QTableWidget* productTable=nullptr;QButtonGroup* scopeGroup=nullptr;QHash<QString,QPushButton*> scopeButtons;QWidget* yalkSubPanel=nullptr;QButtonGroup* yalkSubGroup=nullptr;QLabel* scenarioInfo=nullptr;QPushButton* enterPreparation=nullptr;QFrame* engineerBridgePanel=nullptr;
-    QPushButton* backSession=nullptr;QLabel* workspaceTitle=nullptr;QLabel* workspaceSubtitle=nullptr;QLabel* operatorBadge=nullptr;QPushButton* stopButton=nullptr;QVector<QLabel*> stageLabels;QStackedWidget* workStack=nullptr;QLabel* elapsed=nullptr;QLabel* footerStage=nullptr;QProgressBar* progress=nullptr;TrendPlot* consumption=nullptr;
+    QPushButton* backSession=nullptr;QLabel* workspaceTitle=nullptr;QLabel* workspaceSubtitle=nullptr;QLabel* operatorBadge=nullptr;QPushButton* stopButton=nullptr;QLabel* sideTitle=nullptr;QVector<QLabel*> stageLabels;QVector<QLabel*> yalkPhaseLabels;QVector<QLabel*> tuCheckLabels;QStackedWidget* workStack=nullptr;QLabel* elapsed=nullptr;QLabel* footerStage=nullptr;QProgressBar* progress=nullptr;TrendPlot* consumption=nullptr;
     QLabel* preparationSubtitle=nullptr;QTableWidget* equipmentTable=nullptr;QLabel* readiness=nullptr;QPushButton* checkButton=nullptr;QPushButton* startButton=nullptr;
     QLabel* powerSet=nullptr;QLabel* powerActual=nullptr;QLabel* powerCurrent=nullptr;QLabel* powerHold=nullptr;TrendPlot* powerTrend=nullptr;StepPlot* powerSteps=nullptr;
     QLabel* yalkPhaseTitle=nullptr;QLabel* yalkPhaseStrip=nullptr;QStackedWidget* yalkStack=nullptr;YalkPhase yalkPhase=YalkPhase::Init;QLabel* yalkStream=nullptr;QLabel* yalkSequence=nullptr;QLabel* yalkCalZero=nullptr;QLabel* yalkCalFull=nullptr;TrendPlot* yalkCalTrend=nullptr;StateGrid* yalkInitial=nullptr;QLabel* yalkChannel=nullptr;QLabel* yalkPoint=nullptr;QLabel* yalkV7=nullptr;ChannelOverview* yalkOverview=nullptr;QLabel* yalkDiscretePoint=nullptr;QLabel* yalkExpected=nullptr;QLabel* yalkDiscreteChannel=nullptr;StateGrid* yalkDiscrete=nullptr;StepPlot* yalkDiscreteSteps=nullptr;QLabel* overloadChannel=nullptr;QLabel* overloadPolarity=nullptr;QLabel* overloadDelta=nullptr;StepPlot* overloadSteps=nullptr;QLabel* referenceV7=nullptr;QLabel* referenceYalk=nullptr;QLabel* referenceDelta=nullptr;TrendPlot* referenceTrend=nullptr;

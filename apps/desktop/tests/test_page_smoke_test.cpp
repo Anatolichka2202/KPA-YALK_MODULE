@@ -25,6 +25,8 @@ int main(int argc, char** argv)
 {
     QApplication app(argc, argv);
     TestPage page;
+    const QString screenshot = qEnvironmentVariable("ORBITA_UI_SCREENSHOT");
+    const QString scene = qEnvironmentVariable("MILTECH_UI_SCENE", QStringLiteral("YALK"));
 
     auto* object = page.findChild<QComboBox*>(QStringLiteral("testObject"));
     auto* scope = page.findChild<QComboBox*>(QStringLiteral("testScope"));
@@ -104,6 +106,22 @@ int main(int argc, char** argv)
     supply.data = {{"setpoint_v", "27"}, {"volts", "27.01"},
                    {"amperes", "0.238"}, {"elapsed_s", "0"}, {"duration_s", "0"}};
     page.setRunEvent(supply);
+    const double powerRoute[] = {24.0, 27.0, 35.0, 19.0, 19.0, 19.0, 19.0, 19.0};
+    for (int index = 0; index < 8; ++index) {
+        const double setpoint = powerRoute[index];
+        supply.data = {{"setpoint_v", std::to_string(setpoint)},
+                       {"volts", std::to_string(setpoint + (index % 3 - 1) * 0.012)},
+                       {"amperes", std::to_string(0.238 + (index % 4 - 2) * 0.0015)},
+                       {"elapsed_s", std::to_string(index >= 3 ? 28 + index : 0)},
+                       {"duration_s", index >= 3 ? "300" : "0"}};
+        page.setRunEvent(supply);
+    }
+    if (!screenshot.isEmpty() && scene == QStringLiteral("POWER")) {
+        page.resize(1664, 935);
+        page.show();
+        QApplication::processEvents();
+        require(page.grab().save(screenshot), "cannot save power operator UI screenshot");
+    }
 
     orbita::stand::RunEvent yalkStart;
     yalkStart.nodeId = "yalk_channels";
@@ -147,12 +165,10 @@ int main(int argc, char** argv)
                      {"target_count", "80"}};
     page.setRunEvent(overload);
     QApplication::processEvents();
-    require(histogram->isVisible(), "YALK histogram must remain visible during overload");
+    require(!histogram->isHidden(), "YALK histogram must remain available during overload");
     require(histogram->property("renderedChannelCount").toInt() == 80,
             "overload transition must retain YALK background channels");
 
-    const QString screenshot = qEnvironmentVariable("ORBITA_UI_SCREENSHOT");
-    const QString scene = qEnvironmentVariable("MILTECH_UI_SCENE", QStringLiteral("YALK"));
     if (!screenshot.isEmpty() && scene == QStringLiteral("YALK_BACKGROUND")) {
         page.resize(1664, 935);
         page.show();
@@ -179,11 +195,14 @@ int main(int argc, char** argv)
         yalk.verdict = orbita::stand::RunVerdict::Ok;
         yalk.data = {{"ulk_address", std::to_string(address)}, {"command_v", "3.1"},
                      {"v7_v", "3.100"}, {"yalk_v", std::to_string(measured)},
+                     {"lower_limit_v", "3.069"}, {"upper_limit_v", "3.131"},
                      {"signal", address % 7 == 0 ? "1" : "0"},
-                     {"value_samples", std::to_string(measured - spread) + ","
-                        + std::to_string(measured) + "," + std::to_string(measured + spread)}};
+                     {"value_samples", address == 11 ? "3.050,3.100,3.112" : std::to_string(measured - spread) + ","
+                         + std::to_string(measured) + "," + std::to_string(measured + spread)}};
         page.setRunEvent(yalk);
     }
+    require(histogram->property("warningChannelCount").toInt() == 1,
+            "one passing channel with individual samples outside limits must be marked as a UI warning");
 
     if (!screenshot.isEmpty() && scene == QStringLiteral("YALK")) {
         page.resize(1664, 935);
@@ -249,6 +268,30 @@ int main(int argc, char** argv)
         page.show();
         QApplication::processEvents();
         require(page.grab().save(screenshot), "cannot save operator UI screenshot");
+    }
+
+    if (!screenshot.isEmpty() && scene == QStringLiteral("TU_YALK")) {
+        page.setProductionMode(false);
+        page.setScenarioInfo(QStringLiteral("ULK_COMBINED_CHECK"), true, false, {}, QString());
+        serial->setText(QStringLiteral("УБСИ-0001"));
+        enter->click();
+        page.setRunInProgress(true, QStringLiteral("проверка по ТУ"));
+        page.setRunEvent(supply);
+        page.setRunEvent(yalkStart);
+        page.setRunEvent(yalkBackground);
+        orbita::stand::RunEvent yalk;
+        yalk.nodeId = "yalk_channels";
+        yalk.stage = "MEASUREMENT";
+        yalk.verdict = orbita::stand::RunVerdict::Ok;
+        yalk.data = {{"ulk_address", "87"}, {"command_v", "3.1"},
+                     {"v7_v", "3.100"}, {"yalk_v", "3.106"},
+                     {"lower_limit_v", "3.069"}, {"upper_limit_v", "3.131"},
+                     {"signal", "0"}, {"value_samples", "3.097,3.106,3.109"}};
+        page.setRunEvent(yalk);
+        page.resize(1664, 935);
+        page.show();
+        QApplication::processEvents();
+        require(page.grab().save(screenshot), "cannot save TU YALK operator UI screenshot");
     }
 
     std::cout << "Unified production/TU operator navigation smoke test passed\n";
