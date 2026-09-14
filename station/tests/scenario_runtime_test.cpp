@@ -394,10 +394,10 @@ void configurationAndCatalog(const QString& root)
     require(scenarioCapabilities.count("operator.manual_input") != 0,
             "UBSI scenario must contain the manual R4831 audit");
     require(scenarioCapabilities.count("signal.resistance") == 0
-                && scenarioCapabilities.count("measure.reference_ac_voltage") == 0
-                && scenarioCapabilities.count("measure.reference_frequency") == 0
-                && scenarioCapabilities.count("measure.waveform") == 0,
-            "UBSI scenario must not require unconfirmed YVP measurement equipment");
+                && scenarioCapabilities.count("measure.reference_ac_voltage") != 0
+                && scenarioCapabilities.count("measure.reference_frequency") != 0
+                && scenarioCapabilities.count("signal.generator") != 0,
+            "UBSI scenario must expose the authorized Rigol YVP commissioning equipment");
 
     QTemporaryDir temporary;
     require(temporary.isValid(), "Cannot create temporary directory");

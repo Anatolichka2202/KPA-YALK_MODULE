@@ -254,6 +254,19 @@ void procedureRuntimeContract()
             "YVP ROKT transport commissioning must not switch active YVP routes");
     }
 
+    ContractEquipment cleanupEquipment;
+    const auto cleanupRun = engine.run(oneStep("yvp.safe_cleanup"),
+        cleanupEquipment, "p", "", false);
+    require(cleanupRun.verdict == RunVerdict::Ok,
+        "YVP cleanup must complete when all safe-stop capabilities respond");
+    require(std::count(cleanupEquipment.operations.begin(), cleanupEquipment.operations.end(),
+                "signal.generator:output") == 1
+                && std::count(cleanupEquipment.operations.begin(), cleanupEquipment.operations.end(),
+                    "stand.switch_matrix:full_reset") == 1
+                && std::count(cleanupEquipment.operations.begin(), cleanupEquipment.operations.end(),
+                    "ulk.parameter_source:stop_stream") == 1,
+            "YVP cleanup must switch Rigol off, reset ISD and stop the adapter stream");
+
     ContractEquipment supplyEquipment;
     const auto supplyRun = engine.run(oneStep("ubsi.supply_range", {
         {"voltage_points_v", "24,27,35"},

@@ -160,13 +160,13 @@ devices:
     bind:
       - signal.generator
     # Физически подключён: CH1 → вывод З кабеля ЯВП 8-2.
-    # На текущем commissioning 1 В выставляется оператором вручную.
-    # Автоматический OUTPUT блокируем, пока не подтверждено, что «1 В» = Vpp
-    # для программной команды set_sine(amplitude_vpp=...).
+    # Автоматическое воздействие разрешено для commissioning ЯВП-8.
+    # Методика задаёт амплитуду именно в Vpp; аварийный OUTPUT OFF выполняется
+    # плагином при остановке и при любой ошибке сценария.
     enabled: true
     config:
       timeout_ms: 2000
-      device.active_commands_confirmed: false
+      device.active_commands_confirmed: true
   - id: oscilloscope
     plugin: orbita.rigol_dho8xx
     bind:

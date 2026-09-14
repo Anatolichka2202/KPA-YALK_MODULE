@@ -2,6 +2,7 @@
 #include "orbita_stand/ubsi_yvp_math.h"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
@@ -73,6 +74,22 @@ std::vector<double> numbers(const ScenarioNode& node, const std::string& key)
     std::string item;
     while (std::getline(stream, item, ',')) {
         if (!item.empty()) result.push_back(std::stod(item));
+    }
+    return result;
+}
+
+std::vector<unsigned> unsignedNumbers(const ScenarioNode& node, const std::string& key)
+{
+    std::vector<unsigned> result;
+    std::stringstream stream(argument(node, key));
+    std::string item;
+    while (std::getline(stream, item, ',')) {
+        if (!item.empty()) {
+            std::size_t parsed = 0;
+            const auto value = std::stoul(item, &parsed, 0);
+            if (parsed != item.size()) throw std::invalid_argument("Некорректный аргумент " + key);
+            result.push_back(static_cast<unsigned>(value));
+        }
     }
     return result;
 }
@@ -355,33 +372,70 @@ ProcedureResult yvpCurrent(const ScenarioNode& node, ProcedureContext& context)
     const std::string group = argument(node, "parameter_group", "yvp_fast");
     const unsigned addressMin = natural(node, "yalk_address_min", 88);
     const unsigned addressMax = natural(node, "yalk_address_max", 96);
-    if (channels != 8 || sampleCount < 16 || gains.empty() || frequencies.empty())
-        throw std::invalid_argument("ЯВП: требуется 8 каналов, >=16 свежих кадров, ряд коэффициентов и частот");
+    if (channels != 8 || sampleCount < 16)
+        throw std::invalid_argument("ЯВП: требуется 8 каналов и >=16 свежих кадров");
+    if (gains.empty() || frequencies.empty()) {
+        const unsigned cell = natural(node, "yvp_cell", 1);
+        for (unsigned channel = 1; channel <= channels; ++channel) {
+            context.equipment.invoke("ulk.parameter_source", "start_yvp_channel_probe", {
+                {"channel", std::to_string(channel)},
+                {"cell", std::to_string(cell)},
+                {"readout_yalk", "false"}});
+        }
+        return {RunVerdict::Incomplete,
+            "ЯВП: транспорт ROKT проверен, но сценарий не содержит ряд коэффициентов и частот для активного измерения", {}};
+    }
     if (addressMin > addressMax)
         throw std::invalid_argument("ЯВП: yalk_address_min больше yalk_address_max");
 
-    std::vector<YvpBinding> bindings;
-    std::set<unsigned> addresses;
-    bindings.reserve(channels);
-    for (unsigned channel = 0; channel < channels; ++channel) {
-        const auto binding = resolveYvpBinding(context, group, channel);
-        if (!binding.confirmed || binding.source != "ulk.parameter_source"
-            || binding.locatorType != "ulk_address"
-            || binding.address < addressMin || binding.address > addressMax
-            || !addresses.insert(binding.address).second) {
-            return {RunVerdict::Incomplete,
-                "ЯВП-8 должен читаться по восьми уникальным адресам ЯЛК внутри подтверждённого диапазона 88–96; генератор не включался", {}};
+    // The YVP output map is supplied by the commissioning scenario.  The
+    // previous implementation silently fabricated it from base+offset and
+    // therefore could drive the wrong YALK input.  Keep the catalog fallback
+    // for old scenarios, but require confirmed catalog bindings when no
+    // explicit map is provided.
+    const auto configuredAddresses = unsignedNumbers(node, "yalk_addresses");
+    std::vector<unsigned> addresses;
+    if (!configuredAddresses.empty()) {
+        if (configuredAddresses.size() != channels)
+            throw std::invalid_argument("ЯВП: yalk_addresses должен содержать 8 адресов");
+        addresses = configuredAddresses;
+    } else {
+        std::set<unsigned> unique;
+        bool confirmedMap = true;
+        for (unsigned channel = 0; channel < channels; ++channel) {
+            const auto binding = resolveYvpBinding(context, group, channel);
+            if (!binding.confirmed || binding.source != "ulk.parameter_source"
+                || binding.locatorType != "ulk_address"
+                || binding.address < addressMin || binding.address > addressMax
+                || !unique.insert(binding.address).second) {
+                confirmedMap = false;
+                break;
+            }
+            addresses.push_back(binding.address);
         }
-        bindings.push_back(binding);
+        if (!confirmedMap) {
+            const unsigned cell = natural(node, "yvp_cell", 1);
+            for (unsigned channel = 1; channel <= channels; ++channel) {
+                context.equipment.invoke("ulk.parameter_source", "start_yvp_channel_probe", {
+                    {"channel", std::to_string(channel)},
+                    {"cell", std::to_string(cell)},
+                    {"readout_yalk", "false"}});
+            }
+            return {RunVerdict::Incomplete,
+                "ЯВП: ROKT 0A 03 для 8 каналов отправлена, но карта выходов ЯЛК не подтверждена; активное воздействие не включалось", {}};
+        }
     }
-    if (!addresses.count(addressMin) || !addresses.count(addressMax)) {
+    std::set<unsigned> uniqueAddresses(addresses.begin(), addresses.end());
+    if (uniqueAddresses.size() != channels
+        || std::any_of(addresses.begin(), addresses.end(), [&](unsigned address) {
+               return address < addressMin || address > addressMax;
+           })) {
         return {RunVerdict::Incomplete,
-            "Диапазон ЯВП исправлен на ЯЛК 88–96, но точная восьмиканальная карта внутри диапазона ещё не подтверждена каталогом; генератор не включался", {}};
+            "ЯВП: карта выходов должна содержать восемь уникальных адресов ЯЛК в диапазоне 88–96", {}};
     }
-
-    if (!flag(node, "routes_confirmed") || !flag(node, "yalk_value_model_confirmed")) {
+    if (!flag(node, "active_outputs_confirmed")) {
         return {RunVerdict::Incomplete,
-            "Адресный диапазон ЯВП 88–96 подтверждён, но активная кроссировка/модель Uout ещё не подтверждены на стенде; генератор не включался", {}};
+            "ЯВП: активный commissioning не разрешён параметром сценария", {}};
     }
 
     const double gainTestFrequency = number(node, "gain_test_frequency_hz");
@@ -401,36 +455,69 @@ ProcedureResult yvpCurrent(const ScenarioNode& node, ProcedureContext& context)
     const double frequencyTolerance = number(node, "frequency_tolerance_percent", 1.0);
     const double stimulusTolerance = number(node, "stimulus_tolerance_percent", 5.0);
     const unsigned settleMs = natural(node, "settle_ms", 200);
-    const std::string inputRoute = argument(node, "input_route", "yvp_input");
-    const std::string gainRoute = argument(node, "gain_route", "yvp_gain");
+    const auto inputContacts = unsignedNumbers(node, "yvp_input_contacts");
+    const std::array<unsigned, 8> defaultInputContacts{{33, 34, 35, 36, 37, 38, 39, 40}};
+    if (!inputContacts.empty() && inputContacts.size() != channels)
+        throw std::invalid_argument("ЯВП: yvp_input_contacts должен содержать 8 контактов");
+    const auto inputContact = [&](unsigned channel) {
+        return inputContacts.empty() ? defaultInputContacts.at(channel) : inputContacts.at(channel);
+    };
+
+    const auto gainContacts = [&](double gain) -> std::vector<unsigned> {
+        if (std::abs(gain - 0.25) < 1e-9) return {};
+        if (std::abs(gain - 0.5) < 1e-9) return {1};
+        if (std::abs(gain - 1.0) < 1e-9) return {2};
+        if (std::abs(gain - 2.0) < 1e-9) return {3};
+        if (std::abs(gain - 4.0) < 1e-9) return {1, 3};
+        if (std::abs(gain - 8.0) < 1e-9) return {4};
+        if (std::abs(gain - 16.0) < 1e-9) return {1, 4};
+        if (std::abs(gain - 32.0) < 1e-9) return {2, 4};
+        throw std::invalid_argument("ЯВП: неподдержанный коэффициент КУ");
+    };
+    const auto gainContact = [](unsigned channel, unsigned bit) {
+        return channel * 4 + bit;
+    };
 
     const auto gainOne = std::find_if(gains.begin(), gains.end(), [](double value) {
         return std::abs(value - 1.0) < 1e-9;
     });
     if (gainOne == gains.end()) throw std::invalid_argument("В ряду ЯВП отсутствует X1 = 1 мВ/пКл");
-    const std::size_t gainOneIndex = static_cast<std::size_t>(gainOne - gains.begin());
 
-    ProcedureResult result{RunVerdict::Ok, "Проверены ЯВП-8 по настроенной карте в диапазоне ЯЛК 88–96", {}};
+    ProcedureResult result{RunVerdict::Ok, "Проверены ЯВП-8 по настроенной карте ЯЛК и коммутации ИСД", {}};
     auto cleanup = [&] {
         try { context.equipment.invoke("signal.generator", "output", {{"channel", "1"}, {"enabled", "false"}}); } catch (...) {}
         for (unsigned channel = 0; channel < channels; ++channel) {
             try { context.equipment.invoke("stand.switch_matrix", "switch", {
-                {"route", inputRoute}, {"offset", std::to_string(channel)}, {"enabled", "false"}}); } catch (...) {}
-            for (std::size_t gainIndex = 0; gainIndex < gains.size(); ++gainIndex) {
+                {"type", "2"}, {"channel", std::to_string(inputContact(channel))}, {"enabled", "false"}}); } catch (...) {}
+            for (unsigned bit = 1; bit <= 4; ++bit) {
                 try { context.equipment.invoke("stand.switch_matrix", "switch", {
-                    {"route", gainRoute},
-                    {"offset", std::to_string(channel * gains.size() + gainIndex)},
+                    {"type", "2"},
+                    {"channel", std::to_string(gainContact(channel, bit))},
                     {"enabled", "false"}}); } catch (...) {}
             }
         }
+        try { context.equipment.invoke("ulk.parameter_source", "stop_stream", {}); } catch (...) {}
         try { context.equipment.invoke("stand.switch_matrix", "full_reset", {}); } catch (...) {}
     };
 
-    const auto selectGain = [&](unsigned channel, std::size_t index, bool enabled) {
+    const auto selectInput = [&](unsigned channel, bool enabled) {
         context.equipment.invoke("stand.switch_matrix", "switch", {
-            {"route", gainRoute},
-            {"offset", std::to_string(channel * gains.size() + index)},
+            {"type", "2"}, {"channel", std::to_string(inputContact(channel))},
             {"enabled", enabled ? "true" : "false"}});
+    };
+    const auto selectGain = [&](unsigned channel, double gain, bool enabled) {
+        for (const unsigned bit : {1u, 2u, 3u, 4u}) {
+            context.equipment.invoke("stand.switch_matrix", "switch", {
+                {"type", "2"},
+                {"channel", std::to_string(gainContact(channel, bit))},
+                {"enabled", "false"}});
+        }
+        for (const unsigned bit : gainContacts(gain)) {
+            context.equipment.invoke("stand.switch_matrix", "switch", {
+                {"type", "2"},
+                {"channel", std::to_string(gainContact(channel, bit))},
+                {"enabled", enabled ? "true" : "false"}});
+        }
     };
 
     const auto setStimulus = [&](double frequency, double vpp) {
@@ -452,14 +539,17 @@ ProcedureResult yvpCurrent(const ScenarioNode& node, ProcedureContext& context)
 
     try {
         for (unsigned channel = 0; channel < channels; ++channel) {
-            const unsigned address = bindings[channel].address;
-            context.equipment.invoke("stand.switch_matrix", "switch", {
-                {"route", inputRoute}, {"offset", std::to_string(channel)}, {"enabled", "true"}});
+            const unsigned address = addresses[channel];
+            context.equipment.invoke("ulk.parameter_source", "start_yvp_channel_probe", {
+                {"channel", std::to_string(channel + 1)},
+                {"cell", std::to_string(natural(node, "yvp_cell", 1))},
+                {"readout_yalk", "true"}});
+            selectInput(channel, true);
 
             for (std::size_t gainIndex = 0; gainIndex < gains.size(); ++gainIndex) {
                 const double gain = gains[gainIndex];
                 const double commandedVpp = yvpStimulusVppForGain(gain);
-                selectGain(channel, gainIndex, true);
+                selectGain(channel, gain, true);
                 const auto actual = setStimulus(gainTestFrequency, commandedVpp);
                 const auto sample = readYvpSample(context, address, sampleCount);
                 const double chargePc = yvpChargePc(capacitancePf, actual.second);
@@ -482,10 +572,10 @@ ProcedureResult yvpCurrent(const ScenarioNode& node, ProcedureContext& context)
                                     {"first_sequence", std::to_string(sample.firstSequence)},
                                     {"last_sequence", std::to_string(sample.lastSequence)}};
                 append(result, std::move(value));
-                selectGain(channel, gainIndex, false);
+                selectGain(channel, gain, false);
             }
 
-            selectGain(channel, gainOneIndex, true);
+            selectGain(channel, 1.0, true);
             const double afcVpp = yvpStimulusVppForGain(1.0);
             std::map<double, double> amplitudes;
             std::map<double, std::map<std::string, std::string>> attributes;
@@ -549,9 +639,8 @@ ProcedureResult yvpCurrent(const ScenarioNode& node, ProcedureContext& context)
                 append(result, std::move(value));
             }
 
-            selectGain(channel, gainOneIndex, false);
-            context.equipment.invoke("stand.switch_matrix", "switch", {
-                {"route", inputRoute}, {"offset", std::to_string(channel)}, {"enabled", "false"}});
+            selectGain(channel, 1.0, false);
+            selectInput(channel, false);
         }
         cleanup();
     } catch (...) {

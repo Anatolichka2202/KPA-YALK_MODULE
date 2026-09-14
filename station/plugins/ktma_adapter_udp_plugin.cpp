@@ -25,6 +25,7 @@ struct Instance {
     bool ytpLegacyMode2 = false;
     bool ytpRokt68 = false;
     bool yvpProbe = false;
+    bool yvpReadoutYalk = false;
 };
 
 unsigned timeout(const Instance& instance, const std::map<std::string, std::string>& args)
@@ -55,7 +56,7 @@ UlkFrame waitYalk(Instance& instance, std::uint64_t after, unsigned timeoutMs)
 {
     if (instance.cancelled.load()) throw std::runtime_error("Operation cancelled");
     if (instance.ytpPassive || instance.ytpLegacyMode2 || instance.ytpRokt68
-        || instance.yvpProbe) {
+        || (instance.yvpProbe && !instance.yvpReadoutYalk)) {
         throw std::runtime_error("Активен поток с другим форматом; декодер ЯЛК неприменим");
     }
     return instance.transport->waitFrame(
@@ -318,6 +319,7 @@ orbita_plugin_status_v1 invoke(void* value, const char* capability, const char* 
             instance.ytpLegacyMode2 = false;
             instance.ytpRokt68 = false;
             instance.yvpProbe = false;
+            instance.yvpReadoutYalk = false;
             instance.transport->prepareYalkReference();
             instance.selectedMode = -2;
             return std::string("status=prepared\nprotocol=rokt_yalk\n");
@@ -341,6 +343,7 @@ orbita_plugin_status_v1 invoke(void* value, const char* capability, const char* 
             instance.ytpLegacyMode2 = false;
             instance.ytpRokt68 = true;
             instance.yvpProbe = false;
+            instance.yvpReadoutYalk = false;
             instance.transport->prepareYtpRokt();
             instance.selectedMode = -5;
             return std::string("status=prepared\nprotocol=rokt_ytp68\n");
@@ -372,6 +375,7 @@ orbita_plugin_status_v1 invoke(void* value, const char* capability, const char* 
             instance.ytpLegacyMode2 = false;
             instance.ytpRokt68 = false;
             instance.yvpProbe = false;
+            instance.yvpReadoutYalk = false;
             const std::string protocol = args.count("protocol")
                 ? args.at("protocol") : "passive_capture";
             if (protocol == "passive_capture") {
@@ -425,6 +429,7 @@ orbita_plugin_status_v1 invoke(void* value, const char* capability, const char* 
             instance.ytpPassive = false;
             instance.ytpLegacyMode2 = false;
             instance.ytpRokt68 = false;
+            instance.yvpReadoutYalk = plugin::booleanValue(args, "readout_yalk", true);
             const unsigned cell = plugin::unsignedValue(args, "cell", 1);
             if (cell < 1 || cell > 255) {
                 throw std::invalid_argument("Номер ячейки ЯВП должен быть 1..255");
@@ -456,6 +461,7 @@ orbita_plugin_status_v1 invoke(void* value, const char* capability, const char* 
             instance.ytpLegacyMode2 = false;
             instance.ytpRokt68 = false;
             instance.yvpProbe = false;
+            instance.yvpReadoutYalk = false;
             const std::string protocol = args.count("protocol")
                 ? args.at("protocol")
                 : (instance.config.count("protocol") ? instance.config.at("protocol") : "legacy_mode6");
@@ -489,6 +495,7 @@ orbita_plugin_status_v1 invoke(void* value, const char* capability, const char* 
             instance.ytpLegacyMode2 = false;
             instance.ytpRokt68 = false;
             instance.yvpProbe = false;
+            instance.yvpReadoutYalk = false;
             return std::string("status=ok\n");
         }
         if (command == "stats") return statsText(instance.transport->stats());
