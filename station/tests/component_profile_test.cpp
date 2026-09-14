@@ -25,14 +25,25 @@ bool contains(const std::vector<std::string>& values, const std::string& value)
     return std::find(values.begin(), values.end(), value) != values.end();
 }
 
+bool requiresResource(
+    const ScenarioNode& node,
+    const std::string& resource,
+    const std::string& capability)
+{
+    return std::any_of(node.requiredResources.begin(), node.requiredResources.end(),
+        [&](const ResourceRequirement& requirement) {
+            return requirement.resource == resource && requirement.capability == capability;
+        });
+}
+
 } // namespace
 
 int main(int argc, char** argv)
 {
     QCoreApplication app(argc, argv);
     try {
-        const auto profilePath = QDir(QString::fromUtf8(ORBITA_SOURCE_DIR))
-            .filePath(QStringLiteral("data/profiles/stand_ktma.yaml"));
+        const QDir sourceRoot(QString::fromUtf8(ORBITA_SOURCE_DIR));
+        const auto profilePath = sourceRoot.filePath(QStringLiteral("data/profiles/stand_ktma.yaml"));
         const auto profile = loadStandProfile(profilePath.toStdString());
 
         const auto* sampleSource = findComponentByBinding(
@@ -81,6 +92,23 @@ int main(int argc, char** argv)
                 "KTMA delivery must declare one sample source and six equipment components");
         require(profile.devices.size() == 6,
                 "Legacy equipment view must be derived for all six KTMA equipment components");
+
+        const auto powerScenario = loadScenarioYaml(sourceRoot.filePath(
+            QStringLiteral("data/scenarios/ubsi_production_power.yaml")).toStdString());
+        require(powerScenario.steps.size() == 2,
+                "Production power scenario must contain measurement and safe-off steps");
+        const auto& supplyRange = powerScenario.steps.front();
+        require(supplyRange.requiredCapabilities.empty(),
+                "Production power measurement must no longer depend on global capability routing");
+        require(requiresResource(supplyRange, "power.dut", "power.dc_supply"),
+                "Production power measurement must select the DUT supply role");
+        require(requiresResource(supplyRange, "dut.parameter_source", "ulk.parameter_source"),
+                "Production power measurement must select the DUT telemetry role");
+        const auto& safeOff = powerScenario.steps.back();
+        require(safeOff.requiredCapabilities.empty(),
+                "Production power safe-off must no longer depend on global capability routing");
+        require(requiresResource(safeOff, "power.dut", "power.dc_supply"),
+                "Production power safe-off must select the DUT supply role");
 
         std::cout << "component profile contract OK\n";
         return 0;
