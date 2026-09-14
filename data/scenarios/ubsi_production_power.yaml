@@ -3,7 +3,7 @@ id: ktma.ubsi.production.power
 # Production package: this is not a TU acceptance document. It reuses the
 # same verified measurement procedures and stores the result in Production lifecycle.
 title: Производство УБСИ · питание / потребление
-version: 1.0.0
+version: 1.1.0
 catalog_version: 2026.08.29-yalk-1
 object_type: UBSI_468157_002
 state: published
@@ -13,9 +13,11 @@ steps:
     title: Питание 24 / 27 / 35 В, общий ток и выдержки 19 / 37 В
     tu: PRODUCTION / POWER_CONSUMPTION
     procedure: ubsi.supply_range
-    requires:
-      - power.dc_supply
-      - ulk.parameter_source
+    resources:
+      - resource: power.dut
+        capability: power.dc_supply
+      - resource: dut.parameter_source
+        capability: ulk.parameter_source
     args:
       voltage_points_v: 24,27,35
       maximum_total_current_a: 0.4
@@ -32,5 +34,6 @@ steps:
     title: Безопасное отключение питания после производственной проверки
     tu: PRODUCTION / SAFE_CLEANUP
     procedure: ubsi.power_safe_off
-    requires:
-      - power.dc_supply
+    resources:
+      - resource: power.dut
+        capability: power.dc_supply
