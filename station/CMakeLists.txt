@@ -213,7 +213,7 @@ target_link_libraries(orbita_equipment_probe PRIVATE orbita_stand_runtime Qt6::C
 
 add_executable(orbita_telemetry_probe tools/orbita_telemetry_probe.cpp)
 target_link_libraries(orbita_telemetry_probe PRIVATE
-    orbita orbita_stand_adapters orbita_stand_runtime Qt6::Core)
+    miltech_orbita_integration orbita_stand_adapters Qt6::Core)
 
 add_executable(orbita_ubsi_udp_probe tools/ubsi_udp_probe.cpp)
 target_link_libraries(orbita_ubsi_udp_probe PRIVATE orbita_stand_adapters)
