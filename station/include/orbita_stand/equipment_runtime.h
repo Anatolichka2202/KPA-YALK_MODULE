@@ -60,18 +60,48 @@ private:
     std::unique_ptr<Impl> impl_;
 };
 
+struct EquipmentResourceDescriptor {
+    std::string id;
+    std::set<std::string> capabilities;
+    bool builtin = false;
+};
+
 class EquipmentRegistry final : public ICapabilityProvider {
 public:
     using InvokeFunction = std::function<std::string(
         const std::string& operation,
         const std::map<std::string, std::string>& arguments)>;
+    using ResourceInvokeFunction = std::function<std::string(
+        const std::string& capability,
+        const std::string& operation,
+        const std::map<std::string, std::string>& arguments)>;
     using SafeStopFunction = std::function<void()>;
 
+    // Legacy default routing by capability. Existing scenarios use this path.
     void bind(std::string capability, std::shared_ptr<EquipmentDevice> device);
-    // Встроенные источники приложения (например, liborbita/E20) используют тот
-    // же capability-контракт, но не обязаны притворяться DLL-плагином.
     void bind(std::string capability, InvokeFunction invoke,
               SafeStopFunction safeStop = {});
+
+    // Role/resource routing. Several resources may provide the same capability
+    // without overwriting each other. Resource id is the stable logical role;
+    // capability remains the operation contract implemented by that resource.
+    void bindResource(std::string resourceId, std::shared_ptr<EquipmentDevice> device);
+    void bindResource(
+        std::string resourceId,
+        std::set<std::string> capabilities,
+        ResourceInvokeFunction invoke,
+        SafeStopFunction safeStop = {});
+    bool hasResource(const std::string& resourceId) const;
+    bool resourceHasCapability(
+        const std::string& resourceId,
+        const std::string& capability) const;
+    std::string invokeResource(
+        const std::string& resourceId,
+        const std::string& capability,
+        const std::string& operation,
+        const std::map<std::string, std::string>& arguments = {});
+    std::vector<EquipmentResourceDescriptor> resources() const;
+
     void clear();
     bool hasCapability(const std::string& capability) const override;
     std::string invoke(
@@ -86,8 +116,16 @@ private:
         InvokeFunction invoke;
         SafeStopFunction safeStop;
     };
+    struct BuiltinResourceBinding {
+        std::set<std::string> capabilities;
+        ResourceInvokeFunction invoke;
+        SafeStopFunction safeStop;
+    };
+
     std::map<std::string, std::shared_ptr<EquipmentDevice>> bindings_;
     std::map<std::string, BuiltinBinding> builtinBindings_;
+    std::map<std::string, std::shared_ptr<EquipmentDevice>> resourceBindings_;
+    std::map<std::string, BuiltinResourceBinding> builtinResourceBindings_;
 };
 
 std::string encodePluginArguments(const std::map<std::string, std::string>& arguments);
