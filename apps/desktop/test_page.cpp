@@ -18,7 +18,7 @@ QString productionScenarioTitle(const QString& code)
 {
     if (code == QStringLiteral("PROD_YALK")) return QStringLiteral("Полная ЯЛК-96");
     if (code == QStringLiteral("PROD_YTP")) return QStringLiteral("Полная ЯТП · 0 / 120 / 240 Ом");
-    if (code == QStringLiteral("PROD_YVP")) return QStringLiteral("Полная ЯВП-8 · ROKT");
+    if (code == QStringLiteral("PROD_YVP")) return QStringLiteral("Полная ЯВП-8 · V7 / ИСД");
     return QStringLiteral("Полная производственная проверка УБСИ");
 }
 
@@ -366,6 +366,12 @@ void TestPage::updateSelectionSummary()
         }
     }
     impl_->configureRouteVisibility();
+    if (scope == QStringLiteral("ЯВП-8")) {
+        // The current YVP production scenario contains supply_status before the
+        // measurement matrix, so Power remains a visible route stage.
+        impl_->stageLabels[static_cast<int>(TopStage::Power)]->setProperty("includedInRoute", true);
+        impl_->updateStageLabels();
+    }
     updateStartAvailability();
 }
 
@@ -509,7 +515,7 @@ void TestPage::setRunEvent(const orbita::stand::RunEvent& event)
                 : node.contains(QStringLiteral("calibration"))
                     ? QStringLiteral("Калибровка") : QStringLiteral("Подготовка потока"));
         else if (node.startsWith(QStringLiteral("yvp_")))
-            setRouteDetail(static_cast<int>(TopStage::Yvp), QStringLiteral("ROKT · 8 каналов"));
+            setRouteDetail(static_cast<int>(TopStage::Yvp), QStringLiteral("V7 / ИСД · 8 каналов"));
         impl_->updateProgressByStage();
         return;
     }
@@ -576,6 +582,63 @@ void TestPage::setRunEvent(const orbita::stand::RunEvent& event)
         impl_->ytpResistanceSteps->setActiveValue(resistance);
         setRouteDetail(static_cast<int>(TopStage::Ytp),
             QStringLiteral("Р4831 · %1 Ом").arg(resistance, 0, 'f', 0));
+        impl_->updateProgressByStage();
+        return;
+    }
+
+    if (event.stage == "YVP_V7_POINT") {
+        impl_->setTopStage(TopStage::Yvp);
+        const QString channel = eventValue(event, "yvp_channel");
+        const QString frequencyText = eventValue(event, "set_frequency_hz");
+        const QString measuredFrequencyText = eventValue(event, "measured_frequency_hz");
+        const QString gainText = eventValue(event, "gain_mv_per_pc");
+        const QString calculatedGainText = eventValue(event, "calculated_gain_mv_per_pc");
+        const QString v7RmsText = eventValue(event, "v7_output_vrms");
+        const QString acceptance = eventValue(event, "acceptance");
+
+        bool frequencyOk = false;
+        bool measuredFrequencyOk = false;
+        bool gainOk = false;
+        bool calculatedGainOk = false;
+        bool v7Ok = false;
+        const double frequency = frequencyText.toDouble(&frequencyOk);
+        const double measuredFrequency = measuredFrequencyText.toDouble(&measuredFrequencyOk);
+        const double gain = gainText.toDouble(&gainOk);
+        const double calculatedGain = calculatedGainText.toDouble(&calculatedGainOk);
+        const double v7Rms = v7RmsText.toDouble(&v7Ok);
+
+        impl_->yvpChannel->setText(channel.isEmpty()
+            ? QStringLiteral("—") : QStringLiteral("%1 / 8").arg(channel));
+        if (frequencyOk) {
+            impl_->yvpFrequency->setText(measuredFrequencyOk
+                ? QStringLiteral("%1 Гц · В7 %2 Гц")
+                    .arg(frequency, 0, 'g', 8).arg(measuredFrequency, 0, 'g', 8)
+                : QStringLiteral("%1 Гц").arg(frequency, 0, 'g', 8));
+        } else {
+            impl_->yvpFrequency->setText(QStringLiteral("—"));
+        }
+        impl_->yvpGain->setText(gainOk
+            ? QStringLiteral("%1 мВ/пКл").arg(gain, 0, 'g', 8)
+            : QStringLiteral("—"));
+        impl_->yvpResult->setText(calculatedGainOk
+            ? QStringLiteral("%1 мВ/пКл").arg(calculatedGain, 0, 'g', 8)
+            : QStringLiteral("—"));
+        impl_->yvpStatus->setText(QStringLiteral("Rigol → ЯВП-8 → ИСД → В7 · %1%2")
+            .arg(v7Ok ? QStringLiteral("В7 %1 Vrms").arg(v7Rms, 0, 'g', 8)
+                      : QStringLiteral("измерение В7"),
+                 acceptance == QStringLiteral("not_applied")
+                     ? QStringLiteral(" · commissioning, приёмочный критерий не применён")
+                     : QString()));
+        impl_->yvpTrend->configure(QStringLiteral("ЯВП-8 · Kу задан / рассчитан"),
+                                   QStringLiteral("мВ/пКл"),
+                                   QStringLiteral("задано"),
+                                   QStringLiteral("рассчитано"));
+        if (gainOk && calculatedGainOk) impl_->yvpTrend->append(gain, calculatedGain);
+        setRouteDetail(static_cast<int>(TopStage::Yvp),
+            QStringLiteral("Канал %1 / 8 · Kу %2 · %3 Гц")
+                .arg(channel.isEmpty() ? QStringLiteral("—") : channel,
+                     gainOk ? QString::number(gain, 'g', 8) : QStringLiteral("—"),
+                     frequencyOk ? QString::number(frequency, 'g', 8) : QStringLiteral("—")));
         impl_->updateProgressByStage();
         return;
     }
