@@ -91,6 +91,8 @@ QString writeScenario(QTemporaryDir& directory)
               "    title: Read primary supply\n"
               "    tu: 1.1\n"
               "    procedure: test.resource_read\n"
+              "    args:\n"
+              "      technical_retries: 2\n"
               "    requires:\n"
               "      - power.dc_supply\n"
               "    resources:\n"
@@ -122,6 +124,10 @@ int main(int argc, char** argv)
                 "resource id was not preserved");
         require(node.requiredResources.front().capability == "power.dc_supply",
                 "resource capability was not preserved");
+        require(node.policy.technicalRetries == 2,
+                "technical retry policy was not parsed into typed scenario state");
+        require(!node.arguments.count("technical_retries"),
+                "technical retry policy leaked into procedure arguments");
 
         ScenarioEngine engine;
         engine.registerProcedure("test.resource_read",
