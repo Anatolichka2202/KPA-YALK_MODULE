@@ -36,7 +36,13 @@ void StationSession::configure(
                 }
             }
         }
-        components_.instantiate(profile, selectedKinds);
+        // An equipment-only profile in Deferred mode legitimately has no
+        // ComponentRuntime work. Passing an empty selection to instantiate()
+        // means "all profile kinds", which would incorrectly send equipment
+        // through the generic component factory path.
+        if (!selectedKinds.empty()) {
+            components_.instantiate(profile, selectedKinds);
+        }
 
         profile_ = std::move(profile);
         configured_ = true;
