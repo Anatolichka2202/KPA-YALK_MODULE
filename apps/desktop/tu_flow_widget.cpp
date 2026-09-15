@@ -3,9 +3,11 @@
 #include <QComboBox>
 #include <QFrame>
 #include <QHBoxLayout>
+#include <QInputDialog>
 #include <QLabel>
-#include <QLineEdit>
+#include <QMessageBox>
 #include <QPushButton>
+#include <QRegularExpression>
 #include <QSet>
 #include <QStackedWidget>
 #include <QVBoxLayout>
@@ -23,6 +25,13 @@ QLabel* centeredLabel(const QString& text, int pointSize, bool bold = false)
     label->setFont(font);
     label->setWordWrap(true);
     return label;
+}
+
+bool validOperatorName(const QString& value)
+{
+    static const QRegularExpression pattern(
+        QStringLiteral("^[А-ЯЁ][а-яё-]+\\s[А-ЯЁ]\\.[А-ЯЁ]\\.$"));
+    return pattern.match(value.trimmed()).hasMatch();
 }
 }
 
@@ -60,6 +69,19 @@ TuFlowWidget::TuFlowWidget(QWidget* parent)
     cardLayout->setContentsMargins(24, 22, 24, 22);
     cardLayout->setSpacing(12);
 
+    auto* operatorCaption = new QLabel(QStringLiteral("Оператор"), card);
+    cardLayout->addWidget(operatorCaption);
+    auto* operatorRow = new QHBoxLayout;
+    operator_ = new QComboBox(card);
+    operator_->setObjectName(QStringLiteral("tuOperator"));
+    operator_->addItem(QStringLiteral("Выберите оператора"), QString());
+    auto* addOperator = new QPushButton(QStringLiteral("+"), card);
+    addOperator->setObjectName(QStringLiteral("tuAddOperator"));
+    addOperator->setFixedWidth(42);
+    operatorRow->addWidget(operator_, 1);
+    operatorRow->addWidget(addOperator);
+    cardLayout->addLayout(operatorRow);
+
     auto* registryCaption = new QLabel(QStringLiteral("Зарегистрированное УБСИ"), card);
     registered_ = new QComboBox(card);
     registered_->setObjectName(QStringLiteral("tuRegisteredProducts"));
@@ -67,24 +89,21 @@ TuFlowWidget::TuFlowWidget(QWidget* parent)
     cardLayout->addWidget(registryCaption);
     cardLayout->addWidget(registered_);
 
-    auto* orLabel = new QLabel(QStringLiteral("или введите заводской номер вручную"), card);
-    orLabel->setAlignment(Qt::AlignCenter);
-    orLabel->setObjectName(QStringLiteral("muted"));
-    cardLayout->addWidget(orLabel);
+    auto* note = new QLabel(
+        QStringLiteral("Выбор изделия не обращается к оборудованию. Проверка стенда начинается только по кнопке ниже."),
+        card);
+    note->setWordWrap(true);
+    note->setObjectName(QStringLiteral("muted"));
+    cardLayout->addWidget(note);
 
-    auto* manual = new QHBoxLayout;
-    manualSerial_ = new QLineEdit(card);
-    manualSerial_->setObjectName(QStringLiteral("tuManualSerial"));
-    manualSerial_->setPlaceholderText(QStringLiteral("SN УБСИ"));
-    manualSerial_->setClearButtonEnabled(true);
-    manualContinue_ = new QPushButton(QStringLiteral("Продолжить"), card);
-    manualContinue_->setObjectName(QStringLiteral("primary"));
-    manual->addWidget(manualSerial_, 1);
-    manual->addWidget(manualContinue_);
-    cardLayout->addLayout(manual);
+    check_ = new QPushButton(QStringLiteral("Проверить готовность"), card);
+    check_->setObjectName(QStringLiteral("primary"));
+    check_->setMinimumHeight(44);
+    cardLayout->addWidget(check_);
 
     scenarioState_ = new QLabel(card);
     scenarioState_->setAlignment(Qt::AlignCenter);
+    scenarioState_->setWordWrap(true);
     scenarioState_->setObjectName(QStringLiteral("muted"));
     cardLayout->addWidget(scenarioState_);
 
@@ -134,20 +153,42 @@ TuFlowWidget::TuFlowWidget(QWidget* parent)
     pages_->addWidget(readinessPage_);
 
     connect(home, &QPushButton::clicked, this, &TuFlowWidget::homeRequested);
-    connect(registered_, QOverload<int>::of(&QComboBox::activated), this, [this](int index) {
-        chooseSerial(registered_->itemData(index).toString());
+    connect(operator_, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, [this](int) { updateSelectionAvailability(); });
+    connect(registered_, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, [this](int) { updateSelectionAvailability(); });
+    connect(addOperator, &QPushButton::clicked, this, [this] {
+        bool ok = false;
+        const QString value = QInputDialog::getText(
+            this, QStringLiteral("Новый оператор"),
+            QStringLiteral("ФИО в формате «Толмачёв А.Е.»"),
+            QLineEdit::Normal, QString(), &ok).trimmed();
+        if (!ok || value.isEmpty()) return;
+        if (!validOperatorName(value)) {
+            QMessageBox::warning(this, QStringLiteral("Оператор"),
+                QStringLiteral("Используйте формат: Фамилия И.О., например «Толмачёв А.Е.»"));
+            return;
+        }
+        int index = operator_->findText(value);
+        if (index < 0) {
+            operator_->addItem(value, value);
+            index = operator_->count() - 1;
+        }
+        operator_->setCurrentIndex(index);
     });
-    connect(manualContinue_, &QPushButton::clicked, this, [this] {
-        chooseSerial(manualSerial_->text());
-    });
-    connect(manualSerial_, &QLineEdit::returnPressed, this, [this] {
-        chooseSerial(manualSerial_->text());
+    connect(check_, &QPushButton::clicked, this, [this] {
+        if (!check_->isEnabled()) return;
+        const QString serial = registered_->currentData().toString().trimmed();
+        const QString operatorName = operator_->currentData().toString().trimmed();
+        if (!serial.isEmpty() && !operatorName.isEmpty())
+            emit readinessRequested(serial, operatorName);
     });
     connect(start_, &QPushButton::clicked, this, [this] {
-        if (!activeSerial_.isEmpty()) emit startRequested(activeSerial_);
+        if (!activeSerial_.isEmpty() && !activeOperator_.isEmpty())
+            emit startRequested(activeSerial_, activeOperator_);
     });
     connect(retry_, &QPushButton::clicked, this, [this] {
-        if (activeSerial_.isEmpty()) return;
+        if (activeSerial_.isEmpty() || activeOperator_.isEmpty()) return;
         equipmentState_.clear();
         equipmentDetail_.clear();
         readinessState_->setText(QStringLiteral("ПРОВЕРКА СТЕНДА…"));
@@ -156,7 +197,7 @@ TuFlowWidget::TuFlowWidget(QWidget* parent)
         retry_->hide();
         back_->hide();
         start_->hide();
-        emit retryRequested(activeSerial_);
+        emit retryRequested(activeSerial_, activeOperator_);
     });
     connect(back_, &QPushButton::clicked, this, &TuFlowWidget::resetToSelection);
 
@@ -177,24 +218,45 @@ void TuFlowWidget::setRegisteredSerials(const QStringList& serials)
     const int previous = registered_->findData(selected);
     registered_->setCurrentIndex(previous >= 0 ? previous : 0);
     registered_->blockSignals(false);
+    updateSelectionAvailability();
+}
+
+void TuFlowWidget::setOperators(const QStringList& operators)
+{
+    const QString selected = operator_->currentData().toString();
+    QStringList unique = operators;
+    unique.removeAll(QString());
+    unique.removeDuplicates();
+    unique.sort(Qt::CaseInsensitive);
+
+    operator_->blockSignals(true);
+    operator_->clear();
+    operator_->addItem(QStringLiteral("Выберите оператора"), QString());
+    for (const auto& value : unique) operator_->addItem(value, value);
+    const int previous = operator_->findData(selected);
+    operator_->setCurrentIndex(previous >= 0 ? previous : 0);
+    operator_->blockSignals(false);
+    updateSelectionAvailability();
 }
 
 void TuFlowWidget::setScenarioAvailable(bool available, const QString& detail)
 {
     scenarioAvailable_ = available;
+    operator_->setEnabled(available);
     registered_->setEnabled(available);
-    manualSerial_->setEnabled(available);
-    manualContinue_->setEnabled(available);
     scenarioState_->setText(available ? QString() :
         (detail.isEmpty() ? QStringLiteral("Проверка по ТУ сейчас недоступна") : detail));
     scenarioState_->setStyleSheet(available
         ? QString() : QStringLiteral("color:#e1766d;font-weight:700;"));
+    updateSelectionAvailability();
 }
 
-void TuFlowWidget::beginStandCheck(const QString& serial, const QStringList& requiredEquipment)
+void TuFlowWidget::beginStandCheck(const QString& serial, const QString& operatorName,
+                                   const QStringList& requiredEquipment)
 {
     activeSerial_ = serial.trimmed();
-    if (activeSerial_.isEmpty()) return;
+    activeOperator_ = operatorName.trimmed();
+    if (activeSerial_.isEmpty() || activeOperator_.isEmpty()) return;
 
     requiredEquipment_.clear();
     QSet<QString> seen;
@@ -209,7 +271,8 @@ void TuFlowWidget::beginStandCheck(const QString& serial, const QStringList& req
     equipmentDetail_.clear();
     for (const auto& code : requiredEquipment_) equipmentState_.insert(code, -1);
 
-    serialTitle_->setText(QStringLiteral("УБСИ SN %1").arg(activeSerial_));
+    serialTitle_->setText(QStringLiteral("УБСИ SN %1 · оператор %2")
+                              .arg(activeSerial_, activeOperator_));
     readinessState_->setText(QStringLiteral("ПРОВЕРКА СТЕНДА…"));
     readinessState_->setStyleSheet(QStringLiteral("color:#9ac7ff;"));
     failureDetail_->clear();
@@ -240,12 +303,14 @@ void TuFlowWidget::setEquipmentStatus(const QString& code, bool ready, const QSt
 void TuFlowWidget::resetToSelection()
 {
     activeSerial_.clear();
+    activeOperator_.clear();
     requiredEquipment_.clear();
     equipmentState_.clear();
     equipmentDetail_.clear();
-    manualSerial_->clear();
     registered_->setCurrentIndex(0);
+    operator_->setCurrentIndex(0);
     pages_->setCurrentWidget(selectionPage_);
+    updateSelectionAvailability();
 }
 
 QString TuFlowWidget::activeSerial() const
@@ -253,13 +318,17 @@ QString TuFlowWidget::activeSerial() const
     return activeSerial_;
 }
 
-void TuFlowWidget::chooseSerial(const QString& serial)
+QString TuFlowWidget::activeOperator() const
 {
-    if (!scenarioAvailable_) return;
-    const QString normalized = serial.trimmed();
-    if (normalized.isEmpty()) return;
-    activeSerial_ = normalized;
-    emit serialChosen(normalized);
+    return activeOperator_;
+}
+
+void TuFlowWidget::updateSelectionAvailability()
+{
+    const bool ready = scenarioAvailable_
+        && !operator_->currentData().toString().trimmed().isEmpty()
+        && !registered_->currentData().toString().trimmed().isEmpty();
+    check_->setEnabled(ready);
 }
 
 void TuFlowWidget::updateReadiness()
