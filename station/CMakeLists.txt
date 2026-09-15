@@ -10,34 +10,6 @@ target_include_directories(orbita_stand_core
 target_compile_features(orbita_stand_core PUBLIC cxx_std_17)
 add_library(stand_core ALIAS orbita_stand_core)
 
-add_library(orbita_stand_domain STATIC
-    src/yalk_analog_procedure.cpp
-    src/ubsi_procedures.cpp
-    src/ubsi_procedures_current.cpp
-    src/ubsi_procedures_rokt.cpp
-    src/ubsi_procedures_v7.cpp
-    src/telemetry_procedures.cpp
-)
-
-# Layer the historical implementation, current KTMA overrides and ROKT
-# commissioning helpers first. ubsi_procedures_v7.cpp owns the final public
-# registerUbsiProcedures() symbol and installs the production V7+ISD YVP alias
-# last, so `ubsi.yvp` can never silently fall back to the adapter/ROKT path.
-set_source_files_properties(src/ubsi_procedures.cpp PROPERTIES
-    COMPILE_DEFINITIONS "registerUbsiProcedures=registerLegacyUbsiProcedures")
-set_source_files_properties(src/ubsi_procedures_current.cpp PROPERTIES
-    COMPILE_DEFINITIONS "registerUbsiProcedures=registerCurrentUbsiProcedures")
-set_source_files_properties(src/ubsi_procedures_rokt.cpp PROPERTIES
-    COMPILE_DEFINITIONS "registerUbsiProcedures=registerRoktUbsiProcedures")
-
-target_include_directories(orbita_stand_domain
-    PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/include
-)
-
-target_compile_features(orbita_stand_domain PUBLIC cxx_std_17)
-target_link_libraries(orbita_stand_domain PUBLIC orbita_stand_core)
-
 find_package(Qt6 REQUIRED COMPONENTS Core Network SerialPort Sql Gui)
 
 add_library(orbita_stand_catalog STATIC
@@ -59,8 +31,9 @@ target_link_libraries(orbita_stand_reporting PUBLIC orbita_stand_core Qt6::Core 
 add_library(stand_reporting ALIAS orbita_stand_reporting)
 
 # Universal station runtime. This target deliberately does not depend on the
-# KTMA/UBSI procedure domain or reporting. It owns profile loading, component
-# lifecycle, equipment/execution runtime and the application-neutral session.
+# KTMA/UBSI procedure domain, a protocol consumer or reporting. It owns profile
+# loading, component lifecycle, equipment/execution runtime and the
+# application-neutral session.
 add_library(orbita_stand_runtime STATIC
     src/config.cpp
     src/equipment_runtime.cpp
@@ -106,29 +79,11 @@ endif()
 add_library(stand_io ALIAS orbita_stand_adapters)
 
 if(BUILD_TESTING)
-    add_executable(yalk_analog_procedure_test
-        tests/yalk_analog_procedure_test.cpp
-    )
-    target_link_libraries(yalk_analog_procedure_test PRIVATE orbita_stand_domain)
-    add_test(NAME stand.yalk_analog_procedure COMMAND yalk_analog_procedure_test)
-
     add_executable(equipment_protocol_test
         tests/equipment_protocol_test.cpp
     )
     target_link_libraries(equipment_protocol_test PRIVATE orbita_stand_adapters)
     add_test(NAME stand.equipment_protocol COMMAND equipment_protocol_test)
-
-    add_executable(scenario_runtime_test tests/scenario_runtime_test.cpp)
-    target_compile_definitions(scenario_runtime_test PRIVATE
-        ORBITA_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
-    target_link_libraries(scenario_runtime_test PRIVATE
-        orbita_stand_runtime
-        orbita_stand_adapters
-        orbita_stand_domain
-        orbita_stand_reporting
-        Qt6::Core
-        Qt6::Sql)
-    add_test(NAME stand.scenario_runtime COMMAND scenario_runtime_test)
 
     add_executable(scenario_resource_test tests/scenario_resource_test.cpp)
     target_link_libraries(scenario_resource_test PRIVATE orbita_stand_runtime Qt6::Core)
@@ -155,17 +110,10 @@ if(BUILD_TESTING)
     target_link_libraries(station_session_test PRIVATE orbita_stand_runtime Qt6::Core)
     add_test(NAME stand.station_session COMMAND station_session_test)
 
-    add_executable(ubsi_backend_contract_test tests/ubsi_backend_contract_test.cpp)
-    target_compile_definitions(ubsi_backend_contract_test PRIVATE
-        ORBITA_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
-    target_link_libraries(ubsi_backend_contract_test PRIVATE orbita_stand_domain)
-    add_test(NAME stand.ubsi_backend_contract COMMAND ubsi_backend_contract_test)
-
     if(WIN32)
         set(_orbita_qt_test_path "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
         set_tests_properties(
             stand.equipment_protocol
-            stand.scenario_runtime
             stand.scenario_resource
             stand.component_profile
             stand.component_runtime

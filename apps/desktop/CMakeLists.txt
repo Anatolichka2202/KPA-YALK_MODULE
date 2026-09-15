@@ -65,10 +65,10 @@ target_link_libraries(MilTechStation PRIVATE
     miltech_orbita_integration
     orbita_stand_runtime
     orbita_stand_adapters
-    orbita_stand_domain
     orbita_stand_reporting
     ktma_registrar
     ktma_ubsi
+    ktma_ubsi_procedures
     ktma_ubsi_reporting
     Qt6::Core
     Qt6::Widgets
@@ -161,7 +161,7 @@ if(BUILD_TESTING)
     )
 
     target_link_libraries(test_page_smoke_test PRIVATE
-        orbita_stand_domain
+        ktma_ubsi_procedures
         Qt6::Core
         Qt6::Widgets
     )

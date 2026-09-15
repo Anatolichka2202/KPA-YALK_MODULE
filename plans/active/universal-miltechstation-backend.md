@@ -72,6 +72,7 @@ protocol consumer (например liborbita)
 - [x] `liborbita::pushSamples()` как единственный station-facing raw input;
 - [x] `orbita_telemetry_probe` и desktop получают `telemetry.orbita.sample_source` из station component model;
 - [x] `OrbitaSampleBridge` вынесен в `integrations/orbita`;
+- [x] desktop запускает/останавливает поток через `OrbitaSampleBridge`, а не ручные callbacks;
 - [x] legacy `setDeviceE2010()/setDeviceNone()` удалены;
 - [x] старые `orbita/device/e2010_device.*` и liborbita-level `ISampleSource` удалены;
 - [x] target `orbita` не включает и не линкует Lusbapi; Lusbapi принадлежит E20 station provider.
@@ -93,20 +94,23 @@ protocol consumer (например liborbita)
 
 ## 5. Границы домена
 
-Статус: **PARTIAL**
+Статус: **PARTIAL / ACTIVE MIGRATION**
 
 Сделано:
 
 - [x] `orbita_stand_runtime` не зависит от UBSI procedure domain/reporting;
 - [x] station adapters не получают UBSI domain транзитивно;
 - [x] общие typed equipment contracts вынесены отдельно;
-- [x] desktop и KTMA tests объявляют product-domain dependency явно.
+- [x] compiled YALK/UBSI procedure implementations перенесены из `station/src` в `deliveries/ktma/ubsi/src/procedures`;
+- [x] KTMA procedure implementation собирается отдельным `ktma_ubsi_procedures` target;
+- [x] Orbita telemetry procedures принадлежат `integrations/orbita`, а не generic station target;
+- [x] generic `station` CMake больше не содержит product procedure domain target;
+- [x] KTMA procedure/runtime contract tests собираются со стороны delivery.
 
 Остаётся:
 
-- [ ] убрать `ubsi_*` / `yalk_*` source files из generic `station` target;
-- [ ] перенести KTMA/UBSI procedures в delivery/object package;
-- [ ] отделить общие telemetry/protocol procedures от KTMA procedures;
+- [ ] перенести compatibility headers `ubsi_procedures.h`, `yalk_analog_procedure.h`, `ubsi_yvp_math.h` из generic station include в delivery-owned include API;
+- [ ] проверить и удалить/перенести оставшиеся неиспользуемые legacy `ubsi_procedures_entry.cpp` / `ubsi_procedures_yvp_v7.cpp`;
 - [ ] разнести KTMA-specific ROKT/ULK/ISD implementations и действительно общие station adapters.
 
 ## 6. Resource / role model
@@ -163,18 +167,18 @@ COM/baud/IP/credentials принадлежат delivery/environment, а не sta
 
 ## 8. Desktop / application composition
 
-Статус: **PARTIAL / MIGRATION READY**
+Статус: **PARTIAL**
 
 - [x] `StationSession` владеет profile, `ComponentRuntime`, EquipmentPluginManager/Registry и device retention;
 - [x] `StationSession` поддерживает `Immediate` и `Deferred` equipment composition;
 - [x] Deferred mode загружает providers и non-equipment components, но не захватывает физические devices до readiness;
 - [x] contract test проверяет, что Deferred не создаёт equipment, а Immediate сохраняет прежнюю семантику;
-- [x] desktop E20/sample source уже находится в station component model;
+- [x] desktop ownership переключён на `StationSession(Deferred)`; старые desktop поля являются non-owning compatibility views;
+- [x] desktop E20/sample source находится в station component model;
 - [x] readiness resource aliases восстанавливаются на проверенных экземплярах оборудования без создания скрытого второго device;
-- [ ] переключить ownership текущего desktop с отдельных `ComponentRuntime/EquipmentRegistry/PluginManager/devices` на `StationSession` в `Deferred` mode;
-- [ ] сохранить KTMA readiness sequence: питание УБСИ → выдержка → проверка адаптера;
-- [ ] использовать `OrbitaSampleBridge` в desktop вместо ручного sample callback wiring;
-- [ ] убрать lifecycle оборудования из `MainWindow`;
+- [x] `OrbitaSampleBridge` используется как desktop integration boundary;
+- [x] KTMA readiness sequence питание УБСИ → выдержка → проверка адаптера сохранена;
+- [ ] убрать оставшийся equipment/readiness orchestration из `MainWindow` в application-neutral/delivery lifecycle;
 - [ ] product/delivery package подключать композицией, а не расширением `integration*()` API;
 - [ ] операторский UX УБСИ не перерабатывать в рамках backend migration.
 
@@ -191,9 +195,8 @@ COM/baud/IP/credentials принадлежат delivery/environment, а не sta
 ## Следующие шаги
 
 1. держать текущий backend-срез зелёным по CI;
-2. завершить desktop ownership migration на `StationSession(Deferred)` без изменения readiness порядка;
-3. использовать `OrbitaSampleBridge` как integration boundary desktop telemetry;
-4. физически вынести UBSI/YALK procedures из generic `station` target в KTMA/UBSI delivery;
-5. закончить resource migration standalone YTP и остальных TU-сценариев;
-6. связать `execution_runtime` с run/evidence и подключить первый существующий Python/Lua стенд;
-7. после появления реального board consumer добавить serial/SSH transport contracts.
+2. завершить перенос compatibility headers и аудит legacy UBSI procedure sources;
+3. вынести readiness orchestration из `MainWindow`, сохранив физический порядок КТМА;
+4. закончить resource migration standalone YTP и остальных TU-сценариев;
+5. связать `execution_runtime` с run/evidence и подключить первый существующий Python/Lua стенд;
+6. после появления реального board consumer добавить serial/SSH transport contracts.
