@@ -54,6 +54,16 @@ bool tuReferences(const std::string& yaml, const std::string& requirement)
 void yvpScenarioContract()
 {
     const auto standalone = readFile("data/scenarios/ubsi_production_yvp.yaml");
+    const std::vector<std::string> measurementMap{
+        "measurement_1_contacts: 44",
+        "measurement_2_contacts: 29",
+        "measurement_3_contacts: 30",
+        "measurement_4_contacts: 31",
+        "measurement_5_contacts: 71",
+        "measurement_6_contacts: 72",
+        "measurement_7_contacts: 88",
+        "measurement_8_contacts: 73",
+    };
     require(contains(standalone, "procedure: ubsi.yvp"),
         "standalone YVP production must call the production YVP alias");
     require(!contains(standalone, "procedure: yvp.enter_mode"),
@@ -68,14 +78,26 @@ void yvpScenarioContract()
         "V7+ISD production YVP must require Rigol, ISD and V7");
     require(contains(standalone, "mapping_confirmed: true"),
         "YVP production must use the confirmed ISD E3/firmware map");
-    require(contains(standalone, "input_1_contacts: 33,37")
-            && contains(standalone, "measurement_8_contacts: 35")
+    require(contains(standalone, "input_1_contacts: 33")
             && contains(standalone, "channel_8_gain_contacts: 29,30,31,32"),
         "YVP production must retain explicit input, output and per-channel KU maps");
+    for (const auto& entry : measurementMap)
+        require(contains(standalone, entry), "Standalone YVP map is incomplete: " + entry);
+
+    for (const auto& scenario : {
+            "data/scenarios/ubsi_production_full.yaml",
+            "data/scenarios/ubsi_tu_5_6.yaml",
+            "data/scenarios/ubsi_ulk_combined_check.yaml"}) {
+        const auto yaml = readFile(scenario);
+        for (const auto& entry : measurementMap)
+            require(contains(yaml, entry), std::string(scenario) + " YVP map differs: " + entry);
+    }
     require(contains(standalone, "gains_mv_per_pcl: 0.25,0.5,1,2,4,8,32"),
         "YVP method must use the seven confirmed gain values");
     require(contains(standalone, "frequencies_hz: 0.15,20,250,500,1800,2000,4000"),
         "YVP method must retain the confirmed frequency set");
+    require(contains(standalone, "settle_ms: 2000"),
+        "YVP must allow the live generator/YVP/V7 path to settle before measurement");
 }
 
 void scenarioContract()
@@ -131,6 +153,7 @@ public:
                        const std::map<std::string, std::string>& arguments) override
     {
         operations.push_back(capability + ":" + operation);
+        requests.push_back({capability + ":" + operation, arguments});
         if (capability == "ulk.parameter_source" && operation == "start_yvp_probe") {
             ++yvpStarts;
             return "status=capturing\n";
@@ -173,6 +196,7 @@ public:
     void safeStopAll() noexcept override { stopped = true; }
 
     std::vector<std::string> operations;
+    std::vector<std::pair<std::string, std::map<std::string, std::string>>> requests;
     double supplyVoltage = 27.0;
     double hardwareCurrentLimit = 0.0;
     bool outputEnabled = false;
@@ -286,7 +310,23 @@ void procedureRuntimeContract()
         "V7+ISD commissioning must switch Rigol safely around both points");
     require(std::count(v7Equipment.operations.begin(), v7Equipment.operations.end(),
                        "stand.switch_matrix:analog") >= 1,
-        "V7+ISD measurement routing must program the analog line before the V7 bus");
+        "V7+ISD measurement routing must disable the analog output before the V7 bus");
+    const auto disabledAnalog = std::find_if(v7Equipment.requests.begin(), v7Equipment.requests.end(),
+        [](const auto& request) {
+            return request.first == "stand.switch_matrix:analog"
+                && request.second.at("channel") == "202"
+                && request.second.at("enabled") == "false";
+        });
+    const auto enabledBus = std::find_if(v7Equipment.requests.begin(), v7Equipment.requests.end(),
+        [](const auto& request) {
+            return request.first == "stand.switch_matrix:switch"
+                && request.second.at("channel") == "202"
+                && request.second.at("enabled") == "true";
+        });
+    require(disabledAnalog != v7Equipment.requests.end()
+                && enabledBus != v7Equipment.requests.end()
+                && disabledAnalog < enabledBus,
+        "V7+ISD must execute DM output OFF before connecting the external signal to the V7 bus");
     require(std::count(v7Equipment.operations.begin(), v7Equipment.operations.end(),
                        "stand.switch_matrix:full_reset") >= 2,
         "V7+ISD must use the firmware full reset before and after the channel");

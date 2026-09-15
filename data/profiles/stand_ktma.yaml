@@ -128,8 +128,8 @@ devices:
     config:
       resource: USB[0-9]*::0x164E::0x0DAD::?*INSTR
       fallback_resource: USB[0-9]*::5710::3501::?*INSTR
-      timeout_ms: 2000
-      voltage_command: READ?
+      timeout_ms: 5000
+      voltage_command: MEAS:VOLT:DC?
       current_command: MEAS:CURR:DC?
       ac_voltage_command: MEAS:VOLT:AC?
       frequency_command: MEAS:FREQ?

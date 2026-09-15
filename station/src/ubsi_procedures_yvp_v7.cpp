@@ -192,21 +192,25 @@ void setMeasurementContacts(ProcedureContext& context, unsigned analogType,
                             unsigned switchType, const std::vector<unsigned>& values,
                             bool enabled)
 {
-    // The Delphi/KPA reference routes a YVP output through two ISD commands:
-    // type=1 selects the analog measurement line (work=1/0), then type=3
-    // connects/disconnects that line to the V7 bus.  Keep the generic type=2
-    // path available for synthetic/legacy maps that do not declare an analog
-    // measurement type.
+    // The KPA overload scenario routes an externally driven line by disabling
+    // its DM output first (type=1 work=0), then connecting the same analog
+    // channel to the common V7 bus with type=3.  Enabling the DM output here
+    // would drive and load the YVP output instead of measuring it.
     for (const unsigned channel : values) {
-        if (analogType) {
+        if (enabled && analogType) {
             context.equipment.invoke("stand.switch_matrix", "analog", {
                 {"channel", std::to_string(channel)}, {"value", "0"},
-                {"enabled", enabled ? "true" : "false"}});
+                {"enabled", "false"}});
         }
         context.equipment.invoke("stand.switch_matrix", "switch", {
             {"type", std::to_string(switchType)},
             {"channel", std::to_string(channel)},
             {"enabled", enabled ? "true" : "false"}});
+        if (!enabled && analogType) {
+            context.equipment.invoke("stand.switch_matrix", "analog", {
+                {"channel", std::to_string(channel)}, {"value", "0"},
+                {"enabled", "false"}});
+        }
     }
 }
 
@@ -227,7 +231,7 @@ ProcedureResult yvpV7Isd(const ScenarioNode& node, ProcedureContext& context)
     // OUTPUT генератора не выполняются.
     if (!flag(node, "mapping_confirmed")) {
         return {RunVerdict::Incomplete,
-            "ЯВП V7/ИСД: backend выбран, но карта ИСД (входы, КУ и CH89..CH96 -> В7) ещё не подтверждена; воздействие не выполнялось",
+            "ЯВП V7/ИСД: backend выбран, но карта ИСД (входы, КУ и выходы ЯВП -> В7) ещё не подтверждена; воздействие не выполнялось",
             {}};
     }
     if (!flag(node, "active_outputs_confirmed")) {
