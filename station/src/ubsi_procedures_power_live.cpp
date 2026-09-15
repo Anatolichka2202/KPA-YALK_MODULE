@@ -109,13 +109,16 @@ void append(ProcedureResult& result, MeasurementResult value)
     result.measurements.push_back(std::move(value));
 }
 
+bool simulationMode()
+{
+    const char* text = std::getenv("MILTECH_SIMULATION");
+    if (!text) return false;
+    const std::string value(text);
+    return value == "1" || value == "true" || value == "yes";
+}
+
 void wait(ProcedureContext& context, unsigned milliseconds)
 {
-    double scale = 1.0;
-    if (const char* text = std::getenv("MILTECH_TIME_SCALE")) {
-        try { scale = std::clamp(std::stod(text), 0.001, 1.0); } catch (...) {}
-    }
-    milliseconds = static_cast<unsigned>(std::max(1.0, milliseconds * scale));
     constexpr unsigned slice = 50;
     for (unsigned elapsed = 0; elapsed < milliseconds; elapsed += slice) {
         if (context.stopRequested.load()) throw std::runtime_error("Остановлено оператором");
@@ -264,14 +267,17 @@ ProcedureResult supplyRangeLiveYalk(const ScenarioNode& node, ProcedureContext& 
     ProcedureResult result{RunVerdict::Ok,
         "Проверены рабочий диапазон питания и общий ток потребления УБСИ", {}};
     const auto publishSupply = [&](double setpoint, const std::string& state,
-                                   unsigned elapsed = 0, unsigned duration = 0) {
+                                   unsigned elapsed = 0, unsigned duration = 0,
+                                   unsigned normativeDuration = 0, bool compressed = false) {
         context.eventSink({std::chrono::system_clock::now(), node.id, "SUPPLY", "Общий ток УБСИ",
             RunVerdict::NotRun,
             {{"setpoint_v", std::to_string(setpoint)},
              {"volts", std::to_string(responseNumber(state, "volts"))},
              {"amperes", std::to_string(responseNumber(state, "amperes"))},
              {"elapsed_s", std::to_string(elapsed)},
-             {"duration_s", std::to_string(duration)}}});
+             {"duration_s", std::to_string(duration)},
+             {"normative_duration_s", std::to_string(normativeDuration ? normativeDuration : duration)},
+             {"simulation_compressed", compressed ? "true" : "false"}}});
     };
     const auto restore = [&] {
         context.equipment.invoke("power.dc_supply", "set_voltage", {
@@ -318,34 +324,51 @@ ProcedureResult supplyRangeLiveYalk(const ScenarioNode& node, ProcedureContext& 
                 1.0, 1.0, "лог."));
         }
 
+        const bool simulation = simulationMode();
         for (std::size_t index = 0; index < survival.size(); ++index) {
             context.equipment.invoke("power.dc_supply", "set_voltage", {
                 {"volts", std::to_string(survival[index])}});
-            const unsigned durationMs = static_cast<unsigned>(durations[index] * 1000.0);
+
+            const unsigned normativeDurationSec = static_cast<unsigned>(std::llround(durations[index]));
+            const bool compressNineteenVoltFiveMinute = simulation
+                && std::abs(survival[index] - 19.0) < 0.01
+                && normativeDurationSec == 300;
+            const unsigned effectiveDurationSec = compressNineteenVoltFiveMinute
+                ? 20u : normativeDurationSec;
+            const unsigned durationMs = effectiveDurationSec * 1000u;
+
             for (unsigned elapsed = 0; elapsed < durationMs;) {
                 const auto state = context.equipment.invoke("power.dc_supply", "read_state", {});
-                publishSupply(survival[index], state, elapsed / 1000, durationMs / 1000);
+                publishSupply(survival[index], state, elapsed / 1000, effectiveDurationSec,
+                              normativeDurationSec, compressNineteenVoltFiveMinute);
                 publishPowerYalk(context, node, survival[index]);
                 const unsigned interval = std::min(1000u, durationMs - elapsed);
                 wait(context, interval);
                 elapsed += interval;
             }
             const auto state = context.equipment.invoke("power.dc_supply", "read_state", {});
-            publishSupply(survival[index], state, durationMs / 1000, durationMs / 1000);
+            publishSupply(survival[index], state, effectiveDurationSec, effectiveDurationSec,
+                          normativeDurationSec, compressNineteenVoltFiveMinute);
             publishPowerYalk(context, node, survival[index]);
             const double actualVoltage = responseNumber(state, "volts");
             auto held = measurement("ubsi.supply.survival_voltage",
                 "Фактическое напряжение выдержки " + std::to_string(survival[index]) + " В",
                 survival[index], actualVoltage, survival[index] - voltageTolerance,
                 survival[index] + voltageTolerance, "В");
-            held.attributes = {{"duration_s", std::to_string(durations[index])}};
+            held.attributes = {{"duration_s", std::to_string(normativeDurationSec)},
+                               {"executed_duration_s", std::to_string(effectiveDurationSec)},
+                               {"simulation_compressed", compressNineteenVoltFiveMinute ? "true" : "false"}};
             append(result, std::move(held));
 
             restore();
-            append(result, measurement("ubsi.supply.survived",
+            auto survived = measurement("ubsi.supply.survived",
                 "Работоспособность после предельного напряжения и возврата к 27 В",
                 1.0, restartYalk(context, recoveryTimeoutMs) ? 1.0 : 0.0,
-                1.0, 1.0, "лог."));
+                1.0, 1.0, "лог.");
+            survived.attributes = {{"duration_s", std::to_string(normativeDurationSec)},
+                                   {"executed_duration_s", std::to_string(effectiveDurationSec)},
+                                   {"simulation_compressed", compressNineteenVoltFiveMinute ? "true" : "false"}};
+            append(result, std::move(survived));
             publishPowerYalk(context, node, restoreVoltage);
         }
         restore();
