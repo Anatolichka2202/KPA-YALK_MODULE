@@ -150,6 +150,12 @@ void StationSession::retainEquipmentDevice(std::shared_ptr<EquipmentDevice> devi
     equipmentDevices_.push_back(std::move(device));
 }
 
+void StationSession::clearPhysicalEquipment() noexcept
+{
+    equipment_.clearPhysical();
+    equipmentDevices_.clear();
+}
+
 void StationSession::clearEquipment() noexcept
 {
     equipment_.clear();
