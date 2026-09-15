@@ -105,8 +105,10 @@ int main(int argc, char** argv)
     require(context->text().contains(QStringLiteral("Канал 3 / 8 · Kу 0.5 · 500 Гц")),
             "YVP contextual left side did not advance from V7/ISD event");
     require(overview->property("yvpRenderedChannelCount").toInt() == 1,
-            "YVP eight-channel plane must retain the first measured channel");
+            "YVP current-point plane must retain the first measured channel");
+    require(overview->property("yvpCompletedPointCount").toInt() == 1,
+            "YVP 8x7x7 matrix must count the first completed point");
 
-    std::cout << "YVP V7/ISD frozen operator view test passed\n";
+    std::cout << "YVP V7/ISD operator matrix test passed\n";
     return EXIT_SUCCESS;
 }
