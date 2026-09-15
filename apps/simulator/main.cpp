@@ -23,6 +23,7 @@
 #include <QUdpSocket>
 #include <QNetworkDatagram>
 #include <QRegularExpression>
+#include <QVariant>
 #include <QVBoxLayout>
 
 #include <array>
@@ -78,10 +79,12 @@ public:
         connect(&frameTimer_, &QTimer::timeout, this, [this] { sendFrame(); });
         frameTimer_.start(2);
 
-        startTcpServer(isdServer_, 18080, [this](QTcpSocket* socket, const QByteArray& request) {
+        startTcpServer(isdServer_, 18080, QByteArray("\r\n\r\n"),
+                       [this](QTcpSocket* socket, const QByteArray& request) {
             handleIsd(socket, request);
         });
-        startTcpServer(scpiServer_, 15025, [this](QTcpSocket* socket, const QByteArray& request) {
+        startTcpServer(scpiServer_, 15025, QByteArray("\n"),
+                       [this](QTcpSocket* socket, const QByteArray& request) {
             handleScpi(socket, request);
         });
         setNormal();
@@ -245,18 +248,40 @@ private:
     }
 
     template<class Handler>
-    void startTcpServer(QTcpServer& server, quint16 port, Handler handler)
+    void startTcpServer(QTcpServer& server, quint16 port, QByteArray terminator, Handler handler)
     {
-        connect(&server, &QTcpServer::newConnection, this, [&server, handler] {
+        connect(&server, &QTcpServer::newConnection, this,
+                [this, &server, terminator = std::move(terminator), handler] {
             while (auto* socket = server.nextPendingConnection()) {
-                QObject::connect(socket, &QTcpSocket::readyRead, socket, [socket, handler] {
-                    handler(socket, socket->readAll());
+                QObject::connect(socket, &QTcpSocket::readyRead, this,
+                                 [this, socket, terminator, handler] {
+                    QByteArray buffer = socket->property("simulator.requestBuffer").toByteArray();
+                    buffer += socket->readAll();
+                    if (buffer.size() > 64 * 1024) {
+                        appendLog(QStringLiteral("TCP: запрос превышает 64 KiB, соединение закрыто"));
+                        socket->abort();
+                        return;
+                    }
+                    if (!buffer.contains(terminator)) {
+                        socket->setProperty("simulator.requestBuffer", buffer);
+                        return;
+                    }
+                    socket->setProperty("simulator.requestBuffer", QByteArray());
+                    handler(socket, buffer);
                 });
-                QObject::connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
+                QObject::connect(socket, &QTcpSocket::errorOccurred, this,
+                                 [this, socket](QAbstractSocket::SocketError error) {
+                    if (error != QAbstractSocket::RemoteHostClosedError)
+                        appendLog(QStringLiteral("TCP: %1").arg(socket->errorString()));
+                });
+                QObject::connect(socket, &QTcpSocket::disconnected,
+                                 socket, &QObject::deleteLater);
             }
         });
         if (!server.listen(QHostAddress::LocalHost, port))
             appendLog(QStringLiteral("ОШИБКА TCP %1: %2").arg(port).arg(server.errorString()));
+        else
+            appendLog(QStringLiteral("TCP %1: готов").arg(port));
     }
 
     void launchStation()
@@ -269,8 +294,11 @@ private:
         process->setProcessEnvironment(environment);
         process->setProgram(exe);
         process->setWorkingDirectory(QCoreApplication::applicationDirPath());
-        process->startDetached();
-        appendLog(QStringLiteral("Запущена MilTech Station с локальным профилем, масштаб времени 1:100"));
+        const bool started = process->startDetached();
+        process->deleteLater();
+        appendLog(started
+            ? QStringLiteral("Запущена MilTech Station с локальным профилем, масштаб времени 1:100")
+            : QStringLiteral("ОШИБКА запуска MilTech Station: %1").arg(exe));
     }
 
     void setNormal()
@@ -292,12 +320,45 @@ private:
             const auto datagram = udp_.receiveDatagram();
             const QByteArray bytes = datagram.data();
             if (bytes.size() == 128 && bytes.startsWith("ROKT") && quint8(bytes[4]) == 0x0A) {
-                adapterMode_ = quint8(bytes[5]) == 0x02 ? 2 : quint8(bytes[5]) == 0x00 ? 1 : 3;
-                appendLog(adapterMode_ == 1 ? QStringLiteral("Адаптер: поток ЯЛК 204")
-                    : adapterMode_ == 2 ? QStringLiteral("Адаптер: поток ЯТП 68")
-                    : QStringLiteral("Адаптер: команда ЯВП (сырой формат пока не декодируется Station)"));
+                const quint8 mode = quint8(bytes[5]);
+                switch (mode) {
+                case 0x00:
+                    adapterMode_ = 1;
+                    yvpWireChannel_ = 0;
+                    appendLog(QStringLiteral("Адаптер: поток ЯЛК 204"));
+                    break;
+                case 0x02:
+                    adapterMode_ = 2;
+                    yvpWireChannel_ = 0;
+                    appendLog(QStringLiteral("Адаптер: поток ЯТП 68"));
+                    break;
+                case 0x01:
+                    adapterMode_ = 3;
+                    yvpWireChannel_ = 0;
+                    appendLog(QStringLiteral("Адаптер: поток ЯВП 136"));
+                    break;
+                case 0x03:
+                    yvpWireChannel_ = quint8(bytes[6]);
+                    if (yvpWireChannel_ > 7) {
+                        adapterMode_ = 0;
+                        appendLog(QStringLiteral("Адаптер: некорректный канал ЯВП %1")
+                                      .arg(yvpWireChannel_));
+                    } else {
+                        adapterMode_ = 5;
+                        appendLog(QStringLiteral("Адаптер: поток ЯВП канала %1 · 132 байта")
+                                      .arg(yvpWireChannel_ + 1));
+                    }
+                    break;
+                default:
+                    adapterMode_ = 0;
+                    yvpWireChannel_ = 0;
+                    appendLog(QStringLiteral("Адаптер: неподдерживаемый ROKT mode 0x%1")
+                                  .arg(mode, 2, 16, QChar('0')));
+                    break;
+                }
             } else if (bytes.size() == 3 && quint8(bytes[0]) == 0x44 && quint8(bytes[1]) == 0x01) {
                 adapterMode_ = quint8(bytes[2]) == 2 ? 4 : 1;
+                yvpWireChannel_ = 0;
             }
         }
     }
@@ -309,7 +370,8 @@ private:
         if (adapterMode_ == 2) frame = ytpFrame();
         else if (adapterMode_ == 4) frame = ytpLegacyFrame();
         else if (adapterMode_ == 1) frame = yalkFrame();
-        else if (adapterMode_ == 3) frame = QByteArray(128, 0);
+        else if (adapterMode_ == 3) frame = yvpFrame();
+        else if (adapterMode_ == 5) frame = yvpChannelFrame();
         else return;
         udp_.writeDatagram(frame, QHostAddress(QStringLiteral("127.0.0.1")), 1113);
     }
@@ -375,10 +437,47 @@ private:
         return legacy;
     }
 
+    QByteArray yvpFrame()
+    {
+        QByteArray frame(136, 0);
+        frame[0] = 0x00;
+        frame[1] = 0x00;
+        frame[2] = char(0x2B);
+        frame[3] = char(0x08);
+        const int phase = frameCounter_++ % 7 - 3;
+        for (int i = 0; i < 128; ++i) {
+            const int sample = std::clamp(128 + phase + (i % 5 - 2), 0, 255);
+            frame[4 + i] = char(sample);
+        }
+        return frame;
+    }
+
+    QByteArray yvpChannelFrame()
+    {
+        QByteArray frame(132, 0);
+        frame[0] = char(0x03);
+        frame[1] = 0x00;
+        frame[2] = char(0x2D);
+        frame[3] = char(std::clamp(yvpWireChannel_, 0, 7));
+        const int phase = frameCounter_++ % 7 - 3;
+        for (int i = 0; i < 128; ++i) {
+            const int sample = std::clamp(128 + phase + (i % 5 - 2), 0, 255);
+            frame[4 + i] = char(sample);
+        }
+        return frame;
+    }
+
     void handleIsd(QTcpSocket* socket, const QByteArray& request)
     {
         if (!isdOnline_->isChecked()) { socket->disconnectFromHost(); return; }
-        const int firstSpace = request.indexOf(' '), secondSpace = request.indexOf(' ', firstSpace + 1);
+        const int firstSpace = request.indexOf(' ');
+        const int secondSpace = firstSpace >= 0 ? request.indexOf(' ', firstSpace + 1) : -1;
+        if (firstSpace <= 0 || secondSpace <= firstSpace + 1) {
+            appendLog(QStringLiteral("ИСД: некорректный HTTP request line"));
+            socket->write("HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+            socket->disconnectFromHost();
+            return;
+        }
         const QString path = QString::fromLatin1(request.mid(firstSpace + 1, secondSpace - firstSpace - 1));
         if (path.contains("type=4")) {
             yalkEnabled_.fill(false); yalkVoltage_.fill(0.0);
@@ -424,8 +523,11 @@ private:
     void handleScpi(QTcpSocket* socket, const QByteArray& request)
     {
         if (!scpiOnline_->isChecked()) { socket->disconnectFromHost(); return; }
-        const QByteArray cmd=request.trimmed(); QByteArray answer="OK";
-        if (cmd=="*IDN?") answer="MILTECH,PROTOCOL-SIMULATOR,LOCAL,1.0";
+        const int newline = request.indexOf('\n');
+        const QByteArray cmd = request.left(newline >= 0 ? newline : request.size()).trimmed();
+        QByteArray answer="OK";
+        if (cmd.isEmpty()) answer="ERR empty command";
+        else if (cmd=="*IDN?") answer="MILTECH,PROTOCOL-SIMULATOR,LOCAL,1.0";
         else if (cmd.startsWith("SOUR:VOLT ")) { supplySetVoltage_=cmd.mid(10).toDouble(); supplyVoltage_->setText(QString::number(supplySetVoltage_) + " В"); }
         else if (cmd.startsWith("SOUR:CURR ")) supplyCurrentLimit_=cmd.mid(10).toDouble();
         else if (cmd=="OUTP ON") { supplyOutput_=true; outputState_->setText(QStringLiteral("ВКЛ")); }
@@ -551,7 +653,7 @@ private:
     }
 
     QUdpSocket udp_; QTcpServer isdServer_, scpiServer_; QTimer frameTimer_;
-    int adapterMode_=0, frameCounter_=0;
+    int adapterMode_=0, frameCounter_=0, yvpWireChannel_=0;
     std::array<double,100> yalkVoltage_{}; std::array<bool,100> yalkEnabled_{};
     std::array<double,100> yalkDirectCode_{}; std::array<bool,100> yalkDirectEnabled_{};
     std::array<bool,100> type3Enabled_{};
