@@ -650,7 +650,7 @@ void KtmaMainWindow::checkRigolGenerator()
         const bool activeAllowed = !explicitlyBlocked
             && (profile.activeOutputsConfirmed || deviceConfirmed);
 
-        integrationEquipmentDevices().push_back(device);
+        integrationStationSession().retainEquipmentDevice(device);
         if (!activeAllowed) {
             page->setEquipmentStatus(QStringLiteral("RIGOL"), false,
                 QStringLiteral("Связь есть, но активный выход заблокирован профилем стенда"));

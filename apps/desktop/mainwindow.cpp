@@ -112,10 +112,11 @@ MainWindow::~MainWindow()
 {
     if (scenarioEngine_) scenarioEngine_->requestStop();
     if (scenarioWatcher_ && scenarioWatcher_->isRunning()) scenarioWatcher_->waitForFinished();
-    if (equipmentRegistry_) equipmentRegistry_->safeStopAll();
-    if (telemetrySampleSource_) telemetrySampleSource_->stop();
+    // Bridge must die before StationSession because it references the session-owned source.
+    orbitaSampleBridge_.reset();
+    telemetrySampleSource_ = nullptr;
+    stationSession_.clear();
     if (orbita_ && orbita_->isRunning()) orbita_->stop();
-    if (componentRuntime_) componentRuntime_->safeStopAll();
 }
 
 void MainWindow::closeEvent(QCloseEvent* event)
@@ -802,7 +803,12 @@ void MainWindow::initializeStandRuntime()
         // Общий station-level runtime создаёт только те составные части,
         // которые уже переведены на component model. Equipment пока остаётся
         // на существующем EquipmentRegistry до отдельного этапа миграции.
-        orbita::stand::registerSampleSourceComponents(*componentRuntime_);
+        // A reinitialization must release the bridge before StationSession replaces
+        // its sample-source instance. Kind factories survive ComponentRuntime::clear().
+        orbitaSampleBridge_.reset();
+        telemetrySampleSource_ = nullptr;
+        if (!componentRuntime_->hasKindFactory("sample_source"))
+            orbita::stand::registerSampleSourceComponents(*componentRuntime_);
         try {
             stationSession_.configure(
                 standProfile_, root.filePath("plugins").toStdString(), {"sample_source"},
@@ -810,11 +816,10 @@ void MainWindow::initializeStandRuntime()
             telemetrySampleSource_ = componentRuntime_->findAs<orbita::stand::ISampleSource>(
                 "telemetry.orbita.sample_source");
             if (telemetrySampleSource_) {
-                telemetrySampleSource_->setSamplesCallback(
-                    [this](const std::vector<int16_t>& samples) {
-                        if (orbita_) orbita_->pushSamples(samples);
-                    });
-                telemetrySampleSource_->setErrorCallback(
+                orbitaSampleBridge_ =
+                    std::make_unique<miltech::integration::OrbitaSampleBridge>(
+                        *telemetrySampleSource_, *orbita_);
+                orbitaSampleBridge_->setErrorCallback(
                     [this](const std::string& message) {
                         QMetaObject::invokeMethod(this, [this, message] {
                             log(QStringLiteral("Источник телеметрии: %1")
@@ -851,7 +856,6 @@ void MainWindow::initializeStandRuntime()
         const auto catalog = orbita::stand::importCatalogYaml(
             root.filePath("catalog/catalog.yaml").toStdString(),
             root.filePath("parameters.db").toStdString());
-        equipmentPlugins_->loadDirectory(root.filePath("plugins").toStdString());
         equipmentRegistry_->bind("orbita.parameter_source",
             [this](const std::string& operation,
                    const std::map<std::string, std::string>& arguments) {
@@ -1048,9 +1052,7 @@ void MainWindow::onCheckTestEquipment()
     const QSet<QString> activeCapabilities = {
         "stand.switch_matrix", "signal.generator"};
 
-    equipmentRegistry_->safeStopAll();
-    equipmentRegistry_->clear();
-    equipmentDevices_.clear();
+    stationSession_.clearEquipment();
     equipmentRegistry_->bind("orbita.parameter_source",
         [this](const std::string& operation,
                const std::map<std::string, std::string>& arguments) {
@@ -1201,7 +1203,7 @@ void MainWindow::onCheckTestEquipment()
                 }
                 equipmentRegistry_->bind(capability, device);
             }
-            equipmentDevices_.push_back(device);
+            stationSession_.retainEquipmentDevice(device);
             std::string finalResponse = response;
             if (armSupply) {
                 // Адаптер УБСИ питается от этого источника. Мастер готовности
@@ -1494,15 +1496,17 @@ void MainWindow::setMode(int mode)
 // ----------------------------------------------------------------------------
 void MainWindow::onStart()
 {
-    bool decoderStarted = false;
     try {
         if (!initializeTelemetrySource()) {
             throw std::runtime_error("Источник отсчётов Орбиты недоступен");
         }
-        orbita_->start();
-        decoderStarted = true;
-        if (!telemetrySampleSource_->start()) {
-            throw std::runtime_error("Источник отсчётов не запустил сбор");
+        if (!orbitaSampleBridge_) {
+            throw std::runtime_error("Интеграция sample_source → liborbita не создана");
+        }
+        if (!orbitaSampleBridge_->start()) {
+            const std::string detail = orbitaSampleBridge_->lastError();
+            throw std::runtime_error(detail.empty()
+                ? "Не удалось запустить sample_source → liborbita" : detail);
         }
         elapsedTimer_.restart();
         isRunning_ = true;
@@ -1511,10 +1515,9 @@ void MainWindow::onStart()
         recordBtn_->setEnabled(true);
         statusLabel_->setText("● Сбор идёт");
         statusLabel_->setStyleSheet("color: #7fc79a; font-weight: 500;");
-        log("Старт сбора данных Орбиты через station sample_source");
+        log("Старт сбора данных Орбиты через station integration bridge");
     } catch (const std::exception& e) {
-        if (telemetrySampleSource_) telemetrySampleSource_->stop();
-        if (decoderStarted && orbita_->isRunning()) orbita_->stop();
+        if (orbitaSampleBridge_) orbitaSampleBridge_->stop();
         QMessageBox::critical(this, "Ошибка запуска", e.what());
         log("Ошибка запуска: " + QString::fromLocal8Bit(e.what()));
     }
@@ -1523,8 +1526,12 @@ void MainWindow::onStart()
 void MainWindow::onStop()
 {
     if (isRecording_) onToggleRecording();
-    if (telemetrySampleSource_) telemetrySampleSource_->stop();
-    orbita_->stop();
+    if (orbitaSampleBridge_) {
+        orbitaSampleBridge_->stop();
+    } else {
+        if (telemetrySampleSource_) telemetrySampleSource_->stop();
+        if (orbita_ && orbita_->isRunning()) orbita_->stop();
+    }
     isRunning_ = false;
     startBtn_->setEnabled(!currentSpecs_.empty());
     stopBtn_->setEnabled(false);
