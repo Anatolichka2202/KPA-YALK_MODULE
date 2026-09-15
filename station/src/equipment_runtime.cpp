@@ -7,6 +7,7 @@
 #include <QStringList>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <sstream>
 #include <stdexcept>
@@ -36,9 +37,9 @@ std::string escaped(std::string value)
     return result;
 }
 
-std::string bufferText(const std::vector<char>& buffer, std::size_t size)
+std::string bufferText(const char* data, std::size_t capacity, std::size_t size)
 {
-    return {buffer.data(), std::min(size, buffer.size())};
+    return {data, std::min(size, capacity)};
 }
 
 struct LoadedPlugin {
@@ -51,7 +52,13 @@ struct LoadedPlugin {
 
 std::string encodePluginArguments(const std::map<std::string, std::string>& arguments)
 {
+    std::size_t expectedSize = 0;
+    for (const auto& [key, value] : arguments) {
+        expectedSize += key.size() + value.size() + 2;
+    }
+
     std::string output;
+    output.reserve(expectedSize);
     for (const auto& [key, value] : arguments) {
         output += escaped(key);
         output += '=';
@@ -126,17 +133,22 @@ std::string EquipmentDevice::invoke(
     impl_->safeStopped.store(false, std::memory_order_relaxed);
 
     const std::string request = encodePluginArguments(arguments);
-    std::vector<char> bytes(4096);
-    orbita_plugin_buffer_v1 response{bytes.data(), bytes.size(), 0};
+    std::array<char, 4096> local{};
+    orbita_plugin_buffer_v1 response{local.data(), local.size(), 0};
     auto status = impl_->plugin->api->invoke(
         impl_->instance, capability.c_str(), operation.c_str(), request.c_str(), &response);
-    if (status == ORBITA_PLUGIN_BUFFER_TOO_SMALL && response.size > bytes.size()) {
-        bytes.resize(response.size);
-        response = {bytes.data(), bytes.size(), 0};
+
+    std::string text;
+    if (status == ORBITA_PLUGIN_BUFFER_TOO_SMALL && response.size > local.size()) {
+        std::vector<char> extended(response.size);
+        response = {extended.data(), extended.size(), 0};
         status = impl_->plugin->api->invoke(
             impl_->instance, capability.c_str(), operation.c_str(), request.c_str(), &response);
+        text = bufferText(extended.data(), extended.size(), response.size);
+    } else {
+        text = bufferText(local.data(), local.size(), response.size);
     }
-    const auto text = bufferText(bytes, response.size);
+
     if (status != ORBITA_PLUGIN_OK) {
         throw std::runtime_error(text.empty()
             ? "Equipment plugin operation failed with status " + std::to_string(status)
@@ -258,7 +270,8 @@ std::shared_ptr<EquipmentDevice> EquipmentPluginManager::createDevice(
     const auto status = (*iterator)->api->create(
         instanceId.c_str(), config.c_str(), &deviceImpl->instance, &diagnostic);
     if (status != ORBITA_PLUGIN_OK || !deviceImpl->instance) {
-        const auto message = bufferText(diagnosticBytes, diagnostic.size);
+        const auto message = bufferText(
+            diagnosticBytes.data(), diagnosticBytes.size(), diagnostic.size);
         throw std::runtime_error(message.empty()
             ? "Cannot create equipment instance " + instanceId : message);
     }
