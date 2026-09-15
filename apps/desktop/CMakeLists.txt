@@ -62,6 +62,7 @@ target_include_directories(MilTechStation PRIVATE
 
 target_link_libraries(MilTechStation PRIVATE
     orbita
+    miltech_orbita_integration
     orbita_stand_runtime
     orbita_stand_adapters
     orbita_stand_domain

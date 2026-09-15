@@ -25,6 +25,7 @@
 #include "orbita_stand/equipment_runtime.h"
 #include "orbita_stand/run_store.h"
 #include "orbita_stand/report_writer.h"
+#include "miltech/orbita_sample_bridge.h"
 #include "registrar.h"
 
 #include "orbita.h"
@@ -240,8 +241,10 @@ private:
         stationSession_.equipmentDevices();
     orbita::stand::StandProfile& standProfile_ = stationSession_.profile();
 
-    // Не владеющий указатель на экземпляр, принадлежащий stationSession_.
+    // Источник принадлежит StationSession; bridge владеет только связью
+    // sample_source -> liborbita и гарантирует порядок start/stop.
     orbita::stand::ISampleSource* telemetrySampleSource_ = nullptr;
+    std::unique_ptr<miltech::integration::OrbitaSampleBridge> orbitaSampleBridge_;
 
     std::unique_ptr<orbita::stand::ScenarioEngine> scenarioEngine_;
     std::unique_ptr<orbita::stand::RunStore> runStore_;

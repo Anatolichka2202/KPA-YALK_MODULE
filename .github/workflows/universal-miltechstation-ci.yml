@@ -4,63 +4,248 @@ on:
   push:
     branches:
       - universal_miltechstation
-  workflow_dispatch:
 
 permissions:
-  contents: read
-
-concurrency:
-  group: universal-miltechstation-${{ github.ref }}
-  cancel-in-progress: true
+  contents: write
 
 jobs:
-  build-and-test:
-    name: Windows UCRT64 · Qt 6 · GCC
-    runs-on: windows-latest
-    timeout-minutes: 30
-
+  migrate-desktop-orbita-bridge:
+    name: Apply Orbita bridge migration
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          ref: universal_miltechstation
+          fetch-depth: 0
 
-      - name: Set up MSYS2 UCRT64
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: UCRT64
-          update: true
-          install: >-
-            git
-            mingw-w64-ucrt-x86_64-gcc
-            mingw-w64-ucrt-x86_64-cmake
-            mingw-w64-ucrt-x86_64-ninja
-            mingw-w64-ucrt-x86_64-qt6-base
-            mingw-w64-ucrt-x86_64-qt6-svg
-            mingw-w64-ucrt-x86_64-qt6-serialport
+      - name: Patch desktop integration boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
 
-      - name: Configure
-        shell: msys2 {0}
-        run: >-
-          cmake -S . -B build-universal -G Ninja
-          -DCMAKE_BUILD_TYPE=Release
-          -DBUILD_TESTING=ON
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected one match, got {count}")
+              return text.replace(old, new)
 
-      - name: Build
-        shell: msys2 {0}
-        run: cmake --build build-universal --parallel 4
+          main_path = Path("apps/desktop/mainwindow.cpp")
+          text = main_path.read_text(encoding="utf-8")
 
-      - name: Run CTest
-        shell: msys2 {0}
-        env:
-          QT_QPA_PLATFORM: offscreen
-        run: ctest --test-dir build-universal --output-on-failure -C Release
+          if "orbitaSampleBridge_->start()" not in text:
+              old = "\n".join([
+                  "MainWindow::~MainWindow()",
+                  "{",
+                  "    if (scenarioEngine_) scenarioEngine_->requestStop();",
+                  "    if (scenarioWatcher_ && scenarioWatcher_->isRunning()) scenarioWatcher_->waitForFinished();",
+                  "    if (equipmentRegistry_) equipmentRegistry_->safeStopAll();",
+                  "    if (telemetrySampleSource_) telemetrySampleSource_->stop();",
+                  "    if (orbita_ && orbita_->isRunning()) orbita_->stop();",
+                  "    if (componentRuntime_) componentRuntime_->safeStopAll();",
+                  "}",
+              ])
+              new = "\n".join([
+                  "MainWindow::~MainWindow()",
+                  "{",
+                  "    if (scenarioEngine_) scenarioEngine_->requestStop();",
+                  "    if (scenarioWatcher_ && scenarioWatcher_->isRunning()) scenarioWatcher_->waitForFinished();",
+                  "    // Bridge must die before StationSession because it references the session-owned source.",
+                  "    orbitaSampleBridge_.reset();",
+                  "    telemetrySampleSource_ = nullptr;",
+                  "    stationSession_.clear();",
+                  "    if (orbita_ && orbita_->isRunning()) orbita_->stop();",
+                  "}",
+              ])
+              text = replace_once(text, old, new, "destructor")
 
-      - name: Preserve CTest failure log
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: universal-miltechstation-ctest-failure-log
-          path: build-universal/Testing/Temporary/LastTest.log
-          if-no-files-found: warn
-          retention-days: 3
+              old = "        orbita::stand::registerSampleSourceComponents(*componentRuntime_);\n"
+              new = "".join([
+                  "        // A reinitialization must release the bridge before StationSession replaces\n",
+                  "        // its sample-source instance. Kind factories survive ComponentRuntime::clear().\n",
+                  "        orbitaSampleBridge_.reset();\n",
+                  "        telemetrySampleSource_ = nullptr;\n",
+                  "        if (!componentRuntime_->hasKindFactory(\"sample_source\"))\n",
+                  "            orbita::stand::registerSampleSourceComponents(*componentRuntime_);\n",
+              ])
+              text = replace_once(text, old, new, "sample-source factory registration")
+
+              old = "\n".join([
+                  "            if (telemetrySampleSource_) {",
+                  "                telemetrySampleSource_->setSamplesCallback(",
+                  "                    [this](const std::vector<int16_t>& samples) {",
+                  "                        if (orbita_) orbita_->pushSamples(samples);",
+                  "                    });",
+                  "                telemetrySampleSource_->setErrorCallback(",
+                  "                    [this](const std::string& message) {",
+                  "                        QMetaObject::invokeMethod(this, [this, message] {",
+                  "                            log(QStringLiteral(\"Источник телеметрии: %1\")",
+                  "                                .arg(QString::fromStdString(message)));",
+                  "                        }, Qt::QueuedConnection);",
+                  "                    });",
+                  "            } else {",
+              ])
+              new = "\n".join([
+                  "            if (telemetrySampleSource_) {",
+                  "                orbitaSampleBridge_ =",
+                  "                    std::make_unique<miltech::integration::OrbitaSampleBridge>(",
+                  "                        *telemetrySampleSource_, *orbita_);",
+                  "                orbitaSampleBridge_->setErrorCallback(",
+                  "                    [this](const std::string& message) {",
+                  "                        QMetaObject::invokeMethod(this, [this, message] {",
+                  "                            log(QStringLiteral(\"Источник телеметрии: %1\")",
+                  "                                .arg(QString::fromStdString(message)));",
+                  "                        }, Qt::QueuedConnection);",
+                  "                    });",
+                  "            } else {",
+              ])
+              text = replace_once(text, old, new, "sample callback wiring")
+
+              text = replace_once(
+                  text,
+                  '        equipmentPlugins_->loadDirectory(root.filePath("plugins").toStdString());\n',
+                  '',
+                  'duplicate plugin load')
+
+              old = "".join([
+                  "    equipmentRegistry_->safeStopAll();\n",
+                  "    equipmentRegistry_->clear();\n",
+                  "    equipmentDevices_.clear();\n",
+              ])
+              text = replace_once(
+                  text, old, "    stationSession_.clearEquipment();\n", "equipment reset")
+
+              text = replace_once(
+                  text,
+                  "            equipmentDevices_.push_back(device);\n",
+                  "            stationSession_.retainEquipmentDevice(device);\n",
+                  "equipment retention")
+
+              old = "\n".join([
+                  "void MainWindow::onStart()",
+                  "{",
+                  "    bool decoderStarted = false;",
+                  "    try {",
+                  "        if (!initializeTelemetrySource()) {",
+                  "            throw std::runtime_error(\"Источник отсчётов Орбиты недоступен\");",
+                  "        }",
+                  "        orbita_->start();",
+                  "        decoderStarted = true;",
+                  "        if (!telemetrySampleSource_->start()) {",
+                  "            throw std::runtime_error(\"Источник отсчётов не запустил сбор\");",
+                  "        }",
+                  "        elapsedTimer_.restart();",
+                  "        isRunning_ = true;",
+                  "        startBtn_->setEnabled(false);",
+                  "        stopBtn_->setEnabled(true);",
+                  "        recordBtn_->setEnabled(true);",
+                  "        statusLabel_->setText(\"● Сбор идёт\");",
+                  "        statusLabel_->setStyleSheet(\"color: #7fc79a; font-weight: 500;\");",
+                  "        log(\"Старт сбора данных Орбиты через station sample_source\");",
+                  "    } catch (const std::exception& e) {",
+                  "        if (telemetrySampleSource_) telemetrySampleSource_->stop();",
+                  "        if (decoderStarted && orbita_->isRunning()) orbita_->stop();",
+                  "        QMessageBox::critical(this, \"Ошибка запуска\", e.what());",
+                  "        log(\"Ошибка запуска: \" + QString::fromLocal8Bit(e.what()));",
+                  "    }",
+                  "}",
+              ])
+              new = "\n".join([
+                  "void MainWindow::onStart()",
+                  "{",
+                  "    try {",
+                  "        if (!initializeTelemetrySource()) {",
+                  "            throw std::runtime_error(\"Источник отсчётов Орбиты недоступен\");",
+                  "        }",
+                  "        if (!orbitaSampleBridge_) {",
+                  "            throw std::runtime_error(\"Интеграция sample_source → liborbita не создана\");",
+                  "        }",
+                  "        if (!orbitaSampleBridge_->start()) {",
+                  "            const std::string detail = orbitaSampleBridge_->lastError();",
+                  "            throw std::runtime_error(detail.empty()",
+                  "                ? \"Не удалось запустить sample_source → liborbita\" : detail);",
+                  "        }",
+                  "        elapsedTimer_.restart();",
+                  "        isRunning_ = true;",
+                  "        startBtn_->setEnabled(false);",
+                  "        stopBtn_->setEnabled(true);",
+                  "        recordBtn_->setEnabled(true);",
+                  "        statusLabel_->setText(\"● Сбор идёт\");",
+                  "        statusLabel_->setStyleSheet(\"color: #7fc79a; font-weight: 500;\");",
+                  "        log(\"Старт сбора данных Орбиты через station integration bridge\");",
+                  "    } catch (const std::exception& e) {",
+                  "        if (orbitaSampleBridge_) orbitaSampleBridge_->stop();",
+                  "        QMessageBox::critical(this, \"Ошибка запуска\", e.what());",
+                  "        log(\"Ошибка запуска: \" + QString::fromLocal8Bit(e.what()));",
+                  "    }",
+                  "}",
+              ])
+              text = replace_once(text, old, new, "onStart")
+
+              old = "\n".join([
+                  "void MainWindow::onStop()",
+                  "{",
+                  "    if (isRecording_) onToggleRecording();",
+                  "    if (telemetrySampleSource_) telemetrySampleSource_->stop();",
+                  "    orbita_->stop();",
+                  "    isRunning_ = false;",
+                  "    startBtn_->setEnabled(!currentSpecs_.empty());",
+                  "    stopBtn_->setEnabled(false);",
+                  "    recordBtn_->setEnabled(false);",
+                  "    statusLabel_->setText(\"● Сбор остановлен\");",
+                  "    statusLabel_->setStyleSheet(\"color: #d99a4a; font-weight: 500;\");",
+                  "    log(\"Стоп сбора данных\");",
+                  "}",
+              ])
+              new = "\n".join([
+                  "void MainWindow::onStop()",
+                  "{",
+                  "    if (isRecording_) onToggleRecording();",
+                  "    if (orbitaSampleBridge_) {",
+                  "        orbitaSampleBridge_->stop();",
+                  "    } else {",
+                  "        if (telemetrySampleSource_) telemetrySampleSource_->stop();",
+                  "        if (orbita_ && orbita_->isRunning()) orbita_->stop();",
+                  "    }",
+                  "    isRunning_ = false;",
+                  "    startBtn_->setEnabled(!currentSpecs_.empty());",
+                  "    stopBtn_->setEnabled(false);",
+                  "    recordBtn_->setEnabled(false);",
+                  "    statusLabel_->setText(\"● Сбор остановлен\");",
+                  "    statusLabel_->setStyleSheet(\"color: #d99a4a; font-weight: 500;\");",
+                  "    log(\"Стоп сбора данных\");",
+                  "}",
+              ])
+              text = replace_once(text, old, new, "onStop")
+
+              main_path.write_text(text, encoding="utf-8", newline="\n")
+          else:
+              print("MainWindow bridge migration is already applied")
+
+          ktma_path = Path("apps/desktop/ktma_mainwindow.cpp")
+          ktma = ktma_path.read_text(encoding="utf-8")
+          old = "        integrationEquipmentDevices().push_back(device);\n"
+          if old in ktma:
+              ktma = replace_once(
+                  ktma, old,
+                  "        integrationStationSession().retainEquipmentDevice(device);\n",
+                  "KTMA Rigol retention")
+              ktma_path.write_text(ktma, encoding="utf-8", newline="\n")
+          PY
+
+      - name: Commit source migration when needed
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- apps/desktop/mainwindow.cpp apps/desktop/ktma_mainwindow.cpp; then
+            echo "No source migration needed"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/desktop/mainwindow.cpp apps/desktop/ktma_mainwindow.cpp
+          git diff --cached --check
+          git commit -m "refactor(desktop): route Orbita samples through integration bridge"
+          git push origin HEAD:universal_miltechstation
