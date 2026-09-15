@@ -149,10 +149,24 @@ int main(int argc, char** argv)
         require(resources.size() == 2 && !resources.front().builtin && !resources.back().builtin,
                 "physical deferred equipment was misclassified as a built-in resource");
 
-        readiness.clearEquipment();
+        readiness.equipment().bind("test.scenario_service",
+            [](const std::string& operation,
+               const std::map<std::string, std::string>&) {
+                return operation == "probe" ? std::string("status=ready\n")
+                                            : std::string("status=unknown\n");
+            });
+        readiness.clearPhysicalEquipment();
         require(readiness.equipmentDevices().empty()
                     && readiness.equipment().resources().empty(),
-                "equipment reset did not clear deferred readiness state");
+                "physical equipment reset did not clear deferred devices/routes");
+        require(readiness.equipment().hasCapability("test.scenario_service")
+                    && readiness.equipment().invoke(
+                        "test.scenario_service", "probe", {}) == "status=ready\n",
+                "physical equipment reset removed an application built-in service");
+
+        readiness.clearEquipment();
+        require(!readiness.equipment().hasCapability("test.scenario_service"),
+                "full equipment reset preserved a built-in service unexpectedly");
 
         std::cout << "station session contract OK\n";
         return 0;
