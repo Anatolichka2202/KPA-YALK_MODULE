@@ -45,7 +45,7 @@ QString yalkStepText(const QString& node)
 {
     if (node.contains(QStringLiteral("stream"))) return QStringLiteral("Инициализация потока");
     if (node.contains(QStringLiteral("calibration"))) return QStringLiteral("Калибровка 97 / 99");
-    if (node.contains(QStringLiteral("initial"))) return QStringLiteral("Исходное состояние 80 входов");
+    if (node.contains(QStringLiteral("initial"))) return QStringLiteral("Обрыв / исходное состояние 80 входов");
     if (node == QStringLiteral("yalk_channels")) return QStringLiteral("80 аналоговых каналов");
     if (node.contains(QStringLiteral("contact"))) return QStringLiteral("Дискретные пороги 0 / 0,9 / 2,5 В");
     if (node.contains(QStringLiteral("overload"))) return QStringLiteral("Перегрузка ±12 В");
@@ -145,6 +145,12 @@ YvpOverview* findYvpOverview(TestPage* page)
         page->findChild<QWidget*>(QStringLiteral("yvpEightChannelOverview")));
 }
 
+YalkAnalogOverview* findYalkAnalogOverview(TestPage* page)
+{
+    return dynamic_cast<YalkAnalogOverview*>(
+        page->findChild<QWidget*>(QStringLiteral("yalkAnalogOverviewV05")));
+}
+
 } // namespace
 
 TestPage::TestPage(QWidget* parent)
@@ -153,8 +159,6 @@ TestPage::TestPage(QWidget* parent)
 {
     rebuildScopes();
 
-    // Freeze the production-session composition: registry / explicit queue /
-    // session parameters.  Existing hidden controls remain the backend bridge.
     impl_->sessionDataPanel->hide();
     impl_->addProduct->hide();
     impl_->yalkSubPanel->hide();
@@ -344,7 +348,6 @@ TestPage::TestPage(QWidget* parent)
     }
     updateFrozenSessionAction(this);
 
-    // Power keeps the common live 80-channel plane while the supply changes.
     if (auto* powerPage = impl_->workStack->widget(static_cast<int>(TopStage::Power))) {
         if (auto* powerLayout = qobject_cast<QVBoxLayout*>(powerPage->layout())) {
             auto* status = subtitleLabel(QStringLiteral("ЯЛК · ожидание свежего снимка 80 каналов"));
@@ -359,7 +362,19 @@ TestPage::TestPage(QWidget* parent)
         }
     }
 
-    // Replace the legacy sequential YVP trend with the frozen eight-channel plane.
+    // v0.5 behaviour: YALK analog defaults to a useful local scale around the
+    // current point; the full 0…6.2 V range is an explicit viewing mode.
+    if (impl_->yalkOverview) {
+        auto* analogPage = impl_->yalkOverview->parentWidget();
+        auto* analogLayout = analogPage ? qobject_cast<QVBoxLayout*>(analogPage->layout()) : nullptr;
+        if (analogLayout) {
+            const int legacyIndex = analogLayout->indexOf(impl_->yalkOverview);
+            auto* overview = new YalkAnalogOverview(analogPage);
+            analogLayout->insertWidget(std::max(0, legacyIndex), overview, 1);
+            impl_->yalkOverview->hide();
+        }
+    }
+
     if (auto* yvpPage = impl_->workStack->widget(static_cast<int>(TopStage::Yvp))) {
         if (auto* yvpLayout = qobject_cast<QVBoxLayout*>(yvpPage->layout())) {
             const int trendIndex = yvpLayout->indexOf(impl_->yvpTrend);
@@ -373,7 +388,6 @@ TestPage::TestPage(QWidget* parent)
         }
     }
 
-    // Frozen contextual left side: the global route is not operator navigation.
     impl_->sideTitle->setObjectName(QStringLiteral("frozenSideTitle"));
     if (auto* sideLayout = qobject_cast<QVBoxLayout*>(impl_->sideTitle->parentWidget()->layout())) {
         auto* context = subtitleLabel(QStringLiteral("Ожидание запуска"));
@@ -389,11 +403,11 @@ TestPage::TestPage(QWidget* parent)
     }
     connect(impl_->enterPreparation, &QPushButton::clicked, this, [this] {
         if (auto* overview = findYvpOverview(this)) overview->clear();
+        if (auto* overview = findYalkAnalogOverview(this)) overview->clear();
         freezeProductionSidebar(this, QStringLiteral("Подготовка"),
                                 QStringLiteral("Проверка оборудования выбранного сценария"));
     });
 
-    // TU has its own explicit entry/readiness shell. Selection alone never probes equipment.
     tuFlow_ = new TuFlowWidget(impl_->pages);
     impl_->pages->addWidget(tuFlow_);
     connect(tuFlow_, &TuFlowWidget::homeRequested, this, &TestPage::homeRequested);
@@ -875,7 +889,7 @@ void TestPage::setRunEvent(const orbita::stand::RunEvent& event)
                 : node.contains(QStringLiteral("calibration")) ? QStringLiteral("Калибровка")
                                                                : QStringLiteral("Подготовка потока"));
         else if (node.startsWith(QStringLiteral("yvp_")))
-            setRouteDetail(static_cast<int>(TopStage::Yvp), QStringLiteral("V7 / ИСД · 8 каналов"));
+            setRouteDetail(static_cast<int>(TopStage::Yvp), QStringLiteral("V7 / ИСД · 8 каналов · 392 точки"));
         else if (impl_->productionMode)
             setRouteDetail(static_cast<int>(impl_->topStage), QString::fromStdString(event.message));
         impl_->updateProgressByStage();
@@ -1032,6 +1046,8 @@ void TestPage::setRunEvent(const orbita::stand::RunEvent& event)
             auto mean = values("background_mean");
             auto minimum = values("background_min");
             auto maximum = values("background_max");
+            if (auto* overview = findYalkAnalogOverview(this))
+                overview->setBackground(mean, minimum, maximum);
             impl_->yalkOverview->setBackground(mean, minimum, maximum);
             impl_->yalkContacts->setBackground(std::move(mean), std::move(minimum), std::move(maximum));
         } else if (section == QStringLiteral("YTP")) {
@@ -1105,7 +1121,19 @@ void TestPage::setRunEvent(const orbita::stand::RunEvent& event)
         ChannelSample sample{address, QStringLiteral("%1 В").arg(command, 0, 'f', 1), v7, yalk,
                              signal != 0, event.verdict == orbita::stand::RunVerdict::Ok,
                              warning, valueSamples};
-        impl_->yalkOverview->add(std::move(sample));
+        impl_->yalkOverview->add(sample);
+        if (auto* overview = findYalkAnalogOverview(this)) {
+            const double sampleMinimum = valueSamples.isEmpty() ? yalk : *sampleRange.first;
+            const double sampleMaximum = valueSamples.isEmpty() ? yalk : *sampleRange.second;
+            bool lowerOk = false, upperOk = false;
+            const double lower = lowerText.toDouble(&lowerOk);
+            const double upper = upperText.toDouble(&upperOk);
+            overview->setMeasurement(address.toInt(), command, v7, yalk,
+                                     sampleMinimum, sampleMaximum,
+                                     lowerOk ? lower : std::numeric_limits<double>::quiet_NaN(),
+                                     upperOk ? upper : std::numeric_limits<double>::quiet_NaN(),
+                                     event.verdict == orbita::stand::RunVerdict::Ok, warning);
+        }
 
         if (impl_->yalkPhase == YalkPhase::Discrete) {
             const int expected = command >= 2.0 ? 1 : 0;
