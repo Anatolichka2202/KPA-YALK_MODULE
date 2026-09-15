@@ -26,16 +26,22 @@ bool isTerminal(RunVerdict verdict)
     return verdict == RunVerdict::Error || verdict == RunVerdict::Aborted;
 }
 
-bool parseRetryLimit(const ScenarioNode& node, int& value)
+// Programmatic schema-1 tests still construct ScenarioNode aggregates with the
+// old arguments key. YAML-loaded scenarios never take this path because the
+// loader consumes technical_retries into the typed policy.
+bool retryLimit(const ScenarioNode& node, unsigned& value)
 {
-    value = 0;
-    const auto found = node.arguments.find("technical_retries");
-    if (found == node.arguments.end()) return true;
+    value = node.policy.technicalRetries;
+    if (value > 3) return false;
+    if (value != 0) return true;
+
+    const auto legacy = node.arguments.find("technical_retries");
+    if (legacy == node.arguments.end()) return true;
     try {
         std::size_t parsed = 0;
-        const auto retries = std::stoll(found->second, &parsed);
-        if (parsed != found->second.size() || retries < 0 || retries > 3) return false;
-        value = static_cast<int>(retries);
+        const auto retries = std::stoull(legacy->second, &parsed);
+        if (parsed != legacy->second.size() || retries > 3) return false;
+        value = static_cast<unsigned>(retries);
         return true;
     } catch (...) {
         return false;
@@ -194,10 +200,10 @@ void validateNode(
         }
     }
 
-    int retries = 0;
-    if (!parseRetryLimit(node, retries)) {
+    unsigned retries = 0;
+    if (!retryLimit(node, retries)) {
         errors.emplace_back(
-            "У шага " + node.id + " technical_retries должен быть целым числом 0..3");
+            "У шага " + node.id + " число технических повторов должно быть в диапазоне 0..3");
     }
 
     if (node.children.empty()) {
@@ -327,9 +333,9 @@ StepRunResult ScenarioEngine::runNode(
                     std::move(context.state),
                 };
 
-                int retryLimit = 0;
-                parseRetryLimit(node, retryLimit); // validate() already checked it.
-                for (int attempt = 0; attempt <= retryLimit; ++attempt) {
+                unsigned retries = 0;
+                retryLimit(node, retries); // validate() already checked it.
+                for (unsigned attempt = 0; attempt <= retries; ++attempt) {
                     try {
                         auto procedureResult = procedure->second(node, scopedContext);
                         result.verdict = procedureResult.verdict;
@@ -345,7 +351,7 @@ StepRunResult ScenarioEngine::runNode(
 
                     if (context.stopRequested.load()
                         || result.verdict != RunVerdict::Error
-                        || attempt == retryLimit) {
+                        || attempt == retries) {
                         break;
                     }
 
@@ -354,10 +360,10 @@ StepRunResult ScenarioEngine::runNode(
                         std::chrono::system_clock::now(), node.id, "RETRY",
                         "Техническая ошибка; безопасный сброс выполнен, повтор "
                             + std::to_string(attempt + 1) + " из "
-                            + std::to_string(retryLimit),
+                            + std::to_string(retries),
                         RunVerdict::Error,
                         {{"attempt", std::to_string(attempt + 2)},
-                         {"max_retries", std::to_string(retryLimit)},
+                         {"max_retries", std::to_string(retries)},
                          {"error", result.message}}});
                 }
 
