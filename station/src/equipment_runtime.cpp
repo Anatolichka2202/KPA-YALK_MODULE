@@ -11,6 +11,7 @@
 #include <atomic>
 #include <sstream>
 #include <stdexcept>
+#include <string_view>
 #include <utility>
 
 namespace orbita::stand {
@@ -26,15 +27,12 @@ std::set<std::string> splitCapabilities(const char* value)
     return result;
 }
 
-std::string escaped(std::string value)
+void appendEscaped(std::string& output, std::string_view value)
 {
-    std::string result;
-    result.reserve(value.size());
     for (const char character : value) {
-        if (character == '\\' || character == '\n' || character == '=') result.push_back('\\');
-        result.push_back(character == '\n' ? 'n' : character);
+        if (character == '\\' || character == '\n' || character == '=') output.push_back('\\');
+        output.push_back(character == '\n' ? 'n' : character);
     }
-    return result;
 }
 
 std::string bufferText(const char* data, std::size_t capacity, std::size_t size)
@@ -60,10 +58,10 @@ std::string encodePluginArguments(const std::map<std::string, std::string>& argu
     std::string output;
     output.reserve(expectedSize);
     for (const auto& [key, value] : arguments) {
-        output += escaped(key);
-        output += '=';
-        output += escaped(value);
-        output += '\n';
+        appendEscaped(output, key);
+        output.push_back('=');
+        appendEscaped(output, value);
+        output.push_back('\n');
     }
     return output;
 }
@@ -133,7 +131,7 @@ std::string EquipmentDevice::invoke(
     impl_->safeStopped.store(false, std::memory_order_relaxed);
 
     const std::string request = encodePluginArguments(arguments);
-    std::array<char, 4096> local{};
+    std::array<char, 4096> local;
     orbita_plugin_buffer_v1 response{local.data(), local.size(), 0};
     auto status = impl_->plugin->api->invoke(
         impl_->instance, capability.c_str(), operation.c_str(), request.c_str(), &response);
@@ -265,7 +263,7 @@ std::shared_ptr<EquipmentDevice> EquipmentPluginManager::createDevice(
     deviceImpl->plugin = *iterator;
     deviceImpl->instanceId = instanceId;
     const std::string config = encodePluginArguments(configuration);
-    std::vector<char> diagnosticBytes(2048);
+    std::array<char, 2048> diagnosticBytes;
     orbita_plugin_buffer_v1 diagnostic{diagnosticBytes.data(), diagnosticBytes.size(), 0};
     const auto status = (*iterator)->api->create(
         instanceId.c_str(), config.c_str(), &deviceImpl->instance, &diagnostic);
