@@ -20,7 +20,7 @@
 #include <QHash>
 
 #include "orbita_stand/config.h"
-#include "orbita_stand/component_runtime.h"
+#include "orbita_stand/station_session.h"
 #include "orbita_stand/sample_source.h"
 #include "orbita_stand/equipment_runtime.h"
 #include "orbita_stand/run_store.h"
@@ -70,13 +70,14 @@ protected:
     RegistrarPage* integrationRegistrarPage() const { return registrarPage_; }
     ktma::registrar::Registrar* integrationRegistrar() const { return registrar_.get(); }
     orbita::stand::ScenarioEngine* integrationScenarioEngine() const { return scenarioEngine_.get(); }
-    orbita::stand::EquipmentRegistry* integrationEquipmentRegistry() const { return equipmentRegistry_.get(); }
-    orbita::stand::EquipmentPluginManager* integrationEquipmentPlugins() const { return equipmentPlugins_.get(); }
+    orbita::stand::EquipmentRegistry* integrationEquipmentRegistry() const { return equipmentRegistry_; }
+    orbita::stand::EquipmentPluginManager* integrationEquipmentPlugins() const { return equipmentPlugins_; }
     std::vector<std::shared_ptr<orbita::stand::EquipmentDevice>>& integrationEquipmentDevices()
     {
         return equipmentDevices_;
     }
     orbita::stand::StandProfile& integrationStandProfile() { return standProfile_; }
+    orbita::stand::StationSession& integrationStationSession() { return stationSession_; }
     QHash<QString, orbita::stand::ScenarioDefinition>& integrationScenarios() { return scenarios_; }
     QHash<QString, QString>& integrationScenarioPaths() { return scenarioPaths_; }
     QFutureWatcher<orbita::stand::ScenarioRunResult>* integrationScenarioWatcher() const
@@ -148,7 +149,7 @@ private:
     static int extractChannelNumber(const std::string& address);
 
     // Декодер протокола и БД. Физический источник отсчётов принадлежит
-    // ComponentRuntime станции, а не liborbita.
+    // StationSession/ComponentRuntime станции, а не liborbita.
     std::unique_ptr<orbita::Orbita> orbita_;
     std::unique_ptr<MetadataService> dbProvider_;
     ToleranceResolver toleranceResolver_;
@@ -227,18 +228,24 @@ private:
     bool ubsiEngineering_ = false;
     bool lastResultSaved_ = false;
 
-    // Общий station-level lifecycle компонентов. telemetrySampleSource_ —
-    // не владеющий указатель на экземпляр, принадлежащий componentRuntime_.
-    std::unique_ptr<orbita::stand::ComponentRuntime> componentRuntime_;
+    // Единый владелец station-level composition. Алиасы ниже временно
+    // сохраняют существующий desktop/KTMA integration API, но не владеют
+    // сервисами: profile, ComponentRuntime, plugin manager, registry и devices
+    // находятся внутри StationSession.
+    orbita::stand::StationSession stationSession_;
+    orbita::stand::ComponentRuntime* componentRuntime_ = &stationSession_.components();
+    orbita::stand::EquipmentPluginManager* equipmentPlugins_ = &stationSession_.equipmentPlugins();
+    orbita::stand::EquipmentRegistry* equipmentRegistry_ = &stationSession_.equipment();
+    std::vector<std::shared_ptr<orbita::stand::EquipmentDevice>>& equipmentDevices_ =
+        stationSession_.equipmentDevices();
+    orbita::stand::StandProfile& standProfile_ = stationSession_.profile();
+
+    // Не владеющий указатель на экземпляр, принадлежащий stationSession_.
     orbita::stand::ISampleSource* telemetrySampleSource_ = nullptr;
 
-    std::unique_ptr<orbita::stand::EquipmentPluginManager> equipmentPlugins_;
-    std::unique_ptr<orbita::stand::EquipmentRegistry> equipmentRegistry_;
-    std::vector<std::shared_ptr<orbita::stand::EquipmentDevice>> equipmentDevices_;
     std::unique_ptr<orbita::stand::ScenarioEngine> scenarioEngine_;
     std::unique_ptr<orbita::stand::RunStore> runStore_;
     std::unique_ptr<ktma::registrar::Registrar> registrar_;
-    orbita::stand::StandProfile standProfile_;
     QHash<QString, orbita::stand::ScenarioDefinition> scenarios_;
     QHash<QString, QString> scenarioPaths_;
     QFutureWatcher<orbita::stand::ScenarioRunResult>* scenarioWatcher_ = nullptr;
