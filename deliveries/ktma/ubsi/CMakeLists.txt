@@ -46,6 +46,18 @@ target_compile_features(ktma_ubsi_procedures PUBLIC cxx_std_17)
 target_link_libraries(ktma_ubsi_procedures PUBLIC orbita_stand_core)
 add_library(ktma::ubsi_procedures ALIAS ktma_ubsi_procedures)
 
+# Physical readiness order belongs to this delivery because it encodes the
+# UBSI power dependency: arm DUT supply, probe independent equipment, wait for
+# the powered adapter to boot, then probe the adapter. The implementation is
+# deliberately UI-free and consumes only the universal component profile.
+add_library(ktma_ubsi_readiness STATIC
+    src/equipment_readiness.cpp
+)
+target_include_directories(ktma_ubsi_readiness PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_compile_features(ktma_ubsi_readiness PUBLIC cxx_std_17)
+target_link_libraries(ktma_ubsi_readiness PUBLIC orbita_stand_runtime)
+add_library(ktma::ubsi_readiness ALIAS ktma_ubsi_readiness)
+
 # Reporting is a separate adapter because it consumes ScenarioEngine result
 # types. The UBSI application core above remains independent from Orbita/E20.
 add_library(ktma_ubsi_reporting STATIC
@@ -70,6 +82,10 @@ if(BUILD_TESTING)
     target_link_libraries(ktma_ubsi_production_scenario_test PRIVATE
         ktma_ubsi orbita_stand_runtime ktma_ubsi_procedures)
     add_test(NAME ktma.ubsi.production_scenarios COMMAND ktma_ubsi_production_scenario_test)
+
+    add_executable(ktma_ubsi_equipment_readiness_test tests/equipment_readiness_test.cpp)
+    target_link_libraries(ktma_ubsi_equipment_readiness_test PRIVATE ktma_ubsi_readiness)
+    add_test(NAME ktma.ubsi.equipment_readiness COMMAND ktma_ubsi_equipment_readiness_test)
 
     add_executable(yalk_analog_procedure_test tests/yalk_analog_procedure_test.cpp)
     target_link_libraries(yalk_analog_procedure_test PRIVATE ktma_ubsi_procedures)
