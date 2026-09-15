@@ -148,9 +148,9 @@ int main(int argc, char** argv)
                 && quint8(yvpChannel[3]) == 2,
             "YVP channel 132-byte frame header/channel is invalid");
 
+    require(simulator.state() == QProcess::Running,
+            "simulator exited unexpectedly during protocol test");
     stopSimulator();
-    require(simulator.exitStatus() == QProcess::NormalExit,
-            "simulator terminated abnormally during protocol test");
 
     std::cout << "Simulator protocol/framing test passed\n";
     return EXIT_SUCCESS;
