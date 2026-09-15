@@ -96,6 +96,8 @@ void yvpScenarioContract()
         "YVP method must use the seven confirmed gain values");
     require(contains(standalone, "frequencies_hz: 0.15,20,250,500,1800,2000,4000"),
         "YVP method must retain the confirmed frequency set");
+    require(contains(standalone, "settle_ms: 2000"),
+        "YVP must allow the live generator/YVP/V7 path to settle before measurement");
 }
 
 void scenarioContract()
