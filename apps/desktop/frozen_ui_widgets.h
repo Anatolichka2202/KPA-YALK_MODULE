@@ -12,8 +12,8 @@
 #include <cmath>
 #include <limits>
 
-// Final frozen visual widgets.  They contain presentation only: verdicts and
-// limits come from RunEvent/backend data and are never re-derived here.
+// Data-dense operator widgets. Presentation consumes backend values and
+// verdicts; no technological acceptance rule is invented here.
 
 class OverloadOverview final : public QWidget
 {
@@ -51,8 +51,6 @@ public:
 
     void beginImpact(int stressed, QString polarity, int impactIndex, int impactCount, int settleMs)
     {
-        // baseline belongs to the whole overload procedure and remains visible
-        // between impacts.  Only the fresh/current snapshot is reset here.
         current_.fill(0.0);
         delta_.fill(0.0);
         currentKnown_.fill(false);
@@ -245,6 +243,292 @@ private:
     double upper_ = 2.0;
 };
 
+class YalkAnalogOverview final : public QWidget
+{
+public:
+    explicit YalkAnalogOverview(QWidget* parent = nullptr)
+        : QWidget(parent)
+    {
+        setObjectName(QStringLiteral("yalkAnalogOverviewV05"));
+        setMinimumHeight(360);
+        setMouseTracking(true);
+        channels_.fill(Channel{});
+    }
+
+    void clear()
+    {
+        channels_.fill(Channel{});
+        currentAddress_ = 0;
+        pinnedAddress_ = 0;
+        currentCommand_ = 0.0;
+        currentReference_ = 0.0;
+        lowerLimit_ = upperLimit_ = std::numeric_limits<double>::quiet_NaN();
+        fullScale_ = false;
+        hits_.clear();
+        setProperty("renderedChannelCount", 0);
+        update();
+    }
+
+    void setBackground(const QVector<double>& mean,
+                       const QVector<double>& minimum,
+                       const QVector<double>& maximum)
+    {
+        const int count = std::min({80, mean.size(), minimum.size(), maximum.size()});
+        for (int index = 0; index < count; ++index) {
+            channels_[index].value = mean[index];
+            channels_[index].minimum = minimum[index];
+            channels_[index].maximum = maximum[index];
+            channels_[index].known = true;
+            channels_[index].backgroundOnly = true;
+        }
+        updateCount();
+        update();
+    }
+
+    void setMeasurement(int address, double command, double reference, double measured,
+                        double minimum, double maximum, double lowerLimit, double upperLimit,
+                        bool passed, bool warning)
+    {
+        const int index = channelKeys().indexOf(address);
+        if (index < 0) return;
+        auto& channel = channels_[index];
+        channel.value = measured;
+        channel.minimum = minimum;
+        channel.maximum = maximum;
+        channel.known = true;
+        channel.backgroundOnly = false;
+        channel.passed = passed;
+        channel.warning = warning;
+        currentAddress_ = address;
+        currentCommand_ = command;
+        currentReference_ = reference;
+        lowerLimit_ = lowerLimit;
+        upperLimit_ = upperLimit;
+        if (pinnedAddress_ == 0) pinnedAddress_ = address;
+        updateCount();
+        update();
+    }
+
+protected:
+    void mousePressEvent(QMouseEvent* event) override
+    {
+        if (fullScaleHit_.contains(event->position())) {
+            fullScale_ = !fullScale_;
+            update();
+            return;
+        }
+        for (const auto& hit : hits_) {
+            if (!hit.first.contains(event->position())) continue;
+            pinnedAddress_ = hit.second;
+            update();
+            return;
+        }
+    }
+
+    void mouseMoveEvent(QMouseEvent* event) override
+    {
+        for (const auto& hit : hits_) {
+            if (!hit.first.contains(event->position())) continue;
+            const int index = channelKeys().indexOf(hit.second);
+            if (index < 0 || !channels_[index].known) break;
+            const auto& channel = channels_[index];
+            QToolTip::showText(event->globalPosition().toPoint(),
+                QStringLiteral("Канал %1\nтекущее: %2 В\nmin…max: %3…%4 В\nразмах: %5 В")
+                    .arg(hit.second)
+                    .arg(channel.value, 0, 'f', 4)
+                    .arg(channel.minimum, 0, 'f', 4)
+                    .arg(channel.maximum, 0, 'f', 4)
+                    .arg(channel.maximum - channel.minimum, 0, 'f', 4),
+                this, hit.first.toRect());
+            return;
+        }
+        QToolTip::hideText();
+    }
+
+    void paintEvent(QPaintEvent*) override
+    {
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing);
+        painter.fillRect(rect(), QColor("#0f1318"));
+        hits_.clear();
+
+        painter.setPen(QColor("#dfe6ee"));
+        painter.setFont(QFont("Segoe UI", 10, QFont::DemiBold));
+        painter.drawText(QRectF(58, 5, width() - 360, 22), Qt::AlignLeft,
+            QStringLiteral("Все 80 каналов · рабочая шкала точки %1 В")
+                .arg(currentCommand_, 0, 'f', 1));
+
+        fullScaleHit_ = QRectF(width() - 245, 4, 230, 24);
+        painter.setPen(QPen(fullScale_ ? QColor("#69aee6") : QColor("#344454"), 1));
+        painter.setBrush(fullScale_ ? QColor("#16314a") : QColor("#111820"));
+        painter.drawRoundedRect(fullScaleHit_, 5, 5);
+        painter.setBrush(Qt::NoBrush);
+        painter.setPen(fullScale_ ? QColor("#9ac7ff") : QColor("#9aafbf"));
+        painter.setFont(QFont("Segoe UI", 8, QFont::DemiBold));
+        painter.drawText(fullScaleHit_, Qt::AlignCenter,
+            fullScale_ ? QStringLiteral("Полная шкала 0…6,2 В")
+                       : QStringLiteral("Показать полную шкалу 0…6,2 В"));
+
+        double lower = 0.0;
+        double upper = 0.0;
+        if (fullScale_) {
+            lower = -0.08;
+            upper = 6.32;
+        } else if (std::abs(currentCommand_) < 0.1) {
+            lower = -0.12;
+            upper = 0.16;
+        } else {
+            lower = currentCommand_ - 0.15;
+            upper = currentCommand_ + 0.16;
+        }
+
+        if (!fullScale_) {
+            double dataMinimum = std::min(currentReference_, currentCommand_);
+            double dataMaximum = std::max(currentReference_, currentCommand_);
+            for (const auto& channel : channels_) {
+                if (!channel.known) continue;
+                dataMinimum = std::min(dataMinimum, channel.minimum);
+                dataMaximum = std::max(dataMaximum, channel.maximum);
+            }
+            if (std::isfinite(lowerLimit_)) dataMinimum = std::min(dataMinimum, lowerLimit_);
+            if (std::isfinite(upperLimit_)) dataMaximum = std::max(dataMaximum, upperLimit_);
+            lower = std::min(lower, dataMinimum - 0.02);
+            upper = std::max(upper, dataMaximum + 0.02);
+        }
+        if (!(upper > lower)) upper = lower + 0.1;
+
+        const QRectF area(58, 48, width() - 70, height() - 112);
+        const auto y = [&](double value) {
+            return area.bottom() - std::clamp((value - lower) / (upper - lower), 0.0, 1.0) * area.height();
+        };
+
+        painter.setPen(QPen(QColor("#27313c"), 1));
+        painter.drawRect(area);
+        painter.setFont(QFont("Segoe UI", 7));
+        for (int tick = 0; tick <= 4; ++tick) {
+            const double value = lower + (upper - lower) * tick / 4.0;
+            const double yy = y(value);
+            painter.setPen(QPen(QColor("#27313c"), 1, Qt::DashLine));
+            painter.drawLine(QPointF(area.left(), yy), QPointF(area.right(), yy));
+            painter.setPen(QColor("#8293a4"));
+            painter.drawText(QRectF(0, yy - 8, 52, 16), Qt::AlignRight,
+                             QString::number(value, 'f', 3));
+        }
+
+        if (std::isfinite(lowerLimit_) && std::isfinite(upperLimit_)) {
+            const double top = y(upperLimit_);
+            const double bottom = y(lowerLimit_);
+            painter.fillRect(QRectF(area.left(), top, area.width(), std::max(1.0, bottom - top)),
+                             QColor(64, 126, 88, 24));
+        }
+        painter.setPen(QPen(QColor("#78c7ff"), 1.3, Qt::DashLine));
+        painter.drawLine(QPointF(area.left(), y(currentReference_)),
+                         QPointF(area.right(), y(currentReference_)));
+
+        const auto keys = channelKeys();
+        const double slotWidth = area.width() / 80.0;
+        int visibleCount = 0;
+        for (int index = 0; index < 80; ++index) {
+            const int address = keys[index];
+            const double x = area.left() + index * slotWidth;
+            hits_.push_back({QRectF(x, area.top(), slotWidth, area.height() + 28), address});
+            const auto& channel = channels_[index];
+            if (address == currentAddress_) {
+                painter.fillRect(QRectF(x, area.top(), slotWidth, area.height()), QColor(56, 111, 157, 38));
+                painter.setPen(QPen(QColor("#69aee6"), 1.5));
+                painter.drawLine(QPointF(x + slotWidth / 2.0, area.top()),
+                                 QPointF(x + slotWidth / 2.0, area.bottom()));
+            } else if (address == pinnedAddress_) {
+                painter.fillRect(QRectF(x, area.top(), slotWidth, area.height()), QColor(105, 174, 230, 20));
+            }
+            if (channel.known) {
+                ++visibleCount;
+                const QColor color = !channel.passed ? QColor("#cf5d62")
+                    : channel.warning ? QColor("#c48a32")
+                                      : channel.backgroundOnly ? QColor(90, 117, 139, 115)
+                                                               : QColor("#58bdd3");
+                const double valueY = y(channel.value);
+                const double zeroY = y(std::clamp(0.0, lower, upper));
+                painter.fillRect(QRectF(x + slotWidth * 0.20,
+                                        std::min(valueY, zeroY),
+                                        std::max(2.0, slotWidth * 0.60),
+                                        std::max(1.0, std::abs(zeroY - valueY))), color);
+                painter.setPen(QPen(QColor("#e6edf3"), address == pinnedAddress_ ? 1.8 : 1.0));
+                painter.drawLine(QPointF(x + slotWidth / 2.0, y(channel.minimum)),
+                                 QPointF(x + slotWidth / 2.0, y(channel.maximum)));
+            }
+            if (index == 0 || index == 79 || address % 5 == 0) {
+                painter.setPen(QColor("#9aafbf"));
+                painter.setFont(QFont("Segoe UI", 7));
+                painter.drawText(QRectF(x - slotWidth, area.bottom() + 3, slotWidth * 3, 14),
+                                 Qt::AlignCenter, QString::number(address));
+            }
+        }
+        setProperty("renderedChannelCount", visibleCount);
+
+        painter.fillRect(QRectF(area.left(), height() - 38, 10, 8), QColor("#58bdd3"));
+        painter.setPen(QColor("#8b95a3"));
+        painter.setFont(QFont("Segoe UI", 8));
+        painter.drawText(QRectF(area.left() + 15, height() - 43, 120, 18), Qt::AlignVCenter,
+                         QStringLiteral("измерение канала"));
+        painter.setPen(QColor("#78c7ff"));
+        painter.drawText(QRectF(area.left() + 150, height() - 43, 210, 18), Qt::AlignVCenter,
+                         QStringLiteral("— В7 %1 В").arg(currentReference_, 0, 'f', 3));
+        painter.setPen(QColor("#9ac7ff"));
+        const int inspect = pinnedAddress_ > 0 ? pinnedAddress_ : currentAddress_;
+        const int inspectIndex = keys.indexOf(inspect);
+        if (inspectIndex >= 0 && channels_[inspectIndex].known) {
+            const auto& channel = channels_[inspectIndex];
+            painter.drawText(QRectF(area.left(), height() - 43, area.width(), 18), Qt::AlignRight,
+                QStringLiteral("канал %1 · %2 В · min…max %3…%4")
+                    .arg(inspect)
+                    .arg(channel.value, 0, 'f', 4)
+                    .arg(channel.minimum, 0, 'f', 4)
+                    .arg(channel.maximum, 0, 'f', 4));
+        }
+    }
+
+private:
+    struct Channel {
+        double value = 0.0;
+        double minimum = 0.0;
+        double maximum = 0.0;
+        bool known = false;
+        bool backgroundOnly = false;
+        bool passed = true;
+        bool warning = false;
+    };
+
+    static QVector<int> channelKeys()
+    {
+        QVector<int> keys;
+        keys.reserve(80);
+        for (int value = 1; value <= 28; ++value) keys.push_back(value);
+        for (int value = 32; value <= 43; ++value) keys.push_back(value);
+        for (int value = 45; value <= 70; ++value) keys.push_back(value);
+        for (int value = 74; value <= 87; ++value) keys.push_back(value);
+        return keys;
+    }
+
+    void updateCount()
+    {
+        int count = 0;
+        for (const auto& channel : channels_) if (channel.known) ++count;
+        setProperty("renderedChannelCount", count);
+    }
+
+    std::array<Channel, 80> channels_{};
+    QVector<QPair<QRectF, int>> hits_;
+    QRectF fullScaleHit_;
+    int currentAddress_ = 0;
+    int pinnedAddress_ = 0;
+    double currentCommand_ = 0.0;
+    double currentReference_ = 0.0;
+    double lowerLimit_ = std::numeric_limits<double>::quiet_NaN();
+    double upperLimit_ = std::numeric_limits<double>::quiet_NaN();
+    bool fullScale_ = false;
+};
+
 class YvpOverview final : public QWidget
 {
 public:
@@ -252,7 +536,7 @@ public:
         : QWidget(parent)
     {
         setObjectName(QStringLiteral("yvpEightChannelOverview"));
-        setMinimumHeight(300);
+        setMinimumHeight(430);
         setMouseTracking(true);
     }
 
@@ -264,6 +548,7 @@ public:
         currentGain_ = currentFrequency_ = currentInputVpp_ = 0.0;
         acceptance_.clear();
         setProperty("yvpRenderedChannelCount", 0);
+        setProperty("yvpCompletedPointCount", 0);
         update();
     }
 
@@ -280,9 +565,14 @@ public:
         currentFrequency_ = frequency;
         currentInputVpp_ = inputVpp;
         acceptance_ = acceptance;
-        int count = 0;
-        for (const auto& row : data_) if (row.contains(currentKey_)) ++count;
-        setProperty("yvpRenderedChannelCount", count);
+        int currentCount = 0;
+        int completed = 0;
+        for (const auto& row : data_) {
+            if (row.contains(currentKey_)) ++currentCount;
+            completed += row.size();
+        }
+        setProperty("yvpRenderedChannelCount", currentCount);
+        setProperty("yvpCompletedPointCount", completed);
         update();
     }
 
@@ -293,17 +583,22 @@ protected:
         painter.setRenderHint(QPainter::Antialiasing);
         painter.fillRect(rect(), QColor("#0f1318"));
 
+        int completed = 0;
+        for (const auto& row : data_) completed += row.size();
+        setProperty("yvpCompletedPointCount", completed);
+
         painter.setPen(QColor("#dfe6ee"));
         painter.setFont(QFont("Segoe UI", 10, QFont::DemiBold));
         painter.drawText(QRectF(12, 5, width() - 24, 22), Qt::AlignLeft,
-                         QStringLiteral("K задано / K измерено · общая плоскость 8 каналов"));
+                         QStringLiteral("ЯВП-8 · текущая точка + матрица 8 × 7 × 7"));
         painter.setPen(QColor("#8da4b8"));
         painter.setFont(QFont("Segoe UI", 8));
         painter.drawText(QRectF(12, 5, width() - 24, 22), Qt::AlignRight,
-            QStringLiteral("K=%1 мВ/пКл · %2 Гц · Rigol %3 Vpp")
+            QStringLiteral("K=%1 мВ/пКл · %2 Гц · Rigol %3 Vpp · %4/392")
                 .arg(currentGain_, 0, 'g', 8)
                 .arg(currentFrequency_, 0, 'g', 8)
-                .arg(currentInputVpp_, 0, 'g', 8));
+                .arg(currentInputVpp_, 0, 'g', 8)
+                .arg(completed));
 
         QVector<Point> points;
         points.reserve(8);
@@ -319,70 +614,117 @@ protected:
         }
         setProperty("yvpRenderedChannelCount", knownCount);
 
-        const QRectF area(50, 34, width() - 62, height() - 95);
+        const QRectF chart(48, 34, width() - 60, 165);
         painter.setPen(QPen(QColor("#27313c"), 1));
-        painter.drawRect(area);
+        painter.drawRect(chart);
         const double upper = maximum * 1.12;
         const auto y = [&](double value) {
-            return area.bottom() - std::clamp(value / upper, 0.0, 1.0) * area.height();
+            return chart.bottom() - std::clamp(value / upper, 0.0, 1.0) * chart.height();
         };
         painter.setFont(QFont("Segoe UI", 7));
         for (int tick = 0; tick <= 4; ++tick) {
             const double value = upper * tick / 4.0;
             const double yy = y(value);
             painter.setPen(QPen(QColor("#27313c"), 1, Qt::DashLine));
-            painter.drawLine(QPointF(area.left(), yy), QPointF(area.right(), yy));
+            painter.drawLine(QPointF(chart.left(), yy), QPointF(chart.right(), yy));
             painter.setPen(QColor("#8293a4"));
-            painter.drawText(QRectF(0, yy - 8, 44, 16), Qt::AlignRight,
+            painter.drawText(QRectF(0, yy - 8, 42, 16), Qt::AlignRight,
                              QString::number(value, 'g', 4));
         }
 
-        const double slotWidth = area.width() / 8.0;
+        const double slotWidth = chart.width() / 8.0;
         for (int index = 0; index < 8; ++index) {
-            const double x = area.left() + index * slotWidth;
+            const double x = chart.left() + index * slotWidth;
             if (index == currentChannel_)
-                painter.fillRect(QRectF(x, area.top(), slotWidth, area.height()), QColor(94, 147, 184, 32));
+                painter.fillRect(QRectF(x, chart.top(), slotWidth, chart.height()), QColor(94, 147, 184, 32));
             const auto& point = points[index];
             if (point.known) {
                 const double sentTop = y(point.reference);
                 const double measuredTop = y(point.measured);
                 painter.fillRect(QRectF(x + slotWidth * .18, sentTop,
-                                        std::max(4.0, slotWidth * .25), area.bottom() - sentTop),
+                                        std::max(4.0, slotWidth * .25), chart.bottom() - sentTop),
                                  QColor("#5e93b8"));
                 painter.fillRect(QRectF(x + slotWidth * .55, measuredTop,
-                                        std::max(4.0, slotWidth * .25), area.bottom() - measuredTop),
+                                        std::max(4.0, slotWidth * .25), chart.bottom() - measuredTop),
                                  QColor("#58bdd3"));
-                painter.setPen(QColor("#dce6ef"));
-                painter.setFont(QFont("Segoe UI", 8, QFont::DemiBold));
-                painter.drawText(QRectF(x, area.bottom() + 20, slotWidth, 16), Qt::AlignCenter,
-                                 QStringLiteral("%1 Vrms").arg(point.outputVrms, 0, 'f', 3));
-                const double error = point.reference != 0.0
-                    ? (point.measured - point.reference) / point.reference * 100.0 : 0.0;
                 painter.setPen(QColor("#8da4b8"));
                 painter.setFont(QFont("Segoe UI", 7));
-                painter.drawText(QRectF(x, area.bottom() + 36, slotWidth, 15), Qt::AlignCenter,
-                                 QStringLiteral("%1%2 %")
-                                     .arg(error >= 0.0 ? QStringLiteral("+") : QString())
-                                     .arg(error, 0, 'f', 2));
+                painter.drawText(QRectF(x, chart.bottom() + 18, slotWidth, 14), Qt::AlignCenter,
+                                 QStringLiteral("%1 Vrms").arg(point.outputVrms, 0, 'f', 4));
             }
             painter.setPen(index == currentChannel_ ? QColor("#9ac7ff") : QColor("#9aafbf"));
             painter.setFont(QFont("Segoe UI", 8, QFont::DemiBold));
-            painter.drawText(QRectF(x, area.bottom() + 3, slotWidth, 15), Qt::AlignCenter,
+            painter.drawText(QRectF(x, chart.bottom() + 2, slotWidth, 15), Qt::AlignCenter,
                              QStringLiteral("К%1").arg(index + 1));
         }
 
-        painter.fillRect(QRectF(width() - 250, 30, 10, 8), QColor("#5e93b8"));
+        painter.fillRect(QRectF(width() - 240, 31, 10, 8), QColor("#5e93b8"));
         painter.setPen(QColor("#8b95a3"));
         painter.setFont(QFont("Segoe UI", 7));
-        painter.drawText(QRectF(width() - 236, 25, 68, 18), Qt::AlignVCenter, QStringLiteral("задано"));
-        painter.fillRect(QRectF(width() - 160, 30, 10, 8), QColor("#58bdd3"));
-        painter.drawText(QRectF(width() - 146, 25, 78, 18), Qt::AlignVCenter, QStringLiteral("измерено"));
+        painter.drawText(QRectF(width() - 226, 26, 68, 18), Qt::AlignVCenter, QStringLiteral("K задано"));
+        painter.fillRect(QRectF(width() - 145, 31, 10, 8), QColor("#58bdd3"));
+        painter.drawText(QRectF(width() - 131, 26, 105, 18), Qt::AlignVCenter, QStringLiteral("K рассчитано"));
 
+        const QRectF matrix(48, 232, width() - 60, height() - 278);
+        painter.setPen(QColor("#dfe6ee"));
+        painter.setFont(QFont("Segoe UI", 9, QFont::DemiBold));
+        painter.drawText(QRectF(matrix.left(), 207, matrix.width(), 20), Qt::AlignLeft,
+                         QStringLiteral("Матрица выполненных точек · столбцы: 7 коэффициентов внутри каждой частоты"));
+
+        const auto gs = gains();
+        const auto fs = frequencies();
+        const double rowHeight = matrix.height() / 8.0;
+        const double columnWidth = matrix.width() / 49.0;
+        for (int frequencyIndex = 0; frequencyIndex < 7; ++frequencyIndex) {
+            const double groupX = matrix.left() + frequencyIndex * 7 * columnWidth;
+            painter.setPen(QColor("#8293a4"));
+            painter.setFont(QFont("Segoe UI", 7));
+            painter.drawText(QRectF(groupX, matrix.top() - 17, 7 * columnWidth, 14), Qt::AlignCenter,
+                             QStringLiteral("%1 Гц").arg(fs[frequencyIndex], 0, 'g', 6));
+            if (frequencyIndex > 0) {
+                painter.setPen(QPen(QColor("#344454"), 1.2));
+                painter.drawLine(QPointF(groupX, matrix.top()), QPointF(groupX, matrix.bottom()));
+            }
+        }
+
+        for (int channelIndex = 0; channelIndex < 8; ++channelIndex) {
+            const double rowY = matrix.top() + channelIndex * rowHeight;
+            painter.setPen(channelIndex == currentChannel_ ? QColor("#9ac7ff") : QColor("#9aafbf"));
+            painter.setFont(QFont("Segoe UI", 8, QFont::DemiBold));
+            painter.drawText(QRectF(0, rowY, 42, rowHeight), Qt::AlignRight | Qt::AlignVCenter,
+                             QStringLiteral("К%1").arg(channelIndex + 1));
+            if (channelIndex == currentChannel_)
+                painter.fillRect(QRectF(matrix.left(), rowY, matrix.width(), rowHeight), QColor(94, 147, 184, 18));
+
+            for (int frequencyIndex = 0; frequencyIndex < 7; ++frequencyIndex) {
+                for (int gainIndex = 0; gainIndex < 7; ++gainIndex) {
+                    const int column = frequencyIndex * 7 + gainIndex;
+                    const QRectF cell(matrix.left() + column * columnWidth + 1,
+                                      rowY + 2,
+                                      std::max(2.0, columnWidth - 2),
+                                      std::max(2.0, rowHeight - 4));
+                    const QString key = pointKey(gs[gainIndex], fs[frequencyIndex]);
+                    const bool known = data_[channelIndex].contains(key);
+                    const bool current = channelIndex == currentChannel_ && key == currentKey_;
+                    painter.fillRect(cell, current ? QColor("#386f9d")
+                                                   : known ? QColor("#356f83")
+                                                           : QColor("#18212a"));
+                    painter.setPen(current ? QPen(QColor("#9ac7ff"), 1.5)
+                                           : QPen(QColor("#27313c"), 1));
+                    painter.drawRect(cell);
+                }
+            }
+        }
+
+        painter.setPen(QColor("#8b95a3"));
+        painter.setFont(QFont("Segoe UI", 7));
+        painter.drawText(QRectF(matrix.left(), matrix.bottom() + 4, matrix.width(), 16), Qt::AlignLeft,
+                         QStringLiteral("K: 0,25 · 0,5 · 1 · 2 · 4 · 8 · 32 мВ/пКл"));
         painter.setPen(acceptance_ == QStringLiteral("not_applied")
-                           ? QColor("#8da4b8") : QColor("#9ac7ff"));
-        painter.drawText(QRectF(area.left(), height() - 20, area.width(), 16), Qt::AlignRight,
+                           ? QColor("#d7a95b") : QColor("#9ac7ff"));
+        painter.drawText(QRectF(matrix.left(), matrix.bottom() + 4, matrix.width(), 16), Qt::AlignRight,
             acceptance_ == QStringLiteral("not_applied")
-                ? QStringLiteral("критерий приёмки не применён")
+                ? QStringLiteral("приёмочный критерий не применяется · результат не превращать в НОРМА")
                 : acceptance_);
     }
 
@@ -399,6 +741,16 @@ private:
         return QStringLiteral("%1|%2")
             .arg(gain, 0, 'g', 12)
             .arg(frequency, 0, 'g', 12);
+    }
+
+    static std::array<double, 7> gains()
+    {
+        return {0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 32.0};
+    }
+
+    static std::array<double, 7> frequencies()
+    {
+        return {0.15, 20.0, 250.0, 500.0, 1800.0, 2000.0, 4000.0};
     }
 
     std::array<QHash<QString, Point>, 8> data_;
