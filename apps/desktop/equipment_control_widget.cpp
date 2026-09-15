@@ -49,7 +49,7 @@ EquipmentControlWidget::EquipmentControlWidget(Invoke invoke, QWidget* parent)
     warning->setStyleSheet("color:#d99a4a;font-weight:bold;");
     root->addWidget(warning);
 
-    auto* adapter = new QGroupBox(QStringLiteral("Ethernet/RS-485 адаптер УЛК · 192.168.0.115:1113"));
+    auto* adapter = new QGroupBox(QStringLiteral("Ethernet/RS-485 адаптер ЯЛК · 192.168.0.115:1113"));
     auto* adapterForm = new QFormLayout(adapter);
     adapterMode_ = new QComboBox;
     adapterMode_->addItem(QStringLiteral("Запустить ЯЛК (рабочий ROKT / 204 байта)"),
@@ -95,7 +95,7 @@ EquipmentControlWidget::EquipmentControlWidget(Invoke invoke, QWidget* parent)
     wordRow->addWidget(readWord);
     wordRow->addWidget(readCalibration);
     wordRow->addWidget(adapterValue_);
-    adapterForm->addRow(QStringLiteral("Адрес УЛК:"), wordRow);
+    adapterForm->addRow(QStringLiteral("Адрес ЯЛК:"), wordRow);
     adapterForm->addRow(QStringLiteral("По калибровкам 97/99:"), adapterVoltage_);
     root->addWidget(adapter);
 
@@ -205,7 +205,7 @@ void EquipmentControlWidget::run(const std::string& capability, const std::strin
 void EquipmentControlWidget::applyAdapterMode()
 {
     const std::string operation = adapterMode_->currentData().toString().toStdString();
-    if (!confirm(QStringLiteral("Запустить поток ЯЛК / УЛК через адаптер?")
+    if (!confirm(QStringLiteral("Запустить поток ЯЛК / УБСИ через адаптер?")
             .arg(adapterMode_->currentText()))) return;
     run("ulk.parameter_source", operation, {
         {"protocol", "rokt_yalk"},

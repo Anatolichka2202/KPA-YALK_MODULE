@@ -68,7 +68,7 @@ steps:
 
       # HTTP type=1/type=3 принимает номер аналогового канала ИСД.
       # Прошивка сама переводит CH89..CH96 через DMTable/KMGlobalBusTable.
-      measurement_1_contacts: 89
+      measurement_1_contacts: 44
       measurement_2_contacts: 90
       measurement_3_contacts: 91
       measurement_4_contacts: 92

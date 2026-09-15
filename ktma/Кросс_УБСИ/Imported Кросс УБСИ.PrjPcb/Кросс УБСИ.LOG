@@ -1,0 +1,80 @@
+PCAD Importer Log
+Project : Кросс УБСИ.PrjPcb
+
+Section : L:\Обмен\Добринский Евгений\Кросс_УБСИ\Кросс УБСИ.pcb
+    Section : Load Messages
+        Warning - 1 : Skipping Token attachedSymbol On Line 2418
+        Warning - 1 : Skipping Token refPointSize On Line 2709
+        Warning - 1 : Skipping Token infoPointSize On Line 2710
+        Warning - 1 : Skipping Token gluePointSize On Line 2711
+        Warning - 1 : Skipping Token pickPointSize On Line 2712
+        Warning - 1 : Skipping Token testPointSize On Line 2713
+        Warning - 1 : Skipping Token refPointSizePrint On Line 2714
+        Warning - 1 : Skipping Token infoPointSizePrint On Line 2715
+        Warning - 1 : Skipping Token gluePointSizePrint On Line 2716
+        Warning - 1 : Skipping Token pickPointSizePrint On Line 2717
+        Warning - 1 : Skipping Token testPointSizePrint On Line 2718
+        Warning - 1 : Skipping Token solderFlowDirection On Line 2719
+        Warning - 1 : Skipping Token globalCopperPourCutoutBackoffFlag On Line 2720
+        Warning - 1 : Skipping Token useLegacyBackoffAlgorithm On Line 2721
+        Warning - 1 : Skipping Token useLegacyCupourIslandGenerationAlgorithm On Line 2722
+        Warning - 1 : Skipping Token drillSymSettings On Line 3113
+        Warning - 1 : Skipping Token gerberSettings On Line 3129
+        Warning - 1 : Skipping Token ncDrillSettings On Line 3143
+        Warning - 1 : Skipping Token programState On Line 3152
+        Warning - 1 : Skipping Token displayDrawOrder On Line 3202
+        Warning - 1 : Skipping Token reportSettings On Line 3471
+        Warning - 1 : Skipping Token odbSettings On Line 4168
+    EndSection
+
+    Section : Import Messages
+        Warning : Mounting Hole Pad Converted To Rounded Pad
+        Warning : Mounting Hole Pad Converted To Rounded Pad
+        Warning : Mounting Hole Pad Converted To Rounded Pad
+        Warning : Mounting Hole Pad Converted To Rounded Pad
+        Warning : Mounting Hole Pad Converted To Rounded Pad
+        Warning : Mounting Hole Pad Converted To Rounded Pad
+        Warning : Mounting Hole Pad Converted To Rounded Pad
+        Warning : Mounting Hole Pad Converted To Rounded Pad
+        Warning : Mounting Hole Pad Converted To Rounded Pad
+        Warning : Mounting Hole Pad Converted To Rounded Pad
+        Warning : Mounting Hole Pad Converted To Rounded Pad
+        Warning : Mounting Hole Pad Converted To Rounded Pad
+        Warning : Mounting Hole Pad Converted To Rounded Pad
+        Warning : Mounting Hole Pad Converted To Rounded Pad
+        Warning : Mounting Hole Pad Converted To Rounded Pad
+        Warning : Mounting Hole Pad Converted To Rounded Pad
+        Warning : Mounting Hole Pad Converted To Rounded Pad
+        Warning : Mounting Hole Pad Converted To Rounded Pad
+        Warning : Mounting Hole Pad Converted To Rounded Pad
+        Warning : Mounting Hole Pad Converted To Rounded Pad
+        Warning : Mounting Hole Pad Converted To Rounded Pad
+        Warning : Mounting Hole Pad Converted To Rounded Pad
+        Warning : Mounting Hole Pad Converted To Rounded Pad
+        Warning : Mounting Hole Pad Converted To Rounded Pad
+        Warning : Mounting Hole Pad Converted To Rounded Pad
+        Warning : Mounting Hole Pad Converted To Rounded Pad
+        Warning : Mounting Hole Pad Converted To Rounded Pad
+        Warning : Mounting Hole Pad Converted To Rounded Pad
+        Warning : Mounting Hole Pad Converted To Rounded Pad
+        Warning : Mounting Hole Pad Converted To Rounded Pad
+        Warning : Mounting Hole Pad Converted To Rounded Pad
+        Warning : Mounting Hole Pad Converted To Rounded Pad
+        Warning : Mounting Hole Pad Converted To Rounded Pad
+        Warning : Mounting Hole Pad Converted To Rounded Pad
+        Warning : Mounting Hole Pad Converted To Rounded Pad
+        Warning : Mounting Hole Pad Converted To Rounded Pad
+        Warning : Mounting Hole Pad Converted To Rounded Pad
+        Warning : Mounting Hole Pad Converted To Rounded Pad
+        Warning : Mounting Hole Pad Converted To Rounded Pad
+        Warning : Mounting Hole Pad Converted To Rounded Pad
+        Warning : Mounting Hole Pad Converted To Rounded Pad
+        Warning : Mounting Hole Pad Converted To Rounded Pad
+        Warning : Mounting Hole Pad Converted To Rounded Pad
+        Warning : Mounting Hole Pad Converted To Rounded Pad
+        Warning : Mounting Hole Pad Converted To Rounded Pad
+        Warning : Mounting Hole Pad Converted To Rounded Pad
+        Warning : Mounting Hole Pad Converted To Rounded Pad
+        Warning : Mounting Hole Pad Converted To Rounded Pad
+    EndSection
+EndSection

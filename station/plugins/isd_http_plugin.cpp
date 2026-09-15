@@ -60,7 +60,7 @@ orbita_plugin_status_v1 invoke(void* value, const char* capability, const char* 
                 if (!instance.config.count(key)) throw std::invalid_argument("Не назначен маршрут ИСД " + args.at("route"));
                 if (args.count("ulk_address")) {
                     const unsigned address = plugin::unsignedValue(args, "ulk_address");
-                    if (!address) throw std::invalid_argument("Адрес УЛК начинается с 1");
+                    if (!address) throw std::invalid_argument("Адрес ЯЛК начинается с 1");
                     return plugin::unsignedValue(instance.config, key) + address - 1;
                 }
                 return plugin::unsignedValue(instance.config, key) + plugin::unsignedValue(args, "offset", 0);
