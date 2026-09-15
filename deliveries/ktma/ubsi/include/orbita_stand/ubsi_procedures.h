@@ -1,9 +1,5 @@
 #pragma once
 
-#include "orbita_stand/scenario.h"
-
-namespace orbita::stand {
-
-void registerUbsiProcedures(ScenarioEngine& engine);
-
-} // namespace orbita::stand
+// Compatibility include. New KTMA/UBSI code must include the delivery-owned
+// API path directly: <ktma/ubsi/procedures.h>.
+#include "ktma/ubsi/procedures.h"
