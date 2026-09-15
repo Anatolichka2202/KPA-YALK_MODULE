@@ -6,7 +6,6 @@
 
 class QComboBox;
 class QLabel;
-class QLineEdit;
 class QPushButton;
 class QStackedWidget;
 
@@ -18,22 +17,25 @@ public:
     explicit TuFlowWidget(QWidget* parent = nullptr);
 
     void setRegisteredSerials(const QStringList& serials);
+    void setOperators(const QStringList& operators);
     void setScenarioAvailable(bool available, const QString& detail = {});
-    void beginStandCheck(const QString& serial, const QStringList& requiredEquipment);
+    void beginStandCheck(const QString& serial, const QString& operatorName,
+                         const QStringList& requiredEquipment);
     void setEquipmentChecking(const QString& code);
     void setEquipmentStatus(const QString& code, bool ready, const QString& detail = {});
     void resetToSelection();
 
     QString activeSerial() const;
+    QString activeOperator() const;
 
 signals:
     void homeRequested();
-    void serialChosen(const QString& serial);
-    void startRequested(const QString& serial);
-    void retryRequested(const QString& serial);
+    void readinessRequested(const QString& serial, const QString& operatorName);
+    void startRequested(const QString& serial, const QString& operatorName);
+    void retryRequested(const QString& serial, const QString& operatorName);
 
 private:
-    void chooseSerial(const QString& serial);
+    void updateSelectionAvailability();
     void updateReadiness();
     void showReady();
     void showNotReady(const QString& detail);
@@ -41,9 +43,9 @@ private:
     QStackedWidget* pages_ = nullptr;
     QWidget* selectionPage_ = nullptr;
     QWidget* readinessPage_ = nullptr;
+    QComboBox* operator_ = nullptr;
     QComboBox* registered_ = nullptr;
-    QLineEdit* manualSerial_ = nullptr;
-    QPushButton* manualContinue_ = nullptr;
+    QPushButton* check_ = nullptr;
     QLabel* scenarioState_ = nullptr;
     QLabel* serialTitle_ = nullptr;
     QLabel* readinessState_ = nullptr;
@@ -53,6 +55,7 @@ private:
     QPushButton* back_ = nullptr;
 
     QString activeSerial_;
+    QString activeOperator_;
     QStringList requiredEquipment_;
     QHash<QString, int> equipmentState_; // -1 checking/unknown, 0 failed, 1 ready
     QHash<QString, QString> equipmentDetail_;
