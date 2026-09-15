@@ -31,59 +31,29 @@ jobs:
 
           replacements = [
               (
-                  '''        // Общий station-level runtime создаёт только те составные части,
-          // которые уже переведены на component model. Equipment пока остаётся
-          // на существующем EquipmentRegistry до отдельного этапа миграции.
-          componentRuntime_ = std::make_unique<orbita::stand::ComponentRuntime>();
-          orbita::stand::registerSampleSourceComponents(*componentRuntime_);
-          try {
-              componentRuntime_->instantiate(standProfile_, {"sample_source"});
-          ''',
-                  '''        // StationSession является единственным владельцем composition/runtime.
-          // Equipment загружается в Deferred mode: readiness ниже создаёт только
-          // приборы выбранного сценария и сохраняет проверенный порядок питания.
-          orbita::stand::registerSampleSourceComponents(*componentRuntime_);
-          stationSession_.configure(
-              standProfile_, root.filePath("plugins").toStdString(), {"sample_source"},
-              orbita::stand::EquipmentInstantiation::Deferred);
-          try {
-          '''
+                  '        componentRuntime_ = std::make_unique<orbita::stand::ComponentRuntime>();\n',
+                  ''
               ),
               (
-                  '''        equipmentPlugins_ = std::make_unique<orbita::stand::EquipmentPluginManager>();
-          equipmentPlugins_->loadDirectory(root.filePath("plugins").toStdString());
-          equipmentRegistry_ = std::make_unique<orbita::stand::EquipmentRegistry>();
-          ''',
-                  '''        // Plugin manager и registry уже принадлежат StationSession и были
-          // подготовлены configure(..., Deferred) без создания физических devices.
-          '''
+                  '            componentRuntime_->instantiate(standProfile_, {"sample_source"});\n',
+                  '            stationSession_.configure(\n'
+                  '                standProfile_, root.filePath("plugins").toStdString(), {"sample_source"},\n'
+                  '                orbita::stand::EquipmentInstantiation::Deferred);\n'
               ),
               (
-                  '''    if (equipmentRegistry_) equipmentRegistry_->safeStopAll();
-          if (telemetrySampleSource_) telemetrySampleSource_->stop();
-          if (orbita_ && orbita_->isRunning()) orbita_->stop();
-          if (componentRuntime_) componentRuntime_->safeStopAll();
-          ''',
-                  '''    stationSession_.clear();
-          telemetrySampleSource_ = nullptr;
-          if (orbita_ && orbita_->isRunning()) orbita_->stop();
-          '''
+                  '        equipmentPlugins_ = std::make_unique<orbita::stand::EquipmentPluginManager>();\n',
+                  ''
               ),
               (
-                  '''    equipmentRegistry_->safeStopAll();
-          equipmentRegistry_->clear();
-          equipmentDevices_.clear();
-          ''',
-                  '''    stationSession_.clearEquipment();
-          '''
+                  '        equipmentRegistry_ = std::make_unique<orbita::stand::EquipmentRegistry>();\n',
+                  ''
               ),
           ]
 
           for old, new in replacements:
               count = text.count(old)
               if count != 1:
-                  raise SystemExit(
-                      f"expected exactly one replacement, got {count}: {old[:100]!r}")
+                  raise SystemExit(f"expected exactly one replacement, got {count}: {old!r}")
               text = text.replace(old, new)
 
           path.write_text(text, encoding="utf-8", newline="\n")
@@ -93,7 +63,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git show HEAD^:.github/workflows/universal-miltechstation-ci.yml > .github/workflows/universal-miltechstation-ci.yml
+          git show HEAD^^:.github/workflows/universal-miltechstation-ci.yml > .github/workflows/universal-miltechstation-ci.yml
           git rm -f .github/workflows/desktop-station-migration-once.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
