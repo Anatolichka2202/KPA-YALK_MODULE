@@ -52,24 +52,18 @@ struct ChannelSpec {
 
 ## Входной поток
 
-Новый основной путь:
+Station-facing raw input:
 
 ```cpp
 pushSamples(const std::vector<int16_t>& samples)
 ```
 
 Источник отсчётов выбирает runtime MilTechStation из профиля поставки и
-передаёт полученные порции данных в `liborbita`.
+передаёт полученные порции данных в `liborbita` через integration boundary.
 
-Переходно остаются legacy-методы:
-
-```cpp
-setDeviceE2010(channel, rate_khz);
-setDeviceNone();
-```
-
-Они нужны существующему desktop-коду до завершения миграции. Новый station
-code не должен привязывать `liborbita` к E20-10 через эти методы.
+`liborbita` больше не содержит публичных `setDeviceE2010()` / `setDeviceNone()`
+и не владеет E20-10. E20-10 реализован как station-level `sample_source`
+provider; target `orbita` не включает и не линкует Lusbapi.
 
 ## Каналы
 
