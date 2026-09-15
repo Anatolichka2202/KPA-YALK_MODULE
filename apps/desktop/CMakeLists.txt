@@ -69,6 +69,7 @@ target_link_libraries(MilTechStation PRIVATE
     ktma_registrar
     ktma_ubsi
     ktma_ubsi_procedures
+    ktma_ubsi_readiness
     ktma_ubsi_reporting
     Qt6::Core
     Qt6::Widgets
