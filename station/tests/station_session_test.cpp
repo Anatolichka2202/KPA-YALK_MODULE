@@ -41,13 +41,7 @@ int main(int argc, char** argv)
 
         StationSession session;
         registerExecutionRuntimeComponents(session.components());
-
-        // Empty kind selection must instantiate all registered non-equipment
-        // kinds, while never trying to send equipment through ComponentRuntime.
-        session.configure(
-            profile,
-            pluginDirectory.path().toUtf8().toStdString(),
-            {});
+        session.configure(profile, pluginDirectory.path().toUtf8().toStdString(), {});
 
         require(session.configured(), "station session was not marked configured");
         require(session.profile().id == "session-test", "station session lost delivery profile");
@@ -62,10 +56,6 @@ int main(int argc, char** argv)
                 "station component survived session clear");
         require(session.profile().id.empty(), "station profile survived session clear");
 
-        // A delivery may contain equipment whose construction must be delayed
-        // until the operator selects a scenario and the readiness flow establishes
-        // a safe power-up order. Deferred mode must therefore configure the
-        // session even when the corresponding equipment provider is unavailable.
         auto deferredProfile = profile;
         deferredProfile.id = "deferred-session-test";
         deferredProfile.components.push_back(ComponentProfile{
@@ -112,9 +102,6 @@ int main(int argc, char** argv)
         require(!immediate.configured(),
                 "failed immediate configuration left session marked configured");
 
-        // Deferred readiness must be able to construct exactly one canonical
-        // equipment component and keep it private until the delivery explicitly
-        // exports its resource aliases after a successful probe.
         const QDir executableDirectory(QCoreApplication::applicationDirPath());
         const QString builtPluginDirectory = QDir(
             executableDirectory.filePath(QStringLiteral("../plugins"))).absolutePath();
@@ -153,8 +140,14 @@ int main(int argc, char** argv)
         require(readiness.equipment().resourceHasCapability(
                     "power.dut", "power.dc_supply"),
                 "delivery role did not expose the equipment capability");
+        require(!readiness.equipment().resourceHasCapability(
+                    "power.dut", "signal.generator"),
+                "delivery role leaked a provider capability not declared by the component");
         require(!readiness.equipment().hasCapability("power.dc_supply"),
                 "resource-only readiness unexpectedly enabled legacy default routing");
+        const auto resources = readiness.equipment().resources();
+        require(resources.size() == 2 && !resources.front().builtin && !resources.back().builtin,
+                "physical deferred equipment was misclassified as a built-in resource");
 
         readiness.clearEquipment();
         require(readiness.equipmentDevices().empty()

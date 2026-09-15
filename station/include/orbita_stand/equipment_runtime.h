@@ -86,6 +86,13 @@ public:
     // without overwriting each other. Resource id is the stable logical role;
     // capability remains the operation contract implemented by that resource.
     void bindResource(std::string resourceId, std::shared_ptr<EquipmentDevice> device);
+    // Restrict a physical device resource to the capabilities exported by the
+    // delivery component. The provider may technically implement a wider API,
+    // but undeclared operations must not leak through a logical station role.
+    void bindResource(
+        std::string resourceId,
+        std::set<std::string> capabilities,
+        std::shared_ptr<EquipmentDevice> device);
     void bindResource(
         std::string resourceId,
         std::set<std::string> capabilities,
@@ -116,6 +123,10 @@ private:
         InvokeFunction invoke;
         SafeStopFunction safeStop;
     };
+    struct DeviceResourceBinding {
+        std::shared_ptr<EquipmentDevice> device;
+        std::set<std::string> capabilities;
+    };
     struct BuiltinResourceBinding {
         std::set<std::string> capabilities;
         ResourceInvokeFunction invoke;
@@ -124,7 +135,7 @@ private:
 
     std::map<std::string, std::shared_ptr<EquipmentDevice>> bindings_;
     std::map<std::string, BuiltinBinding> builtinBindings_;
-    std::map<std::string, std::shared_ptr<EquipmentDevice>> resourceBindings_;
+    std::map<std::string, DeviceResourceBinding> resourceBindings_;
     std::map<std::string, BuiltinResourceBinding> builtinResourceBindings_;
 };
 

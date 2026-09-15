@@ -1,6 +1,7 @@
 #include "orbita_stand/station_session.h"
 
 #include <algorithm>
+#include <set>
 #include <stdexcept>
 #include <utility>
 
@@ -25,10 +26,6 @@ void StationSession::configure(
                 "StationSession equipment is owned by Equipment runtime during migration");
         }
         if (selectedKinds.empty()) {
-            // Empty selection means all non-equipment kinds for which the
-            // application/delivery actually registered a factory. Do not pass
-            // an empty set to ComponentRuntime because that means "all profile
-            // kinds" and would incorrectly attempt to instantiate equipment.
             for (const auto& component : profile.components) {
                 if (component.kind != "equipment"
                     && components_.hasKindFactory(component.kind)) {
@@ -36,10 +33,6 @@ void StationSession::configure(
                 }
             }
         }
-        // An equipment-only profile in Deferred mode legitimately has no
-        // ComponentRuntime work. Passing an empty selection to instantiate()
-        // means "all profile kinds", which would incorrectly send equipment
-        // through the generic component factory path.
         if (!selectedKinds.empty()) {
             components_.instantiate(profile, selectedKinds);
         }
@@ -115,17 +108,26 @@ void StationSession::bindEquipmentComponent(
             + componentId);
     }
 
-    equipment_.bindResource(component->id, device);
+    const auto& exported = component->capabilities.empty()
+        ? component->bindings
+        : component->capabilities;
+    const std::set<std::string> capabilities(exported.begin(), exported.end());
+    if (capabilities.empty()) {
+        throw std::invalid_argument(
+            "Equipment component exports no capabilities: " + componentId);
+    }
+
+    // A delivery role is narrower than a generic provider. Export only the
+    // capabilities declared by this concrete component even when the plugin can
+    // technically implement more operations.
+    equipment_.bindResource(component->id, capabilities, device);
     for (const auto& role : component->bindings) {
         if (!role.empty() && role != component->id) {
-            equipment_.bindResource(role, device);
+            equipment_.bindResource(role, capabilities, device);
         }
     }
 
     if (!bindDefaultCapabilities) return;
-    const auto& capabilities = component->capabilities.empty()
-        ? component->bindings
-        : component->capabilities;
     for (const auto& capability : capabilities) {
         if (!capability.empty()) equipment_.bind(capability, device);
     }
@@ -150,27 +152,18 @@ void StationSession::retainEquipmentDevice(std::shared_ptr<EquipmentDevice> devi
 
 void StationSession::clearEquipment() noexcept
 {
-    // EquipmentRegistry::clear() performs the registry-level best-effort
-    // safe-stop. EquipmentDevice destruction also invokes plugin safe_stop,
-    // preserving safety for devices retained after a passive probe but not
-    // exported into the registry.
     equipment_.clear();
     equipmentDevices_.clear();
 }
 
 void StationSession::safeStopAll() noexcept
 {
-    // Stop non-equipment station components first so producers/runtimes cease
-    // activity before active equipment outputs are driven to their safe state.
     components_.safeStopAll();
     equipment_.safeStopAll();
 }
 
 void StationSession::clear() noexcept
 {
-    // Both clear() implementations already perform their own best-effort
-    // safe-stop. Do not call safeStopAll() first: active hardware must not
-    // receive an extra registry-level stop merely because a session is reloaded.
     components_.clear();
     clearEquipment();
     profile_ = {};
