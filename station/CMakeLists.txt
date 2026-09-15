@@ -39,7 +39,6 @@ add_library(orbita_stand_runtime STATIC
     src/equipment_runtime.cpp
     src/component_runtime.cpp
     src/execution_runtime.cpp
-    src/execution_procedure.cpp
     src/station_session.cpp
 )
 target_include_directories(orbita_stand_runtime PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
