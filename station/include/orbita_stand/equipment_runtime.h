@@ -109,6 +109,11 @@ public:
         const std::map<std::string, std::string>& arguments = {}) override;
     std::vector<EquipmentResourceDescriptor> resources() const;
 
+    // Remove only physical devices and their default/resource routes. Built-in
+    // application services (catalog, operator input, protocol facades, etc.)
+    // remain registered so a delivery can repeat equipment readiness without
+    // rebuilding unrelated scenario services.
+    void clearPhysical() noexcept;
     void clear();
     bool hasCapability(const std::string& capability) const override;
     std::string invoke(

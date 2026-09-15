@@ -99,6 +99,10 @@ public:
     // retention list also keeps successfully created but intentionally unbound
     // devices alive until the next equipment reset/session clear.
     void retainEquipmentDevice(std::shared_ptr<EquipmentDevice> device);
+
+    // Re-run physical readiness without destroying application-level built-in
+    // scenario services already installed in EquipmentRegistry.
+    void clearPhysicalEquipment() noexcept;
     void clearEquipment() noexcept;
 
     void safeStopAll() noexcept;
