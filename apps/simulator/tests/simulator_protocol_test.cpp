@@ -18,20 +18,54 @@ namespace {
     std::exit(EXIT_FAILURE);
 }
 
+[[noreturn]] void fail(const QString& message)
+{
+    std::cerr << message.toStdString() << '\n';
+    std::exit(EXIT_FAILURE);
+}
+
 void require(bool condition, const char* message)
 {
     if (!condition) fail(message);
 }
 
-bool waitTcp(quint16 port, int timeoutMs)
+QString processDiagnostics(QProcess& process)
+{
+    const QByteArray output = process.readAll();
+    return QStringLiteral("state=%1 error=%2 exitCode=%3 output=%4")
+        .arg(static_cast<int>(process.state()))
+        .arg(process.errorString())
+        .arg(process.exitCode())
+        .arg(QString::fromLocal8Bit(output).trimmed());
+}
+
+bool waitTcp(QProcess& process, quint16 port, int timeoutMs, QString* detail)
 {
     QElapsedTimer timer;
     timer.start();
+    QString lastSocketError;
     while (timer.elapsed() < timeoutMs) {
+        if (process.state() == QProcess::NotRunning) {
+            if (detail) {
+                *detail = QStringLiteral("process stopped while waiting for TCP %1; %2")
+                    .arg(port)
+                    .arg(processDiagnostics(process));
+            }
+            return false;
+        }
         QTcpSocket socket;
-        socket.connectToHost(QHostAddress::LocalHost, port);
-        if (socket.waitForConnected(150)) return true;
+        socket.connectToHost(QHostAddress(QStringLiteral("127.0.0.1")), port);
+        if (socket.waitForConnected(200)) return true;
+        lastSocketError = socket.errorString();
+        QCoreApplication::processEvents();
         QThread::msleep(30);
+    }
+    if (detail) {
+        *detail = QStringLiteral("TCP %1 was not listening after %2 ms; socket=%3; %4")
+            .arg(port)
+            .arg(timeoutMs)
+            .arg(lastSocketError)
+            .arg(processDiagnostics(process));
     }
     return false;
 }
@@ -42,7 +76,7 @@ QByteArray fragmentedExchange(quint16 port,
                               int timeoutMs = 1500)
 {
     QTcpSocket socket;
-    socket.connectToHost(QHostAddress::LocalHost, port);
+    socket.connectToHost(QHostAddress(QStringLiteral("127.0.0.1")), port);
     require(socket.waitForConnected(timeoutMs), "TCP test connection failed");
     socket.write(first);
     require(socket.waitForBytesWritten(timeoutMs), "first TCP fragment was not written");
@@ -113,6 +147,7 @@ int main(int argc, char** argv)
             "cannot bind test adapter receive socket 127.0.0.1:1113");
 
     QProcess simulator;
+    simulator.setProcessChannelMode(QProcess::MergedChannels);
     simulator.setProgram(QString::fromLocal8Bit(argv[1]));
     simulator.setArguments({QStringLiteral("-platform"), QStringLiteral("offscreen")});
     simulator.start();
@@ -126,9 +161,14 @@ int main(int argc, char** argv)
         }
     };
 
-    if (!waitTcp(15025, 3000) || !waitTcp(18080, 3000)) {
+    QString startupDetail;
+    if (!waitTcp(simulator, 15025, 5000, &startupDetail)) {
         stopSimulator();
-        fail("simulator TCP endpoints did not become ready");
+        fail(QStringLiteral("SCPI endpoint startup failed: %1").arg(startupDetail));
+    }
+    if (!waitTcp(simulator, 18080, 5000, &startupDetail)) {
+        stopSimulator();
+        fail(QStringLiteral("ISD HTTP endpoint startup failed: %1").arg(startupDetail));
     }
 
     const QByteArray scpi = fragmentedExchange(15025, "*ID", "N?\n");
