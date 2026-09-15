@@ -91,6 +91,15 @@ QByteArray requestFrame(QUdpSocket& udp, const QByteArray& command, int expected
     fail("simulator did not emit the expected adapter frame size");
 }
 
+quint16 yalkWord(const QByteArray& frame, int wordIndex)
+{
+    require(frame.size() == 204, "YALK frame size is invalid while decoding a word");
+    require(wordIndex >= 0 && wordIndex < 100, "YALK word index is outside the frame");
+    const int offset = 4 + 2 * wordIndex;
+    return quint16(quint8(frame[offset]))
+        | (quint16(quint8(frame[offset + 1])) << 8);
+}
+
 } // namespace
 
 int main(int argc, char** argv)
@@ -135,6 +144,17 @@ int main(int argc, char** argv)
 
     const QByteArray yalk = requestFrame(udp, roktCommand(0x00), 204);
     require(yalk.size() == 204, "YALK frame must contain 204 bytes");
+
+    // In the safe/open state the current method requires every YALK input to
+    // decode below 0 V after 97/99 calibration and to keep the discrete bit at 1.
+    // The simulator therefore has to put a normal channel below the zero
+    // calibration code (address 97) while setting bit 0x0400.
+    const quint16 openWord = yalkWord(yalk, 0);
+    const quint16 zeroCalibrationWord = yalkWord(yalk, 96);
+    require((openWord & 0x0400u) != 0,
+            "YALK open-circuit simulator state must keep the discrete signal at 1");
+    require((openWord & 0x03ffu) < (zeroCalibrationWord & 0x03ffu),
+            "YALK open-circuit simulator code must decode below 0 V after calibration");
 
     const QByteArray ytp = requestFrame(udp, roktCommand(0x02), 68);
     require(ytp.size() == 68 && quint8(ytp[0]) == 0x01 && quint8(ytp[2]) == 0x34,
