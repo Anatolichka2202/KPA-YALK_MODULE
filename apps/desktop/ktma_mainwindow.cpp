@@ -100,23 +100,6 @@ bool enabledFlag(const std::map<std::string, std::string>& config,
         || found->second == "yes" || found->second == "on";
 }
 
-void bindDeliveryResources(
-    const orbita::stand::StandProfile& profile,
-    orbita::stand::EquipmentRegistry& registry,
-    const std::shared_ptr<orbita::stand::EquipmentDevice>& device)
-{
-    if (!device) return;
-    const auto* component = orbita::stand::findComponentById(profile, device->instanceId());
-    if (!component || component->kind != "equipment") return;
-    const auto& declared = componentCapabilities(*component);
-    const std::set<std::string> capabilities(declared.begin(), declared.end());
-    registry.bindResource(device->instanceId(), capabilities, device);
-    for (const auto& role : component->bindings) {
-        if (!role.empty() && role != device->instanceId())
-            registry.bindResource(role, capabilities, device);
-    }
-}
-
 } // namespace
 
 KtmaMainWindow::KtmaMainWindow(QWidget* parent)
@@ -812,78 +795,6 @@ void KtmaMainWindow::finalizeProductionRun()
              productionReportPath.isEmpty() ? QStringLiteral("не сформирован")
                                             : productionReportPath));
     clearPendingProduction();
-}
-
-void KtmaMainWindow::checkRigolGenerator()
-{
-    auto* page = integrationTestPage();
-    auto* plugins = integrationEquipmentPlugins();
-    auto* registry = integrationEquipmentRegistry();
-    if (!page || !plugins || !registry || !integrationStandRuntimeReady()) return;
-    if (!page->currentRequiredEquipment().contains(QStringLiteral("RIGOL"))) return;
-
-    const auto& profile = integrationStandProfile();
-    const orbita::stand::DeviceProfile* definition = nullptr;
-    for (const auto& device : profile.devices) {
-        if (device.pluginId == "orbita.rigol_generator") {
-            definition = &device;
-            break;
-        }
-    }
-    if (!definition) {
-        page->setEquipmentStatus(QStringLiteral("RIGOL"), false,
-            QStringLiteral("В профиле стенда нет генератора Rigol"));
-        return;
-    }
-    if (!definition->enabled) {
-        const auto reason = definition->configuration.find("disabled_reason");
-        page->setEquipmentStatus(QStringLiteral("RIGOL"), false,
-            reason == definition->configuration.end()
-                ? QStringLiteral("Отключён профилем стенда")
-                : QString::fromStdString(reason->second));
-        return;
-    }
-
-    try {
-        auto config = definition->configuration;
-        config["record_root"] = QDir(QCoreApplication::applicationDirPath())
-            .filePath(QStringLiteral("runs")).toStdString();
-        config["profile.active_outputs_confirmed"] =
-            profile.activeOutputsConfirmed ? "true" : "false";
-        for (const auto& [key, value] : profile.routes)
-            config["route." + key] = value;
-
-        if (definition->bindCapabilities.empty())
-            throw std::runtime_error("Для Rigol не указана capability");
-        auto device = plugins->createDevice(
-            definition->pluginId, definition->id, config);
-        const std::string capability = definition->bindCapabilities.front();
-        const std::string response = device->invoke(capability, "probe", {});
-
-        const auto confirmation = config.find("device.active_commands_confirmed");
-        const bool explicitlyBlocked = confirmation != config.end()
-            && !enabledFlag(config, "device.active_commands_confirmed");
-        const bool deviceConfirmed = enabledFlag(config, "device.active_commands_confirmed");
-        const bool activeAllowed = !explicitlyBlocked
-            && (profile.activeOutputsConfirmed || deviceConfirmed);
-
-        integrationStationSession().retainEquipmentDevice(device);
-        if (!activeAllowed) {
-            page->setEquipmentStatus(QStringLiteral("RIGOL"), false,
-                QStringLiteral("Связь есть, но активный выход заблокирован профилем стенда"));
-            return;
-        }
-        bindDeliveryResources(profile, *registry, device);
-        for (const auto& bound : definition->bindCapabilities)
-            registry->bind(bound, device);
-        page->setEquipmentStatus(QStringLiteral("RIGOL"), true,
-            QString::fromStdString(response).trimmed());
-    } catch (const std::exception& error) {
-        page->setEquipmentStatus(QStringLiteral("RIGOL"), false,
-            QString::fromUtf8(error.what()));
-        integrationLog(QStringLiteral("Rigol не готов: %1")
-            .arg(QString::fromUtf8(error.what())));
-    }
 }
 
 void KtmaMainWindow::clearPendingProduction() noexcept

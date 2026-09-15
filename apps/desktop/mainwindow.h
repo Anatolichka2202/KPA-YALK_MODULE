@@ -72,7 +72,6 @@ protected:
     ktma::registrar::Registrar* integrationRegistrar() const { return registrar_.get(); }
     orbita::stand::ScenarioEngine* integrationScenarioEngine() const { return scenarioEngine_.get(); }
     orbita::stand::EquipmentRegistry* integrationEquipmentRegistry() const { return equipmentRegistry_; }
-    orbita::stand::EquipmentPluginManager* integrationEquipmentPlugins() const { return equipmentPlugins_; }
     orbita::stand::StandProfile& integrationStandProfile() { return standProfile_; }
     orbita::stand::StationSession& integrationStationSession() { return stationSession_; }
     QHash<QString, orbita::stand::ScenarioDefinition>& integrationScenarios() { return scenarios_; }

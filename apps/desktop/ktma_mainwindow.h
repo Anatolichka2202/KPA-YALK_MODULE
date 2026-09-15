@@ -30,7 +30,6 @@ private slots:
                      bool allowPartial);
     void finalizeProductionRun();
     void checkSelectedEquipment();
-    void checkRigolGenerator();
 
 private:
     void loadProductionScenarios();
