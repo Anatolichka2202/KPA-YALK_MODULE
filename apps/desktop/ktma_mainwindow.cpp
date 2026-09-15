@@ -1,13 +1,20 @@
 #include "ktma_mainwindow.h"
 
+#include "ktma/ubsi/equipment_readiness.h"
 #include "ktma/ubsi/production_ledger.h"
 #include "ktma/ubsi/production_report.h"
+#include "orbita_stand/catalog.h"
 #include "orbita_stand/config.h"
 
+#include <QApplication>
 #include <QComboBox>
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QDir>
+#include <QEventLoop>
 #include <QFile>
+#include <QInputDialog>
+#include <QLineEdit>
 #include <QMessageBox>
 #include <QMetaObject>
 #include <QSet>
@@ -17,13 +24,16 @@
 
 #include <algorithm>
 #include <functional>
+#include <iomanip>
+#include <set>
+#include <sstream>
 #include <stdexcept>
 
 namespace {
 
-QStringList equipmentRoles(const orbita::stand::ScenarioDefinition& scenario)
+QString equipmentCode(const std::string& capability)
 {
-    const QHash<QString, QString> roles = {
+    static const QHash<QString, QString> roles = {
         {QStringLiteral("ulk.parameter_source"), QStringLiteral("RS485")},
         {QStringLiteral("stand.switch_matrix"), QStringLiteral("ISD")},
         {QStringLiteral("measure.reference_voltage"), QStringLiteral("V7")},
@@ -33,24 +43,49 @@ QStringList equipmentRoles(const orbita::stand::ScenarioDefinition& scenario)
         {QStringLiteral("power.dc_supply"), QStringLiteral("AKIP")},
         {QStringLiteral("signal.generator"), QStringLiteral("RIGOL")},
         {QStringLiteral("operator.manual_input"), QStringLiteral("R4831")}};
+    return roles.value(QString::fromStdString(capability));
+}
 
+const std::vector<std::string>& componentCapabilities(
+    const orbita::stand::ComponentProfile& component)
+{
+    return component.capabilities.empty() ? component.bindings : component.capabilities;
+}
+
+QStringList equipmentCodes(const orbita::stand::ComponentProfile& component)
+{
     QSet<QString> result;
+    for (const auto& capability : componentCapabilities(component)) {
+        const QString code = equipmentCode(capability);
+        if (!code.isEmpty()) result.insert(code);
+    }
+    QStringList list = result.values();
+    list.sort();
+    return list;
+}
+
+std::set<std::string> scenarioCapabilities(
+    const orbita::stand::ScenarioDefinition& scenario)
+{
+    std::set<std::string> result;
     std::function<void(const orbita::stand::ScenarioNode&)> collect;
     collect = [&](const orbita::stand::ScenarioNode& node) {
-        for (const auto& capability : node.requiredCapabilities) {
-            const QString role = roles.value(QString::fromStdString(capability));
-            if (!role.isEmpty()) result.insert(role);
-        }
-        // Resource-aware scenarios no longer duplicate physical requirements in
-        // requiredCapabilities. The Preparation page still shows instruments by
-        // capability, therefore derive the UI row from each resource contract.
-        for (const auto& requirement : node.requiredResources) {
-            const QString role = roles.value(QString::fromStdString(requirement.capability));
-            if (!role.isEmpty()) result.insert(role);
-        }
+        result.insert(node.requiredCapabilities.begin(), node.requiredCapabilities.end());
+        for (const auto& requirement : node.requiredResources)
+            result.insert(requirement.capability);
         for (const auto& child : node.children) collect(child);
     };
     for (const auto& node : scenario.steps) collect(node);
+    return result;
+}
+
+QStringList equipmentRoles(const orbita::stand::ScenarioDefinition& scenario)
+{
+    QSet<QString> result;
+    for (const auto& capability : scenarioCapabilities(scenario)) {
+        const QString role = equipmentCode(capability);
+        if (!role.isEmpty()) result.insert(role);
+    }
     QStringList list = result.values();
     list.sort();
     return list;
@@ -71,16 +106,14 @@ void bindDeliveryResources(
     const std::shared_ptr<orbita::stand::EquipmentDevice>& device)
 {
     if (!device) return;
-
-    // The concrete component id is always a valid resource. Canonical `bind:`
-    // aliases are the stable delivery roles used by resource-aware scenarios.
-    registry.bindResource(device->instanceId(), device);
     const auto* component = orbita::stand::findComponentById(profile, device->instanceId());
     if (!component || component->kind != "equipment") return;
+    const auto& declared = componentCapabilities(*component);
+    const std::set<std::string> capabilities(declared.begin(), declared.end());
+    registry.bindResource(device->instanceId(), capabilities, device);
     for (const auto& role : component->bindings) {
-        if (!role.empty() && role != device->instanceId()) {
-            registry.bindResource(role, device);
-        }
+        if (!role.empty() && role != device->instanceId())
+            registry.bindResource(role, capabilities, device);
     }
 }
 
@@ -320,54 +353,240 @@ void KtmaMainWindow::restoreTuSelector()
 void KtmaMainWindow::checkSelectedEquipment()
 {
     auto* page = integrationTestPage();
-    if (!page) return;
+    auto* registry = integrationEquipmentRegistry();
+    if (!page || !registry) return;
     integrationEnsureStandRuntime();
     if (!integrationStandRuntimeReady()) return;
 
-    QSet<QString> required;
-    for (const auto& code : page->currentRequiredEquipment()) required.insert(code);
+    const QString scenarioCode = page->currentScenarioCode();
+    const auto scenario = integrationScenarios().constFind(scenarioCode);
+    if (scenario == integrationScenarios().cend()) {
+        integrationLog(QStringLiteral("Проверка оборудования: сценарий %1 не загружен")
+            .arg(scenarioCode));
+        return;
+    }
 
-    const QHash<QString, QString> capabilityToUi = {
-        {QStringLiteral("ulk.parameter_source"), QStringLiteral("RS485")},
-        {QStringLiteral("stand.switch_matrix"), QStringLiteral("ISD")},
-        {QStringLiteral("measure.reference_voltage"), QStringLiteral("V7")},
-        {QStringLiteral("measure.dc_current"), QStringLiteral("V7")},
-        {QStringLiteral("measure.reference_ac_voltage"), QStringLiteral("V7")},
-        {QStringLiteral("measure.reference_frequency"), QStringLiteral("V7")},
-        {QStringLiteral("power.dc_supply"), QStringLiteral("AKIP")},
-        {QStringLiteral("signal.generator"), QStringLiteral("RIGOL")}};
-
+    auto& session = integrationStationSession();
     auto& profile = integrationStandProfile();
-    const auto savedDevices = profile.devices;
-    for (auto& definition : profile.devices) {
-        bool needed = false;
-        for (const auto& capability : definition.bindCapabilities) {
-            const QString code = capabilityToUi.value(QString::fromStdString(capability));
-            if (!code.isEmpty() && required.contains(code)) {
-                needed = true;
-                break;
+
+    // Only physical routes are reset. Built-ins already installed by the shell
+    // (notably orbita.parameter_source) survive this readiness pass.
+    session.clearPhysicalEquipment();
+
+    const std::string catalogDatabase = QDir(QCoreApplication::applicationDirPath())
+        .filePath(QStringLiteral("parameters.db")).toUtf8().toStdString();
+    registry->bind("catalog.parameter_resolver",
+        [catalogDatabase](const std::string& operation,
+                          const std::map<std::string, std::string>& arguments) {
+            if (operation != "resolve")
+                throw std::invalid_argument("Неизвестная операция каталога: " + operation);
+            const auto required = [&arguments](const char* key) -> const std::string& {
+                const auto value = arguments.find(key);
+                if (value == arguments.end() || value->second.empty())
+                    throw std::invalid_argument(std::string("Каталогу требуется ") + key);
+                return value->second;
+            };
+            const auto binding = orbita::stand::resolveCatalogParameterBinding(
+                catalogDatabase, required("block_type"), required("parameter_group"),
+                static_cast<unsigned>(std::stoul(required("channel_index"))));
+            std::ostringstream response;
+            response << "source=" << binding.source << '\n'
+                     << "locator_type=" << binding.locatorType << '\n'
+                     << "locator=" << binding.locator << '\n'
+                     << "stream_id=" << binding.streamId << '\n'
+                     << "word_index=" << binding.wordIndex << '\n'
+                     << "mask=" << binding.mask << '\n'
+                     << "shift=" << binding.shift << '\n'
+                     << "mode=" << binding.mode << '\n'
+                     << "conversion_id=" << binding.conversionId << '\n'
+                     << "stimulus_route=" << binding.stimulusRoute << '\n'
+                     << "stimulus_offset=" << binding.stimulusOffset << '\n'
+                     << "confirmed=" << (binding.confirmed ? "true" : "false") << '\n';
+            return response.str();
+        });
+    registry->bind("operator.manual_input",
+        [this](const std::string& operation,
+               const std::map<std::string, std::string>& arguments) {
+            if (operation != "confirm_value" && operation != "confirm_text")
+                throw std::invalid_argument("Неизвестная ручная операция: " + operation);
+            if (operation == "confirm_text") {
+                bool accepted = false;
+                QString value;
+                const QString title = arguments.count("title")
+                    ? QString::fromStdString(arguments.at("title"))
+                    : QStringLiteral("Подтверждающий документ");
+                const QString prompt = arguments.count("prompt")
+                    ? QString::fromStdString(arguments.at("prompt"))
+                    : QStringLiteral("Введите номер и дату документа:");
+                QMetaObject::invokeMethod(this, [&] {
+                    value = QInputDialog::getText(this, title,
+                        prompt + QStringLiteral(
+                            "\nЕсли документа нет, оставьте поле пустым — пункт будет отмечен как НЕ ПРОВЕРЕНО."),
+                        QLineEdit::Normal, {}, &accepted).trimmed();
+                }, Qt::BlockingQueuedConnection);
+                const QString operatorName = qEnvironmentVariable("USERNAME",
+                    qEnvironmentVariable("USER", QStringLiteral("неизвестен")));
+                std::ostringstream response;
+                response << "status="
+                         << (accepted && !value.isEmpty() ? "confirmed" : "not_confirmed")
+                         << "\nvalue=" << value.toStdString()
+                         << "\noperator=" << operatorName.toStdString()
+                         << "\ntimestamp="
+                         << QDateTime::currentDateTime().toString(Qt::ISODateWithMs).toStdString()
+                         << "\n";
+                return response.str();
             }
-        }
-        if (!needed) definition.enabled = false;
+
+            bool accepted = false;
+            double actual = 0.0;
+            QString title = QStringLiteral("Ручная операция");
+            QString prompt = QStringLiteral("Введите фактическое значение");
+            if (const auto found = arguments.find("title"); found != arguments.end())
+                title = QString::fromStdString(found->second);
+            if (const auto target = arguments.find("target_value"); target != arguments.end()) {
+                const QString unit = arguments.count("unit")
+                    ? QString::fromStdString(arguments.at("unit")) : QString();
+                prompt = QStringLiteral(
+                    "Требуется: %1 %2\nВведите фактически установленное значение:")
+                    .arg(QString::fromStdString(target->second), unit);
+                actual = QString::fromStdString(target->second).toDouble();
+            }
+            QMetaObject::invokeMethod(this, [&] {
+                actual = QInputDialog::getDouble(this, title, prompt, actual,
+                    -1000000.0, 1000000.0, 6, &accepted);
+            }, Qt::BlockingQueuedConnection);
+            if (!accepted) throw std::runtime_error("Ручная операция отменена оператором");
+            const QString operatorName = qEnvironmentVariable("USERNAME",
+                qEnvironmentVariable("USER", QStringLiteral("неизвестен")));
+            std::ostringstream response;
+            response << std::setprecision(15) << "status=confirmed\nvalue=" << actual
+                     << "\noperator=" << operatorName.toStdString()
+                     << "\ntimestamp="
+                     << QDateTime::currentDateTime().toString(Qt::ISODateWithMs).toStdString()
+                     << "\n";
+            return response.str();
+        });
+
+    const auto plan = ktma::ubsi::buildEquipmentReadinessPlan(
+        profile, scenarioCapabilities(scenario.value()));
+    for (const auto& item : plan.items) {
+        const auto* component = orbita::stand::findComponentById(profile, item.componentId);
+        if (!component) continue;
+        for (const auto& code : equipmentCodes(*component))
+            page->setEquipmentChecking(code, QStringLiteral("Ожидание проверки…"));
     }
 
-    // Reuse the verified common stand checker, but with all devices outside the
-    // selected scenario temporarily disabled. This prevents probes/outputs on
-    // unrelated hardware while preserving the existing safe-stop/bind logic.
-    integrationLegacyEquipmentCheck();
-    profile.devices = savedDevices;
+    QApplication::setOverrideCursor(Qt::WaitCursor);
+    try {
+        ktma::ubsi::executeEquipmentReadinessPlan(profile, plan, {
+            [this, page, &session, &profile](
+                const orbita::stand::ComponentProfile& component, bool armSupply) {
+                const QStringList codes = equipmentCodes(component);
+                const auto setStatus = [page, &codes](bool ready, const QString& detail) {
+                    for (const auto& code : codes)
+                        page->setEquipmentStatus(code, ready, detail);
+                };
+                if (!component.enabled) {
+                    const auto reason = component.configuration.find("disabled_reason");
+                    const QString detail = reason == component.configuration.end()
+                        ? QStringLiteral("Отключено в профиле стенда")
+                        : QString::fromStdString(reason->second);
+                    setStatus(false, detail);
+                    integrationLog(QStringLiteral("%1: %2")
+                        .arg(QString::fromStdString(component.id), detail));
+                    return;
+                }
 
-    // MainWindow's compatibility checker still binds devices by capability.
-    // Recreate the canonical delivery resource aliases for every device that it
-    // actually instantiated, so resource-aware production scenarios address the
-    // exact same checked hardware rather than a second hidden device instance.
-    if (auto* registry = integrationEquipmentRegistry()) {
-        for (const auto& device : integrationEquipmentDevices()) {
-            bindDeliveryResources(profile, *registry, device);
-        }
+                for (const auto& code : codes) {
+                    page->setEquipmentChecking(code,
+                        armSupply && code == QStringLiteral("AKIP")
+                            ? QStringLiteral("Подключение АКИП и включение питания УБСИ 27 В…")
+                            : QStringLiteral("Загрузка DLL и проверка связи…"));
+                }
+
+                std::shared_ptr<orbita::stand::EquipmentDevice> device;
+                try {
+                    device = session.createEquipmentComponent(component.id);
+                    const auto& capabilities = componentCapabilities(component);
+                    if (capabilities.empty())
+                        throw std::runtime_error("В профиле не указана возможность устройства");
+                    const std::string probeCapability = capabilities.front();
+                    const std::string response = device->invoke(probeCapability, "probe", {});
+                    const bool passiveReady = response.find("alive=0") == std::string::npos
+                        && response.find("alive=false") == std::string::npos;
+
+                    const bool activeComponent = armSupply
+                        || std::find(capabilities.begin(), capabilities.end(), "stand.switch_matrix")
+                            != capabilities.end()
+                        || std::find(capabilities.begin(), capabilities.end(), "signal.generator")
+                            != capabilities.end();
+                    const auto confirmation = component.configuration.find(
+                        "device.active_commands_confirmed");
+                    const bool explicitlyBlocked = confirmation != component.configuration.end()
+                        && !enabledFlag(component.configuration, "device.active_commands_confirmed");
+                    const bool deviceConfirmed = enabledFlag(
+                        component.configuration, "device.active_commands_confirmed");
+                    const bool activeAllowed = !activeComponent || (!explicitlyBlocked
+                        && (profile.activeOutputsConfirmed || deviceConfirmed));
+                    if (!activeAllowed) {
+                        device->safeStop();
+                        const QString detail = QStringLiteral(
+                            "Связь есть, но активные воздействия заблокированы профилем стенда");
+                        setStatus(false, detail);
+                        integrationLog(QStringLiteral("%1: %2")
+                            .arg(QString::fromStdString(component.id), detail));
+                        return;
+                    }
+
+                    std::string finalResponse = response;
+                    if (armSupply) {
+                        device->invoke("power.dc_supply", "set_current_limit",
+                            {{"amperes", "0.6"}});
+                        device->invoke("power.dc_supply", "set_voltage",
+                            {{"volts", "27.0"}});
+                        device->invoke("power.dc_supply", "output",
+                            {{"enabled", "true"}});
+                        finalResponse = device->invoke(
+                            "power.dc_supply", "read_state", {});
+                        if (finalResponse.find("output_enabled=true") == std::string::npos)
+                            throw std::runtime_error(
+                                "АКИП не подтвердил включение питания УБСИ");
+                    }
+
+                    session.bindEquipmentComponent(component.id, device, true);
+                    QString detail = QString::fromStdString(finalResponse).trimmed();
+                    setStatus(passiveReady, detail);
+                    integrationLog(QStringLiteral("%1: %2")
+                        .arg(QString::fromStdString(component.id), detail));
+                    if (!passiveReady && armSupply)
+                        throw std::runtime_error("Источник питания не подтвердил готовность");
+                } catch (const std::exception& error) {
+                    if (device) device->safeStop();
+                    const QString detail = QString::fromUtf8(error.what());
+                    setStatus(false, detail);
+                    integrationLog(QStringLiteral("%1 не готов: %2")
+                        .arg(QString::fromStdString(component.id), detail));
+                    if (armSupply) throw;
+                }
+            },
+            [this, page](unsigned milliseconds) {
+                page->setEquipmentChecking(QStringLiteral("RS485"),
+                    QStringLiteral("Питание включено; ожидание запуска адаптера %1 с…")
+                        .arg(milliseconds / 1000.0, 0, 'f', 1));
+                integrationLog(QStringLiteral(
+                    "Питание УБСИ включено; выдержка %1 мс перед проверкой адаптера")
+                    .arg(milliseconds));
+                QEventLoop delay;
+                QTimer::singleShot(static_cast<int>(milliseconds), &delay, &QEventLoop::quit);
+                delay.exec(QEventLoop::ExcludeUserInputEvents);
+            },
+        });
+    } catch (const std::exception& error) {
+        session.clearPhysicalEquipment();
+        integrationLog(QStringLiteral("Подготовка оборудования остановлена: %1")
+            .arg(QString::fromUtf8(error.what())));
     }
-
-    if (required.contains(QStringLiteral("RIGOL"))) checkRigolGenerator();
+    QApplication::restoreOverrideCursor();
 }
 
 void KtmaMainWindow::runScenario(
