@@ -2,6 +2,7 @@
 #include "orbita_stand/station_session.h"
 
 #include <QCoreApplication>
+#include <QDir>
 #include <QTemporaryDir>
 
 #include <iostream>
@@ -110,6 +111,55 @@ int main(int argc, char** argv)
                 "immediate equipment mode accepted a missing equipment provider");
         require(!immediate.configured(),
                 "failed immediate configuration left session marked configured");
+
+        // Deferred readiness must be able to construct exactly one canonical
+        // equipment component and keep it private until the delivery explicitly
+        // exports its resource aliases after a successful probe.
+        const QDir executableDirectory(QCoreApplication::applicationDirPath());
+        const QString builtPluginDirectory = QDir(
+            executableDirectory.filePath(QStringLiteral("../plugins"))).absolutePath();
+        StandProfile readinessProfile;
+        readinessProfile.id = "readiness-session-test";
+        readinessProfile.version = "1";
+        readinessProfile.routes["test.route"] = "configured";
+        readinessProfile.components.push_back(ComponentProfile{
+            "bench-power",
+            "equipment",
+            "orbita.tcp_scpi_bench",
+            true,
+            {"power.dut"},
+            {{"host", "127.0.0.1"}, {"port", "9"}, {"timeout_ms", "1"}},
+            {"power.dc_supply"},
+        });
+
+        StationSession readiness;
+        readiness.configure(
+            readinessProfile,
+            builtPluginDirectory.toUtf8().toStdString(),
+            {},
+            EquipmentInstantiation::Deferred);
+        auto device = readiness.createEquipmentComponent("bench-power");
+        require(device && device->instanceId() == "bench-power",
+                "deferred readiness did not create the requested equipment component");
+        require(readiness.equipmentDevices().size() == 1,
+                "deferred readiness did not retain the created equipment instance");
+        require(readiness.equipment().resources().empty(),
+                "unprobed deferred equipment was exported prematurely");
+
+        readiness.bindEquipmentComponent("bench-power", device, false);
+        require(readiness.equipment().hasResource("bench-power")
+                    && readiness.equipment().hasResource("power.dut"),
+                "deferred readiness did not export component id and delivery role");
+        require(readiness.equipment().resourceHasCapability(
+                    "power.dut", "power.dc_supply"),
+                "delivery role did not expose the equipment capability");
+        require(!readiness.equipment().hasCapability("power.dc_supply"),
+                "resource-only readiness unexpectedly enabled legacy default routing");
+
+        readiness.clearEquipment();
+        require(readiness.equipmentDevices().empty()
+                    && readiness.equipment().resources().empty(),
+                "equipment reset did not clear deferred readiness state");
 
         std::cout << "station session contract OK\n";
         return 0;

@@ -152,6 +152,9 @@ add_custom_target(orbita_equipment_plugins ALL DEPENDS
     orbita_plugin_akip_1160
     orbita_plugin_rigol_dho8xx)
 add_dependencies(orbita_equipment_plugins orbita_plugin_tcp_scpi_bench)
+if(BUILD_TESTING)
+    add_dependencies(station_session_test orbita_equipment_plugins)
+endif()
 
 add_executable(catalog_import tools/catalog_import.cpp)
 target_link_libraries(catalog_import PRIVATE orbita_stand_runtime Qt6::Core)

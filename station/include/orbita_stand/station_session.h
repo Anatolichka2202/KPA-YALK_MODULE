@@ -77,6 +77,23 @@ public:
         const std::set<std::string>& componentKinds,
         EquipmentInstantiation equipmentInstantiation = EquipmentInstantiation::Immediate);
 
+    // Deferred readiness primitive. Construction is driven by the canonical
+    // kind=equipment ComponentProfile and augments provider configuration with
+    // profile-level safety/routes exactly as immediate composition does. The
+    // instance is retained by the session but is not exported into routing until
+    // bindEquipmentComponent() is called after the delivery has probed it.
+    std::shared_ptr<EquipmentDevice> createEquipmentComponent(
+        const std::string& componentId);
+
+    // Publish a successfully probed deferred device under its concrete id and
+    // canonical delivery role aliases. Default capability routing is optional so
+    // deliveries can keep active operations unavailable while still exporting
+    // explicit resource routing for capabilities they have approved.
+    void bindEquipmentComponent(
+        const std::string& componentId,
+        const std::shared_ptr<EquipmentDevice>& device,
+        bool bindDefaultCapabilities = true);
+
     // Used by deferred readiness flows after they create/probe a device through
     // equipmentPlugins(). The registry owns devices that are bound, while this
     // retention list also keeps successfully created but intentionally unbound
