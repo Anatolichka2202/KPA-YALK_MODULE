@@ -21,41 +21,64 @@ std::string newRunId()
     return stream.str();
 }
 
-bool isTerminalError(RunVerdict verdict)
+bool isTerminal(RunVerdict verdict)
 {
     return verdict == RunVerdict::Error || verdict == RunVerdict::Aborted;
 }
 
-int technicalRetryLimit(const ScenarioNode& node)
+bool parseRetryLimit(const ScenarioNode& node, int& value)
 {
+    value = 0;
     const auto found = node.arguments.find("technical_retries");
-    if (found == node.arguments.end()) return 0;
+    if (found == node.arguments.end()) return true;
     try {
-        const auto parsed = std::stoll(found->second);
-        return static_cast<int>(std::clamp<long long>(parsed, 0, 3));
+        std::size_t parsed = 0;
+        const auto retries = std::stoll(found->second, &parsed);
+        if (parsed != found->second.size() || retries < 0 || retries > 3) return false;
+        value = static_cast<int>(retries);
+        return true;
     } catch (...) {
-        return 0;
+        return false;
     }
 }
 
-// A migrated scenario may already select a logical delivery resource while an
-// existing procedure still calls the historical capability-only API. Route
-// that call through the unique resource declared by the current leaf node.
-// This lets scenario data migrate incrementally without silently returning to
-// a global "last device wins" capability binding.
-class NodeCapabilityRouter final : public ICapabilityProvider {
+struct ResourceRoute {
+    const ResourceRequirement* requirement = nullptr;
+    bool ambiguous = false;
+};
+
+ResourceRoute resourceRoute(const ScenarioNode& node, const std::string& capability)
+{
+    ResourceRoute result;
+    for (const auto& requirement : node.requiredResources) {
+        if (requirement.capability != capability) continue;
+        if (result.requirement) {
+            result.ambiguous = true;
+            return result;
+        }
+        result.requirement = &requirement;
+    }
+    return result;
+}
+
+// Temporary compatibility view for procedures that still call invoke(capability).
+// The scenario already owns the routing decision: if the current step names one
+// resource for that capability, the old call is scoped to that resource. Once
+// KTMA procedures are migrated to explicit resource calls this adapter can go.
+class StepEquipment final : public ICapabilityProvider {
 public:
-    NodeCapabilityRouter(ICapabilityProvider& upstream, const ScenarioNode& node)
+    StepEquipment(ICapabilityProvider& upstream, const ScenarioNode& node)
         : upstream_(upstream), node_(node)
     {
     }
 
     bool hasCapability(const std::string& capability) const override
     {
-        const auto matches = matchingResources(capability);
-        if (matches.empty()) return upstream_.hasCapability(capability);
-        if (matches.size() != 1) return false;
-        return upstream_.resourceHasCapability(matches.front()->resource, capability);
+        const auto route = resourceRoute(node_, capability);
+        if (route.ambiguous) return false;
+        return route.requirement
+            ? upstream_.resourceHasCapability(route.requirement->resource, capability)
+            : upstream_.hasCapability(capability);
     }
 
     std::string invoke(
@@ -63,15 +86,16 @@ public:
         const std::string& operation,
         const std::map<std::string, std::string>& arguments) override
     {
-        const auto matches = matchingResources(capability);
-        if (matches.empty()) return upstream_.invoke(capability, operation, arguments);
-        if (matches.size() != 1) {
+        const auto route = resourceRoute(node_, capability);
+        if (route.ambiguous) {
             throw std::runtime_error(
                 "Неоднозначный вызов capability " + capability + " в шаге " + node_.id
-                + ": сценарий объявляет несколько ресурсов; процедура должна вызвать invokeResource явно");
+                + ": процедура должна выбрать ресурс явно");
         }
-        return upstream_.invokeResource(
-            matches.front()->resource, capability, operation, arguments);
+        return route.requirement
+            ? upstream_.invokeResource(
+                route.requirement->resource, capability, operation, arguments)
+            : upstream_.invoke(capability, operation, arguments);
     }
 
     bool resourceHasCapability(
@@ -96,19 +120,48 @@ public:
     }
 
 private:
-    std::vector<const ResourceRequirement*> matchingResources(
-        const std::string& capability) const
-    {
-        std::vector<const ResourceRequirement*> result;
-        for (const auto& requirement : node_.requiredResources) {
-            if (requirement.capability == capability) result.push_back(&requirement);
-        }
-        return result;
-    }
-
     ICapabilityProvider& upstream_;
     const ScenarioNode& node_;
 };
+
+std::string missingDependencies(const ScenarioNode& node, ICapabilityProvider& equipment)
+{
+    std::vector<std::string> missingCapabilities;
+    std::vector<const ResourceRequirement*> missingResources;
+
+    for (const auto& capability : node.requiredCapabilities) {
+        // A migrated resource requirement is authoritative. Keeping the same
+        // capability in legacy `requires:` must not force a second global bind.
+        if (resourceRoute(node, capability).requirement) continue;
+        if (!equipment.hasCapability(capability)) missingCapabilities.push_back(capability);
+    }
+    for (const auto& requirement : node.requiredResources) {
+        if (!equipment.resourceHasCapability(requirement.resource, requirement.capability)) {
+            missingResources.push_back(&requirement);
+        }
+    }
+
+    if (missingCapabilities.empty() && missingResources.empty()) return {};
+
+    std::ostringstream message;
+    if (!missingCapabilities.empty()) {
+        message << "Недоступны возможности: ";
+        for (std::size_t index = 0; index < missingCapabilities.size(); ++index) {
+            if (index) message << ", ";
+            message << missingCapabilities[index];
+        }
+    }
+    if (!missingResources.empty()) {
+        if (!missingCapabilities.empty()) message << "; ";
+        message << "Недоступны ресурсы: ";
+        for (std::size_t index = 0; index < missingResources.size(); ++index) {
+            if (index) message << ", ";
+            message << missingResources[index]->resource << ':'
+                    << missingResources[index]->capability;
+        }
+    }
+    return message.str();
+}
 
 void validateNode(
     const ScenarioNode& node,
@@ -116,38 +169,52 @@ void validateNode(
     std::set<std::string>& ids,
     std::vector<std::string>& errors)
 {
-    if (node.id.empty()) errors.emplace_back("У шага отсутствует id");
-    else if (!ids.insert(node.id).second) errors.emplace_back("Повторяющийся id шага: " + node.id);
+    if (node.id.empty()) {
+        errors.emplace_back("У шага отсутствует id");
+    } else if (!ids.insert(node.id).second) {
+        errors.emplace_back("Повторяющийся id шага: " + node.id);
+    }
     if (node.title.empty()) errors.emplace_back("У шага " + node.id + " отсутствует название");
     if (!node.children.empty() && !node.procedure.empty()) {
         errors.emplace_back("Шаг " + node.id + " не может одновременно быть процедурой и группой");
     }
 
-    std::set<std::string> resourceRequirements;
+    std::set<std::string> resources;
     for (const auto& requirement : node.requiredResources) {
         if (requirement.resource.empty() || requirement.capability.empty()) {
             errors.emplace_back(
                 "У шага " + node.id + " некорректное требование ресурса: нужны resource и capability");
             continue;
         }
-        const std::string key = requirement.resource + "\n" + requirement.capability;
-        if (!resourceRequirements.insert(key).second) {
+        const std::string key = requirement.resource + '\n' + requirement.capability;
+        if (!resources.insert(key).second) {
             errors.emplace_back(
                 "У шага " + node.id + " повторяется требование ресурса "
-                + requirement.resource + ":" + requirement.capability);
+                + requirement.resource + ':' + requirement.capability);
         }
     }
 
+    int retries = 0;
+    if (!parseRetryLimit(node, retries)) {
+        errors.emplace_back(
+            "У шага " + node.id + " technical_retries должен быть целым числом 0..3");
+    }
+
     if (node.children.empty()) {
-        if (node.procedure.empty()) errors.emplace_back("У конечного шага " + node.id + " отсутствует процедура");
-        else if (!procedures.count(node.procedure)) {
-            errors.emplace_back("Не зарегистрирована процедура " + node.procedure + " для шага " + node.id);
+        if (node.procedure.empty()) {
+            errors.emplace_back("У конечного шага " + node.id + " отсутствует процедура");
+        } else if (!procedures.count(node.procedure)) {
+            errors.emplace_back(
+                "Не зарегистрирована процедура " + node.procedure + " для шага " + node.id);
         }
         if (node.tuRequirement.empty()) {
             errors.emplace_back("У конечного шага " + node.id + " отсутствует ссылка на пункт ТУ");
         }
     }
-    for (const auto& child : node.children) validateNode(child, procedures, ids, errors);
+
+    for (const auto& child : node.children) {
+        validateNode(child, procedures, ids, errors);
+    }
 }
 
 } // namespace
@@ -172,9 +239,6 @@ RunVerdict combineVerdicts(RunVerdict current, RunVerdict next) noexcept
         case RunVerdict::NotRun: return 0;
         case RunVerdict::Ok: return 1;
         case RunVerdict::Incomplete: return 2;
-        // Если хотя бы одно выполненное измерение не прошло допуск, общий
-        // результат обязан оставаться FAIL. Признак commissioning/частичного
-        // состава не должен маскировать уже установленное несоответствие.
         case RunVerdict::Fail: return 3;
         case RunVerdict::Error: return 4;
         case RunVerdict::Aborted: return 5;
@@ -186,7 +250,9 @@ RunVerdict combineVerdicts(RunVerdict current, RunVerdict next) noexcept
 
 void ScenarioEngine::registerProcedure(std::string id, ProcedureFunction procedure)
 {
-    if (id.empty() || !procedure) throw std::invalid_argument("Procedure id and callback are required");
+    if (id.empty() || !procedure) {
+        throw std::invalid_argument("Procedure id and callback are required");
+    }
     procedures_[std::move(id)] = std::move(procedure);
 }
 
@@ -198,8 +264,11 @@ std::vector<std::string> ScenarioEngine::validate(const ScenarioDefinition& scen
     if (scenario.version.empty()) errors.emplace_back("У сценария отсутствует версия");
     if (scenario.catalogVersion.empty()) errors.emplace_back("У сценария отсутствует версия каталога");
     if (scenario.steps.empty()) errors.emplace_back("Сценарий не содержит шагов");
+
     std::set<std::string> ids;
-    for (const auto& node : scenario.steps) validateNode(node, procedures_, ids, errors);
+    for (const auto& node : scenario.steps) {
+        validateNode(node, procedures_, ids, errors);
+    }
     return errors;
 }
 
@@ -221,7 +290,9 @@ StepRunResult ScenarioEngine::runNode(
         return result;
     }
 
-    context.eventSink({std::chrono::system_clock::now(), node.id, "START", node.title, RunVerdict::NotRun});
+    context.eventSink({
+        std::chrono::system_clock::now(), node.id, "START", node.title,
+        RunVerdict::NotRun});
 
     if (!node.children.empty()) {
         result.verdict = RunVerdict::Ok;
@@ -235,63 +306,32 @@ StepRunResult ScenarioEngine::runNode(
             ? "Все вложенные проверки выполнены"
             : "Группа содержит проверки без результата или с отклонениями";
     } else {
-        std::vector<std::string> missing;
-        for (const auto& capability : node.requiredCapabilities) {
-            if (!context.equipment.hasCapability(capability)) missing.push_back(capability);
-        }
-
-        std::vector<ResourceRequirement> missingResources;
-        for (const auto& requirement : node.requiredResources) {
-            if (!context.equipment.resourceHasCapability(
-                    requirement.resource, requirement.capability)) {
-                missingResources.push_back(requirement);
-            }
-        }
-
-        if (!missing.empty() || !missingResources.empty()) {
-            std::ostringstream message;
-            if (!missing.empty()) {
-                message << "Недоступны возможности: ";
-                for (std::size_t i = 0; i < missing.size(); ++i) {
-                    if (i) message << ", ";
-                    message << missing[i];
-                }
-            }
-            if (!missingResources.empty()) {
-                if (!missing.empty()) message << "; ";
-                message << "Недоступны ресурсы: ";
-                for (std::size_t i = 0; i < missingResources.size(); ++i) {
-                    if (i) message << ", ";
-                    message << missingResources[i].resource << ':'
-                            << missingResources[i].capability;
-                }
-            }
+        const auto missing = missingDependencies(node, context.equipment);
+        if (!missing.empty()) {
             result.verdict = RunVerdict::Incomplete;
-            result.message = message.str();
-            if (!allowPartial) stopTraversal = true;
+            result.message = missing;
+            stopTraversal = !allowPartial;
         } else {
             const auto procedure = procedures_.find(node.procedure);
             if (procedure == procedures_.end()) {
                 result.verdict = RunVerdict::Incomplete;
                 result.message = "Процедура не зарегистрирована: " + node.procedure;
-                if (!allowPartial) stopTraversal = true;
+                stopTraversal = !allowPartial;
             } else {
-                // Preserve procedure state semantics while routing historical
-                // capability-only invokes through the resources selected by
-                // this particular scenario node.
-                NodeCapabilityRouter routedEquipment(context.equipment, node);
-                ProcedureContext routedContext{
-                    routedEquipment,
+                StepEquipment scopedEquipment(context.equipment, node);
+                ProcedureContext scopedContext{
+                    scopedEquipment,
                     context.stopRequested,
                     context.eventSink,
                     context.runId,
-                    context.state,
+                    std::move(context.state),
                 };
 
-                const int retryLimit = technicalRetryLimit(node);
+                int retryLimit = 0;
+                parseRetryLimit(node, retryLimit); // validate() already checked it.
                 for (int attempt = 0; attempt <= retryLimit; ++attempt) {
                     try {
-                        auto procedureResult = procedure->second(node, routedContext);
+                        auto procedureResult = procedure->second(node, scopedContext);
                         result.verdict = procedureResult.verdict;
                         result.message = std::move(procedureResult.message);
                         result.measurements = std::move(procedureResult.measurements);
@@ -303,30 +343,33 @@ StepRunResult ScenarioEngine::runNode(
                         result.message = "Неизвестная ошибка процедуры";
                     }
 
-                    if (context.stopRequested.load()) {
+                    if (context.stopRequested.load()
+                        || result.verdict != RunVerdict::Error
+                        || attempt == retryLimit) {
                         break;
                     }
-                    if (result.verdict != RunVerdict::Error || attempt == retryLimit) break;
 
-                    // A technical retry starts only after every plugin has
-                    // returned to its safe state. Product deviations and
-                    // incomplete commissioning steps are never retried here.
                     context.equipment.safeStopAll();
-                    context.eventSink({std::chrono::system_clock::now(), node.id, "RETRY",
+                    context.eventSink({
+                        std::chrono::system_clock::now(), node.id, "RETRY",
                         "Техническая ошибка; безопасный сброс выполнен, повтор "
-                            + std::to_string(attempt + 1) + " из " + std::to_string(retryLimit),
+                            + std::to_string(attempt + 1) + " из "
+                            + std::to_string(retryLimit),
                         RunVerdict::Error,
                         {{"attempt", std::to_string(attempt + 2)},
                          {"max_retries", std::to_string(retryLimit)},
                          {"error", result.message}}});
                 }
-                context.state = std::move(routedContext.state);
-                if (isTerminalError(result.verdict)) stopTraversal = true;
+
+                context.state = std::move(scopedContext.state);
+                if (isTerminal(result.verdict)) stopTraversal = true;
             }
         }
     }
 
-    context.eventSink({std::chrono::system_clock::now(), node.id, "FINISH", result.message, result.verdict});
+    context.eventSink({
+        std::chrono::system_clock::now(), node.id, "FINISH", result.message,
+        result.verdict});
     return result;
 }
 
@@ -338,6 +381,10 @@ ScenarioRunResult ScenarioEngine::run(
     bool allowPartial,
     std::function<void(const RunEvent&)> progressSink)
 {
+    // A ScenarioEngine represents one sequential station runner. A previous
+    // operator stop must not poison the next run.
+    stopRequested_.store(false);
+
     ScenarioRunResult run;
     run.runId = newRunId();
     run.scenarioId = scenario.id;
@@ -348,22 +395,29 @@ ScenarioRunResult ScenarioEngine::run(
     run.objectSerial = std::move(objectSerial);
     run.startedAt = std::chrono::system_clock::now();
 
+    const auto finish = [&run] {
+        run.finishedAt = std::chrono::system_clock::now();
+    };
+
     const auto validationErrors = validate(scenario);
     if (!validationErrors.empty()) {
         run.verdict = RunVerdict::Incomplete;
         for (const auto& error : validationErrors) {
-            run.events.push_back({std::chrono::system_clock::now(), {}, "VALIDATION", error,
-                                  RunVerdict::Incomplete});
+            run.events.push_back({
+                std::chrono::system_clock::now(), {}, "VALIDATION", error,
+                RunVerdict::Incomplete});
         }
-        run.finishedAt = std::chrono::system_clock::now();
+        finish();
         return run;
     }
+
     if (scenario.publicationState != PublicationState::Published && !allowPartial) {
         run.verdict = RunVerdict::Incomplete;
-        run.events.push_back({std::chrono::system_clock::now(), {}, "VALIDATION",
-                              "Черновой сценарий нельзя использовать для приёмочного результата",
-                              RunVerdict::Incomplete});
-        run.finishedAt = std::chrono::system_clock::now();
+        run.events.push_back({
+            std::chrono::system_clock::now(), {}, "VALIDATION",
+            "Черновой сценарий нельзя использовать для приёмочного результата",
+            RunVerdict::Incomplete});
+        finish();
         return run;
     }
 
@@ -377,6 +431,7 @@ ScenarioRunResult ScenarioEngine::run(
         run.runId,
         {},
     };
+
     run.verdict = RunVerdict::Ok;
     bool stopTraversal = false;
     try {
@@ -386,15 +441,23 @@ ScenarioRunResult ScenarioEngine::run(
             run.steps.push_back(std::move(step));
             if (stopTraversal) break;
         }
+    } catch (const std::exception& error) {
+        run.verdict = RunVerdict::Error;
+        run.events.push_back({
+            std::chrono::system_clock::now(), {}, "ENGINE", error.what(),
+            RunVerdict::Error});
     } catch (...) {
         run.verdict = RunVerdict::Error;
-        stopTraversal = true;
+        run.events.push_back({
+            std::chrono::system_clock::now(), {}, "ENGINE",
+            "Неизвестная ошибка сценарного движка", RunVerdict::Error});
     }
-    // Испытательное воздействие всегда завершается безопасным сбросом — в том
-    // числе после полностью успешного прогона.
+
     equipment.safeStopAll();
-    if (allowPartial && run.verdict == RunVerdict::Ok) run.verdict = RunVerdict::Incomplete;
-    run.finishedAt = std::chrono::system_clock::now();
+    if (allowPartial && run.verdict == RunVerdict::Ok) {
+        run.verdict = RunVerdict::Incomplete;
+    }
+    finish();
     return run;
 }
 
