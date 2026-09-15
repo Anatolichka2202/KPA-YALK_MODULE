@@ -450,11 +450,10 @@ protected:
                                       : channel.backgroundOnly ? QColor(90, 117, 139, 115)
                                                                : QColor("#58bdd3");
                 const double valueY = y(channel.value);
-                const double zeroY = y(std::clamp(0.0, lower, upper));
                 painter.fillRect(QRectF(x + slotWidth * 0.20,
-                                        std::min(valueY, zeroY),
+                                        valueY,
                                         std::max(2.0, slotWidth * 0.60),
-                                        std::max(1.0, std::abs(zeroY - valueY))), color);
+                                        std::max(1.0, area.bottom() - valueY)), color);
                 painter.setPen(QPen(QColor("#e6edf3"), address == pinnedAddress_ ? 1.8 : 1.0));
                 painter.drawLine(QPointF(x + slotWidth / 2.0, y(channel.minimum)),
                                  QPointF(x + slotWidth / 2.0, y(channel.maximum)));
