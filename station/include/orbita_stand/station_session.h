@@ -45,7 +45,17 @@ public:
     EquipmentPluginManager& equipmentPlugins() noexcept { return equipmentPlugins_; }
     const EquipmentPluginManager& equipmentPlugins() const noexcept { return equipmentPlugins_; }
 
+    // Mutable views are intentionally narrow compatibility hooks for the staged
+    // desktop migration. Ownership still remains here; callers must not replace
+    // the referenced objects. Once readiness lives outside MainWindow these
+    // compatibility views can become const-only again.
+    StandProfile& profile() noexcept { return profile_; }
     const StandProfile& profile() const noexcept { return profile_; }
+
+    std::vector<std::shared_ptr<EquipmentDevice>>& equipmentDevices() noexcept
+    {
+        return equipmentDevices_;
+    }
     const std::vector<std::shared_ptr<EquipmentDevice>>& equipmentDevices() const noexcept
     {
         return equipmentDevices_;
