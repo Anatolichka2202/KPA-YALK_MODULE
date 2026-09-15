@@ -1,0 +1,140 @@
+name: one-shot UBSI registrar cleanup
+
+on:
+  push:
+    branches:
+      - universal_miltechstation
+
+permissions:
+  contents: write
+
+jobs:
+  refactor:
+    if: github.event.head_commit.message == 'chore(ci): stage one-shot UBSI registrar cleanup'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: universal_miltechstation
+          fetch-depth: 0
+
+      - name: Make registrar composition explicit
+        shell: python
+        run: |
+          from pathlib import Path
+
+          def replace_exact(path, old, new, count=1):
+              p = Path(path)
+              text = p.read_text(encoding="utf-8")
+              actual = text.count(old)
+              if actual != count:
+                  raise SystemExit(f"{path}: expected {count} occurrence(s), got {actual}: {old!r}")
+              p.write_text(text.replace(old, new, count), encoding="utf-8")
+
+          legacy = "deliveries/ktma/ubsi/src/procedures/ubsi_procedures.cpp"
+          replace_exact(legacy,
+              '#include "orbita_stand/ubsi_procedures.h"',
+              '#include "ktma/ubsi/procedures.h"')
+          replace_exact(legacy,
+              'void registerUbsiProcedures(ScenarioEngine& engine)\n{',
+              'void registerLegacyUbsiProcedures(ScenarioEngine& engine)\n{')
+          replace_exact(legacy,
+              '    engine.registerProcedure("ubsi.yvp", yvp);\n',
+              '')
+
+          current = "deliveries/ktma/ubsi/src/procedures/ubsi_procedures_current.cpp"
+          replace_exact(current,
+              '#include "orbita_stand/ubsi_procedures.h"\n#include "orbita_stand/ubsi_yvp_math.h"',
+              '#include "ktma/ubsi/procedures.h"\n#include "ktma/ubsi/yvp_math.h"\n#include "registration_layers.h"')
+          replace_exact(current,
+              '\nvoid registerLegacyUbsiProcedures(ScenarioEngine& engine);\n',
+              '\n')
+          replace_exact(current,
+              'void registerUbsiProcedures(ScenarioEngine& engine)\n{\n    registerLegacyUbsiProcedures(engine);',
+              'void registerCurrentUbsiProcedures(ScenarioEngine& engine)\n{')
+          replace_exact(current,
+              '    // Current-delivery overrides. ScenarioEngine::registerProcedure replaces\n    // the legacy callback with the same id.\n',
+              '    // Current-delivery implementations intentionally replace selected legacy\n    // ids when the central delivery registrar composes the layers.\n')
+          replace_exact(current,
+              '    engine.registerProcedure("ubsi.yvp", yvpCurrent);\n',
+              '')
+
+          rokt = "deliveries/ktma/ubsi/src/procedures/ubsi_procedures_rokt.cpp"
+          replace_exact(rokt,
+              '#include "orbita_stand/ubsi_procedures.h"',
+              '#include "ktma/ubsi/procedures.h"\n#include "registration_layers.h"')
+          replace_exact(rokt,
+              '\nvoid registerCurrentUbsiProcedures(ScenarioEngine& engine);\n',
+              '\n')
+          replace_exact(rokt,
+              'void registerUbsiProcedures(ScenarioEngine& engine)\n{\n    registerCurrentUbsiProcedures(engine);',
+              'void registerRoktUbsiProcedures(ScenarioEngine& engine)\n{')
+
+          v7 = "deliveries/ktma/ubsi/src/procedures/ubsi_procedures_v7.cpp"
+          replace_exact(v7,
+              '#include "ktma/ubsi/procedures.h"',
+              '#include "ktma/ubsi/procedures.h"\n#include "registration_layers.h"')
+          replace_exact(v7,
+              '// Previous layer. CMake renames the public registration symbol of\n// ubsi_procedures_rokt.cpp to this name, then this translation unit installs\n// the production V7+ISD alias last.\nvoid registerRoktUbsiProcedures(ScenarioEngine& engine);\n\n',
+              '')
+          replace_exact(v7,
+              'void registerUbsiProcedures(ScenarioEngine& engine)\n{\n    registerRoktUbsiProcedures(engine);',
+              'void registerV7UbsiProcedures(ScenarioEngine& engine)\n{')
+
+          Path("deliveries/ktma/ubsi/src/procedures/registration_layers.h").write_text('''#pragma once
+
+#include "orbita_stand/scenario.h"
+
+namespace orbita::stand {
+
+// Private implementation layers. Only registerUbsiProcedures() is public;
+// the delivery registrar composes these layers in one explicit order.
+void registerLegacyUbsiProcedures(ScenarioEngine& engine);
+void registerCurrentUbsiProcedures(ScenarioEngine& engine);
+void registerRoktUbsiProcedures(ScenarioEngine& engine);
+void registerV7UbsiProcedures(ScenarioEngine& engine);
+
+} // namespace orbita::stand
+''', encoding="utf-8")
+
+          Path("deliveries/ktma/ubsi/src/procedures/procedure_registry.cpp").write_text('''#include "ktma/ubsi/procedures.h"
+#include "registration_layers.h"
+
+namespace orbita::stand {
+
+void registerUbsiProcedures(ScenarioEngine& engine)
+{
+    // Composition order is part of the KTMA/UBSI delivery contract. Later
+    // layers replace only the procedure ids for which this delivery has a
+    // newer implementation; the production V7 layer owns the final ubsi.yvp.
+    registerLegacyUbsiProcedures(engine);
+    registerCurrentUbsiProcedures(engine);
+    registerRoktUbsiProcedures(engine);
+    registerV7UbsiProcedures(engine);
+}
+
+} // namespace orbita::stand
+''', encoding="utf-8")
+
+          cmake = "deliveries/ktma/ubsi/CMakeLists.txt"
+          replace_exact(cmake,
+              'add_library(ktma_ubsi_procedures STATIC\n    src/procedures/yalk_analog_procedure.cpp',
+              'add_library(ktma_ubsi_procedures STATIC\n    src/procedures/procedure_registry.cpp\n    src/procedures/registration_layers.h\n    src/procedures/yalk_analog_procedure.cpp')
+          replace_exact(cmake,
+              '# Layer the historical implementation, current KTMA overrides and ROKT\n# commissioning helpers first. ubsi_procedures_v7.cpp owns the final public\n# registerUbsiProcedures() symbol and installs the production V7+ISD YVP alias\n# last, so `ubsi.yvp` cannot silently fall back to the adapter/ROKT path.\nset_source_files_properties(src/procedures/ubsi_procedures.cpp PROPERTIES\n    COMPILE_DEFINITIONS "registerUbsiProcedures=registerLegacyUbsiProcedures")\nset_source_files_properties(src/procedures/ubsi_procedures_current.cpp PROPERTIES\n    COMPILE_DEFINITIONS "registerUbsiProcedures=registerCurrentUbsiProcedures")\nset_source_files_properties(src/procedures/ubsi_procedures_rokt.cpp PROPERTIES\n    COMPILE_DEFINITIONS "registerUbsiProcedures=registerRoktUbsiProcedures")\n\n',
+              '# procedure_registry.cpp owns the one public registrar and makes the\n# historical/current/ROKT/V7 composition order explicit in C++, not via CMake\n# symbol rewriting.\n')
+
+      - name: Verify patch shape
+        run: |
+          git diff --check
+          git diff --stat
+          ! grep -R 'COMPILE_DEFINITIONS "registerUbsiProcedures=' deliveries/ktma/ubsi/CMakeLists.txt
+          test "$(grep -R --include='*.cpp' -n '^void registerUbsiProcedures' deliveries/ktma/ubsi/src/procedures | wc -l)" -eq 1
+
+      - name: Commit source refactor
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add deliveries/ktma/ubsi
+          git commit -m "refactor(ubsi): make procedure registration explicit"
+          git push origin HEAD:universal_miltechstation
