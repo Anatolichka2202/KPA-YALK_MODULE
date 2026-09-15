@@ -1,4 +1,5 @@
-#include "orbita_stand/ubsi_procedures.h"
+#include "ktma/ubsi/procedures.h"
+#include "registration_layers.h"
 
 #include <algorithm>
 #include <chrono>
@@ -14,7 +15,6 @@
 
 namespace orbita::stand {
 
-void registerCurrentUbsiProcedures(ScenarioEngine& engine);
 
 namespace {
 
@@ -408,9 +408,8 @@ ProcedureResult yvpSafeCleanup(const ScenarioNode&, ProcedureContext& context)
 
 } // namespace
 
-void registerUbsiProcedures(ScenarioEngine& engine)
+void registerRoktUbsiProcedures(ScenarioEngine& engine)
 {
-    registerCurrentUbsiProcedures(engine);
     // Replace the legacy callback only to expose per-impact progress. The
     // measurement sequence, limits and safe-state behaviour stay identical.
     engine.registerProcedure("yalk.check_overload", yalkOverloadWithProgress);

@@ -1,4 +1,4 @@
-#include "orbita_stand/ubsi_procedures.h"
+#include "ktma/ubsi/procedures.h"
 
 #include <algorithm>
 #include <chrono>
@@ -1709,7 +1709,7 @@ ProcedureResult yvp(const ScenarioNode& node, ProcedureContext& context)
 
 } // namespace
 
-void registerUbsiProcedures(ScenarioEngine& engine)
+void registerLegacyUbsiProcedures(ScenarioEngine& engine)
 {
     engine.registerProcedure("ubsi.binding_check", bindingCheck);
     engine.registerProcedure("ubsi.external_evidence", externalEvidence);
@@ -1736,7 +1736,6 @@ void registerUbsiProcedures(ScenarioEngine& engine)
     // Keep the historical YVP callback addressable for diagnostics. The
     // production alias is layered later by the V7+ISD registrar.
     engine.registerProcedure("yvp.legacy", yvp);
-    engine.registerProcedure("ubsi.yvp", yvp);
 }
 
 } // namespace orbita::stand

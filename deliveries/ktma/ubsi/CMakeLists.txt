@@ -20,6 +20,8 @@ target_link_libraries(ktma_ubsi PUBLIC ktma_registrar Qt6::Core Qt6::Sql)
 # include/ktma/ubsi; historical orbita_stand/* paths are compatibility wrappers
 # only and may be removed after the last migrated consumer.
 add_library(ktma_ubsi_procedures STATIC
+    src/procedures/procedure_registry.cpp
+    src/procedures/registration_layers.h
     src/procedures/yalk_analog_procedure.cpp
     src/procedures/ubsi_procedures.cpp
     src/procedures/ubsi_procedures_current.cpp
@@ -27,17 +29,9 @@ add_library(ktma_ubsi_procedures STATIC
     src/procedures/ubsi_procedures_v7.cpp
 )
 
-# Layer the historical implementation, current KTMA overrides and ROKT
-# commissioning helpers first. ubsi_procedures_v7.cpp owns the final public
-# registerUbsiProcedures() symbol and installs the production V7+ISD YVP alias
-# last, so `ubsi.yvp` cannot silently fall back to the adapter/ROKT path.
-set_source_files_properties(src/procedures/ubsi_procedures.cpp PROPERTIES
-    COMPILE_DEFINITIONS "registerUbsiProcedures=registerLegacyUbsiProcedures")
-set_source_files_properties(src/procedures/ubsi_procedures_current.cpp PROPERTIES
-    COMPILE_DEFINITIONS "registerUbsiProcedures=registerCurrentUbsiProcedures")
-set_source_files_properties(src/procedures/ubsi_procedures_rokt.cpp PROPERTIES
-    COMPILE_DEFINITIONS "registerUbsiProcedures=registerRoktUbsiProcedures")
-
+# procedure_registry.cpp owns the one public registrar and makes the
+# historical/current/ROKT/V7 composition order explicit in C++, not via CMake
+# symbol rewriting.
 target_include_directories(ktma_ubsi_procedures
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/include

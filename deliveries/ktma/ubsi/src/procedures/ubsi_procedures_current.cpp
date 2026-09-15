@@ -1,5 +1,6 @@
-#include "orbita_stand/ubsi_procedures.h"
-#include "orbita_stand/ubsi_yvp_math.h"
+#include "ktma/ubsi/procedures.h"
+#include "ktma/ubsi/yvp_math.h"
+#include "registration_layers.h"
 
 #include <algorithm>
 #include <array>
@@ -13,7 +14,6 @@
 
 namespace orbita::stand {
 
-void registerLegacyUbsiProcedures(ScenarioEngine& engine);
 
 namespace {
 
@@ -652,17 +652,15 @@ ProcedureResult yvpCurrent(const ScenarioNode& node, ProcedureContext& context)
 
 } // namespace
 
-void registerUbsiProcedures(ScenarioEngine& engine)
+void registerCurrentUbsiProcedures(ScenarioEngine& engine)
 {
-    registerLegacyUbsiProcedures(engine);
-    // Current-delivery overrides. ScenarioEngine::registerProcedure replaces
-    // the legacy callback with the same id.
+    // Current-delivery implementations intentionally replace selected legacy
+    // ids when the central delivery registrar composes the layers.
     engine.registerProcedure("ubsi.sensor_supply", sensorSupplyDisabled);
     engine.registerProcedure("ubsi.supply_range", supplyRangeCurrent);
     // This is the adapter/ROKT implementation retained for commissioning.
     // It must not own the production ubsi.yvp alias.
     engine.registerProcedure("yvp.rokt", yvpCurrent);
-    engine.registerProcedure("ubsi.yvp", yvpCurrent);
 }
 
 } // namespace orbita::stand

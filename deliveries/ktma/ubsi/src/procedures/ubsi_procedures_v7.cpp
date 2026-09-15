@@ -1,4 +1,5 @@
 #include "ktma/ubsi/procedures.h"
+#include "registration_layers.h"
 
 #include <cmath>
 #include <sstream>
@@ -8,11 +9,6 @@
 #include <vector>
 
 namespace orbita::stand {
-
-// Previous layer. CMake renames the public registration symbol of
-// ubsi_procedures_rokt.cpp to this name, then this translation unit installs
-// the production V7+ISD alias last.
-void registerRoktUbsiProcedures(ScenarioEngine& engine);
 
 namespace {
 
@@ -140,9 +136,8 @@ ProcedureResult yvpV7Isd(const ScenarioNode& node, ProcedureContext&)
 
 } // namespace
 
-void registerUbsiProcedures(ScenarioEngine& engine)
+void registerV7UbsiProcedures(ScenarioEngine& engine)
 {
-    registerRoktUbsiProcedures(engine);
     engine.registerProcedure("yvp.v7", yvpV7Isd);
     engine.registerProcedure("ubsi.yvp", yvpV7Isd);
 }
