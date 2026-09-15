@@ -273,7 +273,9 @@ public:
                        const QVector<double>& minimum,
                        const QVector<double>& maximum)
     {
-        const int count = std::min({80, mean.size(), minimum.size(), maximum.size()});
+        const int count = std::min({80, static_cast<int>(mean.size()),
+                                    static_cast<int>(minimum.size()),
+                                    static_cast<int>(maximum.size())});
         for (int index = 0; index < count; ++index) {
             channels_[index].value = mean[index];
             channels_[index].minimum = minimum[index];
