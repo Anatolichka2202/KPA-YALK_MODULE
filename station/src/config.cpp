@@ -42,6 +42,25 @@ std::map<std::string, std::string> stringMap(const yaml::Node* node)
     return result;
 }
 
+unsigned consumeTechnicalRetries(std::map<std::string, std::string>& arguments)
+{
+    const auto found = arguments.find("technical_retries");
+    if (found == arguments.end()) return 0;
+
+    const std::string text = found->second;
+    arguments.erase(found);
+    try {
+        std::size_t parsed = 0;
+        const auto retries = std::stoull(text, &parsed);
+        if (parsed != text.size() || retries > 3) {
+            throw std::invalid_argument("out of range");
+        }
+        return static_cast<unsigned>(retries);
+    } catch (...) {
+        throw yaml::Error("Scenario technical_retries must be an integer from 0 to 3");
+    }
+}
+
 std::vector<ResourceRequirement> resourceRequirements(const yaml::Node* node)
 {
     std::vector<ResourceRequirement> result;
@@ -167,6 +186,7 @@ ScenarioNode scenarioNode(const yaml::Node& value)
         node.requiredCapabilities.insert(capability);
     }
     node.arguments = stringMap(value.find("args"));
+    node.policy.technicalRetries = consumeTechnicalRetries(node.arguments);
     node.requiredResources = resourceRequirements(value.find("resources"));
     if (const auto* children = value.find("steps")) {
         if (!children->isSequence()) throw yaml::Error("Scenario steps must be a sequence");
