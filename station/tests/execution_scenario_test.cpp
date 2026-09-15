@@ -75,6 +75,9 @@ ScenarioDefinition scenario(std::map<std::string, std::string> arguments)
     ScenarioNode step;
     step.id = "external";
     step.title = "External bench";
+    // ScenarioEngine requires every leaf to retain an auditable requirement
+    // reference, even when the procedure is generic rather than KTMA-specific.
+    step.tuRequirement = "integration/external-bench";
     step.procedure = "station.execute";
     step.arguments = std::move(arguments);
     result.steps.push_back(std::move(step));
@@ -117,12 +120,16 @@ void successContract()
         "execution working directory/timeout were not forwarded");
     require(run.events.size() >= 2,
         "execution procedure must persist start and finish events");
-    const auto& finish = run.events.back();
-    require(finish.stage == "EXECUTION" && finish.verdict == RunVerdict::Ok,
+    const auto executionFinish = std::find_if(
+        run.events.rbegin(), run.events.rend(), [](const RunEvent& event) {
+            return event.stage == "EXECUTION";
+        });
+    require(executionFinish != run.events.rend()
+            && executionFinish->verdict == RunVerdict::Ok,
         "execution finish event has wrong stage/verdict");
-    require(finish.data.at("stdout") == "bench-ok\n"
-            && finish.data.at("stderr") == "diagnostic\n"
-            && finish.data.at("exit_code") == "7",
+    require(executionFinish->data.at("stdout") == "bench-ok\n"
+            && executionFinish->data.at("stderr") == "diagnostic\n"
+            && executionFinish->data.at("exit_code") == "7",
         "execution evidence was not attached to the run event");
     require(equipment.stopped, "scenario engine did not safe-stop equipment");
 }
