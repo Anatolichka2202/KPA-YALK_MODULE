@@ -26,6 +26,12 @@ bool isTerminal(RunVerdict verdict)
     return verdict == RunVerdict::Error || verdict == RunVerdict::Aborted;
 }
 
+bool shouldStop(RunVerdict verdict, bool allowPartial)
+{
+    return isTerminal(verdict)
+        || (!allowPartial && verdict == RunVerdict::Incomplete);
+}
+
 // Programmatic schema-1 tests still construct ScenarioNode aggregates with the
 // old arguments key. YAML-loaded scenarios never take this path because the
 // loader consumes technical_retries into the typed policy.
@@ -281,8 +287,7 @@ std::vector<std::string> ScenarioEngine::validate(const ScenarioDefinition& scen
 StepRunResult ScenarioEngine::runNode(
     const ScenarioNode& node,
     ProcedureContext& context,
-    bool allowPartial,
-    bool& stopTraversal)
+    bool allowPartial)
 {
     StepRunResult result;
     result.nodeId = node.id;
@@ -292,7 +297,6 @@ StepRunResult ScenarioEngine::runNode(
     if (context.stopRequested.load()) {
         result.verdict = RunVerdict::Aborted;
         result.message = "Остановлено оператором";
-        stopTraversal = true;
         return result;
     }
 
@@ -303,10 +307,11 @@ StepRunResult ScenarioEngine::runNode(
     if (!node.children.empty()) {
         result.verdict = RunVerdict::Ok;
         for (const auto& child : node.children) {
-            auto childResult = runNode(child, context, allowPartial, stopTraversal);
-            result.verdict = combineVerdicts(result.verdict, childResult.verdict);
+            auto childResult = runNode(child, context, allowPartial);
+            const auto childVerdict = childResult.verdict;
+            result.verdict = combineVerdicts(result.verdict, childVerdict);
             result.children.push_back(std::move(childResult));
-            if (stopTraversal) break;
+            if (shouldStop(childVerdict, allowPartial)) break;
         }
         result.message = result.verdict == RunVerdict::Ok
             ? "Все вложенные проверки выполнены"
@@ -316,13 +321,11 @@ StepRunResult ScenarioEngine::runNode(
         if (!missing.empty()) {
             result.verdict = RunVerdict::Incomplete;
             result.message = missing;
-            stopTraversal = !allowPartial;
         } else {
             const auto procedure = procedures_.find(node.procedure);
             if (procedure == procedures_.end()) {
                 result.verdict = RunVerdict::Incomplete;
                 result.message = "Процедура не зарегистрирована: " + node.procedure;
-                stopTraversal = !allowPartial;
             } else {
                 StepEquipment scopedEquipment(context.equipment, node);
                 ProcedureContext scopedContext{
@@ -368,7 +371,6 @@ StepRunResult ScenarioEngine::runNode(
                 }
 
                 context.state = std::move(scopedContext.state);
-                if (isTerminal(result.verdict)) stopTraversal = true;
             }
         }
     }
@@ -439,13 +441,13 @@ ScenarioRunResult ScenarioEngine::run(
     };
 
     run.verdict = RunVerdict::Ok;
-    bool stopTraversal = false;
     try {
         for (const auto& node : scenario.steps) {
-            auto step = runNode(node, context, allowPartial, stopTraversal);
-            run.verdict = combineVerdicts(run.verdict, step.verdict);
+            auto step = runNode(node, context, allowPartial);
+            const auto stepVerdict = step.verdict;
+            run.verdict = combineVerdicts(run.verdict, stepVerdict);
             run.steps.push_back(std::move(step));
-            if (stopTraversal) break;
+            if (shouldStop(stepVerdict, allowPartial)) break;
         }
     } catch (const std::exception& error) {
         run.verdict = RunVerdict::Error;
