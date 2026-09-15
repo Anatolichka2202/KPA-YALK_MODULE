@@ -1,0 +1,10 @@
+.\flash\tcpip.o: ..\src\tcpip.c
+.\flash\tcpip.o: ..\src\tcpip.h
+.\flash\tcpip.o: ..\..\Lib_OemBoard\inc\ethmac.h
+.\flash\tcpip.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
+.\flash\tcpip.o: ..\..\Lib_CMSIS\inc\LPC177x_8x.h
+.\flash\tcpip.o: ..\..\Lib_CMSIS\inc\core_cm3.h
+.\flash\tcpip.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
+.\flash\tcpip.o: ..\..\Lib_CMSIS\inc\core_cmInstr.h
+.\flash\tcpip.o: ..\..\Lib_CMSIS\inc\core_cmFunc.h
+.\flash\tcpip.o: ..\..\Lib_CMSIS\inc\system_LPC177x_8x.h

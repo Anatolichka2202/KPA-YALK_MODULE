@@ -578,7 +578,7 @@ ProcedureResult yalkAnalog(const ScenarioNode& node, ProcedureContext& context)
         || (!zeroParameter.empty() && !bindingsReady(context, zeroParameter, 1))
         || (!fullParameter.empty() && !bindingsReady(context, fullParameter, 1))) {
         return {RunVerdict::Incomplete,
-            "Адреса УЛК/маршруты ЯЛК не подтверждены; воздействия не выполнялись", {}};
+            "Адреса ЯЛК/маршруты ЯЛК не подтверждены; воздействия не выполнялись", {}};
     }
     double zeroRaw = number(node, "calibration_zero_raw", 0.0);
     double fullRaw = number(node, "calibration_full_raw", 0.0);
@@ -618,7 +618,7 @@ ProcedureResult yalkContacts(const ScenarioNode& node, ProcedureContext& context
     const std::string parameterGroup = argument(node, "parameter_group", "yalk_contacts");
     if (!bindingsReady(context, parameterGroup, count, true)) {
         return {RunVerdict::Incomplete,
-            "Адреса УЛК/маршруты контактных каналов не подтверждены; воздействия не выполнялись", {}};
+            "Адреса ЯЛК/маршруты контактных каналов не подтверждены; воздействия не выполнялись", {}};
     }
     for (unsigned channel = 0; channel < count; ++channel) {
         const auto binding = resolveLogicalBinding(context, parameterGroup, channel);
@@ -644,7 +644,7 @@ ProcedureResult yalkFaults(const ScenarioNode& node, ProcedureContext& context)
 {
     if (argument(node, "diagnostic_mapping_confirmed", "false") != "true") {
         return {RunVerdict::Incomplete,
-            "Адреса УЛК найдены, но алгоритм сравнения сохранённых кодов при ±12 В "
+            "Адреса ЯЛК найдены, но алгоритм сравнения сохранённых кодов при ±12 В "
             "ещё не подтверждён на подключённом УБСИ; опасное воздействие не выполнялось", {}};
     }
     ProcedureResult result{RunVerdict::Ok, "Проверены обрыв и перегрузка входов", {}};
@@ -1264,7 +1264,7 @@ ProcedureResult referenceVoltage(const ScenarioNode& node, ProcedureContext& con
             || !bindingsReady(context, zeroGroup, 1)
             || !bindingsReady(context, fullGroup, 1)) {
             result.verdict = combineVerdicts(result.verdict, RunVerdict::Incomplete);
-            result.message = "В7 проверен; адреса УЛК 97/98/99 ещё не подтверждены";
+            result.message = "В7 проверен; адреса ЯЛК 97/98/99 ещё не подтверждены";
             return result;
         }
         const double zeroRaw = readLogicalParameter(context,
@@ -1276,10 +1276,10 @@ ProcedureResult referenceVoltage(const ScenarioNode& node, ProcedureContext& con
         const double raw = readLogicalParameter(context, adapterGroup, 0,
             natural(node, "sample_count", 16));
         if (!(fullRaw > zeroRaw)) throw std::runtime_error(
-            "Некорректные калибровки ЯЛК для адреса УЛК 98");
+            "Некорректные калибровки ЯЛК для адреса ЯЛК 98");
         const double adapterVoltage = (raw - zeroRaw) * nominal / (fullRaw - zeroRaw);
         append(result, measurement("ubsi.reference_6v2.adapter",
-            "Эталон 6,2 В по адресу УЛК 98", v7, adapterVoltage,
+            "Эталон 6,2 В по адресу ЯЛК 98", v7, adapterVoltage,
             v7 - tolerance, v7 + tolerance, "В"));
     }
     return result;

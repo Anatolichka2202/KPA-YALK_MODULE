@@ -1,0 +1,88 @@
+<html>
+<body>
+<pre>
+<h1>µVision Build Log</h1>
+<h2>Tool Versions:</h2>
+IDE-Version: µVision V5.36.0.0
+Copyright (C) 2021 ARM Ltd and ARM Germany GmbH. All rights reserved.
+License Information: 1 Alexandr, 1, LIC=32B1Q-NZMUK-BSUYX-HMDPA-LE2B6-I0HQ7
+ 
+Tool Versions:
+Toolchain:       MDK-ARM Plus  Version: 5.36.0.0
+Toolchain Path:  C:\Keil_v5\ARM\ARMCC\Bin
+C Compiler:      Armcc.exe V5.06 update 7 (build 960)
+Assembler:       Armasm.exe V5.06 update 7 (build 960)
+Linker/Locator:  ArmLink.exe V5.06 update 7 (build 960)
+Library Manager: ArmAr.exe V5.06 update 7 (build 960)
+Hex Converter:   FromElf.exe V5.06 update 7 (build 960)
+CPU DLL:         SARMCM3.DLL V5.36.0.0
+Dialog DLL:      DARMP1.DLL V1.27.0.0
+Target DLL:      UL2CM3.DLL V1.164.0.0
+Dialog DLL:      TARMP1.DLL V1.26.0.0
+ 
+<h2>Project:</h2>
+L:\Ïðîåêòû\ÈÑÄ\LPC1788\uVision\easyweb.uvproj
+Project File Date:  04/22/2026
+
+<h2>Output:</h2>
+*** Using Compiler 'V5.06 update 7 (build 960)', folder: 'C:\Keil_v5\ARM\ARMCC\Bin'
+Rebuild target 'FLASH'
+assembling startup_LPC177x_8x.s...
+compiling system_LPC177x_8x.c...
+compiling Serial.c...
+compiling ew_systick.c...
+compiling ethmac.c...
+..\..\Lib_OemBoard\src\ethmac.c(65): warning:  #177-D: variable "phy_linkstatus_reg"  was declared but never referenced
+    unsigned phy_linkstatus_reg;
+..\..\Lib_OemBoard\src\ethmac.c(66): warning:  #177-D: variable "phy_linkstatus_mask"  was declared but never referenced
+    unsigned phy_linkstatus_mask;  
+..\..\Lib_OemBoard\src\ethmac.c: 2 warnings, 0 errors
+compiling tcpip.c...
+compiling easyweb.c...
+..\src\flash.h(55): warning:  #47-D: incompatible redefinition of macro "IAP_LOCATION"  (declared at line 4 of "..\src\iap.h")
+  #define IAP_LOCATION 0x7FFFFFF1							//	Àäðåñ çàïóñêà ôóíêöèé IAP
+..\src\easyweb.c(621): warning:  #167-D: argument of type "unsigned char *" is incompatible with parameter of type "const char *"
+  	if (str2=strstr(TCP_RX_BUF,str)) 
+..\src\easyweb.c(621): warning:  #167-D: argument of type "unsigned char *" is incompatible with parameter of type "const char *"
+  	if (str2=strstr(TCP_RX_BUF,str)) 
+..\src\easyweb.c(621): warning:  #513-D: a value of type "char *" cannot be assigned to an entity of type "unsigned char *"
+  	if (str2=strstr(TCP_RX_BUF,str)) 
+..\src\easyweb.c(621): warning:  #1293-D: assignment in condition
+  	if (str2=strstr(TCP_RX_BUF,str)) 
+..\src\easyweb.c(623): warning:  #167-D: argument of type "unsigned char *" is incompatible with parameter of type "const char *"
+  		str2+=strlen(str);
+..\src\easyweb.c(624): warning:  #167-D: argument of type "unsigned char *" is incompatible with parameter of type "const char *"
+  		return atoi(str2);	 			
+..\src\easyweb.c(686): warning:  #167-D: argument of type "unsigned char *" is incompatible with parameter of type "const char *"
+  	if (str2=strstr(TCP_RX_BUF,str)) 
+..\src\easyweb.c(686): warning:  #167-D: argument of type "unsigned char *" is incompatible with parameter of type "const char *"
+  	if (str2=strstr(TCP_RX_BUF,str)) 
+..\src\easyweb.c(686): warning:  #513-D: a value of type "char *" cannot be assigned to an entity of type "unsigned char *"
+  	if (str2=strstr(TCP_RX_BUF,str)) 
+..\src\easyweb.c(686): warning:  #1293-D: assignment in condition
+  	if (str2=strstr(TCP_RX_BUF,str)) 
+..\src\easyweb.c(688): warning:  #167-D: argument of type "unsigned char *" is incompatible with parameter of type "const char *"
+  		str2+=strlen(str);
+..\src\easyweb.c(689): warning:  #167-D: argument of type "unsigned char *" is incompatible with parameter of type "const char *"
+  		return atof(str2);	 			
+..\src\easyweb.c(1294): warning:  #167-D: argument of type "unsigned char *" is incompatible with parameter of type "const char *"
+  		if (!(HTTPStatus & HTTP_SEND_PAGE)) HTTPBytesToSend = strlen(PWebSide);   // get HTML length, ignore trailing zero
+..\src\easyweb.c(851): warning:  #177-D: variable "len"  was declared but never referenced
+  unsigned short len;
+..\src\easyweb.c(853): warning:  #177-D: variable "st_tmp"  was declared but never referenced
+    unsigned char st_tmp[100];
+..\src\easyweb.c(854): warning:  #177-D: variable "k"  was declared but never referenced
+    int val=0,type=0,num=0,i,work=0,bus=0,crc,k,p1code=0,p2code=0;
+..\src\easyweb.c(856): warning:  #550-D: variable "StateFlag"  was set but never used
+    unsigned char QUERY[8],StateFlag=0;
+..\src\easyweb.c(1349): warning:  #940-D: missing return statement at end of non-void function "GetAD7Val" 
+  }
+..\src\easyweb.c: 19 warnings, 0 errors
+linking...
+Program Size: Code=25000 RO-data=1988 RW-data=2688 ZI-data=8552  
+FromELF: creating hex file...
+".\FLASH\s_ob_easyweb.axf" - 0 Error(s), 21 Warning(s).
+Build Time Elapsed:  00:00:01
+</pre>
+</body>
+</html>

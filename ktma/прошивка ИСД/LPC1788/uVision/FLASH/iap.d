@@ -1,0 +1,10 @@
+.\flash\iap.o: ..\src\iap.c
+.\flash\iap.o: C:\Keil\ARM\ARMCC\bin\..\include\stdint.h
+.\flash\iap.o: C:\Keil\ARM\ARMCC\bin\..\include\stdlib.h
+.\flash\iap.o: C:\Keil\ARM\ARMCC\bin\..\include\string.h
+.\flash\iap.o: ..\..\Lib_CMSIS\inc\LPC177x_8x.h
+.\flash\iap.o: ..\..\Lib_CMSIS\inc\core_cm3.h
+.\flash\iap.o: ..\..\Lib_CMSIS\inc\core_cmInstr.h
+.\flash\iap.o: ..\..\Lib_CMSIS\inc\core_cmFunc.h
+.\flash\iap.o: ..\..\Lib_CMSIS\inc\system_LPC177x_8x.h
+.\flash\iap.o: ..\src\iap.h
