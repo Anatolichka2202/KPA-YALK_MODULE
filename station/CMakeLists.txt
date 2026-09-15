@@ -40,6 +40,7 @@ add_library(orbita_stand_runtime STATIC
     src/equipment_registry_reset.cpp
     src/component_runtime.cpp
     src/execution_runtime.cpp
+    src/execution_procedure.cpp
     src/station_session.cpp
     src/station_session_physical.cpp
 )
@@ -108,6 +109,10 @@ if(BUILD_TESTING)
     target_link_libraries(execution_runtime_test PRIVATE orbita_stand_runtime Qt6::Core)
     add_test(NAME stand.execution_runtime COMMAND execution_runtime_test)
 
+    add_executable(execution_scenario_test tests/execution_scenario_test.cpp)
+    target_link_libraries(execution_scenario_test PRIVATE orbita_stand_runtime Qt6::Core)
+    add_test(NAME stand.execution_scenario COMMAND execution_scenario_test)
+
     add_executable(station_session_test tests/station_session_test.cpp)
     target_link_libraries(station_session_test PRIVATE orbita_stand_runtime Qt6::Core)
     add_test(NAME stand.station_session COMMAND station_session_test)
@@ -120,6 +125,7 @@ if(BUILD_TESTING)
             stand.component_profile
             stand.component_runtime
             stand.execution_runtime
+            stand.execution_scenario
             stand.station_session
             PROPERTIES ENVIRONMENT_MODIFICATION "${_orbita_qt_test_path}")
     endif()
