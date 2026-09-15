@@ -1,0 +1,72 @@
+name: one-shot dead Rigol readiness cleanup
+
+on:
+  push:
+    branches:
+      - universal_miltechstation
+    paths:
+      - .github/workflows/refactor-dead-rigol-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  refactor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: universal_miltechstation
+          fetch-depth: 0
+
+      - name: Remove obsolete Rigol readiness path
+        shell: python
+        run: |
+          from pathlib import Path
+
+          cpp_path = Path("apps/desktop/ktma_mainwindow.cpp")
+          cpp = cpp_path.read_text(encoding="utf-8")
+
+          helper_start = cpp.find("void bindDeliveryResources(\n")
+          helper_end = cpp.find("\n} // namespace\n", helper_start)
+          if helper_start < 0 or helper_end < 0:
+              raise SystemExit("cannot locate bindDeliveryResources helper")
+          helper_end += 1
+          cpp = cpp[:helper_start] + cpp[helper_end:]
+
+          function_start = cpp.find("void KtmaMainWindow::checkRigolGenerator()\n{")
+          function_end = cpp.find("void KtmaMainWindow::clearPendingProduction() noexcept", function_start)
+          if function_start < 0 or function_end < 0:
+              raise SystemExit("cannot locate checkRigolGenerator function")
+          cpp = cpp[:function_start] + cpp[function_end:]
+          cpp_path.write_text(cpp, encoding="utf-8")
+
+          header_path = Path("apps/desktop/ktma_mainwindow.h")
+          header = header_path.read_text(encoding="utf-8")
+          declaration = "    void checkRigolGenerator();\n"
+          if header.count(declaration) != 1:
+              raise SystemExit("checkRigolGenerator declaration mismatch")
+          header_path.write_text(header.replace(declaration, "", 1), encoding="utf-8")
+
+          main_header_path = Path("apps/desktop/mainwindow.h")
+          main_header = main_header_path.read_text(encoding="utf-8")
+          accessor = "    orbita::stand::EquipmentPluginManager* integrationEquipmentPlugins() const { return equipmentPlugins_; }\n"
+          if main_header.count(accessor) != 1:
+              raise SystemExit("integrationEquipmentPlugins accessor mismatch")
+          main_header_path.write_text(main_header.replace(accessor, "", 1), encoding="utf-8")
+
+      - name: Verify cleanup
+        run: |
+          git diff --check
+          ! grep -R -n 'checkRigolGenerator' apps/desktop
+          ! grep -R -n 'integrationEquipmentPlugins' apps/desktop
+          ! grep -R -n 'bindDeliveryResources' apps/desktop/ktma_mainwindow.cpp
+          grep -n 'session.bindEquipmentComponent' apps/desktop/ktma_mainwindow.cpp
+
+      - name: Commit source cleanup
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/desktop/mainwindow.h apps/desktop/ktma_mainwindow.h apps/desktop/ktma_mainwindow.cpp
+          git commit -m "refactor(desktop): remove dead Rigol readiness path"
+          git push origin HEAD:universal_miltechstation
