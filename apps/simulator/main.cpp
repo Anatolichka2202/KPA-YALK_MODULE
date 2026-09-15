@@ -31,6 +31,14 @@
 
 namespace {
 
+constexpr std::array<int, 8> kYvpInputContacts{
+    33, 34, 35, 36, 37, 38, 39, 40
+};
+
+constexpr std::array<int, 8> kYvpMeasurementContacts{
+    44, 29, 30, 31, 71, 72, 88, 73
+};
+
 class SimulatorWindow final : public QWidget {
 public:
     SimulatorWindow()
@@ -221,7 +229,7 @@ private:
         auto* explanation = new QLabel(QStringLiteral(
             "Модель независима от MilTech Station: она декодирует реальные HTTP-команды ИСД "
             "type=2/type=1/type=3 и SCPI-команды Rigol. В7 выдаёт напряжение только когда вход, "
-            "KU и выход CH89…CH96 образуют согласованный тракт одного канала."));
+            "KU и подтверждённый выход ЯВП образуют согласованный тракт одного канала."));
         explanation->setWordWrap(true);
         layout->addWidget(explanation);
         layout->addStretch();
@@ -458,21 +466,14 @@ private:
 
     YvpRouteState yvpRouteState() const
     {
-        static constexpr std::array<int, 8> inputContacts{
-            33,34,35,36,37,38,39,40
-        };
-        static constexpr std::array<int, 8> measurementContacts{
-            89,90,91,92,93,94,95,96
-        };
-
         YvpRouteState state;
         for (int channel = 0; channel < 8; ++channel) {
-            const int input = inputContacts[channel];
+            const int input = kYvpInputContacts[channel];
             if (isdType2Enabled_[input - 1]) {
                 if (state.inputChannel != 0) return {};
                 state.inputChannel = channel + 1;
             }
-            const int output = measurementContacts[channel];
+            const int output = kYvpMeasurementContacts[channel];
             if (!isdType1Enabled_[output - 1] && isdType3Enabled_[output - 1]) {
                 if (state.measurementChannel != 0) return {};
                 state.measurementChannel = channel + 1;
@@ -527,7 +528,8 @@ private:
             : QStringLiteral("не выбран / недопустимый KU"));
         yvpMeasurementState_->setText(state.measurementChannel
             ? QStringLiteral("CH%1, канал ЯВП %2%3")
-                .arg(88 + state.measurementChannel).arg(state.measurementChannel)
+                .arg(kYvpMeasurementContacts[state.measurementChannel - 1])
+                .arg(state.measurementChannel)
                 .arg(state.routeValid ? QStringLiteral(" · тракт согласован")
                                       : QStringLiteral(" · тракт не согласован"))
             : QStringLiteral("не выбран"));

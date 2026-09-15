@@ -66,16 +66,16 @@ steps:
       input_7_contacts: 39
       input_8_contacts: 40
 
+      # YVP XS4/2..9 -> crossboard XS6/2..9 -> ISD analog inputs.
       # HTTP type=1/type=3 принимает номер аналогового канала ИСД.
-      # Прошивка сама переводит CH89..CH96 через DMTable/KMGlobalBusTable.
       measurement_1_contacts: 44
-      measurement_2_contacts: 90
-      measurement_3_contacts: 91
-      measurement_4_contacts: 92
-      measurement_5_contacts: 93
-      measurement_6_contacts: 94
-      measurement_7_contacts: 95
-      measurement_8_contacts: 96
+      measurement_2_contacts: 29
+      measurement_3_contacts: 30
+      measurement_4_contacts: 31
+      measurement_5_contacts: 71
+      measurement_6_contacts: 72
+      measurement_7_contacts: 88
+      measurement_8_contacts: 73
 
       # Физические KU1..KU4 каждого канала на A2 (HTTP type=2).
       channel_1_gain_contacts: 1,2,3,4

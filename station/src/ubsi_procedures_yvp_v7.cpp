@@ -231,7 +231,7 @@ ProcedureResult yvpV7Isd(const ScenarioNode& node, ProcedureContext& context)
     // OUTPUT генератора не выполняются.
     if (!flag(node, "mapping_confirmed")) {
         return {RunVerdict::Incomplete,
-            "ЯВП V7/ИСД: backend выбран, но карта ИСД (входы, КУ и CH89..CH96 -> В7) ещё не подтверждена; воздействие не выполнялось",
+            "ЯВП V7/ИСД: backend выбран, но карта ИСД (входы, КУ и выходы ЯВП -> В7) ещё не подтверждена; воздействие не выполнялось",
             {}};
     }
     if (!flag(node, "active_outputs_confirmed")) {

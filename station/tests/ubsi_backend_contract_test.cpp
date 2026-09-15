@@ -54,6 +54,16 @@ bool tuReferences(const std::string& yaml, const std::string& requirement)
 void yvpScenarioContract()
 {
     const auto standalone = readFile("data/scenarios/ubsi_production_yvp.yaml");
+    const std::vector<std::string> measurementMap{
+        "measurement_1_contacts: 44",
+        "measurement_2_contacts: 29",
+        "measurement_3_contacts: 30",
+        "measurement_4_contacts: 31",
+        "measurement_5_contacts: 71",
+        "measurement_6_contacts: 72",
+        "measurement_7_contacts: 88",
+        "measurement_8_contacts: 73",
+    };
     require(contains(standalone, "procedure: ubsi.yvp"),
         "standalone YVP production must call the production YVP alias");
     require(!contains(standalone, "procedure: yvp.enter_mode"),
@@ -69,9 +79,19 @@ void yvpScenarioContract()
     require(contains(standalone, "mapping_confirmed: true"),
         "YVP production must use the confirmed ISD E3/firmware map");
     require(contains(standalone, "input_1_contacts: 33")
-            && contains(standalone, "measurement_8_contacts: 96")
             && contains(standalone, "channel_8_gain_contacts: 29,30,31,32"),
         "YVP production must retain explicit input, output and per-channel KU maps");
+    for (const auto& entry : measurementMap)
+        require(contains(standalone, entry), "Standalone YVP map is incomplete: " + entry);
+
+    for (const auto& scenario : {
+            "data/scenarios/ubsi_production_full.yaml",
+            "data/scenarios/ubsi_tu_5_6.yaml",
+            "data/scenarios/ubsi_ulk_combined_check.yaml"}) {
+        const auto yaml = readFile(scenario);
+        for (const auto& entry : measurementMap)
+            require(contains(yaml, entry), std::string(scenario) + " YVP map differs: " + entry);
+    }
     require(contains(standalone, "gains_mv_per_pcl: 0.25,0.5,1,2,4,8,32"),
         "YVP method must use the seven confirmed gain values");
     require(contains(standalone, "frequencies_hz: 0.15,20,250,500,1800,2000,4000"),
