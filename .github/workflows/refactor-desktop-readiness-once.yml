@@ -24,15 +24,20 @@ jobs:
         run: |
           from pathlib import Path
 
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected one match, got {count}: {old!r}")
+              p.write_text(text.replace(old, new, 1), encoding="utf-8")
+
           main_path = Path("apps/desktop/mainwindow.cpp")
           text = main_path.read_text(encoding="utf-8")
-          connection = '''    connect(testPage_, &TestPage::equipmentCheckRequested,
-                  this, &MainWindow::onCheckTestEquipment);
-'''
+          connection = "    connect(testPage_, &TestPage::equipmentCheckRequested,\n            this, &MainWindow::onCheckTestEquipment);\n"
           if text.count(connection) != 1:
               raise SystemExit(f"mainwindow.cpp: readiness connection count={text.count(connection)}")
           text = text.replace(connection, "", 1)
-
           start_marker = "void MainWindow::onCheckTestEquipment()\n{"
           end_marker = "std::string MainWindow::invokeOrbitaParameterSource("
           start = text.find(start_marker)
@@ -42,45 +47,22 @@ jobs:
           text = text[:start] + text[end:]
           main_path.write_text(text, encoding="utf-8")
 
-          header_path = Path("apps/desktop/mainwindow.h")
-          header = header_path.read_text(encoding="utf-8")
-          accessor = '''    std::vector<std::shared_ptr<orbita::stand::EquipmentDevice>>& integrationEquipmentDevices()
-    {
-        return equipmentDevices_;
-    }
-'''
-          if header.count(accessor) != 1:
-              raise SystemExit("mainwindow.h: equipmentDevices compatibility accessor mismatch")
-          header = header.replace(accessor, "", 1)
-          alias = '''    std::vector<std::shared_ptr<orbita::stand::EquipmentDevice>>& equipmentDevices_ =
-        stationSession_.equipmentDevices();
-'''
-          if header.count(alias) != 1:
-              raise SystemExit("mainwindow.h: equipmentDevices compatibility alias mismatch")
-          header = header.replace(alias, "", 1)
-          declaration = "    void onCheckTestEquipment();\n"
-          if header.count(declaration) != 1:
-              raise SystemExit("mainwindow.h: onCheckTestEquipment declaration mismatch")
-          header = header.replace(declaration, "", 1)
-          header_path.write_text(header, encoding="utf-8")
+          replace_once(
+              "apps/desktop/mainwindow.h",
+              "    std::vector<std::shared_ptr<orbita::stand::EquipmentDevice>>& integrationEquipmentDevices()\n    {\n        return equipmentDevices_;\n    }\n",
+              "")
+          replace_once(
+              "apps/desktop/mainwindow.h",
+              "    std::vector<std::shared_ptr<orbita::stand::EquipmentDevice>>& equipmentDevices_ =\n        stationSession_.equipmentDevices();\n",
+              "")
+          replace_once(
+              "apps/desktop/mainwindow.h",
+              "    void onCheckTestEquipment();\n",
+              "")
 
-          ktma_path = Path("apps/desktop/ktma_mainwindow.cpp")
-          ktma = ktma_path.read_text(encoding="utf-8")
-          old = '''    // MainWindow historically connected this signal to a broad stand check.
-    // UBSI has a stricter contract: Preparation probes only devices required by
-    // the selected scenario. Replace that inherited connection with the scoped one.
-    QObject::disconnect(page, &TestPage::equipmentCheckRequested, this, nullptr);
-    connect(page, &TestPage::equipmentCheckRequested,
-            this, &KtmaMainWindow::checkSelectedEquipment);
-'''
-          new = '''    // Physical readiness is delivery-owned: UBSI probes only devices required
-    // by the selected scenario and preserves its confirmed power-up order.
-    connect(page, &TestPage::equipmentCheckRequested,
-            this, &KtmaMainWindow::checkSelectedEquipment);
-'''
-          if ktma.count(old) != 1:
-              raise SystemExit("ktma_mainwindow.cpp: inherited readiness block mismatch")
-          ktma_path.write_text(ktma.replace(old, new, 1), encoding="utf-8")
+          old = "    // MainWindow historically connected this signal to a broad stand check.\n    // UBSI has a stricter contract: Preparation probes only devices required by\n    // the selected scenario. Replace that inherited connection with the scoped one.\n    QObject::disconnect(page, &TestPage::equipmentCheckRequested, this, nullptr);\n    connect(page, &TestPage::equipmentCheckRequested,\n            this, &KtmaMainWindow::checkSelectedEquipment);\n"
+          new = "    // Physical readiness is delivery-owned: UBSI probes only devices required\n    // by the selected scenario and preserves its confirmed power-up order.\n    connect(page, &TestPage::equipmentCheckRequested,\n            this, &KtmaMainWindow::checkSelectedEquipment);\n"
+          replace_once("apps/desktop/ktma_mainwindow.cpp", old, new)
 
       - name: Verify shell boundary
         run: |
