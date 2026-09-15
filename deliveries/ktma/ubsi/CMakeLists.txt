@@ -16,9 +16,9 @@ target_compile_features(ktma_ubsi PUBLIC cxx_std_17)
 target_link_libraries(ktma_ubsi PUBLIC ktma_registrar Qt6::Core Qt6::Sql)
 
 # KTMA/UBSI procedure implementation belongs to the delivery/object package,
-# not to the universal Station runtime. The public procedure headers remain in
-# station/include temporarily as a compatibility API while callers migrate to
-# delivery-owned headers.
+# not to the universal Station runtime. The compatibility procedure headers
+# live in this delivery include tree, even while their historic include paths
+# are preserved for callers during API migration.
 add_library(ktma_ubsi_procedures STATIC
     src/procedures/yalk_analog_procedure.cpp
     src/procedures/ubsi_procedures.cpp
@@ -38,6 +38,10 @@ set_source_files_properties(src/procedures/ubsi_procedures_current.cpp PROPERTIE
 set_source_files_properties(src/procedures/ubsi_procedures_rokt.cpp PROPERTIES
     COMPILE_DEFINITIONS "registerUbsiProcedures=registerRoktUbsiProcedures")
 
+target_include_directories(ktma_ubsi_procedures
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
 target_compile_features(ktma_ubsi_procedures PUBLIC cxx_std_17)
 target_link_libraries(ktma_ubsi_procedures PUBLIC orbita_stand_core)
 add_library(ktma::ubsi_procedures ALIAS ktma_ubsi_procedures)
