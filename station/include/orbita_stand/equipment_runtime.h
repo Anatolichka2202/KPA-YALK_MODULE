@@ -2,8 +2,8 @@
 
 #include "orbita_stand/scenario.h"
 
-#include <map>
 #include <functional>
+#include <map>
 #include <memory>
 #include <set>
 #include <string>
@@ -77,18 +77,14 @@ public:
         const std::map<std::string, std::string>& arguments)>;
     using SafeStopFunction = std::function<void()>;
 
-    // Legacy default routing by capability. Existing scenarios use this path.
+    // Compatibility routing while old procedures still address a capability
+    // without a delivery role. New physical scenarios must use resources.
     void bind(std::string capability, std::shared_ptr<EquipmentDevice> device);
     void bind(std::string capability, InvokeFunction invoke,
               SafeStopFunction safeStop = {});
 
-    // Role/resource routing. Several resources may provide the same capability
-    // without overwriting each other. Resource id is the stable logical role;
-    // capability remains the operation contract implemented by that resource.
+    // Canonical station routing: role -> capability -> operation.
     void bindResource(std::string resourceId, std::shared_ptr<EquipmentDevice> device);
-    // Restrict a physical device resource to the capabilities exported by the
-    // delivery component. The provider may technically implement a wider API,
-    // but undeclared operations must not leak through a logical station role.
     void bindResource(
         std::string resourceId,
         std::set<std::string> capabilities,
@@ -109,10 +105,8 @@ public:
         const std::map<std::string, std::string>& arguments = {}) override;
     std::vector<EquipmentResourceDescriptor> resources() const;
 
-    // Remove only physical devices and their default/resource routes. Built-in
-    // application services (catalog, operator input, protocol facades, etc.)
-    // remain registered so a delivery can repeat equipment readiness without
-    // rebuilding unrelated scenario services.
+    // Readiness can rebuild physical bindings without discarding station-level
+    // services such as catalog/manual input/protocol facades.
     void clearPhysical() noexcept;
     void clear();
     bool hasCapability(const std::string& capability) const override;
@@ -124,24 +118,20 @@ public:
     std::vector<std::string> capabilities() const;
 
 private:
-    struct BuiltinBinding {
+    struct DefaultBinding {
+        std::shared_ptr<EquipmentDevice> device;
         InvokeFunction invoke;
         SafeStopFunction safeStop;
     };
-    struct DeviceResourceBinding {
+    struct ResourceBinding {
+        std::set<std::string> capabilities;
         std::shared_ptr<EquipmentDevice> device;
-        std::set<std::string> capabilities;
-    };
-    struct BuiltinResourceBinding {
-        std::set<std::string> capabilities;
         ResourceInvokeFunction invoke;
         SafeStopFunction safeStop;
     };
 
-    std::map<std::string, std::shared_ptr<EquipmentDevice>> bindings_;
-    std::map<std::string, BuiltinBinding> builtinBindings_;
-    std::map<std::string, DeviceResourceBinding> resourceBindings_;
-    std::map<std::string, BuiltinResourceBinding> builtinResourceBindings_;
+    std::map<std::string, DefaultBinding> defaults_;
+    std::map<std::string, ResourceBinding> resources_;
 };
 
 std::string encodePluginArguments(const std::map<std::string, std::string>& arguments);
