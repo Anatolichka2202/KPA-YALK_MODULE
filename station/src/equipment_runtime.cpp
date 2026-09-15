@@ -70,7 +70,9 @@ std::map<std::string, std::string> decodePluginArguments(const std::string& valu
     bool escape = false;
     auto flush = [&]() {
         if (!key.empty()) result[key] = item;
-        key.clear(); item.clear(); readingKey = true;
+        key.clear();
+        item.clear();
+        readingKey = true;
     };
     for (const char character : value) {
         if (escape) {
@@ -97,6 +99,7 @@ struct EquipmentDevice::Impl {
 };
 
 EquipmentDevice::EquipmentDevice(std::unique_ptr<Impl> impl) : impl_(std::move(impl)) {}
+
 EquipmentDevice::~EquipmentDevice()
 {
     if (impl_ && impl_->instance && impl_->plugin && impl_->plugin->api) {
@@ -104,6 +107,7 @@ EquipmentDevice::~EquipmentDevice()
         impl_->plugin->api->destroy(impl_->instance);
     }
 }
+
 const std::string& EquipmentDevice::instanceId() const noexcept { return impl_->instanceId; }
 const PluginDescriptor& EquipmentDevice::descriptor() const noexcept { return impl_->plugin->descriptor; }
 
@@ -140,6 +144,7 @@ void EquipmentDevice::cancel() noexcept
 {
     if (impl_ && impl_->instance) impl_->plugin->api->cancel(impl_->instance);
 }
+
 void EquipmentDevice::safeStop() noexcept
 {
     if (impl_ && impl_->instance) impl_->plugin->api->safe_stop(impl_->instance);
@@ -186,14 +191,16 @@ void EquipmentPluginManager::loadDirectory(const std::string& path)
             || api->struct_size < sizeof(orbita_equipment_api_v1)
             || !api->plugin_id || !api->create || !api->destroy || !api->invoke
             || !api->cancel || !api->safe_stop) {
-            impl_->diagnostics.push_back(file.fileName().toStdString() + ": несовместимый Equipment ABI");
+            impl_->diagnostics.push_back(
+                file.fileName().toStdString() + ": несовместимый Equipment ABI");
             library->unload();
             continue;
         }
         if (std::any_of(impl_->loaded.begin(), impl_->loaded.end(), [api](const auto& plugin) {
                 return plugin->descriptor.id == api->plugin_id;
             })) {
-            impl_->diagnostics.push_back(file.fileName().toStdString() + ": повторяющийся plugin_id " + api->plugin_id);
+            impl_->diagnostics.push_back(
+                file.fileName().toStdString() + ": повторяющийся plugin_id " + api->plugin_id);
             library->unload();
             continue;
         }
@@ -201,7 +208,8 @@ void EquipmentPluginManager::loadDirectory(const std::string& path)
         plugin->library = std::move(library);
         plugin->api = api;
         plugin->descriptor.id = api->plugin_id;
-        plugin->descriptor.displayName = api->display_name_utf8 ? api->display_name_utf8 : api->plugin_id;
+        plugin->descriptor.displayName = api->display_name_utf8
+            ? api->display_name_utf8 : api->plugin_id;
         plugin->descriptor.capabilities = splitCapabilities(api->capabilities_utf8);
         plugin->descriptor.libraryPath = file.absoluteFilePath().toUtf8().toStdString();
         impl_->descriptors.push_back(plugin->descriptor);
@@ -221,7 +229,10 @@ std::shared_ptr<EquipmentDevice> EquipmentPluginManager::createDevice(
 {
     const auto iterator = std::find_if(impl_->loaded.begin(), impl_->loaded.end(),
         [&pluginId](const auto& plugin) { return plugin->descriptor.id == pluginId; });
-    if (iterator == impl_->loaded.end()) throw std::runtime_error("Equipment plugin not loaded: " + pluginId);
+    if (iterator == impl_->loaded.end()) {
+        throw std::runtime_error("Equipment plugin not loaded: " + pluginId);
+    }
+
     auto deviceImpl = std::make_unique<EquipmentDevice::Impl>();
     deviceImpl->plugin = *iterator;
     deviceImpl->instanceId = instanceId;
@@ -232,7 +243,8 @@ std::shared_ptr<EquipmentDevice> EquipmentPluginManager::createDevice(
         instanceId.c_str(), config.c_str(), &deviceImpl->instance, &diagnostic);
     if (status != ORBITA_PLUGIN_OK || !deviceImpl->instance) {
         const auto message = bufferText(diagnosticBytes, diagnostic.size);
-        throw std::runtime_error(message.empty() ? "Cannot create equipment instance " + instanceId : message);
+        throw std::runtime_error(message.empty()
+            ? "Cannot create equipment instance " + instanceId : message);
     }
     return std::shared_ptr<EquipmentDevice>(new EquipmentDevice(std::move(deviceImpl)));
 }
@@ -242,30 +254,32 @@ const std::vector<std::string>& EquipmentPluginManager::diagnostics() const noex
     return impl_->diagnostics;
 }
 
-void EquipmentRegistry::bind(std::string capability, std::shared_ptr<EquipmentDevice> device)
+void EquipmentRegistry::bind(
+    std::string capability,
+    std::shared_ptr<EquipmentDevice> device)
 {
     if (!device || !device->descriptor().capabilities.count(capability)) {
         throw std::invalid_argument("Cannot bind a device without requested capability");
     }
-    bindings_[std::move(capability)] = std::move(device);
+    defaults_[std::move(capability)] = {std::move(device), {}, {}};
 }
 
 void EquipmentRegistry::bind(
-    std::string capability, InvokeFunction invoke, SafeStopFunction safeStop)
+    std::string capability,
+    InvokeFunction invoke,
+    SafeStopFunction safeStop)
 {
     if (capability.empty() || !invoke) {
         throw std::invalid_argument("Cannot bind an empty built-in capability");
     }
-    builtinBindings_[std::move(capability)] = {
-        std::move(invoke), std::move(safeStop)};
+    defaults_[std::move(capability)] = {nullptr, std::move(invoke), std::move(safeStop)};
 }
 
 void EquipmentRegistry::bindResource(
-    std::string resourceId, std::shared_ptr<EquipmentDevice> device)
+    std::string resourceId,
+    std::shared_ptr<EquipmentDevice> device)
 {
-    if (!device) {
-        throw std::invalid_argument("Cannot bind an empty equipment resource");
-    }
+    if (!device) throw std::invalid_argument("Cannot bind an empty equipment resource");
     bindResource(std::move(resourceId), device->descriptor().capabilities, std::move(device));
 }
 
@@ -278,7 +292,7 @@ void EquipmentRegistry::bindResource(
         throw std::invalid_argument(
             "Equipment resource requires id, capabilities and device");
     }
-    if (resourceBindings_.count(resourceId) || builtinResourceBindings_.count(resourceId)) {
+    if (resources_.count(resourceId)) {
         throw std::invalid_argument("Equipment resource is already bound: " + resourceId);
     }
     for (const auto& capability : capabilities) {
@@ -288,8 +302,8 @@ void EquipmentRegistry::bindResource(
                 + capability);
         }
     }
-    resourceBindings_.emplace(std::move(resourceId), DeviceResourceBinding{
-        std::move(device), std::move(capabilities)});
+    resources_.emplace(std::move(resourceId), ResourceBinding{
+        std::move(capabilities), std::move(device), {}, {}});
 }
 
 void EquipmentRegistry::bindResource(
@@ -299,31 +313,27 @@ void EquipmentRegistry::bindResource(
     SafeStopFunction safeStop)
 {
     if (resourceId.empty() || capabilities.empty() || !invoke) {
-        throw std::invalid_argument("Built-in equipment resource requires id, capabilities and invoke callback");
+        throw std::invalid_argument(
+            "Built-in equipment resource requires id, capabilities and invoke callback");
     }
-    if (resourceBindings_.count(resourceId) || builtinResourceBindings_.count(resourceId)) {
+    if (resources_.count(resourceId)) {
         throw std::invalid_argument("Equipment resource is already bound: " + resourceId);
     }
-    builtinResourceBindings_.emplace(std::move(resourceId), BuiltinResourceBinding{
-        std::move(capabilities), std::move(invoke), std::move(safeStop)});
+    resources_.emplace(std::move(resourceId), ResourceBinding{
+        std::move(capabilities), nullptr, std::move(invoke), std::move(safeStop)});
 }
 
 bool EquipmentRegistry::hasResource(const std::string& resourceId) const
 {
-    return resourceBindings_.count(resourceId) != 0
-        || builtinResourceBindings_.count(resourceId) != 0;
+    return resources_.count(resourceId) != 0;
 }
 
 bool EquipmentRegistry::resourceHasCapability(
     const std::string& resourceId,
     const std::string& capability) const
 {
-    const auto builtin = builtinResourceBindings_.find(resourceId);
-    if (builtin != builtinResourceBindings_.end()) {
-        return builtin->second.capabilities.count(capability) != 0;
-    }
-    const auto binding = resourceBindings_.find(resourceId);
-    return binding != resourceBindings_.end() && binding->second.device
+    const auto binding = resources_.find(resourceId);
+    return binding != resources_.end()
         && binding->second.capabilities.count(capability) != 0;
 }
 
@@ -333,73 +343,63 @@ std::string EquipmentRegistry::invokeResource(
     const std::string& operation,
     const std::map<std::string, std::string>& arguments)
 {
-    const auto builtin = builtinResourceBindings_.find(resourceId);
-    if (builtin != builtinResourceBindings_.end()) {
-        if (!builtin->second.capabilities.count(capability)) {
-            throw std::invalid_argument(
-                "Resource " + resourceId + " does not provide capability " + capability);
-        }
-        return builtin->second.invoke(capability, operation, arguments);
-    }
-
-    const auto binding = resourceBindings_.find(resourceId);
-    if (binding == resourceBindings_.end() || !binding->second.device) {
+    const auto binding = resources_.find(resourceId);
+    if (binding == resources_.end()) {
         throw std::runtime_error("Equipment resource is not bound: " + resourceId);
     }
     if (!binding->second.capabilities.count(capability)) {
         throw std::invalid_argument(
             "Resource " + resourceId + " does not provide capability " + capability);
     }
-    return binding->second.device->invoke(capability, operation, arguments);
+    if (binding->second.device) {
+        return binding->second.device->invoke(capability, operation, arguments);
+    }
+    return binding->second.invoke(capability, operation, arguments);
 }
 
 std::vector<EquipmentResourceDescriptor> EquipmentRegistry::resources() const
 {
     std::vector<EquipmentResourceDescriptor> result;
-    result.reserve(resourceBindings_.size() + builtinResourceBindings_.size());
-    for (const auto& [id, binding] : resourceBindings_) {
-        if (!binding.device) continue;
-        result.push_back({id, binding.capabilities, false});
+    result.reserve(resources_.size());
+    for (const auto& [id, binding] : resources_) {
+        result.push_back({id, binding.capabilities, !binding.device});
     }
-    for (const auto& [id, binding] : builtinResourceBindings_) {
-        result.push_back({id, binding.capabilities, true});
-    }
-    std::sort(result.begin(), result.end(), [](const auto& left, const auto& right) {
-        return left.id < right.id;
-    });
     return result;
 }
 
 void EquipmentRegistry::clearPhysical() noexcept
 {
     std::set<EquipmentDevice*> stopped;
-    for (const auto& [capability, device] : bindings_) {
-        (void)capability;
+    const auto stop = [&stopped](const std::shared_ptr<EquipmentDevice>& device) {
         if (device && stopped.insert(device.get()).second) device->safeStop();
+    };
+    for (const auto& [capability, binding] : defaults_) {
+        (void)capability;
+        stop(binding.device);
     }
-    for (const auto& [resourceId, binding] : resourceBindings_) {
+    for (const auto& [resourceId, binding] : resources_) {
         (void)resourceId;
-        if (binding.device && stopped.insert(binding.device.get()).second) {
-            binding.device->safeStop();
-        }
+        stop(binding.device);
     }
-    bindings_.clear();
-    resourceBindings_.clear();
+
+    for (auto it = defaults_.begin(); it != defaults_.end();) {
+        it = it->second.device ? defaults_.erase(it) : std::next(it);
+    }
+    for (auto it = resources_.begin(); it != resources_.end();) {
+        it = it->second.device ? resources_.erase(it) : std::next(it);
+    }
 }
 
 void EquipmentRegistry::clear()
 {
     safeStopAll();
-    bindings_.clear();
-    builtinBindings_.clear();
-    resourceBindings_.clear();
-    builtinResourceBindings_.clear();
+    defaults_.clear();
+    resources_.clear();
 }
 
 bool EquipmentRegistry::hasCapability(const std::string& capability) const
 {
-    return bindings_.count(capability) != 0
-        || builtinBindings_.count(capability) != 0;
+    return defaults_.count(capability) != 0;
 }
 
 std::string EquipmentRegistry::invoke(
@@ -407,40 +407,34 @@ std::string EquipmentRegistry::invoke(
     const std::string& operation,
     const std::map<std::string, std::string>& arguments)
 {
-    const auto builtin = builtinBindings_.find(capability);
-    if (builtin != builtinBindings_.end()) {
-        return builtin->second.invoke(operation, arguments);
+    const auto binding = defaults_.find(capability);
+    if (binding == defaults_.end()) {
+        throw std::runtime_error("Capability is not bound: " + capability);
     }
-    const auto device = bindings_.find(capability);
-    if (device == bindings_.end()) throw std::runtime_error("Capability is not bound: " + capability);
-    return device->second->invoke(capability, operation, arguments);
+    if (binding->second.device) {
+        return binding->second.device->invoke(capability, operation, arguments);
+    }
+    return binding->second.invoke(operation, arguments);
 }
 
 void EquipmentRegistry::safeStopAll() noexcept
 {
     std::set<EquipmentDevice*> stopped;
-    for (const auto& [capability, device] : bindings_) {
-        (void)capability;
+    const auto stopDevice = [&stopped](const std::shared_ptr<EquipmentDevice>& device) {
         if (device && stopped.insert(device.get()).second) device->safeStop();
-    }
-    for (const auto& [resourceId, binding] : resourceBindings_) {
-        (void)resourceId;
-        if (binding.device && stopped.insert(binding.device.get()).second) {
-            binding.device->safeStop();
-        }
-    }
-    for (const auto& [capability, binding] : builtinBindings_) {
+    };
+    for (const auto& [capability, binding] : defaults_) {
         (void)capability;
-        try {
-            if (binding.safeStop) binding.safeStop();
-        } catch (...) {
+        if (binding.device) stopDevice(binding.device);
+        else if (binding.safeStop) {
+            try { binding.safeStop(); } catch (...) {}
         }
     }
-    for (const auto& [resourceId, binding] : builtinResourceBindings_) {
+    for (const auto& [resourceId, binding] : resources_) {
         (void)resourceId;
-        try {
-            if (binding.safeStop) binding.safeStop();
-        } catch (...) {
+        if (binding.device) stopDevice(binding.device);
+        else if (binding.safeStop) {
+            try { binding.safeStop(); } catch (...) {}
         }
     }
 }
@@ -448,16 +442,11 @@ void EquipmentRegistry::safeStopAll() noexcept
 std::vector<std::string> EquipmentRegistry::capabilities() const
 {
     std::vector<std::string> result;
-    for (const auto& [capability, device] : bindings_) {
-        (void)device;
-        result.push_back(capability);
-    }
-    for (const auto& [capability, binding] : builtinBindings_) {
+    result.reserve(defaults_.size());
+    for (const auto& [capability, binding] : defaults_) {
         (void)binding;
         result.push_back(capability);
     }
-    std::sort(result.begin(), result.end());
-    result.erase(std::unique(result.begin(), result.end()), result.end());
     return result;
 }
 
