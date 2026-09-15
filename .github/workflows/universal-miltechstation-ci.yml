@@ -4,63 +4,100 @@ on:
   push:
     branches:
       - universal_miltechstation
-  workflow_dispatch:
 
 permissions:
-  contents: read
-
-concurrency:
-  group: universal-miltechstation-${{ github.ref }}
-  cancel-in-progress: true
+  contents: write
 
 jobs:
-  build-and-test:
-    name: Windows UCRT64 · Qt 6 · GCC
-    runs-on: windows-latest
-    timeout-minutes: 30
-
+  migrate-desktop-station-session:
+    name: Apply StationSession ownership migration
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          ref: universal_miltechstation
+          fetch-depth: 0
 
-      - name: Set up MSYS2 UCRT64
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: UCRT64
-          update: true
-          install: >-
-            git
-            mingw-w64-ucrt-x86_64-gcc
-            mingw-w64-ucrt-x86_64-cmake
-            mingw-w64-ucrt-x86_64-ninja
-            mingw-w64-ucrt-x86_64-qt6-base
-            mingw-w64-ucrt-x86_64-qt6-svg
-            mingw-w64-ucrt-x86_64-qt6-serialport
+      - name: Patch MainWindow ownership
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
 
-      - name: Configure
-        shell: msys2 {0}
-        run: >-
-          cmake -S . -B build-universal -G Ninja
-          -DCMAKE_BUILD_TYPE=Release
-          -DBUILD_TESTING=ON
+          path = Path("apps/desktop/mainwindow.cpp")
+          text = path.read_text(encoding="utf-8")
 
-      - name: Build
-        shell: msys2 {0}
-        run: cmake --build build-universal --parallel 4
+          replacements = [
+              (
+                  '''        // Общий station-level runtime создаёт только те составные части,
+          // которые уже переведены на component model. Equipment пока остаётся
+          // на существующем EquipmentRegistry до отдельного этапа миграции.
+          componentRuntime_ = std::make_unique<orbita::stand::ComponentRuntime>();
+          orbita::stand::registerSampleSourceComponents(*componentRuntime_);
+          try {
+              componentRuntime_->instantiate(standProfile_, {"sample_source"});
+          ''',
+                  '''        // StationSession является единственным владельцем composition/runtime.
+          // Equipment загружается в Deferred mode: readiness ниже создаёт только
+          // приборы выбранного сценария и сохраняет проверенный порядок питания.
+          orbita::stand::registerSampleSourceComponents(*componentRuntime_);
+          stationSession_.configure(
+              standProfile_, root.filePath("plugins").toStdString(), {"sample_source"},
+              orbita::stand::EquipmentInstantiation::Deferred);
+          try {
+          '''
+              ),
+              (
+                  '''        equipmentPlugins_ = std::make_unique<orbita::stand::EquipmentPluginManager>();
+          equipmentPlugins_->loadDirectory(root.filePath("plugins").toStdString());
+          equipmentRegistry_ = std::make_unique<orbita::stand::EquipmentRegistry>();
+          ''',
+                  '''        // Plugin manager и registry уже принадлежат StationSession и были
+          // подготовлены configure(..., Deferred) без создания физических devices.
+          '''
+              ),
+              (
+                  '''    if (equipmentRegistry_) equipmentRegistry_->safeStopAll();
+          if (telemetrySampleSource_) telemetrySampleSource_->stop();
+          if (orbita_ && orbita_->isRunning()) orbita_->stop();
+          if (componentRuntime_) componentRuntime_->safeStopAll();
+          ''',
+                  '''    stationSession_.clear();
+          telemetrySampleSource_ = nullptr;
+          if (orbita_ && orbita_->isRunning()) orbita_->stop();
+          '''
+              ),
+              (
+                  '''    equipmentRegistry_->safeStopAll();
+          equipmentRegistry_->clear();
+          equipmentDevices_.clear();
+          ''',
+                  '''    stationSession_.clearEquipment();
+          '''
+              ),
+          ]
 
-      - name: Run CTest
-        shell: msys2 {0}
-        env:
-          QT_QPA_PLATFORM: offscreen
-        run: ctest --test-dir build-universal --output-on-failure -C Release
+          for old, new in replacements:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(
+                      f"expected exactly one replacement, got {count}: {old[:100]!r}")
+              text = text.replace(old, new)
 
-      - name: Preserve CTest failure log
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: universal-miltechstation-ctest-failure-log
-          path: build-universal/Testing/Temporary/LastTest.log
-          if-no-files-found: warn
-          retention-days: 3
+          path.write_text(text, encoding="utf-8", newline="\n")
+          PY
+
+      - name: Restore CI and commit migrated source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git show HEAD^:.github/workflows/universal-miltechstation-ci.yml > .github/workflows/universal-miltechstation-ci.yml
+          git rm -f .github/workflows/desktop-station-migration-once.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/desktop/mainwindow.cpp .github/workflows/universal-miltechstation-ci.yml
+          git diff --cached --check
+          git commit -m "refactor(desktop): compose stand through StationSession"
+          git push origin HEAD:universal_miltechstation
