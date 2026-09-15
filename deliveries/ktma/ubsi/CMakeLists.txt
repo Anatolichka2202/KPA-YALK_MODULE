@@ -57,44 +57,31 @@ target_compile_features(ktma_ubsi_reporting PUBLIC cxx_std_17)
 target_link_libraries(ktma_ubsi_reporting PUBLIC ktma_ubsi orbita_stand_core Qt6::Core)
 
 if(BUILD_TESTING)
-    add_executable(ktma_ubsi_production_test
-        tests/production_test.cpp
-    )
+    add_executable(ktma_ubsi_production_test tests/production_test.cpp)
     target_compile_definitions(ktma_ubsi_production_test PRIVATE
         KTMA_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
     target_link_libraries(ktma_ubsi_production_test PRIVATE
         ktma_ubsi orbita_stand_reporting)
     add_test(NAME ktma.ubsi.production COMMAND ktma_ubsi_production_test)
 
-    add_executable(ktma_ubsi_production_scenario_test
-        tests/production_scenario_test.cpp
-    )
+    add_executable(ktma_ubsi_production_scenario_test tests/production_scenario_test.cpp)
     target_compile_definitions(ktma_ubsi_production_scenario_test PRIVATE
         KTMA_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
     target_link_libraries(ktma_ubsi_production_scenario_test PRIVATE
         ktma_ubsi orbita_stand_runtime ktma_ubsi_procedures)
     add_test(NAME ktma.ubsi.production_scenarios COMMAND ktma_ubsi_production_scenario_test)
 
-    # These contracts exercise KTMA/UBSI procedure semantics, so keep their
-    # test ownership with the delivery even while the test sources are moved in
-    # a later cleanup slice.
-    add_executable(yalk_analog_procedure_test
-        ${CMAKE_SOURCE_DIR}/station/tests/yalk_analog_procedure_test.cpp
-    )
+    add_executable(yalk_analog_procedure_test tests/yalk_analog_procedure_test.cpp)
     target_link_libraries(yalk_analog_procedure_test PRIVATE ktma_ubsi_procedures)
-    add_test(NAME stand.yalk_analog_procedure COMMAND yalk_analog_procedure_test)
+    add_test(NAME ktma.ubsi.yalk_analog_procedure COMMAND yalk_analog_procedure_test)
 
-    add_executable(ubsi_backend_contract_test
-        ${CMAKE_SOURCE_DIR}/station/tests/ubsi_backend_contract_test.cpp
-    )
+    add_executable(ubsi_backend_contract_test tests/ubsi_backend_contract_test.cpp)
     target_compile_definitions(ubsi_backend_contract_test PRIVATE
         ORBITA_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
     target_link_libraries(ubsi_backend_contract_test PRIVATE ktma_ubsi_procedures)
-    add_test(NAME stand.ubsi_backend_contract COMMAND ubsi_backend_contract_test)
+    add_test(NAME ktma.ubsi.backend_contract COMMAND ubsi_backend_contract_test)
 
-    add_executable(scenario_runtime_test
-        ${CMAKE_SOURCE_DIR}/station/tests/scenario_runtime_test.cpp
-    )
+    add_executable(scenario_runtime_test tests/scenario_runtime_test.cpp)
     target_compile_definitions(scenario_runtime_test PRIVATE
         ORBITA_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
     target_link_libraries(scenario_runtime_test PRIVATE
@@ -105,13 +92,12 @@ if(BUILD_TESTING)
         orbita_stand_reporting
         Qt6::Core
         Qt6::Sql)
-    # scenario_runtime_test still contains the legacy plugin ABI contract whose
-    # fixture locates ../plugins relative to the executable. Keep the test in
-    # the historical station binary directory until that fixture is split into
-    # a delivery-owned plugin contract.
+    # This test still contains the plugin ABI contract whose fixture locates
+    # ../plugins relative to the executable. Preserve its binary location until
+    # the plugin contract is split from the KTMA scenario-runtime regression.
     set_target_properties(scenario_runtime_test PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/station")
-    add_test(NAME stand.scenario_runtime COMMAND scenario_runtime_test)
+    add_test(NAME ktma.ubsi.scenario_runtime COMMAND scenario_runtime_test)
 
     add_executable(ktma_ubsi_production_report_test tests/production_report_test.cpp)
     target_link_libraries(ktma_ubsi_production_report_test PRIVATE ktma_ubsi_reporting)
@@ -125,7 +111,7 @@ if(WIN32 AND BUILD_TESTING)
         ktma.ubsi.production
         ktma.ubsi.production_scenarios
         ktma.ubsi.production_report
-        stand.scenario_runtime
+        ktma.ubsi.scenario_runtime
         PROPERTIES
         ENVIRONMENT_MODIFICATION
             "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>;PATH=path_list_prepend:${_ktma_mingw_bin}"
