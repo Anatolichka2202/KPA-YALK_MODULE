@@ -91,6 +91,8 @@ QString writeScenario(QTemporaryDir& directory)
               "    title: Read primary supply\n"
               "    tu: 1.1\n"
               "    procedure: test.resource_read\n"
+              "    requires:\n"
+              "      - power.dc_supply\n"
               "    resources:\n"
               "      - resource: supply.primary\n"
               "        capability: power.dc_supply\n";
@@ -111,8 +113,9 @@ int main(int argc, char** argv)
             writeScenario(directory).toUtf8().toStdString());
         require(scenario.steps.size() == 1, "scenario step was not parsed");
         const auto& node = scenario.steps.front();
-        require(node.requiredCapabilities.empty(),
-                "resource requirement must not become legacy capability routing");
+        require(node.requiredCapabilities.size() == 1
+                && node.requiredCapabilities.count("power.dc_supply"),
+                "legacy compatibility requirement was not parsed");
         require(node.requiredResources.size() == 1,
                 "resource requirement was not parsed");
         require(node.requiredResources.front().resource == "supply.primary",
@@ -123,9 +126,9 @@ int main(int argc, char** argv)
         ScenarioEngine engine;
         engine.registerProcedure("test.resource_read",
             [](const ScenarioNode&, ProcedureContext& context) {
-                // Existing procedures still call the capability-only API. The
-                // engine must transparently route this call through the unique
-                // logical resource declared by the current scenario node.
+                // During migration an old procedure may still call the
+                // capability-only API. A declared resource must take precedence
+                // over the duplicate legacy `requires:` entry.
                 const auto response = context.equipment.invoke(
                     "power.dc_supply", "read_state", {});
                 if (response.find("status=ready") == std::string::npos) {
@@ -147,7 +150,7 @@ int main(int argc, char** argv)
         equipment.stopped = false;
         auto ready = engine.run(scenario, equipment, "profile-1", "SN-1", false);
         require(ready.verdict == RunVerdict::Ok,
-                "available resource/capability must permit the procedure");
+                "resource-selected capability must not require a global default binding");
         require(equipment.resourceInvoked,
                 "legacy procedure invoke was not routed through the declared resource");
         require(!equipment.legacyInvoked,
