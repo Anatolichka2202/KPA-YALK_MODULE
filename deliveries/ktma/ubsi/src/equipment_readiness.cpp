@@ -51,10 +51,20 @@ EquipmentReadinessPlan buildEquipmentReadinessPlan(
     std::vector<EquipmentReadinessItem> independent;
     std::vector<EquipmentReadinessItem> adapter;
 
+    const bool adapterRequested = std::any_of(
+        profile.components.begin(), profile.components.end(),
+        [&](const orbita::stand::ComponentProfile& component) {
+            return component.kind == "equipment"
+                && provides(component, "ulk.parameter_source")
+                && providesAny(component, requiredCapabilities);
+        });
+
     for (const auto& component : profile.components) {
-        if (component.kind != "equipment" || !providesAny(component, requiredCapabilities)) {
-            continue;
-        }
+        if (component.kind != "equipment") continue;
+
+        const bool selected = providesAny(component, requiredCapabilities)
+            || (adapterRequested && provides(component, "power.dc_supply"));
+        if (!selected) continue;
 
         if (provides(component, "power.dc_supply")) {
             power.push_back({component.id, EquipmentReadinessStage::Power});

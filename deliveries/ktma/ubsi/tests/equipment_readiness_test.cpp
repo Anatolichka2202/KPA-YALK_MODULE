@@ -88,6 +88,16 @@ int main()
         require(trace == expected, "KTMA power/wait/adapter sequence changed");
         require(waited == 3000, "KTMA adapter wait duration changed");
 
+        const auto adapterOnly = buildEquipmentReadinessPlan(
+            profile, {"ulk.parameter_source"});
+        require(adapterOnly.items.size() == 2,
+            "adapter readiness must include its DUT power dependency");
+        require(adapterOnly.items[0].componentId == "dc-supply"
+                && adapterOnly.items[0].stage == EquipmentReadinessStage::Power
+                && adapterOnly.items[1].componentId == "ubsi-adapter"
+                && adapterOnly.items[1].stage == EquipmentReadinessStage::Adapter,
+            "adapter-only readiness must arm DUT power before probing the adapter");
+
         const auto all = buildEquipmentReadinessPlan(profile);
         require(all.items.size() == 6,
             "empty readiness selection must preserve all delivery equipment, including disabled entries");
