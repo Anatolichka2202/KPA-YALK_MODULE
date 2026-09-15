@@ -101,6 +101,12 @@ if(BUILD_TESTING)
         orbita_stand_reporting
         Qt6::Core
         Qt6::Sql)
+    # scenario_runtime_test still contains the legacy plugin ABI contract whose
+    # fixture locates ../plugins relative to the executable. Keep the test in
+    # the historical station binary directory until that fixture is split into
+    # a delivery-owned plugin contract.
+    set_target_properties(scenario_runtime_test PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/station")
     add_test(NAME stand.scenario_runtime COMMAND scenario_runtime_test)
 
     add_executable(ktma_ubsi_production_report_test tests/production_report_test.cpp)
