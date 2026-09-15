@@ -189,8 +189,7 @@ private:
     StepRunResult runNode(
         const ScenarioNode& node,
         ProcedureContext& context,
-        bool allowPartial,
-        bool& stopTraversal);
+        bool allowPartial);
 
     std::map<std::string, ProcedureFunction> procedures_;
     std::atomic_bool stopRequested_{false};
