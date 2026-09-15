@@ -68,8 +68,8 @@ void yvpScenarioContract()
         "V7+ISD production YVP must require Rigol, ISD and V7");
     require(contains(standalone, "mapping_confirmed: true"),
         "YVP production must use the confirmed ISD E3/firmware map");
-    require(contains(standalone, "input_1_contacts: 33,37")
-            && contains(standalone, "measurement_8_contacts: 35")
+    require(contains(standalone, "input_1_contacts: 33")
+            && contains(standalone, "measurement_8_contacts: 96")
             && contains(standalone, "channel_8_gain_contacts: 29,30,31,32"),
         "YVP production must retain explicit input, output and per-channel KU maps");
     require(contains(standalone, "gains_mv_per_pcl: 0.25,0.5,1,2,4,8,32"),
@@ -131,6 +131,7 @@ public:
                        const std::map<std::string, std::string>& arguments) override
     {
         operations.push_back(capability + ":" + operation);
+        requests.push_back({capability + ":" + operation, arguments});
         if (capability == "ulk.parameter_source" && operation == "start_yvp_probe") {
             ++yvpStarts;
             return "status=capturing\n";
@@ -173,6 +174,7 @@ public:
     void safeStopAll() noexcept override { stopped = true; }
 
     std::vector<std::string> operations;
+    std::vector<std::pair<std::string, std::map<std::string, std::string>>> requests;
     double supplyVoltage = 27.0;
     double hardwareCurrentLimit = 0.0;
     bool outputEnabled = false;
@@ -286,7 +288,23 @@ void procedureRuntimeContract()
         "V7+ISD commissioning must switch Rigol safely around both points");
     require(std::count(v7Equipment.operations.begin(), v7Equipment.operations.end(),
                        "stand.switch_matrix:analog") >= 1,
-        "V7+ISD measurement routing must program the analog line before the V7 bus");
+        "V7+ISD measurement routing must disable the analog output before the V7 bus");
+    const auto disabledAnalog = std::find_if(v7Equipment.requests.begin(), v7Equipment.requests.end(),
+        [](const auto& request) {
+            return request.first == "stand.switch_matrix:analog"
+                && request.second.at("channel") == "202"
+                && request.second.at("enabled") == "false";
+        });
+    const auto enabledBus = std::find_if(v7Equipment.requests.begin(), v7Equipment.requests.end(),
+        [](const auto& request) {
+            return request.first == "stand.switch_matrix:switch"
+                && request.second.at("channel") == "202"
+                && request.second.at("enabled") == "true";
+        });
+    require(disabledAnalog != v7Equipment.requests.end()
+                && enabledBus != v7Equipment.requests.end()
+                && disabledAnalog < enabledBus,
+        "V7+ISD must execute DM output OFF before connecting the external signal to the V7 bus");
     require(std::count(v7Equipment.operations.begin(), v7Equipment.operations.end(),
                        "stand.switch_matrix:full_reset") >= 2,
         "V7+ISD must use the firmware full reset before and after the channel");

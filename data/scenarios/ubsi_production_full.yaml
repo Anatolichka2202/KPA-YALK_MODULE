@@ -1,7 +1,7 @@
 schema: 1
 id: ktma.ubsi.production.full
 title: Производство УБСИ · полная проверка
-version: 1.0.5
+version: 1.0.6
 catalog_version: 2026.08.29-yalk-1
 object_type: UBSI_468157_002
 state: published
@@ -249,22 +249,22 @@ steps:
       gain_switch_type: 2
       measurement_analog_type: 1
       measurement_switch_type: 3
-      input_1_contacts: 33,37
-      input_2_contacts: 34,38
-      input_3_contacts: 35,39
-      input_4_contacts: 36,40
-      input_5_contacts: 44,48
-      input_6_contacts: 43,47
-      input_7_contacts: 42,46
-      input_8_contacts: 41,45
-      measurement_1_contacts: 43
-      measurement_2_contacts: 42
-      measurement_3_contacts: 40
-      measurement_4_contacts: 41
-      measurement_5_contacts: 39
-      measurement_6_contacts: 38
-      measurement_7_contacts: 37
-      measurement_8_contacts: 35
+      input_1_contacts: 33
+      input_2_contacts: 34
+      input_3_contacts: 35
+      input_4_contacts: 36
+      input_5_contacts: 37
+      input_6_contacts: 38
+      input_7_contacts: 39
+      input_8_contacts: 40
+      measurement_1_contacts: 89
+      measurement_2_contacts: 90
+      measurement_3_contacts: 91
+      measurement_4_contacts: 92
+      measurement_5_contacts: 93
+      measurement_6_contacts: 94
+      measurement_7_contacts: 95
+      measurement_8_contacts: 96
       channel_1_gain_contacts: 1,2,3,4
       channel_2_gain_contacts: 5,6,7,8
       channel_3_gain_contacts: 9,10,11,12

@@ -458,23 +458,22 @@ private:
 
     YvpRouteState yvpRouteState() const
     {
-        static constexpr std::array<std::array<int, 2>, 8> inputContacts{{
-            {{33,37}}, {{34,38}}, {{35,39}}, {{36,40}},
-            {{44,48}}, {{43,47}}, {{42,46}}, {{41,45}}
-        }};
+        static constexpr std::array<int, 8> inputContacts{
+            33,34,35,36,37,38,39,40
+        };
         static constexpr std::array<int, 8> measurementContacts{
-            43,42,40,41,39,38,37,35
+            89,90,91,92,93,94,95,96
         };
 
         YvpRouteState state;
         for (int channel = 0; channel < 8; ++channel) {
-            const auto& pair = inputContacts[channel];
-            if (isdType2Enabled_[pair[0] - 1] && isdType2Enabled_[pair[1] - 1]) {
+            const int input = inputContacts[channel];
+            if (isdType2Enabled_[input - 1]) {
                 if (state.inputChannel != 0) return {};
                 state.inputChannel = channel + 1;
             }
             const int output = measurementContacts[channel];
-            if (isdType1Enabled_[output - 1] && isdType3Enabled_[output - 1]) {
+            if (!isdType1Enabled_[output - 1] && isdType3Enabled_[output - 1]) {
                 if (state.measurementChannel != 0) return {};
                 state.measurementChannel = channel + 1;
             }
