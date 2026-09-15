@@ -73,10 +73,6 @@ protected:
     orbita::stand::ScenarioEngine* integrationScenarioEngine() const { return scenarioEngine_.get(); }
     orbita::stand::EquipmentRegistry* integrationEquipmentRegistry() const { return equipmentRegistry_; }
     orbita::stand::EquipmentPluginManager* integrationEquipmentPlugins() const { return equipmentPlugins_; }
-    std::vector<std::shared_ptr<orbita::stand::EquipmentDevice>>& integrationEquipmentDevices()
-    {
-        return equipmentDevices_;
-    }
     orbita::stand::StandProfile& integrationStandProfile() { return standProfile_; }
     orbita::stand::StationSession& integrationStationSession() { return stationSession_; }
     QHash<QString, orbita::stand::ScenarioDefinition>& integrationScenarios() { return scenarios_; }
@@ -236,8 +232,6 @@ private:
     orbita::stand::ComponentRuntime* componentRuntime_ = &stationSession_.components();
     orbita::stand::EquipmentPluginManager* equipmentPlugins_ = &stationSession_.equipmentPlugins();
     orbita::stand::EquipmentRegistry* equipmentRegistry_ = &stationSession_.equipment();
-    std::vector<std::shared_ptr<orbita::stand::EquipmentDevice>>& equipmentDevices_ =
-        stationSession_.equipmentDevices();
     orbita::stand::StandProfile& standProfile_ = stationSession_.profile();
 
     // Источник принадлежит StationSession; bridge владеет только связью
@@ -262,7 +256,6 @@ private slots:
     void onOpenScenario();
     void onOpenCatalog();
     void onOpenStandProfile();
-    void onCheckTestEquipment();
     void onRunScenario(const QString& scenarioCode, const QString& objectSerial,
                        bool allowPartial);
     void onStopScenario();

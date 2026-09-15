@@ -172,10 +172,8 @@ KtmaMainWindow::KtmaMainWindow(QWidget* parent)
     connect(page, &TestPage::runRequested,
             this, &KtmaMainWindow::runScenario);
 
-    // MainWindow historically connected this signal to a broad stand check.
-    // UBSI has a stricter contract: Preparation probes only devices required by
-    // the selected scenario. Replace that inherited connection with the scoped one.
-    QObject::disconnect(page, &TestPage::equipmentCheckRequested, this, nullptr);
+    // Physical readiness is delivery-owned: UBSI probes only devices required
+    // by the selected scenario and preserves its confirmed power-up order.
     connect(page, &TestPage::equipmentCheckRequested,
             this, &KtmaMainWindow::checkSelectedEquipment);
 
