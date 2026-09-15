@@ -27,7 +27,9 @@ int main(int argc, char** argv)
 
     auto* overview = page.findChild<QWidget*>(QStringLiteral("powerYalkOverview"));
     auto* status = page.findChild<QLabel*>(QStringLiteral("powerYalkStatus"));
-    require(overview && status, "power YALK overview controls not found");
+    auto* analog = page.findChild<QWidget*>(QStringLiteral("yalkAnalogOverviewV05"));
+    require(overview && status && analog,
+            "power/restored analog YALK overview controls not found");
 
     std::ostringstream values;
     for (int channel = 0; channel < 80; ++channel) {
@@ -67,6 +69,36 @@ int main(int argc, char** argv)
     require(status->text().contains(QStringLiteral("НЕТ СВЕЖИХ ДАННЫХ")),
             "stale power YALK status must be explicit");
 
-    std::cout << "Power YALK live overview event test passed\n";
+    std::ostringstream background;
+    for (int channel = 0; channel < 100; ++channel) {
+        if (channel) background << ',';
+        background << (0.002 + (channel % 7 - 3) * 0.0004);
+    }
+    orbita::stand::RunEvent backgroundEvent;
+    backgroundEvent.nodeId = "monitor";
+    backgroundEvent.stage = "BACKGROUND";
+    backgroundEvent.data = {{"section", "YALK"},
+                            {"background_mean", background.str()},
+                            {"background_min", background.str()},
+                            {"background_max", background.str()}};
+    page.setRunEvent(backgroundEvent);
+
+    orbita::stand::RunEvent analogPoint;
+    analogPoint.nodeId = "yalk_channels";
+    analogPoint.stage = "MEASUREMENT";
+    analogPoint.verdict = orbita::stand::RunVerdict::Ok;
+    analogPoint.data = {{"ulk_address", "9"}, {"command_v", "0"},
+                        {"v7_v", "0.001"}, {"yalk_v", "0.002"},
+                        {"signal", "0"},
+                        {"value_samples", "0.0017,0.0020,0.0022,0.0019"},
+                        {"lower_limit_v", "-0.030"},
+                        {"upper_limit_v", "0.032"}};
+    page.setRunEvent(analogPoint);
+    QApplication::processEvents();
+
+    require(analog->property("renderedChannelCount").toInt() == 80,
+            "restored YALK plane must retain all 80 channels, not only the current one");
+
+    std::cout << "Power and restored YALK overview event test passed\n";
     return EXIT_SUCCESS;
 }
