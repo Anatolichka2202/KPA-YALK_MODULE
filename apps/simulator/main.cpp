@@ -29,6 +29,7 @@
 #include <array>
 #include <algorithm>
 #include <cmath>
+#include <utility>
 
 namespace {
 
@@ -388,7 +389,7 @@ private:
             else if (yalkDirectEnabled_[i]) {
                 code = yalkDirectCode_[i];
                 contact = code >= 500.0;
-            } else if (i < 80 && yalkEnabled_[i]) {
+            } else if (yalkEnabled_[i]) {
                 code = 160.0 + yalkVoltage_[i] / 6.2 * 800.0;
                 contact = yalkVoltage_[i] >= 2.0;
             }
@@ -495,13 +496,10 @@ private:
                     else if (type == 2) isdType2Enabled_[channel - 1] = match.captured(3) == "1";
                     else if (type == 3) isdType3Enabled_[channel - 1] = match.captured(3) == "1";
                 }
-                static constexpr std::array<int, 80> yalkAddress{
-                    1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
-                    21,22,23,24,25,26,27,28,32,33,34,35,36,37,38,39,40,41,42,43,
-                    45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,
-                    65,66,67,68,69,70,74,75,76,77,78,79,80,81,82,83,84,85,86,87};
-                const int address = channel >= 1 && channel <= int(yalkAddress.size())
-                    ? yalkAddress[channel - 1] : channel;
+                // Current catalog bindings already resolve logical YALK channels to
+                // physical ULK/ISD addresses (1..28, 32..43, 45..70, 74..87).
+                // Do not remap the HTTP channel a second time here.
+                const int address = channel;
                 if (address >= 1 && address <= 100 && type == 5) {
                     yalkVoltage_[address-1]=match.captured(3).toDouble(); yalkEnabled_[address-1]=true;
                     yalkDirectEnabled_[address-1]=false;
@@ -643,7 +641,7 @@ private:
 
     double referenceVoltage() const
     {
-        for (int i=0;i<80;++i) if (yalkEnabled_[i]) return yalkVoltage_[i];
+        for (int i=0;i<100;++i) if (yalkEnabled_[i]) return yalkVoltage_[i];
         return 0.0;
     }
 
