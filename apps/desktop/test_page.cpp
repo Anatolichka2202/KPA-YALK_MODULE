@@ -139,6 +139,12 @@ void freezeProductionSidebar(TestPage* page, const QString& title, const QString
     }
 }
 
+YvpOverview* findYvpOverview(TestPage* page)
+{
+    return dynamic_cast<YvpOverview*>(
+        page->findChild<QWidget*>(QStringLiteral("yvpEightChannelOverview")));
+}
+
 } // namespace
 
 TestPage::TestPage(QWidget* parent)
@@ -382,8 +388,7 @@ TestPage::TestPage(QWidget* parent)
         label->setToolTip(QString());
     }
     connect(impl_->enterPreparation, &QPushButton::clicked, this, [this] {
-        if (auto* overview = findChild<YvpOverview*>(QStringLiteral("yvpEightChannelOverview")))
-            overview->clear();
+        if (auto* overview = findYvpOverview(this)) overview->clear();
         freezeProductionSidebar(this, QStringLiteral("Подготовка"),
                                 QStringLiteral("Проверка оборудования выбранного сценария"));
     });
@@ -1002,7 +1007,7 @@ void TestPage::setRunEvent(const orbita::stand::RunEvent& event)
             .arg(v7Ok ? QStringLiteral("В7 %1 Vrms").arg(v7Rms, 0, 'g', 8) : QStringLiteral("измерение В7"),
                  acceptance == QStringLiteral("not_applied")
                     ? QStringLiteral(" · критерий приёмки не применён") : QString()));
-        if (auto* overview = findChild<YvpOverview*>(QStringLiteral("yvpEightChannelOverview"));
+        if (auto* overview = findYvpOverview(this);
             overview && gainOk && calculatedGainOk && frequencyOk) {
             overview->setPoint(channel.toInt(), gain, calculatedGain, v7Ok ? v7Rms : 0.0,
                                frequency, inputVppOk ? inputVpp : 0.0, acceptance);
