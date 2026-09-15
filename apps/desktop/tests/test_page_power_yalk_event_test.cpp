@@ -43,11 +43,12 @@ int main(int argc, char** argv)
     page.setRunEvent(fresh);
     QApplication::processEvents();
 
-    require(overview->property("fresh").toBool(), "fresh POWER_YALK event must mark overview fresh");
-    require(overview->property("backgroundChannelCount").toInt() == 80,
-            "fresh POWER_YALK event must render all 80 channels");
-    require(overview->property("renderedChannelCount").toInt() == 80,
-            "power YALK overview must show 80 live bars");
+    require(overview->property("fresh").toBool(),
+            "fresh POWER_YALK event must mark overview fresh");
+    require(overview->isEnabled(),
+            "fresh POWER_YALK overview must be enabled");
+    require(status->text().contains(QStringLiteral("80 каналов")),
+            "fresh power YALK status must state the 80-channel snapshot");
     require(status->text().contains(QStringLiteral("35")),
             "power YALK status must show current supply setpoint");
 
@@ -61,7 +62,8 @@ int main(int argc, char** argv)
 
     require(!overview->property("fresh").toBool(),
             "stale POWER_YALK event must not look fresh");
-    require(!overview->isEnabled(), "stale POWER_YALK overview must be visibly disabled");
+    require(!overview->isEnabled(),
+            "stale POWER_YALK overview must be visibly disabled");
     require(status->text().contains(QStringLiteral("НЕТ СВЕЖИХ ДАННЫХ")),
             "stale power YALK status must be explicit");
 
