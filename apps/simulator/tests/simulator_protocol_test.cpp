@@ -60,7 +60,10 @@ QByteArray fragmentedExchange(quint16 port,
 QByteArray roktCommand(quint8 mode, quint8 channel = 0)
 {
     QByteArray command(128, 0);
-    command.replace(0, 4, "ROKT", 4);
+    command[0] = 'R';
+    command[1] = 'O';
+    command[2] = 'K';
+    command[3] = 'T';
     command[4] = char(0x0A);
     command[5] = char(mode);
     command[6] = char(channel);
