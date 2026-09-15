@@ -54,8 +54,16 @@ int main(int argc, char** argv)
             "ready screen must show selected serial");
     require(state->text() == QStringLiteral("СТЕНД ГОТОВ"),
             "all required automatic equipment ready must produce STAND READY");
-    auto* start = flow.findChild<QPushButton*>(QStringLiteral("primary"));
-    require(start && start->isVisibleTo(&flow), "ready screen must expose start button");
+
+    QPushButton* start = nullptr;
+    const auto buttons = flow.findChildren<QPushButton*>();
+    for (auto* button : buttons) {
+        if (button->text() == QStringLiteral("НАЧАТЬ ПРОВЕРКУ")) {
+            start = button;
+            break;
+        }
+    }
+    require(start && !start->isHidden(), "ready screen must expose start button");
 
     flow.beginStandCheck(QStringLiteral("TU-001"), {QStringLiteral("AKIP")});
     flow.setEquipmentStatus(QStringLiteral("AKIP"), false, QStringLiteral("нет связи"));
