@@ -111,10 +111,24 @@ void append(ProcedureResult& result, MeasurementResult value)
 
 bool simulationMode()
 {
-    const char* text = std::getenv("MILTECH_SIMULATION");
-    if (!text) return false;
-    const std::string value(text);
-    return value == "1" || value == "true" || value == "yes";
+    if (const char* text = std::getenv("MILTECH_SIMULATION")) {
+        const std::string value(text);
+        if (value == "1" || value == "true" || value == "yes") return true;
+    }
+    if (const char* profile = std::getenv("MILTECH_STAND_PROFILE")) {
+        return std::string(profile).find("stand_ktma_simulator") != std::string::npos;
+    }
+    return false;
+}
+
+void neutralizeLegacyGlobalTimeScale()
+{
+    if (!simulationMode()) return;
+#ifdef _WIN32
+    _putenv_s("MILTECH_TIME_SCALE", "");
+#else
+    unsetenv("MILTECH_TIME_SCALE");
+#endif
 }
 
 void wait(ProcedureContext& context, unsigned milliseconds)
@@ -384,9 +398,12 @@ ProcedureResult supplyRangeLiveYalk(const ScenarioNode& node, ProcedureContext& 
 
 void registerPowerLiveUbsiProcedures(ScenarioEngine& engine)
 {
-    // Replace only the supply-range implementation. The method and normative
-    // measurements remain the same; POWER_YALK events are UI evidence and do
-    // not alter the product verdict.
+    // The old simulator launcher still exports MILTECH_TIME_SCALE=0.01. The
+    // accepted operator flow no longer allows global acceleration: clear that
+    // legacy knob before point-major YALK/YVP procedures can observe it. The
+    // only deliberate simulator compression is the 19 V / 5 min exposure
+    // above, represented as 20 s while retaining the normative 300 s evidence.
+    neutralizeLegacyGlobalTimeScale();
     engine.registerProcedure("ubsi.supply_range", supplyRangeLiveYalk);
 }
 
