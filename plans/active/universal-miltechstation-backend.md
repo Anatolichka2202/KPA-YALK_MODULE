@@ -100,18 +100,21 @@ protocol consumer (например liborbita)
 
 - [x] `orbita_stand_runtime` не зависит от UBSI procedure domain/reporting;
 - [x] station adapters не получают UBSI domain транзитивно;
-- [x] общие typed equipment contracts вынесены отдельно;
 - [x] compiled YALK/UBSI procedure implementations перенесены из `station/src` в `deliveries/ktma/ubsi/src/procedures`;
 - [x] KTMA procedure implementation собирается отдельным `ktma_ubsi_procedures` target;
 - [x] Orbita telemetry procedures принадлежат `integrations/orbita`, а не generic station target;
 - [x] generic `station` CMake больше не содержит product procedure domain target;
-- [x] KTMA procedure/runtime contract tests собираются со стороны delivery.
+- [x] KTMA procedure/runtime contract tests собираются со стороны delivery;
+- [x] канонические public include paths созданы под `ktma/ubsi/*`;
+- [x] исторические `orbita_stand/ubsi_*` и `orbita_stand/yalk_*` заголовки оставлены только как compatibility wrappers внутри delivery include tree;
+- [x] obsolete alternate `ubsi_procedures_entry.cpp` удалён;
+- [x] старый исполняемый V7+ISD prototype сохранён только в `src/legacy` и явно не входит ни в один target.
 
 Остаётся:
 
-- [ ] перенести compatibility headers `ubsi_procedures.h`, `yalk_analog_procedure.h`, `ubsi_yvp_math.h` из generic station include в delivery-owned include API;
-- [ ] проверить и удалить/перенести оставшиеся неиспользуемые legacy `ubsi_procedures_entry.cpp` / `ubsi_procedures_yvp_v7.cpp`;
-- [ ] разнести KTMA-specific ROKT/ULK/ISD implementations и действительно общие station adapters.
+- [ ] перевести внутренние includes KTMA/UBSI на `ktma/ubsi/*` и затем удалить compatibility wrappers;
+- [ ] разнести KTMA-specific ROKT/ULK/ISD implementations и действительно общие station adapters;
+- [ ] по мере API migration убрать исторический namespace `orbita::stand` из product-owned типов, не ломая работающую поставку одним Big Bang change.
 
 ## 6. Resource / role model
 
@@ -142,10 +145,11 @@ operation
 - [x] production scenarios используют delivery resources;
 - [x] canonical published full TU `ubsi_ulk_combined_check.yaml` использует delivery resources для физического оборудования;
 - [x] standalone published YALK TU использует delivery resources;
-- [x] desktop readiness после probe восстанавливает canonical resource aliases на тех же проверенных device instances;
+- [x] deferred equipment binding ограничивает logical resource только capabilities, объявленными конкретным delivery component;
+- [x] physical equipment reset сохраняет builtin services сценарного runtime;
 - [x] contract test сверяет scenario resource contracts с реальным `stand_ktma.yaml`.
 
-Временно физические `requires:` в мигрированных сценариях сохраняются как compatibility preflight старого desktop. Фактические legacy procedure invokes при наличии `resources:` уже маршрутизируются через выбранную роль.
+Временно физические `requires:` в мигрированных сценариях сохраняются как compatibility preflight. Фактические legacy procedure invokes при наличии `resources:` уже маршрутизируются через выбранную роль.
 
 Остаётся:
 
@@ -167,18 +171,24 @@ COM/baud/IP/credentials принадлежат delivery/environment, а не sta
 
 ## 8. Desktop / application composition
 
-Статус: **PARTIAL**
+Статус: **PARTIAL / KTMA READINESS MIGRATED**
 
 - [x] `StationSession` владеет profile, `ComponentRuntime`, EquipmentPluginManager/Registry и device retention;
 - [x] `StationSession` поддерживает `Immediate` и `Deferred` equipment composition;
 - [x] Deferred mode загружает providers и non-equipment components, но не захватывает физические devices до readiness;
-- [x] contract test проверяет, что Deferred не создаёт equipment, а Immediate сохраняет прежнюю семантику;
 - [x] desktop ownership переключён на `StationSession(Deferred)`; старые desktop поля являются non-owning compatibility views;
 - [x] desktop E20/sample source находится в station component model;
-- [x] readiness resource aliases восстанавливаются на проверенных экземплярах оборудования без создания скрытого второго device;
 - [x] `OrbitaSampleBridge` используется как desktop integration boundary;
-- [x] KTMA readiness sequence питание УБСИ → выдержка → проверка адаптера сохранена;
-- [ ] убрать оставшийся equipment/readiness orchestration из `MainWindow` в application-neutral/delivery lifecycle;
+- [x] KTMA Preparation строит `ktma::ubsi::EquipmentReadinessPlan` из selected scenario + canonical profile;
+- [x] порядок `DUT power → independent equipment → 3000 ms → ULK adapter` принадлежит delivery и покрыт contract test;
+- [x] запрос одного `ulk.parameter_source` автоматически включает его зависимость `power.dut`;
+- [x] проверенные devices создаются и публикуются через `StationSession::createEquipmentComponent/bindEquipmentComponent`;
+- [x] resource aliases публикуются на тех же проверенных instances без второго скрытого device.
+
+Остаётся:
+
+- [ ] удалить уже неиспользуемый legacy `MainWindow::onCheckTestEquipment()` и связанный compatibility integration hook;
+- [ ] убрать отдельный мёртвый Rigol readiness path из `KtmaMainWindow`;
 - [ ] product/delivery package подключать композицией, а не расширением `integration*()` API;
 - [ ] операторский UX УБСИ не перерабатывать в рамках backend migration.
 
@@ -194,9 +204,9 @@ COM/baud/IP/credentials принадлежат delivery/environment, а не sta
 
 ## Следующие шаги
 
-1. держать текущий backend-срез зелёным по CI;
-2. завершить перенос compatibility headers и аудит legacy UBSI procedure sources;
-3. вынести readiness orchestration из `MainWindow`, сохранив физический порядок КТМА;
-4. закончить resource migration standalone YTP и остальных TU-сценариев;
+1. держать каждый backend-срез зелёным по CI;
+2. удалить dead legacy readiness path из desktop без изменения KTMA Preparation;
+3. закончить resource migration standalone YTP и остальных TU-сценариев после resource-aware test fixture;
+4. перевести внутренние KTMA includes на канонические `ktma/ubsi/*` и убрать wrappers после последнего consumer;
 5. связать `execution_runtime` с run/evidence и подключить первый существующий Python/Lua стенд;
 6. после появления реального board consumer добавить serial/SSH transport contracts.
