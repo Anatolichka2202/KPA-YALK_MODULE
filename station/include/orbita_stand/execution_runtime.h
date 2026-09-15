@@ -11,13 +11,11 @@
 namespace orbita::stand {
 
 struct ExecutionRequest {
-    // Для interpreter-style runtime это путь к скрипту/entrypoint. Если target
-    // пуст, provider может использовать entrypoint из своего профиля.
     std::string target;
     std::vector<std::string> arguments;
     std::map<std::string, std::string> environment;
     std::string workingDirectory;
-    int timeoutMs = 0; // 0 = без общего timeout
+    int timeoutMs = 0; // 0 = no overall timeout
 };
 
 struct ExecutionResult {
@@ -29,9 +27,8 @@ struct ExecutionResult {
     std::string standardError;
 };
 
-// Унифицированная точка запуска существующих программ/скриптов внутри run
-// станции. Lua/Python/native/external-process providers могут иметь разные
-// реализации, но Station и сценарий видят один lifecycle/result contract.
+// Common contract for existing Python/Lua/native bench software. Providers may
+// execute differently, while Station sees one lifecycle and one result shape.
 class IExecutionRuntime : public IStationComponent {
 public:
     ~IExecutionRuntime() override = default;
@@ -56,5 +53,11 @@ std::unique_ptr<IExecutionRuntime> createExecutionRuntime(
     const std::map<std::string, std::string>& configuration);
 
 void registerExecutionRuntimeComponents(ComponentRuntime& runtime);
+
+class ScenarioEngine;
+
+// Generic scenario action `station.execute`. It translates step arguments to
+// ExecutionRequest and stores process outcome/stdout/stderr as run evidence.
+void registerExecutionProcedure(ScenarioEngine& engine, IExecutionRuntime& runtime);
 
 } // namespace orbita::stand
