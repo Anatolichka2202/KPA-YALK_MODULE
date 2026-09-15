@@ -1,0 +1,65 @@
+name: simulator CI
+
+on:
+  push:
+    branches:
+      - new-dis
+    paths:
+      - 'apps/simulator/**'
+      - '.github/workflows/simulator-ci.yml'
+      - 'CMakeLists.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: simulator-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  simulator:
+    name: Windows UCRT64 · simulator protocol
+    runs-on: windows-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up MSYS2 UCRT64
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            git
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-qt6-base
+            mingw-w64-ucrt-x86_64-qt6-svg
+            mingw-w64-ucrt-x86_64-qt6-serialport
+
+      - name: Configure
+        shell: msys2 {0}
+        run: >-
+          cmake -S . -B build-simulator-ci -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DBUILD_TESTING=ON
+
+      - name: Build simulator and protocol regression
+        shell: msys2 {0}
+        run: >-
+          cmake --build build-simulator-ci --parallel 4
+          --target MilTechStationSimulator simulator_protocol_test
+
+      - name: Run simulator protocol regression
+        shell: msys2 {0}
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: >-
+          ctest --test-dir build-simulator-ci --output-on-failure
+          -R '^simulator\.protocol$'
