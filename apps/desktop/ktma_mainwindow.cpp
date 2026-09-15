@@ -208,9 +208,6 @@ KtmaMainWindow::KtmaMainWindow(QWidget* parent)
     connect(page, &TestPage::runRequested,
             this, &KtmaMainWindow::runScenario);
 
-    // MainWindow historically connected this signal to a broad stand check.
-    // UBSI has a stricter contract: Preparation probes only devices required by
-    // the selected scenario. Replace that inherited connection with the scoped one.
     QObject::disconnect(page, &TestPage::equipmentCheckRequested, this, nullptr);
     connect(page, &TestPage::equipmentCheckRequested,
             this, &KtmaMainWindow::checkSelectedEquipment);
@@ -232,8 +229,6 @@ KtmaMainWindow::KtmaMainWindow(QWidget* parent)
         connect(home, &HomePage::tuRequested, this, [this] {
             QTimer::singleShot(0, this, [this] {
                 restoreTuSelector();
-                // Selection does not touch equipment. The check is performed
-                // only from Preparation for the chosen TU scenario.
             });
         });
     }
@@ -422,9 +417,6 @@ void KtmaMainWindow::checkSelectedEquipment()
         if (!needed) definition.enabled = false;
     }
 
-    // Reuse the verified common stand checker, but with all devices outside the
-    // selected scenario temporarily disabled. This prevents probes/outputs on
-    // unrelated hardware while preserving the existing safe-stop/bind logic.
     integrationLegacyEquipmentCheck();
     profile.devices = savedDevices;
 
@@ -677,24 +669,19 @@ void KtmaMainWindow::checkRigolGenerator()
     if (!page->currentRequiredEquipment().contains(QStringLiteral("RIGOL"))) return;
 
     const auto& profile = integrationStandProfile();
+    const std::string generatorCapability = "signal.generator";
     const orbita::stand::DeviceProfile* definition = nullptr;
     for (const auto& device : profile.devices) {
-        if (device.pluginId == "orbita.rigol_generator") {
+        if (!device.enabled) continue;
+        if (std::find(device.bindCapabilities.begin(), device.bindCapabilities.end(),
+                      generatorCapability) != device.bindCapabilities.end()) {
             definition = &device;
             break;
         }
     }
     if (!definition) {
         page->setEquipmentStatus(QStringLiteral("RIGOL"), false,
-            QStringLiteral("В профиле стенда нет генератора Rigol"));
-        return;
-    }
-    if (!definition->enabled) {
-        const auto reason = definition->configuration.find("disabled_reason");
-        page->setEquipmentStatus(QStringLiteral("RIGOL"), false,
-            reason == definition->configuration.end()
-                ? QStringLiteral("Отключён профилем стенда")
-                : QString::fromStdString(reason->second));
+            QStringLiteral("В профиле стенда нет устройства с capability signal.generator"));
         return;
     }
 
@@ -707,12 +694,9 @@ void KtmaMainWindow::checkRigolGenerator()
         for (const auto& [key, value] : profile.routes)
             config["route." + key] = value;
 
-        if (definition->bindCapabilities.empty())
-            throw std::runtime_error("Для Rigol не указана capability");
         auto device = plugins->createDevice(
             definition->pluginId, definition->id, config);
-        const std::string capability = definition->bindCapabilities.front();
-        const std::string response = device->invoke(capability, "probe", {});
+        const std::string response = device->invoke(generatorCapability, "probe", {});
 
         const auto confirmation = config.find("device.active_commands_confirmed");
         const bool explicitlyBlocked = confirmation != config.end()
