@@ -1,4 +1,5 @@
-#include "orbita_stand/execution_procedure.h"
+#include "orbita_stand/execution_runtime.h"
+#include "orbita_stand/scenario.h"
 
 #include <algorithm>
 #include <atomic>
@@ -76,8 +77,6 @@ ScenarioDefinition scenario(std::map<std::string, std::string> arguments)
     ScenarioNode step;
     step.id = "external";
     step.title = "External bench";
-    // ScenarioEngine requires every leaf to retain an auditable requirement
-    // reference, even when the procedure is generic rather than KTMA-specific.
     step.tuRequirement = "integration/external-bench";
     step.procedure = "station.execute";
     step.arguments = std::move(arguments);
