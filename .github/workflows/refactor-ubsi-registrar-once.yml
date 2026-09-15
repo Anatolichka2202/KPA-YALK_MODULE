@@ -4,13 +4,14 @@ on:
   push:
     branches:
       - universal_miltechstation
+    paths:
+      - .github/workflows/refactor-ubsi-registrar-once.yml
 
 permissions:
   contents: write
 
 jobs:
   refactor:
-    if: github.event.head_commit.message == 'chore(ci): run UBSI registrar cleanup'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
