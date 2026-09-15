@@ -266,8 +266,8 @@ void engineSemantics()
         return ProcedureResult{RunVerdict::Ok, "recovered", {}};
     });
     auto retryScenario = smallScenario();
-    retryScenario.steps = {{"retry", "Retry", "1.1", "flaky", {"a"},
-                            {{"technical_retries", "3"}}, {}}};
+    retryScenario.steps = {{"retry", "Retry", "1.1", "flaky", {"a"}, {}, {}}};
+    retryScenario.steps.front().policy.technicalRetries = 3;
     const auto retryRun = retryEngine.run(retryScenario, equipment, "p1", "", false);
     require(retryRun.verdict == RunVerdict::Ok && retryAttempts == 3,
             "Technical ERROR must be retried up to the configured safe limit");

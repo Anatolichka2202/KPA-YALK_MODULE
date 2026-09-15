@@ -32,26 +32,10 @@ bool shouldStop(RunVerdict verdict, bool allowPartial)
         || (!allowPartial && verdict == RunVerdict::Incomplete);
 }
 
-// Programmatic schema-1 tests still construct ScenarioNode aggregates with the
-// old arguments key. YAML-loaded scenarios never take this path because the
-// loader consumes technical_retries into the typed policy.
 bool retryLimit(const ScenarioNode& node, unsigned& value)
 {
     value = node.policy.technicalRetries;
-    if (value > 3) return false;
-    if (value != 0) return true;
-
-    const auto legacy = node.arguments.find("technical_retries");
-    if (legacy == node.arguments.end()) return true;
-    try {
-        std::size_t parsed = 0;
-        const auto retries = std::stoull(legacy->second, &parsed);
-        if (parsed != legacy->second.size() || retries > 3) return false;
-        value = static_cast<unsigned>(retries);
-        return true;
-    } catch (...) {
-        return false;
-    }
+    return value <= 3;
 }
 
 struct ResourceRoute {
