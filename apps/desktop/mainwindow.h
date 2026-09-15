@@ -90,7 +90,6 @@ protected:
     {
         if (!standRuntimeReady_) initializeStandRuntime();
     }
-    void integrationLegacyEquipmentCheck() { onCheckTestEquipment(); }
     void integrationDisableBaseScenarioRunner()
     {
         QObject::disconnect(scenarioRunConnection_);
