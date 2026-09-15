@@ -53,6 +53,10 @@ struct ResourceRequirement {
     std::string capability;
 };
 
+struct StepExecutionPolicy {
+    unsigned technicalRetries = 0;
+};
+
 struct ScenarioNode {
     std::string id;
     std::string title;
@@ -66,6 +70,11 @@ struct ScenarioNode {
     // scenario initializers keep their meaning while scenarios migrate from
     // capability-only routing to explicit delivery resource roles.
     std::vector<ResourceRequirement> requiredResources;
+
+    // Runtime policy is separate from procedure arguments. Schema-1 YAML still
+    // accepts technical_retries inside args for compatibility; the loader
+    // consumes it into this typed policy before procedures see the arguments.
+    StepExecutionPolicy policy;
 };
 
 struct ScenarioDefinition {
