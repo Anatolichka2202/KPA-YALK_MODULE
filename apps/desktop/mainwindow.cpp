@@ -802,10 +802,11 @@ void MainWindow::initializeStandRuntime()
         // Общий station-level runtime создаёт только те составные части,
         // которые уже переведены на component model. Equipment пока остаётся
         // на существующем EquipmentRegistry до отдельного этапа миграции.
-        componentRuntime_ = std::make_unique<orbita::stand::ComponentRuntime>();
         orbita::stand::registerSampleSourceComponents(*componentRuntime_);
         try {
-            componentRuntime_->instantiate(standProfile_, {"sample_source"});
+            stationSession_.configure(
+                standProfile_, root.filePath("plugins").toStdString(), {"sample_source"},
+                orbita::stand::EquipmentInstantiation::Deferred);
             telemetrySampleSource_ = componentRuntime_->findAs<orbita::stand::ISampleSource>(
                 "telemetry.orbita.sample_source");
             if (telemetrySampleSource_) {
@@ -850,9 +851,7 @@ void MainWindow::initializeStandRuntime()
         const auto catalog = orbita::stand::importCatalogYaml(
             root.filePath("catalog/catalog.yaml").toStdString(),
             root.filePath("parameters.db").toStdString());
-        equipmentPlugins_ = std::make_unique<orbita::stand::EquipmentPluginManager>();
         equipmentPlugins_->loadDirectory(root.filePath("plugins").toStdString());
-        equipmentRegistry_ = std::make_unique<orbita::stand::EquipmentRegistry>();
         equipmentRegistry_->bind("orbita.parameter_source",
             [this](const std::string& operation,
                    const std::map<std::string, std::string>& arguments) {
