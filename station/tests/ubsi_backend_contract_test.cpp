@@ -285,8 +285,11 @@ void procedureRuntimeContract()
                        "signal.generator:output") >= 4,
         "V7+ISD commissioning must switch Rigol safely around both points");
     require(std::count(v7Equipment.operations.begin(), v7Equipment.operations.end(),
-                       "stand.switch_matrix:analog") >= 4,
+                       "stand.switch_matrix:analog") >= 1,
         "V7+ISD measurement routing must program the analog line before the V7 bus");
+    require(std::count(v7Equipment.operations.begin(), v7Equipment.operations.end(),
+                       "stand.switch_matrix:full_reset") >= 2,
+        "V7+ISD must use the firmware full reset before and after the channel");
     for (const auto& measurement : v7Run.steps.front().measurements) {
         if (measurement.attributes.at("set_frequency_hz") == "0.150000") {
             require(measurement.attributes.at("frequency_verification")

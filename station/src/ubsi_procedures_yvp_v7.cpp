@@ -297,36 +297,15 @@ ProcedureResult yvpV7Isd(const ScenarioNode& node, ProcedureContext& context)
     const unsigned settleMs = natural(node, "settle_ms", 200);
     const auto selectedChannels = commissioningChannels(node, channelCount);
 
-    std::set<unsigned> allInputContacts;
-    std::set<unsigned> allMeasurementContacts;
-    std::set<unsigned> allGainContacts;
-    for (const auto& row : inputMap) allInputContacts.insert(row.begin(), row.end());
-    for (const auto& row : measurementMap)
-        allMeasurementContacts.insert(row.begin(), row.end());
-    for (const auto& channelMap : gainMap) {
-        for (const auto& [gain, row] : channelMap) {
-            (void)gain;
-            allGainContacts.insert(row.begin(), row.end());
-        }
-    }
-
-    const auto asVector = [](const std::set<unsigned>& values) {
-        return std::vector<unsigned>(values.begin(), values.end());
-    };
-    const auto allInputs = asVector(allInputContacts);
-    const auto allMeasurements = asVector(allMeasurementContacts);
-    const auto allGains = asVector(allGainContacts);
-
     auto generatorOff = [&] {
         context.equipment.invoke("signal.generator", "output", {
             {"channel", "1"}, {"enabled", "false"}});
     };
     auto safeReset = [&] {
         try { generatorOff(); } catch (...) {}
-        try { setMeasurementContacts(context, measurementAnalogType, measurementType,
-                                     allMeasurements, false); } catch (...) {}
-        try { setContacts(context, gainType, allGains, false); } catch (...) {}
-        try { setContacts(context, inputType, allInputs, false); } catch (...) {}
+        // type=4 is the confirmed firmware command for a complete ISD reset.
+        // Sending an OFF request for every possible YVP contact first creates
+        // dozens of redundant HTTP transactions and overruns the live ISD.
         try { context.equipment.invoke("stand.switch_matrix", "full_reset", {}); } catch (...) {}
     };
 
@@ -341,10 +320,12 @@ ProcedureResult yvpV7Isd(const ScenarioNode& node, ProcedureContext& context)
             setMeasurementContacts(context, measurementAnalogType, measurementType,
                                    measurementMap[channel], true);
 
+            std::vector<unsigned> activeGainContacts;
             for (const double gain : gains) {
                 generatorOff();
-                setContacts(context, gainType, allGains, false);
-                setContacts(context, gainType, gainMap[channel].at(gain), true);
+                setContacts(context, gainType, activeGainContacts, false);
+                activeGainContacts = gainMap[channel].at(gain);
+                setContacts(context, gainType, activeGainContacts, true);
                 const double inputVpp = yvpStimulusVppForGain(gain);
 
                 for (const double frequency : frequencies) {
@@ -408,13 +389,8 @@ ProcedureResult yvpV7Isd(const ScenarioNode& node, ProcedureContext& context)
                 }
             }
 
-            generatorOff();
-            setContacts(context, gainType, allGains, false);
-            setMeasurementContacts(context, measurementAnalogType, measurementType,
-                                   measurementMap[channel], false);
-            setContacts(context, inputType, inputMap[channel], false);
+            safeReset();
         }
-        safeReset();
     } catch (...) {
         safeReset();
         throw;
