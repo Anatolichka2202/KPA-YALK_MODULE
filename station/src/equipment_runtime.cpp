@@ -7,7 +7,7 @@
 #include <QStringList>
 
 #include <algorithm>
-#include <cstring>
+#include <atomic>
 #include <sstream>
 #include <stdexcept>
 #include <utility>
@@ -96,16 +96,16 @@ struct EquipmentDevice::Impl {
     std::shared_ptr<LoadedPlugin> plugin;
     std::string instanceId;
     void* instance = nullptr;
+    std::atomic_bool safeStopped{false};
 };
 
 EquipmentDevice::EquipmentDevice(std::unique_ptr<Impl> impl) : impl_(std::move(impl)) {}
 
 EquipmentDevice::~EquipmentDevice()
 {
-    if (impl_ && impl_->instance && impl_->plugin && impl_->plugin->api) {
-        impl_->plugin->api->safe_stop(impl_->instance);
-        impl_->plugin->api->destroy(impl_->instance);
-    }
+    if (!impl_ || !impl_->instance || !impl_->plugin || !impl_->plugin->api) return;
+    safeStop();
+    impl_->plugin->api->destroy(impl_->instance);
 }
 
 const std::string& EquipmentDevice::instanceId() const noexcept { return impl_->instanceId; }
@@ -120,6 +120,11 @@ std::string EquipmentDevice::invoke(
         throw std::invalid_argument("Plugin " + impl_->plugin->descriptor.id
             + " does not provide capability " + capability);
     }
+
+    // Any operation may have changed the physical state. The next safe-stop
+    // must therefore reach the plugin even if the device was safe before it.
+    impl_->safeStopped.store(false, std::memory_order_relaxed);
+
     const std::string request = encodePluginArguments(arguments);
     std::vector<char> bytes(4096);
     orbita_plugin_buffer_v1 response{bytes.data(), bytes.size(), 0};
@@ -147,7 +152,18 @@ void EquipmentDevice::cancel() noexcept
 
 void EquipmentDevice::safeStop() noexcept
 {
-    if (impl_ && impl_->instance) impl_->plugin->api->safe_stop(impl_->instance);
+    if (!impl_ || !impl_->instance || !impl_->plugin || !impl_->plugin->api) return;
+    bool expected = false;
+    if (!impl_->safeStopped.compare_exchange_strong(
+            expected, true, std::memory_order_relaxed)) {
+        return;
+    }
+    try {
+        impl_->plugin->api->safe_stop(impl_->instance);
+    } catch (...) {
+        // A failed stop must remain retryable by the next safety boundary.
+        impl_->safeStopped.store(false, std::memory_order_relaxed);
+    }
 }
 
 struct EquipmentPluginManager::Impl {
@@ -369,17 +385,13 @@ std::vector<EquipmentResourceDescriptor> EquipmentRegistry::resources() const
 
 void EquipmentRegistry::clearPhysical() noexcept
 {
-    std::set<EquipmentDevice*> stopped;
-    const auto stop = [&stopped](const std::shared_ptr<EquipmentDevice>& device) {
-        if (device && stopped.insert(device.get()).second) device->safeStop();
-    };
     for (const auto& [capability, binding] : defaults_) {
         (void)capability;
-        stop(binding.device);
+        if (binding.device) binding.device->safeStop();
     }
     for (const auto& [resourceId, binding] : resources_) {
         (void)resourceId;
-        stop(binding.device);
+        if (binding.device) binding.device->safeStop();
     }
 
     for (auto it = defaults_.begin(); it != defaults_.end();) {
@@ -419,20 +431,16 @@ std::string EquipmentRegistry::invoke(
 
 void EquipmentRegistry::safeStopAll() noexcept
 {
-    std::set<EquipmentDevice*> stopped;
-    const auto stopDevice = [&stopped](const std::shared_ptr<EquipmentDevice>& device) {
-        if (device && stopped.insert(device.get()).second) device->safeStop();
-    };
     for (const auto& [capability, binding] : defaults_) {
         (void)capability;
-        if (binding.device) stopDevice(binding.device);
+        if (binding.device) binding.device->safeStop();
         else if (binding.safeStop) {
             try { binding.safeStop(); } catch (...) {}
         }
     }
     for (const auto& [resourceId, binding] : resources_) {
         (void)resourceId;
-        if (binding.device) stopDevice(binding.device);
+        if (binding.device) binding.device->safeStop();
         else if (binding.safeStop) {
             try { binding.safeStop(); } catch (...) {}
         }
