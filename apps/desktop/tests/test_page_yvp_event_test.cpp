@@ -3,6 +3,7 @@
 #include <QApplication>
 #include <QComboBox>
 #include <QLabel>
+#include <QWidget>
 
 #include <cstdlib>
 #include <iostream>
@@ -25,7 +26,9 @@ int main(int argc, char** argv)
 
     auto* scope = page.findChild<QComboBox*>(QStringLiteral("testScope"));
     auto* test = page.findChild<QComboBox*>(QStringLiteral("testType"));
-    require(scope && test, "production selector controls not found");
+    auto* overview = page.findChild<QWidget*>(QStringLiteral("yvpEightChannelOverview"));
+    auto* context = page.findChild<QLabel*>(QStringLiteral("frozenProcedureContext"));
+    require(scope && test && overview && context, "production YVP controls not found");
 
     const int yvpScope = scope->findData(QStringLiteral("ЯВП-8"));
     require(yvpScope >= 0, "YVP production scope not found");
@@ -34,7 +37,7 @@ int main(int argc, char** argv)
     require(page.currentScenarioCode() == QStringLiteral("PROD_YVP"),
             "YVP scope must resolve to PROD_YVP");
     require(test->currentText().contains(QStringLiteral("V7 / ИСД")),
-            "YVP operator title must describe the current V7/ISD tract, not ROKT");
+            "YVP operator title must describe the current V7/ISD tract");
 
     int includedRouteStages = 0;
     bool powerIncluded = false;
@@ -48,15 +51,16 @@ int main(int argc, char** argv)
         if (index == 4) yvpIncluded = true;
     }
     require(includedRouteStages == 4,
-            "YVP route must be Preparation -> Power -> YVP -> Finish");
+            "YVP backend route must remain Preparation -> Power -> YVP -> Finish");
     require(powerIncluded && yvpIncluded,
-            "YVP route must keep both supply_status and YVP stages visible");
+            "YVP backend route must retain supply_status and YVP stages");
 
     page.setRunInProgress(true, QStringLiteral("YVP V7/ISD"));
 
     orbita::stand::RunEvent start;
     start.nodeId = "yvp_measurement";
     start.stage = "START";
+    start.message = "V7 / ИСД";
     page.setRunEvent(start);
 
     orbita::stand::RunEvent point;
@@ -79,27 +83,30 @@ int main(int argc, char** argv)
         {"acceptance", "not_applied"}
     };
     page.setRunEvent(point);
+    QApplication::processEvents();
 
     bool channelShown = false;
     bool gainShown = false;
     bool calculatedShown = false;
-    bool commissioningShown = false;
-    bool routeUsesV7 = false;
+    bool noAcceptanceShown = false;
     for (auto* label : page.findChildren<QLabel*>()) {
         const QString text = label->text();
         channelShown = channelShown || text == QStringLiteral("3 / 8");
         gainShown = gainShown || text.contains(QStringLiteral("0.5 мВ/пКл"));
         calculatedShown = calculatedShown || text.contains(QStringLiteral("0.48 мВ/пКл"));
-        commissioningShown = commissioningShown || text.contains(QStringLiteral("commissioning"));
-        routeUsesV7 = routeUsesV7 || text.contains(QStringLiteral("Канал 3 / 8 · Kу 0.5 · 500 Гц"));
+        noAcceptanceShown = noAcceptanceShown
+            || text.contains(QStringLiteral("критерий приёмки не применён"));
     }
 
     require(channelShown, "YVP channel from YVP_V7_POINT was not rendered");
     require(gainShown, "YVP requested gain from YVP_V7_POINT was not rendered");
     require(calculatedShown, "YVP calculated gain from YVP_V7_POINT was not rendered");
-    require(commissioningShown, "YVP commissioning/no-acceptance state was not rendered");
-    require(routeUsesV7, "YVP route detail did not advance from the V7/ISD event");
+    require(noAcceptanceShown, "YVP no-acceptance state must be shown explicitly");
+    require(context->text().contains(QStringLiteral("Канал 3 / 8 · Kу 0.5 · 500 Гц")),
+            "YVP contextual left side did not advance from V7/ISD event");
+    require(overview->property("yvpRenderedChannelCount").toInt() == 1,
+            "YVP eight-channel plane must retain the first measured channel");
 
-    std::cout << "YVP V7/ISD operator event test passed\n";
+    std::cout << "YVP V7/ISD frozen operator view test passed\n";
     return EXIT_SUCCESS;
 }
