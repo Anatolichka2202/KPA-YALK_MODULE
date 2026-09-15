@@ -108,11 +108,13 @@ protocol consumer (например liborbita)
 - [x] канонические public include paths созданы под `ktma/ubsi/*`;
 - [x] исторические `orbita_stand/ubsi_*` и `orbita_stand/yalk_*` заголовки оставлены только как compatibility wrappers внутри delivery include tree;
 - [x] obsolete alternate `ubsi_procedures_entry.cpp` удалён;
-- [x] старый исполняемый V7+ISD prototype сохранён только в `src/legacy` и явно не входит ни в один target.
+- [x] старый исполняемый V7+ISD prototype сохранён только в `src/legacy` и явно не входит ни в один target;
+- [x] UBSI procedure layers компонуются одним явным C++ registrar; CMake больше не переименовывает `registerUbsiProcedures` через per-source compile definitions;
+- [x] production alias `ubsi.yvp` публикует только финальный V7 layer, а legacy/current implementations остаются отдельными diagnostic ids.
 
 Остаётся:
 
-- [ ] перевести внутренние includes KTMA/UBSI на `ktma/ubsi/*` и затем удалить compatibility wrappers;
+- [ ] перевести оставшиеся внутренние includes KTMA/UBSI на `ktma/ubsi/*` и затем удалить compatibility wrappers;
 - [ ] разнести KTMA-specific ROKT/ULK/ISD implementations и действительно общие station adapters;
 - [ ] по мере API migration убрать исторический namespace `orbita::stand` из product-owned типов, не ломая работающую поставку одним Big Bang change.
 
@@ -147,7 +149,8 @@ operation
 - [x] standalone published YALK TU использует delivery resources;
 - [x] deferred equipment binding ограничивает logical resource только capabilities, объявленными конкретным delivery component;
 - [x] physical equipment reset сохраняет builtin services сценарного runtime;
-- [x] contract test сверяет scenario resource contracts с реальным `stand_ktma.yaml`.
+- [x] contract test сверяет scenario resource contracts с реальным `stand_ktma.yaml`;
+- [x] `technical_retries` после YAML boundary хранится только в typed `StepExecutionPolicy`, а не читается procedure runtime из generic args.
 
 Временно физические `requires:` в мигрированных сценариях сохраняются как compatibility preflight. Фактические legacy procedure invokes при наличии `resources:` уже маршрутизируются через выбранную роль.
 
@@ -183,13 +186,17 @@ COM/baud/IP/credentials принадлежат delivery/environment, а не sta
 - [x] порядок `DUT power → independent equipment → 3000 ms → ULK adapter` принадлежит delivery и покрыт contract test;
 - [x] запрос одного `ulk.parameter_source` автоматически включает его зависимость `power.dut`;
 - [x] проверенные devices создаются и публикуются через `StationSession::createEquipmentComponent/bindEquipmentComponent`;
-- [x] resource aliases публикуются на тех же проверенных instances без второго скрытого device.
+- [x] resource aliases публикуются на тех же проверенных instances без второго скрытого device;
+- [x] generic `MainWindow` больше не содержит физический KTMA readiness и не подписывается на `equipmentCheckRequested`;
+- [x] physical readiness выбранного сценария подключается только в `KtmaMainWindow`;
+- [x] отдельный неиспользуемый Rigol readiness path удалён; Rigol проходит общий delivery readiness plan как обычный component.
 
 Остаётся:
 
-- [ ] удалить уже неиспользуемый legacy `MainWindow::onCheckTestEquipment()` и связанный compatibility integration hook;
-- [ ] убрать отдельный мёртвый Rigol readiness path из `KtmaMainWindow`;
-- [ ] product/delivery package подключать композицией, а не расширением `integration*()` API;
+- [ ] вынести KTMA registrar/scenario/profile bootstrap из `MainWindow` в delivery/application composition;
+- [ ] убрать оставшиеся `DeviceProfile`-совместимые desktop reads в пользу `ComponentProfile`;
+- [ ] по мере выноса composition сокращать защищённый `integration*()` API `MainWindow`;
+- [ ] product/delivery package подключать композицией, а не наследованием аппаратной логики;
 - [ ] операторский UX УБСИ не перерабатывать в рамках backend migration.
 
 ## Проверка
@@ -205,8 +212,8 @@ COM/baud/IP/credentials принадлежат delivery/environment, а не sta
 ## Следующие шаги
 
 1. держать каждый backend-срез зелёным по CI;
-2. удалить dead legacy readiness path из desktop без изменения KTMA Preparation;
+2. вынести KTMA registrar/scenario/profile bootstrap из reusable `MainWindow`;
 3. закончить resource migration standalone YTP и остальных TU-сценариев после resource-aware test fixture;
-4. перевести внутренние KTMA includes на канонические `ktma/ubsi/*` и убрать wrappers после последнего consumer;
+4. перевести оставшиеся внутренние KTMA includes на канонические `ktma/ubsi/*` и убрать wrappers после последнего consumer;
 5. связать `execution_runtime` с run/evidence и подключить первый существующий Python/Lua стенд;
 6. после появления реального board consumer добавить serial/SSH transport contracts.
