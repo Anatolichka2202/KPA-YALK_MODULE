@@ -17,7 +17,7 @@ add_executable(MilTechStation
     ktma_mainwindow.h
     home_page.cpp
     home_page.h
-    registrar_page.cpp
+    registrar_page_clean.cpp
     registrar_page_production.cpp
     registrar_page.h
     test_page_clean.cpp
