@@ -73,6 +73,8 @@ target_link_libraries(MilTechStation PRIVATE
     ktma_registrar
     ktma_ubsi
     ktma_ubsi_reporting
+    ktma_delivery_ui
+    ktma_ubsi_ui
     Qt6::Core
     Qt6::Widgets
     Qt6::PrintSupport
