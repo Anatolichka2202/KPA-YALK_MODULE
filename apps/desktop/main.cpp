@@ -5,10 +5,21 @@
 #include <QStyleFactory>
 
 #include "ktma_mainwindow.h"
+#include "ktma/ui/delivery_manifest.h"
+#include "ktma/ubsi/ui/module.h"
 
 int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
+
+    // Compile-time composition: station desktop -> KTMA delivery -> UBSI product.
+    // This metadata boundary is behavior-neutral; the existing UBSI widgets are
+    // moved behind the product target in the next migration slice.
+    ktma::ubsi::ui::Module ubsiUiModule;
+    const auto deliveryUi = ktma::ui::makeDeliveryManifest({ubsiUiModule.manifest()});
+    app.setApplicationName(QStringLiteral("MilTechStation"));
+    app.setApplicationDisplayName(
+        QStringLiteral("MilTechStation — %1").arg(deliveryUi.displayName));
 
     app.setStyle(QStyleFactory::create(QStringLiteral("Fusion")));
     QPalette palette;
