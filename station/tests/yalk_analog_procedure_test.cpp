@@ -134,7 +134,8 @@ void referenceLikeRunPasses()
 
     require(result.verdict == Verdict::Ok, "reference-like run must pass");
     require(result.points.size() == 3, "three voltage points are required");
-    require(isd.resetCalled, "ISD reset is required");
+    require(!isd.resetCalled,
+            "YALK helper must not use global ISD type=4 reset as initialization");
     require(source.commands == std::vector<double>({0.0, 3.1, 6.2}), "wrong source points");
     require(isd.connectedChannel == 1, "ISD must route the selected channel");
     require(waiter.waits == std::vector<unsigned>({150, 150, 150}), "wrong stabilization waits");
@@ -158,6 +159,7 @@ void excessiveFullScaleErrorFails()
     require(result.verdict == Verdict::Fail, "40 mV error must exceed the 31 mV limit");
     require(result.points[1].verdict == Verdict::Fail, "middle point must fail");
     require(isd.disableCalled, "ISD must be disabled after a failed verdict");
+    require(!isd.resetCalled, "Failed YALK run must not issue global ISD reset");
 }
 
 void equipmentErrorStillDisablesIsd()
@@ -173,6 +175,7 @@ void equipmentErrorStillDisablesIsd()
     require(result.verdict == Verdict::Error, "equipment failure must produce ERROR");
     require(isd.disableCalled, "ISD must be disabled after an equipment error");
     require(source.outputOffCalled, "source must be disabled after an equipment error");
+    require(!isd.resetCalled, "Equipment error cleanup must not issue global ISD reset");
 }
 
 void legacyVisaFallbackIsPreserved()
