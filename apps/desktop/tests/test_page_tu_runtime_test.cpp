@@ -47,7 +47,11 @@ int main(int argc, char** argv)
     QApplication::processEvents();
 
     auto* start = buttonByText(page, QStringLiteral("НАЧАТЬ ПРОВЕРКУ"));
-    require(start && start->isVisible(), "TU must reach ready state when selected scenario needs no equipment in test");
+    // The TestPage is intentionally not shown in this offscreen unit test, so
+    // QWidget::isVisible() would also include top-level visibility. isHidden()
+    // tests the TU flow's own state instead.
+    require(start && !start->isHidden() && start->isEnabled(),
+            "TU must reach ready state when selected scenario needs no equipment in test");
     start->click();
     page.setRunInProgress(true, QStringLiteral("running"));
     QApplication::processEvents();
