@@ -7,6 +7,7 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Widgets PrintSupport Sql Svg SerialPort Concurrent)
+add_compile_options("-include${CMAKE_CURRENT_SOURCE_DIR}/qt_size_compat.h")
 
 add_executable(MilTechStation
     main.cpp
