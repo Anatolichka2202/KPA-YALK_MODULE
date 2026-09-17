@@ -838,15 +838,16 @@ void MainWindow::initializeStandRuntime()
             {"ulk.parameter_source", "RS485"}, {"stand.switch_matrix", "ISD"},
             {"measure.reference_voltage", "V7"}, {"power.dc_supply", "AKIP"},
             {"signal.generator", "RIGOL"}, {"measure.waveform", "SCOPE"}};
-        for (const auto& device : standProfile_.devices) {
-            const auto host = device.configuration.find("host");
-            const auto port = device.configuration.find("port");
-            QString endpoint = host == device.configuration.end()
-                ? QString::fromStdString(device.pluginId)
+        for (const auto& component : standProfile_.components) {
+            if (component.kind != "equipment") continue;
+            const auto host = component.configuration.find("host");
+            const auto port = component.configuration.find("port");
+            QString endpoint = host == component.configuration.end()
+                ? QString::fromStdString(component.provider)
                 : QString::fromStdString(host->second);
-            if (port != device.configuration.end())
+            if (port != component.configuration.end())
                 endpoint += QStringLiteral(":") + QString::fromStdString(port->second);
-            for (const auto& capability : device.bindCapabilities) {
+            for (const auto& capability : component.capabilities) {
                 const QString code = equipmentCode.value(QString::fromStdString(capability));
                 if (!code.isEmpty()) testPage_->setEquipmentConnection(code, endpoint);
             }
