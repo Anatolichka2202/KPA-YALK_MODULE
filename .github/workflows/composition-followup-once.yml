@@ -1,0 +1,35 @@
+name: composition follow-up
+
+on:
+  push:
+    branches: [universal_miltechstation]
+    paths:
+      - .github/workflows/composition-followup-once.yml
+      - tools/apply_composition_followup.py
+
+permissions:
+  contents: write
+
+jobs:
+  refactor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: universal_miltechstation
+          fetch-depth: 0
+      - name: Apply follow-up
+        run: python tools/apply_composition_followup.py
+      - name: Verify and commit
+        run: |
+          git diff --check
+          grep -n '#include <QAction>' apps/desktop/ktma_mainwindow.cpp
+          grep -n '#include <QMenu>' apps/desktop/ktma_mainwindow.cpp
+          grep -n 'stand_ktma.yaml.*KTMA application composition' plans/active/universal-miltechstation-backend.md
+          grep -n 'Registrar.*KtmaMainWindow' plans/active/universal-miltechstation-backend.md
+          ! grep -n 'вынести KTMA registrar/profile bootstrap' plans/active/universal-miltechstation-backend.md
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/desktop/ktma_mainwindow.cpp plans/active/universal-miltechstation-backend.md
+          git commit -m "docs(architecture): close KTMA bootstrap extraction slice"
+          git push origin HEAD:universal_miltechstation
