@@ -25,6 +25,17 @@ target_include_directories(ktma_ubsi_reporting PUBLIC ${CMAKE_CURRENT_SOURCE_DIR
 target_compile_features(ktma_ubsi_reporting PUBLIC cxx_std_17)
 target_link_libraries(ktma_ubsi_reporting PUBLIC ktma_ubsi orbita_stand_core Qt6::Core)
 
+# Product UI is a delivery-owned module. The first slice is intentionally only
+# the composition boundary; the existing approved UBSI widgets move behind this
+# target in the next behavior-neutral slice.
+add_library(ktma_ubsi_ui STATIC
+    ui/include/ktma/ubsi/ui/module.h
+    ui/src/module.cpp
+)
+target_include_directories(ktma_ubsi_ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/ui/include)
+target_compile_features(ktma_ubsi_ui PUBLIC cxx_std_17)
+target_link_libraries(ktma_ubsi_ui PUBLIC ktma_delivery_ui Qt6::Core)
+
 if(BUILD_TESTING)
     add_executable(ktma_ubsi_production_test
         tests/production_test.cpp
@@ -43,6 +54,13 @@ if(BUILD_TESTING)
     target_link_libraries(ktma_ubsi_production_scenario_test PRIVATE
         ktma_ubsi orbita_stand_runtime)
     add_test(NAME ktma.ubsi.production_scenarios COMMAND ktma_ubsi_production_scenario_test)
+
+    add_executable(ktma_ubsi_ui_contract_test
+        ui/tests/module_contract_test.cpp
+    )
+    target_link_libraries(ktma_ubsi_ui_contract_test PRIVATE
+        ktma_ubsi_ui ktma_delivery_ui Qt6::Core)
+    add_test(NAME ktma.ubsi.ui_contract COMMAND ktma_ubsi_ui_contract_test)
 endif()
 
 if(BUILD_TESTING)
@@ -57,6 +75,7 @@ if(WIN32 AND BUILD_TESTING)
         ktma.ubsi.production
         ktma.ubsi.production_scenarios
         ktma.ubsi.production_report
+        ktma.ubsi.ui_contract
         PROPERTIES
         ENVIRONMENT_MODIFICATION
             "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>;PATH=path_list_prepend:${_ktma_mingw_bin}"
