@@ -151,6 +151,51 @@ YalkAnalogOverview* findYalkAnalogOverview(TestPage* page)
         page->findChild<QWidget*>(QStringLiteral("yalkAnalogOverviewV05")));
 }
 
+struct ResultStageSummary {
+    orbita::stand::RunVerdict verdict = orbita::stand::RunVerdict::NotRun;
+    int count = 0;
+};
+
+int resultStageForNode(const std::string& nodeId)
+{
+    const QString id = QString::fromStdString(nodeId);
+    if (id == QStringLiteral("readiness") || id.startsWith(QStringLiteral("supply_"))
+        || id == QStringLiteral("power_off")) return 0;
+    if (id.startsWith(QStringLiteral("yalk_"))) return 1;
+    if (id.startsWith(QStringLiteral("ytp_"))) return 2;
+    if (id.startsWith(QStringLiteral("yvp_"))) return 3;
+    return -1;
+}
+
+void collectResultStages(const orbita::stand::StepRunResult& step,
+                         ResultStageSummary (&summaries)[4])
+{
+    if (!step.children.empty()) {
+        for (const auto& child : step.children) collectResultStages(child, summaries);
+        return;
+    }
+    const int stage = resultStageForNode(step.nodeId);
+    if (stage < 0) return;
+    auto& summary = summaries[stage];
+    summary.verdict = orbita::stand::combineVerdicts(summary.verdict, step.verdict);
+    ++summary.count;
+}
+
+void applyResultSummary(QLabel* label, const ResultStageSummary& summary)
+{
+    if (!label) return;
+    if (summary.count == 0) {
+        label->setText(QStringLiteral("—"));
+        label->setStyleSheet(QStringLiteral("font-size:20px;font-weight:700;color:#7e8a98;"));
+        return;
+    }
+    label->setText(summary.count == 1
+        ? verdictText(summary.verdict)
+        : QStringLiteral("%1 · %2 шагов").arg(verdictText(summary.verdict)).arg(summary.count));
+    label->setStyleSheet(QStringLiteral("font-size:20px;font-weight:700;color:%1;")
+        .arg(verdictColor(summary.verdict).name()));
+}
+
 } // namespace
 
 TestPage::TestPage(QWidget* parent)
@@ -158,6 +203,10 @@ TestPage::TestPage(QWidget* parent)
     , impl_(std::make_unique<Impl>(this))
 {
     rebuildScopes();
+    impl_->finishPower->setObjectName(QStringLiteral("finishPowerSummary"));
+    impl_->finishYalk->setObjectName(QStringLiteral("finishYalkSummary"));
+    impl_->finishYtp->setObjectName(QStringLiteral("finishYtpSummary"));
+    impl_->finishYvp->setObjectName(QStringLiteral("finishYvpSummary"));
 
     impl_->sessionDataPanel->hide();
     impl_->addProduct->hide();
@@ -404,6 +453,7 @@ TestPage::TestPage(QWidget* parent)
     connect(impl_->enterPreparation, &QPushButton::clicked, this, [this] {
         if (auto* overview = findYvpOverview(this)) overview->clear();
         if (auto* overview = findYalkAnalogOverview(this)) overview->clear();
+        impl_->yalkInitial->clear();
         freezeProductionSidebar(this, QStringLiteral("Подготовка"),
                                 QStringLiteral("Проверка оборудования выбранного сценария"));
     });
@@ -866,7 +916,8 @@ void TestPage::setRunEvent(const orbita::stand::RunEvent& event)
                 impl_->setTopStage(TopStage::Power);
             } else if (node.startsWith(QStringLiteral("yalk_")) && !node.startsWith(QStringLiteral("yvp_"))) {
                 impl_->setTopStage(TopStage::Yalk);
-                if (node.contains(QStringLiteral("contact"))) impl_->setYalkPhase(YalkPhase::Discrete);
+                if (node.contains(QStringLiteral("initial"))) impl_->setYalkPhase(YalkPhase::Initial);
+                else if (node.contains(QStringLiteral("contact"))) impl_->setYalkPhase(YalkPhase::Discrete);
                 else if (node.contains(QStringLiteral("overload"))) impl_->setYalkPhase(YalkPhase::Overload);
                 else if (node.contains(QStringLiteral("reference"))) impl_->setYalkPhase(YalkPhase::Reference);
                 else impl_->setYalkPhase(YalkPhase::Analog);
@@ -1055,6 +1106,23 @@ void TestPage::setRunEvent(const orbita::stand::RunEvent& event)
         }
         return;
     }
+    if (event.stage == "YALK_INITIAL") {
+        impl_->setTopStage(TopStage::Yalk);
+        impl_->setYalkPhase(YalkPhase::Initial);
+        const QString address = eventValue(event, "ulk_address");
+        const double volts = eventValue(event, "yalk_v").toDouble();
+        const int signal = eventValue(event, "signal").toInt();
+        const int index = eventValue(event, "channel_index").toInt();
+        const int count = eventValue(event, "channel_count").toInt();
+        impl_->yalkInitial->setInitial(address, volts, signal,
+            event.verdict == orbita::stand::RunVerdict::Ok);
+        setRouteDetail(static_cast<int>(TopStage::Yalk),
+            QStringLiteral("Обрыв · адрес %1 · %2 / %3 · U %4 В · D %5")
+                .arg(address).arg(index).arg(count).arg(volts, 0, 'f', 3).arg(signal));
+        impl_->updateProgressByStage();
+        return;
+    }
+
     if (event.stage != "MEASUREMENT") return;
 
     if (!eventValue(event, "observed_channel").isEmpty() && !eventValue(event, "delta_code").isEmpty()) {
@@ -1168,10 +1236,12 @@ void TestPage::setRunResult(const orbita::stand::ScenarioRunResult& result,
         QStringLiteral("font-size:31px;font-weight:800;color:%1;").arg(verdictColor(result.verdict).name()));
     impl_->finishDetail->setText(QStringLiteral("SN %1 · run_id %2")
         .arg(impl_->activeSerial, QString::fromStdString(result.runId)));
-    impl_->finishPower->setText(QStringLiteral("завершено"));
-    impl_->finishYalk->setText(QStringLiteral("завершено"));
-    impl_->finishYtp->setText(QStringLiteral("завершено"));
-    impl_->finishYvp->setText(impl_->includeYvpCheck->isChecked() ? QStringLiteral("по сценарию") : QStringLiteral("—"));
+    ResultStageSummary summaries[4];
+    for (const auto& step : result.steps) collectResultStages(step, summaries);
+    applyResultSummary(impl_->finishPower, summaries[0]);
+    applyResultSummary(impl_->finishYalk, summaries[1]);
+    applyResultSummary(impl_->finishYtp, summaries[2]);
+    applyResultSummary(impl_->finishYvp, summaries[3]);
     impl_->reportButton->setEnabled(!tuReportPath.isEmpty() || !productionReportPath.isEmpty());
 
     if (impl_->productionMode && impl_->activeRow >= 0 && impl_->activeRow < impl_->productTable->rowCount()) {

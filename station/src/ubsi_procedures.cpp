@@ -890,10 +890,23 @@ ProcedureResult yalkCheckInitial(const ScenarioNode& node, ProcedureContext& con
                              {"analog_code", std::to_string(reading.code)},
                              {"yalk_v", std::to_string(volts)},
                              {"signal", reading.signal ? "1" : "0"}};
-        append(result, std::move(analog));
-        append(result, measurement("ubsi.yalk.initial.signal." + binding.locator,
+        auto signalResult = measurement("ubsi.yalk.initial.signal." + binding.locator,
             "ЯЛК адрес " + binding.locator + ": исходный сигнал",
-            1, reading.signal ? 1 : 0, 1, 1, "лог."));
+            1, reading.signal ? 1 : 0, 1, 1, "лог.");
+        signalResult.attributes = {{"ulk_address", binding.locator},
+                                   {"signal", reading.signal ? "1" : "0"},
+                                   {"expected_signal", "1"}};
+        const auto channelVerdict = combineVerdicts(analog.verdict, signalResult.verdict);
+        auto eventData = analog.attributes;
+        eventData["channel_index"] = std::to_string(channel + 1);
+        eventData["channel_count"] = std::to_string(count);
+        eventData["expected_signal"] = "1";
+        eventData["analog_ok"] = analog.verdict == RunVerdict::Ok ? "1" : "0";
+        eventData["signal_ok"] = signalResult.verdict == RunVerdict::Ok ? "1" : "0";
+        context.eventSink({std::chrono::system_clock::now(), node.id, "YALK_INITIAL",
+            analog.title, channelVerdict, std::move(eventData)});
+        append(result, std::move(analog));
+        append(result, std::move(signalResult));
     }
     markCommissioning(result, confirmed);
     return result;

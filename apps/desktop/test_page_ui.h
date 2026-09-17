@@ -1068,29 +1068,101 @@ private:
 class StateGrid final : public QWidget
 {
 public:
-    explicit StateGrid(QWidget* parent=nullptr):QWidget(parent){setMinimumHeight(280);}
-    void clear(){states_.clear();current_.clear();expected_=0;update();}
-    void setCurrent(QString key,int signal,int expected){states_[key]=signal;current_=std::move(key);expected_=expected;update();}
+    explicit StateGrid(QWidget* parent=nullptr):QWidget(parent)
+    {
+        setObjectName(QStringLiteral("yalkInitialStateGrid"));
+        setMinimumHeight(280);
+    }
+
+    void clear()
+    {
+        states_.clear();
+        order_.clear();
+        current_.clear();
+        setProperty("initialMeasurementCount", 0);
+        setProperty("initialFailureCount", 0);
+        update();
+    }
+
+    void setInitial(QString key, double volts, int signal, bool passed)
+    {
+        if (!states_.contains(key)) {
+            order_.push_back(key);
+            std::sort(order_.begin(), order_.end(), [](const QString& left, const QString& right) {
+                return left.toInt() < right.toInt();
+            });
+        }
+        states_[key] = {volts, signal, passed};
+        current_ = std::move(key);
+        int failures = 0;
+        for (auto it = states_.cbegin(); it != states_.cend(); ++it)
+            if (!it.value().passed) ++failures;
+        setProperty("initialMeasurementCount", states_.size());
+        setProperty("initialFailureCount", failures);
+        update();
+    }
+
+    void setCurrent(QString key, int signal, int expected)
+    {
+        setInitial(std::move(key), 0.0, signal, signal == expected);
+    }
+
 protected:
-    void paintEvent(QPaintEvent*) override {
-        QPainter p(this);p.setRenderHint(QPainter::Antialiasing);p.fillRect(rect(),QColor("#0e1115"));
-        const int cols=10;const double gap=3,m=8;const int rows=8;
-        const double cw=(width()-2*m-gap*(cols-1))/cols;const double ch=(height()-2*m-gap*(rows-1))/rows;
-        for(int i=1;i<=80;++i){const int r=(i-1)/cols,c=(i-1)%cols;QRectF cell(m+c*(cw+gap),m+r*(ch+gap),cw,ch);
-            const QString key=QString::number(i);const bool known=states_.contains(key);const int state=states_.value(key,0);
-            QColor fill=known?(state==expected_?QColor("#111820"):QColor("#261719")):QColor("#111820");
-            QColor border=known?(state==expected_?QColor("#344557"):QColor("#8f4549")):QColor("#27313c");
-            if(key==current_){fill=QColor("#132033");border=QColor("#5e93b8");}
-            p.setPen(QPen(border,key==current_?2:1));p.setBrush(fill);p.drawRoundedRect(cell,3,3);
-            p.setBrush(Qt::NoBrush);p.setPen(QColor("#9aafbf"));p.setFont(QFont("Segoe UI",8));
-            p.drawText(cell.adjusted(5,2,-5,-2),Qt::AlignTop|Qt::AlignLeft,QStringLiteral("Канал %1").arg(key));
-            p.setPen(known?(state==expected_?QColor("#dce6ef"):QColor("#e1766d")):QColor("#667484"));
-            p.setFont(QFont("Segoe UI",11,QFont::DemiBold));
-            p.drawText(cell.adjusted(5,12,-5,-2),Qt::AlignBottom|Qt::AlignLeft,
-                       known?QStringLiteral("D = %1").arg(state):QStringLiteral("D = —"));
+    void paintEvent(QPaintEvent*) override
+    {
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing);
+        p.fillRect(rect(), QColor("#0e1115"));
+        const int cols = 10;
+        const int rows = 8;
+        const double gap = 3.0, margin = 8.0;
+        const double cw = (width() - 2 * margin - gap * (cols - 1)) / cols;
+        const double ch = (height() - 2 * margin - gap * (rows - 1)) / rows;
+
+        for (int index = 0; index < 80; ++index) {
+            const int row = index / cols, col = index % cols;
+            const QRectF cell(margin + col * (cw + gap), margin + row * (ch + gap), cw, ch);
+            const QString key = index < order_.size() ? order_[index] : QString();
+            const bool known = !key.isEmpty() && states_.contains(key);
+            const InitialState state = known ? states_.value(key) : InitialState{};
+            QColor fill("#111820");
+            QColor border("#27313c");
+            if (known) {
+                fill = state.passed ? QColor("#13251c") : QColor("#261719");
+                border = state.passed ? QColor("#315c43") : QColor("#8f4549");
+            }
+            if (key == current_) {
+                fill = QColor("#132033");
+                border = QColor("#5e93b8");
+            }
+            p.setPen(QPen(border, key == current_ ? 2 : 1));
+            p.setBrush(fill);
+            p.drawRoundedRect(cell, 3, 3);
+            p.setBrush(Qt::NoBrush);
+
+            p.setPen(QColor("#9aafbf"));
+            p.setFont(QFont("Segoe UI", 8));
+            p.drawText(cell.adjusted(5, 2, -5, -2), Qt::AlignTop | Qt::AlignLeft,
+                       known ? QStringLiteral("Адрес %1").arg(key) : QStringLiteral("—"));
+            if (!known) continue;
+
+            p.setPen(state.passed ? QColor("#dce6ef") : QColor("#e1766d"));
+            p.setFont(QFont("Segoe UI", 8, QFont::DemiBold));
+            p.drawText(cell.adjusted(5, 12, -5, -2), Qt::AlignBottom | Qt::AlignLeft,
+                       QStringLiteral("U %1 В · D %2")
+                           .arg(state.volts, 0, 'f', 2).arg(state.signal));
         }
     }
-private:QHash<QString,int> states_;QString current_;int expected_=0;
+
+private:
+    struct InitialState {
+        double volts = 0.0;
+        int signal = 0;
+        bool passed = false;
+    };
+    QHash<QString, InitialState> states_;
+    QVector<QString> order_;
+    QString current_;
 };
 
 QString pageStyle()

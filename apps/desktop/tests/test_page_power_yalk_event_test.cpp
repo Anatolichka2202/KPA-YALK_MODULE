@@ -99,6 +99,51 @@ int main(int argc, char** argv)
     require(analog->property("renderedChannelCount").toInt() == 80,
             "restored YALK plane must retain all 80 channels, not only the current one");
 
-    std::cout << "Power and restored YALK overview event test passed\n";
+    auto* initial = page.findChild<QWidget*>(QStringLiteral("yalkInitialStateGrid"));
+    require(initial, "YALK initial/open-circuit grid not found");
+    orbita::stand::RunEvent initialPoint;
+    initialPoint.nodeId = "yalk_initial";
+    initialPoint.stage = "YALK_INITIAL";
+    initialPoint.verdict = orbita::stand::RunVerdict::Ok;
+    initialPoint.data = {{"ulk_address", "32"}, {"channel_index", "29"},
+                         {"channel_count", "80"}, {"yalk_v", "-0.971"},
+                         {"signal", "1"}, {"expected_signal", "1"}};
+    page.setRunEvent(initialPoint);
+    QApplication::processEvents();
+    require(initial->property("initialMeasurementCount").toInt() == 1,
+            "YALK initial event must populate the physical-address grid");
+    require(initial->property("initialFailureCount").toInt() == 0,
+            "passing YALK open-circuit event must not be shown as failure");
+
+    orbita::stand::ScenarioRunResult result;
+    result.runId = "ui-summary-test";
+    result.verdict = orbita::stand::RunVerdict::Fail;
+    auto addStep = [&result](const char* id, orbita::stand::RunVerdict verdict) {
+        orbita::stand::StepRunResult step;
+        step.nodeId = id;
+        step.verdict = verdict;
+        result.steps.push_back(std::move(step));
+    };
+    addStep("supply_status", orbita::stand::RunVerdict::Ok);
+    addStep("yalk_initial", orbita::stand::RunVerdict::Fail);
+    addStep("ytp_channels", orbita::stand::RunVerdict::Ok);
+    addStep("yvp_v7_isd", orbita::stand::RunVerdict::Incomplete);
+    page.setRunResult(result, {}, {});
+    auto* powerSummary = page.findChild<QLabel*>(QStringLiteral("finishPowerSummary"));
+    auto* yalkSummary = page.findChild<QLabel*>(QStringLiteral("finishYalkSummary"));
+    auto* ytpSummary = page.findChild<QLabel*>(QStringLiteral("finishYtpSummary"));
+    auto* yvpSummary = page.findChild<QLabel*>(QStringLiteral("finishYvpSummary"));
+    require(powerSummary && yalkSummary && ytpSummary && yvpSummary,
+            "final per-stage summary labels not found");
+    require(powerSummary->text().contains(QStringLiteral("НОРМА")),
+            "final power summary must come from ScenarioRunResult");
+    require(yalkSummary->text().contains(QStringLiteral("НЕ НОРМА")),
+            "final YALK summary must preserve a failed step");
+    require(ytpSummary->text().contains(QStringLiteral("НОРМА")),
+            "final YTP summary must come from ScenarioRunResult");
+    require(yvpSummary->text().contains(QStringLiteral("НЕПОЛНАЯ")),
+            "final YVP summary must preserve incomplete acceptance");
+
+    std::cout << "Power, YALK initial and final summary event test passed\n";
     return EXIT_SUCCESS;
 }
