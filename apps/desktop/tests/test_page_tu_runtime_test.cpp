@@ -57,6 +57,7 @@ int main(int argc, char** argv)
     QApplication::processEvents();
 
     auto* tuTitle = page.findChild<QLabel*>(QStringLiteral("tuRuntimeTitle"));
+    auto* productionFooter = page.findChild<QWidget*>(QStringLiteral("productionTelemetryFooter"));
     auto* readiness = page.findChild<QWidget*>(QStringLiteral("tuRequirement_1.1.4.13"));
     auto* supply = page.findChild<QWidget*>(QStringLiteral("tuRequirement_1.1.4.3"));
     auto* current = page.findChild<QWidget*>(QStringLiteral("tuRequirement_1.1.4.5"));
@@ -70,6 +71,8 @@ int main(int argc, char** argv)
     require(tuTitle && readiness && supply && current && yalkOpen && yalkOverload
                 && reference && functional && accuracy && yvpAfc && yvpGain,
             "automated TU requirement rail is incomplete");
+    require(productionFooter && productionFooter->isHidden(),
+            "production telemetry footer must not be shown in the simple TU runtime");
 
     require(!page.findChild<QWidget*>(QStringLiteral("tuRequirement_1.1.4.2")),
             "non-automated 1.1.4.2 must not appear as a pending TU check");
