@@ -151,11 +151,9 @@ void IsdHttpRouter::setAnalog(unsigned channel, unsigned value, bool enabled)
 }
 void IsdHttpRouter::prepareYalk()
 {
-    reset();
+    // YALK preparation no longer requires automatic reset (type=4) or type=7.
     // Р Р°Р±РѕС‡Р°СЏ KPA РІС‹РґРµСЂР¶РёРІР°РµС‚ РѕРєРѕР»Рѕ 400 РјСЃ РјРµР¶РґСѓ type=4 Рё type=7.
     // РРЎР” РЅРµ РІСЃРµРіРґР° РїСЂРёРЅРёРјР°РµС‚ СЃР»РµРґСѓСЋС‰СѓСЋ HTTP-РєРѕРјР°РЅРґСѓ Р±РµР· СЌС‚РѕР№ РїР°СѓР·С‹.
-    std::this_thread::sleep_for(std::chrono::milliseconds(400));
-    requireIsdSuccess(httpGet(impl_->config, QString::fromStdString(yalkPreparePath())));
 }
 void IsdHttpRouter::setYalkVoltage(unsigned channel, double volts)
 {
