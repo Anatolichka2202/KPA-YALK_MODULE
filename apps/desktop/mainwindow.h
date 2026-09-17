@@ -81,6 +81,13 @@ protected:
         return scenarioWatcher_;
     }
     bool integrationStandRuntimeReady() const { return standRuntimeReady_; }
+    void integrationConfigureStandProfile(
+        const orbita::stand::StandProfile& profile, const QString& sourcePath)
+    {
+        standProfile_ = profile;
+        standProfilePath_ = sourcePath;
+        standRuntimeReady_ = false;
+    }
     void integrationEnsureStandRuntime()
     {
         if (!standRuntimeReady_) initializeStandRuntime();
@@ -232,6 +239,7 @@ private:
     orbita::stand::EquipmentPluginManager* equipmentPlugins_ = &stationSession_.equipmentPlugins();
     orbita::stand::EquipmentRegistry* equipmentRegistry_ = &stationSession_.equipment();
     orbita::stand::StandProfile& standProfile_ = stationSession_.profile();
+    QString standProfilePath_;
 
     // Источник принадлежит StationSession; bridge владеет только связью
     // sample_source -> liborbita и гарантирует порядок start/stop.

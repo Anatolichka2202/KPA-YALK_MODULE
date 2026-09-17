@@ -67,7 +67,9 @@ MainWindow::MainWindow(QWidget* parent)
     // Теперь все элементы созданы — можно выставить начальный режим
     setMode(ModeHome);
 
-    initializeStandRuntime();
+    // Station runtime is initialized by the concrete application/delivery after
+    // it provides its profile. Calling a delivery hook from this base
+    // constructor would dispatch to MainWindow, not the derived package.
 
     // Физический источник телеметрии принадлежит ComponentRuntime и открывается
     // только по явному старту мониторинга. Производственный контур УБСИ его не
@@ -774,11 +776,12 @@ void MainWindow::onOpenCatalog()
 
 void MainWindow::onOpenStandProfile()
 {
-    const QString profileName = qEnvironmentVariable(
-        "MILTECH_STAND_PROFILE", QStringLiteral("stand_ktma.yaml"));
-    const QString path = QDir(QCoreApplication::applicationDirPath())
-        .filePath(QStringLiteral("profiles/") + profileName);
-    ScenarioYamlEditor editor(path, this);
+    if (standProfilePath_.isEmpty() || !QFileInfo::exists(standProfilePath_)) {
+        QMessageBox::warning(this, QStringLiteral("Профиль стенда"),
+            QStringLiteral("Application composition не настроила файл профиля стенда."));
+        return;
+    }
+    ScenarioYamlEditor editor(standProfilePath_, this);
     editor.exec();
 }
 
@@ -792,10 +795,9 @@ void MainWindow::initializeStandRuntime()
         registrar_ = std::make_unique<ktma::registrar::Registrar>(
             root.filePath(QStringLiteral("registrar.db")).toStdString());
         registrarPage_->setRegistrar(registrar_.get());
-        const QString profileName = qEnvironmentVariable(
-            "MILTECH_STAND_PROFILE", QStringLiteral("stand_ktma.yaml"));
-        standProfile_ = orbita::stand::loadStandProfile(
-            root.filePath("profiles/" + profileName).toStdString());
+        if (standProfile_.id.empty())
+            throw std::runtime_error(
+                "Профиль станции не настроен application composition");
 
         // Общий station-level runtime создаёт только те составные части,
         // которые уже переведены на component model. Equipment пока остаётся

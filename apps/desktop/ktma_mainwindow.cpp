@@ -115,6 +115,20 @@ KtmaMainWindow::KtmaMainWindow(QWidget* parent)
         QStringLiteral("Rigol DG-1022Z / ДГ10.2"), QStringLiteral("USB / VISA"),
         QStringLiteral("Требуется только сценариям, где есть signal.generator"));
 
+    try {
+        const QDir root(QCoreApplication::applicationDirPath());
+        const QString profileName = qEnvironmentVariable(
+            "MILTECH_STAND_PROFILE", QStringLiteral("stand_ktma.yaml"));
+        const QString profilePath = root.filePath(
+            QStringLiteral("profiles/") + profileName);
+        integrationConfigureStandProfile(
+            orbita::stand::loadStandProfile(profilePath.toUtf8().toStdString()),
+            profilePath);
+    } catch (const std::exception& error) {
+        integrationLog(QStringLiteral("Профиль КТМА не загружен: %1")
+            .arg(QString::fromUtf8(error.what())));
+    }
+
     integrationEnsureStandRuntime();
     loadTuScenarios();
     loadProductionScenarios();
