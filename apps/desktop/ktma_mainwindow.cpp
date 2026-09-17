@@ -202,7 +202,7 @@ void KtmaMainWindow::loadTuScenarios()
     auto* engine = integrationScenarioEngine();
     if (!page) return;
 
-    const QList<QString> publishedCodes = {
+    const QStringList publishedCodes = {
         QStringLiteral("UBSI_NORMAL_5_6"),
         QStringLiteral("YALK_FULL_5_6"),
         QStringLiteral("YALK_CONTACT_THRESHOLDS"),

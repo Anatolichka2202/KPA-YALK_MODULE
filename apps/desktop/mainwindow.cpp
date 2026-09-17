@@ -942,7 +942,8 @@ void MainWindow::initializeStandRuntime()
         standRuntimeReady_ = false;
         const QString detail = QStringLiteral("Стендовый движок не готов: %1")
             .arg(QString::fromUtf8(error.what()));
-        testPage_->setScenarioInfo("UBSI_NORMAL_5_6", false, false, {}, detail);
+        // Delivery/application composition publishes product-specific scenario
+        // availability after the reusable station runtime has been created.
         log(detail);
     }
 }
