@@ -70,6 +70,7 @@ target_link_libraries(orbita_stand_runtime PUBLIC
 
 add_library(orbita_stand_adapters STATIC
     src/isd_driver.cpp
+    adapters/isd_http_transport.cpp
     adapters/equipment_adapters.cpp
     adapters/v7_visa_voltmeter.cpp
     adapters/visa_instrument.cpp
@@ -110,6 +111,12 @@ if(BUILD_TESTING)
     target_link_libraries(isd_driver_test PRIVATE orbita_stand_adapters)
     add_test(NAME stand.isd_driver COMMAND isd_driver_test)
 
+    add_executable(isd_http_transport_test
+        tests/isd_http_transport_test.cpp
+    )
+    target_link_libraries(isd_http_transport_test PRIVATE orbita_stand_adapters)
+    add_test(NAME stand.isd_http_transport COMMAND isd_http_transport_test)
+
     add_executable(scenario_runtime_test tests/scenario_runtime_test.cpp)
     target_compile_definitions(scenario_runtime_test PRIVATE
         ORBITA_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
@@ -128,6 +135,7 @@ if(BUILD_TESTING)
         set_tests_properties(
             stand.equipment_protocol
             stand.isd_driver
+            stand.isd_http_transport
             stand.scenario_runtime
             PROPERTIES ENVIRONMENT_MODIFICATION "${_orbita_qt_test_path}")
     endif()
