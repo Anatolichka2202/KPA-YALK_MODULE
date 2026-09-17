@@ -24,11 +24,28 @@ QPushButton* buttonByText(QWidget& root, const QString& text)
         if (button->text() == text) return button;
     return nullptr;
 }
+
+void saveScene(TestPage& page, const QString& requested,
+               const QString& scene, const QString& base)
+{
+    if (base.isEmpty() || requested != scene) return;
+    for (const QSize size : {QSize(1920, 1080), QSize(1600, 900)}) {
+        page.resize(size);
+        page.show();
+        QApplication::processEvents();
+        const QString suffix = QStringLiteral("_%1x%2.png")
+                                   .arg(size.width()).arg(size.height());
+        require(page.grab().save(base + suffix), "cannot save TU acceptance screenshot");
+    }
+}
 }
 
 int main(int argc, char** argv)
 {
     QApplication app(argc, argv);
+    const QString requested = qEnvironmentVariable("MILTECH_UI_SCENE");
+    const QString screenshot = qEnvironmentVariable("ORBITA_UI_SCREENSHOT");
+
     TestPage page;
     page.setProductionMode(false);
     page.setScenarioInfo(QStringLiteral("ULK_COMBINED_CHECK"), true, false, {}, QStringLiteral("ready"));
@@ -40,11 +57,14 @@ int main(int argc, char** argv)
     operatorBox->addItem(QStringLiteral("Иванов И.И."), QStringLiteral("Иванов И.И."));
     operatorBox->setCurrentIndex(operatorBox->findData(QStringLiteral("Иванов И.И.")));
     serialBox->setCurrentIndex(serialBox->findData(QStringLiteral("345")));
+    QApplication::processEvents();
+    saveScene(page, requested, QStringLiteral("TU_ENTRY"), screenshot);
 
     auto* check = buttonByText(page, QStringLiteral("Проверить готовность"));
     require(check && check->isEnabled(), "TU readiness action must be enabled for operator+serial");
     check->click();
     QApplication::processEvents();
+    saveScene(page, requested, QStringLiteral("TU_READY"), screenshot);
 
     auto* start = buttonByText(page, QStringLiteral("НАЧАТЬ ПРОВЕРКУ"));
     // The TestPage is intentionally not shown in this offscreen unit test, so
@@ -55,6 +75,7 @@ int main(int argc, char** argv)
     start->click();
     page.setRunInProgress(true, QStringLiteral("running"));
     QApplication::processEvents();
+    saveScene(page, requested, QStringLiteral("TU_RUNTIME"), screenshot);
 
     auto* tuTitle = page.findChild<QLabel*>(QStringLiteral("tuRuntimeTitle"));
     auto* productionFooter = page.findChild<QWidget*>(QStringLiteral("productionTelemetryFooter"));
@@ -146,6 +167,7 @@ int main(int argc, char** argv)
     require(report && report->text().contains(QStringLiteral("tu.html"))
                 && report->text().contains(QStringLiteral("tu-ui-test")),
             "TU finish must expose report path and run_id");
+    saveScene(page, requested, QStringLiteral("TU_FINISH"), screenshot);
 
     std::cout << "Dedicated TU runtime rail test passed\n";
     return EXIT_SUCCESS;
