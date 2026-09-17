@@ -1,7 +1,7 @@
 ﻿schema: 1
 id: ubsi.468157.002.yalk.contact_thresholds
 title: РЈР‘РЎР В· РѕРїС†РёРѕРЅР°Р»СЊРЅР°СЏ РїСЂРѕРІРµСЂРєР° РєРѕРЅС‚Р°РєС‚РЅС‹С… РїРѕСЂРѕРіРѕРІ РЇР›Рљ-96
-version: 1.0.0
+version: 1.1.0
 catalog_version: 2026.08.29-yalk-1
 object_type: UBSI_468157_002
 state: published
@@ -14,8 +14,9 @@ steps:
     title: Р’РєР»СЋС‡РµРЅРёРµ Рё РєРѕРЅС‚СЂРѕР»СЊ РїРёС‚Р°РЅРёСЏ РЈР‘РЎР
     tu: 1.1.4.3, 1.1.4.5
     procedure: ubsi.supply_status
-    requires:
-      - power.dc_supply
+    resources:
+      - resource: power.dut
+        capability: power.dc_supply
     args:
       nominal_voltage_v: 27
       minimum_voltage_v: 24
@@ -28,9 +29,11 @@ steps:
     title: Р—Р°РїСѓСЃРє РїРѕС‚РѕРєР° РЇР›Рљ
     tu: 5.6 / РЇР›Рљ
     procedure: yalk.start_stream
-    requires:
-      - ulk.parameter_source
-      - stand.switch_matrix
+    resources:
+      - resource: dut.parameter_source
+        capability: ulk.parameter_source
+      - resource: switch_matrix.primary
+        capability: stand.switch_matrix
     args:
       configure_settle_ms: 500
       timeout_ms: 3000
@@ -41,9 +44,13 @@ steps:
     procedure: yalk.read_calibration
     requires:
       - catalog.parameter_resolver
-      - ulk.parameter_source
-      - stand.switch_matrix
-      - measure.reference_voltage
+    resources:
+      - resource: dut.parameter_source
+        capability: ulk.parameter_source
+      - resource: switch_matrix.primary
+        capability: stand.switch_matrix
+      - resource: measure.reference
+        capability: measure.reference_voltage
     args:
       channel_count: 80
       sample_count: 16
@@ -56,9 +63,13 @@ steps:
     procedure: yalk.check_channels
     requires:
       - catalog.parameter_resolver
-      - ulk.parameter_source
-      - stand.switch_matrix
-      - measure.reference_voltage
+    resources:
+      - resource: dut.parameter_source
+        capability: ulk.parameter_source
+      - resource: switch_matrix.primary
+        capability: stand.switch_matrix
+      - resource: measure.reference
+        capability: measure.reference_voltage
     args:
       channel_count: 80
       point_volts: 0,0.9,2.5
@@ -74,10 +85,14 @@ steps:
     tu: 5.6 / Р·Р°РІРµСЂС€РµРЅРёРµ РїСЂРѕРІРµСЂРєРё
     procedure: yalk.safe_cleanup
     requires:
-      - ulk.parameter_source
-      - stand.switch_matrix
       - catalog.parameter_resolver
-      - measure.reference_voltage
+    resources:
+      - resource: dut.parameter_source
+        capability: ulk.parameter_source
+      - resource: switch_matrix.primary
+        capability: stand.switch_matrix
+      - resource: measure.reference
+        capability: measure.reference_voltage
     args:
       channel_count: 80
       maximum_residual_voltage_v: 0.2
@@ -88,5 +103,6 @@ steps:
     title: РћС‚РєР»СЋС‡РµРЅРёРµ РїРёС‚Р°РЅРёСЏ РЈР‘РЎР РїРѕСЃР»Рµ РїСЂРѕРІРµСЂРєРё
     tu: 5.6 / Р±РµР·РѕРїР°СЃРЅРѕРµ Р·Р°РІРµСЂС€РµРЅРёРµ
     procedure: ubsi.power_safe_off
-    requires:
-      - power.dc_supply
+    resources:
+      - resource: power.dut
+        capability: power.dc_supply

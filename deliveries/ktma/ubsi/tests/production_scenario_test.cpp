@@ -5,6 +5,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <set>
 #include <vector>
 
 #ifndef KTMA_SOURCE_DIR
@@ -44,6 +45,22 @@ bool componentProvides(
         != capabilities.end();
 }
 
+bool isPhysicalCapability(const std::string& capability)
+{
+    static const std::set<std::string> physical = {
+        "power.dc_supply",
+        "ulk.parameter_source",
+        "stand.switch_matrix",
+        "measure.reference_voltage",
+        "measure.dc_current",
+        "measure.reference_ac_voltage",
+        "measure.reference_frequency",
+        "signal.generator",
+        "measure.waveform",
+    };
+    return physical.count(capability) != 0;
+}
+
 void verifyNode(const ScenarioNode& node, const StandProfile& profile)
 {
     require(node.title.find("\xEF\xBF\xBD") == std::string::npos,
@@ -54,6 +71,16 @@ void verifyNode(const ScenarioNode& node, const StandProfile& profile)
     for (const auto& capability : node.requiredCapabilities) {
         require(capability != "orbita.parameter_source",
             "KTMA acceptance scenario must not require legacy Orbita/E20");
+        if (isPhysicalCapability(capability)) {
+            const bool routed = std::any_of(
+                node.requiredResources.begin(), node.requiredResources.end(),
+                [&](const ResourceRequirement& requirement) {
+                    return requirement.capability == capability;
+                });
+            require(routed,
+                "Physical capability requirement has no delivery resource: "
+                    + capability + " in step " + node.id);
+        }
     }
     for (const auto& requirement : node.requiredResources) {
         require(requirement.capability != "orbita.parameter_source",
@@ -147,6 +174,31 @@ int main()
         require(yalkTu.publicationState == PublicationState::Published,
             "Standalone YALK TU scenario must be published");
         verifyScenarioContracts(yalkTu, profile, engine, "Standalone YALK TU");
+
+        const auto ytpTu = loadScenarioYaml(
+            std::string(KTMA_SOURCE_DIR) + "/data/scenarios/ubsi_ytp_tu_5_6.yaml");
+        require(ytpTu.publicationState == PublicationState::Published,
+            "Standalone YTP TU scenario must be published");
+        verifyScenarioContracts(ytpTu, profile, engine, "Standalone YTP TU");
+
+        const auto ytp120 = loadScenarioYaml(
+            std::string(KTMA_SOURCE_DIR) + "/data/scenarios/ubsi_ytp_120_check.yaml");
+        require(ytp120.publicationState == PublicationState::Published,
+            "Fixed-120 YTP diagnostic must be published");
+        verifyScenarioContracts(ytp120, profile, engine, "Fixed-120 YTP");
+
+        const auto contactThresholds = loadScenarioYaml(
+            std::string(KTMA_SOURCE_DIR) + "/data/scenarios/ubsi_yalk_contact_thresholds.yaml");
+        require(contactThresholds.publicationState == PublicationState::Published,
+            "Optional YALK contact-threshold scenario must be published");
+        verifyScenarioContracts(
+            contactThresholds, profile, engine, "Optional YALK contact thresholds");
+
+        const auto legacyTrace = loadScenarioYaml(
+            std::string(KTMA_SOURCE_DIR) + "/data/scenarios/ubsi_tu_5_6.yaml");
+        require(legacyTrace.publicationState == PublicationState::Draft,
+            "Legacy trace scenario must remain a draft");
+        verifyScenarioContracts(legacyTrace, profile, engine, "Legacy TU trace");
 
         std::cout << "KTMA UBSI production/TU resource contracts OK\n";
         return 0;
