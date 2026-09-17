@@ -1,12 +1,19 @@
 schema: 1
 id: ubsi.468157.002.yalk.tu5_6
 title: УБСИ · полная проверка ЯЛК-96 по ТУ 5.6
-version: 1.0.0
+version: 1.0.1
 catalog_version: 2026.08.29-yalk-1
 object_type: UBSI_468157_002
 state: published
 
 steps:
+  - id: isd_baseline
+    title: Исходное состояние ИСД перед новым прогоном
+    tu: 5.6 / ИСД · исходное состояние
+    procedure: ubsi.isd_baseline
+    requires:
+      - stand.switch_matrix
+
   - id: supply_status
     title: Включение и контроль питания УБСИ перед проверкой
     tu: 1.1.4.3, 1.1.4.5
