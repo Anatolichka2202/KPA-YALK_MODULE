@@ -32,6 +32,7 @@ private slots:
     void checkSelectedEquipment();
 
 private:
+    void loadTuScenarios();
     void loadProductionScenarios();
     void configureProductionSelector();
     void restoreTuSelector();

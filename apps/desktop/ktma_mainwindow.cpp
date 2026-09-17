@@ -3,6 +3,7 @@
 #include "ktma/ubsi/equipment_readiness.h"
 #include "ktma/ubsi/production_ledger.h"
 #include "ktma/ubsi/production_report.h"
+#include "ktma/ubsi/procedures.h"
 #include "orbita_stand/catalog.h"
 #include "orbita_stand/config.h"
 
@@ -115,6 +116,7 @@ KtmaMainWindow::KtmaMainWindow(QWidget* parent)
         QStringLiteral("Требуется только сценариям, где есть signal.generator"));
 
     integrationEnsureStandRuntime();
+    loadTuScenarios();
     loadProductionScenarios();
 
     const auto loadRegisteredProducts = [this, page] {
@@ -193,6 +195,128 @@ KtmaMainWindow::KtmaMainWindow(QWidget* parent)
 }
 
 KtmaMainWindow::~KtmaMainWindow() = default;
+
+void KtmaMainWindow::loadTuScenarios()
+{
+    auto* page = integrationTestPage();
+    auto* engine = integrationScenarioEngine();
+    if (!page) return;
+
+    const QList<QString> publishedCodes = {
+        QStringLiteral("UBSI_NORMAL_5_6"),
+        QStringLiteral("YALK_FULL_5_6"),
+        QStringLiteral("YALK_CONTACT_THRESHOLDS"),
+        QStringLiteral("YTP_FULL_5_6"),
+        QStringLiteral("YTP_120_CHECK"),
+        QStringLiteral("ULK_COMBINED_CHECK"),
+        QStringLiteral("BSI_DIAGNOSTIC")};
+
+    if (!engine || !integrationStandRuntimeReady()) {
+        const QString detail = QStringLiteral(
+            "Сценарии ТУ недоступны: общий runtime станции не инициализирован");
+        for (const auto& code : publishedCodes)
+            page->setScenarioInfo(code, false, code == QStringLiteral("YTP_120_CHECK")
+                                      || code == QStringLiteral("BSI_DIAGNOSTIC"), {}, detail);
+        return;
+    }
+
+    // Product-owned procedures are registered by the KTMA delivery, not by the
+    // reusable Station/Orbita shell.
+    orbita::stand::registerUbsiProcedures(*engine);
+
+    const QHash<QString, QString> ids = {
+        {QStringLiteral("ubsi.468157.002.tu5_6.normal"), QStringLiteral("UBSI_NORMAL_5_6")},
+        {QStringLiteral("ubsi.468157.002.yalk.tu5_6"), QStringLiteral("YALK_FULL_5_6")},
+        {QStringLiteral("ubsi.468157.002.yalk.contact_thresholds"), QStringLiteral("YALK_CONTACT_THRESHOLDS")},
+        {QStringLiteral("ubsi.468157.002.ytp.tu5_6"), QStringLiteral("YTP_FULL_5_6")},
+        {QStringLiteral("ubsi.468157.002.ytp.120ohm.check"), QStringLiteral("YTP_120_CHECK")},
+        {QStringLiteral("ubsi.468157.002.ulk.combined.check"), QStringLiteral("ULK_COMBINED_CHECK")},
+        {QStringLiteral("bsi.468157.003.telemetry.diagnostic"), QStringLiteral("BSI_DIAGNOSTIC")}};
+    const QSet<QString> diagnosticCodes = {
+        QStringLiteral("YTP_120_CHECK"), QStringLiteral("BSI_DIAGNOSTIC")};
+    const QHash<QString, QString> equipmentForCapability = {
+        {QStringLiteral("ulk.parameter_source"), QStringLiteral("RS485")},
+        {QStringLiteral("stand.switch_matrix"), QStringLiteral("ISD")},
+        {QStringLiteral("orbita.parameter_source"), QStringLiteral("E20")},
+        {QStringLiteral("measure.reference_voltage"), QStringLiteral("V7")},
+        {QStringLiteral("measure.dc_current"), QStringLiteral("V7")},
+        {QStringLiteral("measure.reference_ac_voltage"), QStringLiteral("V7")},
+        {QStringLiteral("measure.reference_frequency"), QStringLiteral("V7")},
+        {QStringLiteral("power.dc_supply"), QStringLiteral("AKIP")},
+        {QStringLiteral("signal.generator"), QStringLiteral("RIGOL")},
+        {QStringLiteral("operator.manual_input"), QStringLiteral("R4831")},
+        {QStringLiteral("measure.waveform"), QStringLiteral("SCOPE")}};
+
+    const QDir root(QCoreApplication::applicationDirPath());
+    const auto catalog = orbita::stand::importCatalogYaml(
+        root.filePath(QStringLiteral("catalog/catalog.yaml")).toStdString(),
+        root.filePath(QStringLiteral("parameters.db")).toStdString());
+    const QDir scenarioDirectory(root.filePath(QStringLiteral("scenarios")));
+    QSet<QString> loaded;
+
+    for (const auto& file : scenarioDirectory.entryInfoList(
+             {QStringLiteral("*.yaml")}, QDir::Files, QDir::Name)) {
+        try {
+            const auto scenario = orbita::stand::loadScenarioYaml(
+                file.absoluteFilePath().toUtf8().toStdString());
+            const QString code = ids.value(QString::fromStdString(scenario.id));
+            if (code.isEmpty()) continue;
+
+            QStringList errors;
+            if (catalog.version != scenario.catalogVersion) {
+                errors << QStringLiteral("Версия каталога %1 не совпадает со сценарием %2")
+                    .arg(QString::fromStdString(catalog.version),
+                         QString::fromStdString(scenario.catalogVersion));
+            }
+            for (const auto& error : engine->validate(scenario))
+                errors << QString::fromStdString(error);
+
+            QSet<QString> requiredRoles;
+            if (!diagnosticCodes.contains(code)) requiredRoles.insert(QStringLiteral("SCHEME"));
+            std::function<void(const orbita::stand::ScenarioNode&)> collectRequired;
+            collectRequired = [&](const orbita::stand::ScenarioNode& node) {
+                for (const auto& capability : node.requiredCapabilities) {
+                    const QString role = equipmentForCapability.value(
+                        QString::fromStdString(capability));
+                    if (!role.isEmpty()) requiredRoles.insert(role);
+                }
+                for (const auto& requirement : node.requiredResources) {
+                    const QString role = equipmentForCapability.value(
+                        QString::fromStdString(requirement.capability));
+                    if (!role.isEmpty()) requiredRoles.insert(role);
+                }
+                for (const auto& child : node.children) collectRequired(child);
+            };
+            for (const auto& step : scenario.steps) collectRequired(step);
+            QStringList required = requiredRoles.values();
+            required.sort();
+
+            const bool available = errors.isEmpty();
+            const QString detail = available
+                ? QStringLiteral("Загружен сценарий «%1», версия %2; профиль %3")
+                    .arg(QString::fromStdString(scenario.title),
+                         QString::fromStdString(scenario.version),
+                         QString::fromStdString(integrationStandProfile().version))
+                : errors.join(QStringLiteral("; "));
+            if (available) {
+                integrationScenarios().insert(code, scenario);
+                integrationScenarioPaths().insert(code, file.absoluteFilePath());
+                loaded.insert(code);
+            }
+            page->setScenarioInfo(code, available, diagnosticCodes.contains(code), required, detail);
+        } catch (const std::exception& error) {
+            integrationLog(QStringLiteral("TU scenario %1: %2")
+                .arg(file.fileName(), QString::fromUtf8(error.what())));
+        }
+    }
+
+    for (const auto& code : publishedCodes) {
+        if (!loaded.contains(code)) {
+            page->setScenarioInfo(code, false, diagnosticCodes.contains(code), {},
+                QStringLiteral("Сценарий %1 не загружен").arg(code));
+        }
+    }
+}
 
 void KtmaMainWindow::loadProductionScenarios()
 {

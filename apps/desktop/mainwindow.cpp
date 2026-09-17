@@ -32,7 +32,6 @@
 #include <functional>
 
 #include "orbita_stand/report_writer.h"
-#include "orbita_stand/ubsi_procedures.h"
 #include "orbita_stand/telemetry_procedures.h"
 #include "orbita_stand/catalog.h"
 #include "scenario_yaml_editor.h"
@@ -861,100 +860,12 @@ void MainWindow::initializeStandRuntime()
                 return invokeOrbitaParameterSource(operation, arguments);
             });
         scenarioEngine_ = std::make_unique<orbita::stand::ScenarioEngine>();
-        orbita::stand::registerUbsiProcedures(*scenarioEngine_);
         orbita::stand::registerTelemetryProcedures(*scenarioEngine_);
-        const QHash<QString, QString> equipmentForCapability = {
-            {"ulk.parameter_source", "RS485"}, {"stand.switch_matrix", "ISD"},
-            {"orbita.parameter_source", "E20"},
-            {"measure.reference_voltage", "V7"}, {"measure.dc_current", "V7"},
-            {"measure.reference_ac_voltage", "V7"}, {"measure.reference_frequency", "V7"},
-            {"power.dc_supply", "AKIP"}, {"signal.generator", "RIGOL"},
-            {"operator.manual_input", "R4831"}, {"measure.waveform", "SCOPE"}};
+        // Product procedure registration and scenario discovery belong to the
+        // delivery/application composition. The reusable shell only owns the
+        // generic engine and persistent run store.
         scenarios_.clear();
         scenarioPaths_.clear();
-        testPage_->setScenarioInfo("UBSI_NORMAL_5_6", false, false, {},
-            QStringLiteral("Сценарий УБСИ не загружен"));
-        testPage_->setScenarioInfo("YALK_FULL_5_6", false, false, {},
-            QStringLiteral("Сценарий ЯЛК не загружен"));
-        testPage_->setScenarioInfo("YALK_CONTACT_THRESHOLDS", false, false, {},
-            QStringLiteral("Опциональный сценарий контактных порогов не загружен"));
-        testPage_->setScenarioInfo("YTP_FULL_5_6", false, false, {},
-            QStringLiteral("Сценарий ЯТП не загружен"));
-        testPage_->setScenarioInfo("YTP_120_CHECK", false, true, {},
-            QStringLiteral("Сценарий контроля ЯТП при 120 Ом не загружен"));
-        testPage_->setScenarioInfo("ULK_COMBINED_CHECK", false, false, {},
-            QStringLiteral("Полный сценарий УБСИ не загружен"));
-        testPage_->setScenarioInfo("BSI_DIAGNOSTIC", false, true, {},
-            QStringLiteral("Диагностический сценарий БСИ не загружен"));
-        const QDir scenarioDirectory(root.filePath("scenarios"));
-        for (const auto& file : scenarioDirectory.entryInfoList(
-                 {QStringLiteral("*.yaml")}, QDir::Files, QDir::Name)) {
-            const auto scenario = orbita::stand::loadScenarioYaml(
-                file.absoluteFilePath().toUtf8().toStdString());
-            QString code;
-            bool diagnostic = false;
-            if (scenario.id == "ubsi.468157.002.tu5_6.normal") {
-                code = QStringLiteral("UBSI_NORMAL_5_6");
-            } else if (scenario.id == "ubsi.468157.002.yalk.tu5_6") {
-                code = QStringLiteral("YALK_FULL_5_6");
-            } else if (scenario.id == "ubsi.468157.002.yalk.contact_thresholds") {
-                code = QStringLiteral("YALK_CONTACT_THRESHOLDS");
-            } else if (scenario.id == "ubsi.468157.002.ytp.tu5_6") {
-                code = QStringLiteral("YTP_FULL_5_6");
-            } else if (scenario.id == "ubsi.468157.002.ytp.120ohm.check") {
-                code = QStringLiteral("YTP_120_CHECK");
-                diagnostic = true;
-            } else if (scenario.id == "ubsi.468157.002.ulk.combined.check") {
-                code = QStringLiteral("ULK_COMBINED_CHECK");
-            } else if (scenario.id == "bsi.468157.003.telemetry.diagnostic") {
-                code = QStringLiteral("BSI_DIAGNOSTIC");
-                diagnostic = true;
-            } else {
-                continue;
-            }
-            QStringList errors;
-            if (catalog.version != scenario.catalogVersion) {
-                errors << QStringLiteral("Версия каталога %1 не совпадает со сценарием %2")
-                    .arg(QString::fromStdString(catalog.version),
-                         QString::fromStdString(scenario.catalogVersion));
-            }
-            for (const auto& error : scenarioEngine_->validate(scenario)) {
-                errors << QString::fromStdString(error);
-            }
-            QSet<QString> requiredRoles;
-            if (!diagnostic) requiredRoles.insert(QStringLiteral("SCHEME"));
-            std::function<void(const orbita::stand::ScenarioNode&)> collectRequired;
-            collectRequired = [&](const orbita::stand::ScenarioNode& node) {
-                for (const auto& capability : node.requiredCapabilities) {
-                    const QString role = equipmentForCapability.value(
-                        QString::fromStdString(capability));
-                    if (!role.isEmpty()) requiredRoles.insert(role);
-                }
-                for (const auto& child : node.children) collectRequired(child);
-            };
-            for (const auto& step : scenario.steps) collectRequired(step);
-            QStringList required = requiredRoles.values();
-            required.sort();
-            const bool available = errors.isEmpty();
-            const QString detail = available
-                ? QStringLiteral("Загружен сценарий «%1», версия %2; профиль %3")
-                    .arg(QString::fromStdString(scenario.title),
-                         QString::fromStdString(scenario.version),
-                         QString::fromStdString(standProfile_.version))
-                : errors.join(QStringLiteral("; "));
-            if (available) {
-                scenarios_.insert(code, scenario);
-                scenarioPaths_.insert(code, file.absoluteFilePath());
-            }
-            testPage_->setScenarioInfo(code, available, diagnostic, required, detail);
-        }
-        if (!scenarios_.contains(QStringLiteral("YALK_FULL_5_6"))
-            || !scenarios_.contains(QStringLiteral("YALK_CONTACT_THRESHOLDS"))
-            || !scenarios_.contains(QStringLiteral("YTP_FULL_5_6"))
-            || !scenarios_.contains(QStringLiteral("YTP_120_CHECK"))
-            || !scenarios_.contains(QStringLiteral("ULK_COMBINED_CHECK"))) {
-            throw std::runtime_error("Сценарии поставки ЯЛК/ЯТП загружены не полностью");
-        }
         QDir().mkpath(root.filePath("runs"));
         runStore_ = std::make_unique<orbita::stand::RunStore>(
             root.filePath("runs/runs.db").toStdString());

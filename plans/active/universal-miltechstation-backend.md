@@ -190,11 +190,12 @@ COM/baud/IP/credentials принадлежат delivery/environment, а не sta
 - [x] generic `MainWindow` больше не содержит физический KTMA readiness и не подписывается на `equipmentCheckRequested`;
 - [x] physical readiness выбранного сценария подключается только в `KtmaMainWindow`;
 - [x] отдельный неиспользуемый Rigol readiness path удалён; Rigol проходит общий delivery readiness plan как обычный component.
+- [x] desktop equipment metadata читается из `ComponentProfile`; `standProfile_.devices` / `bindCapabilities` больше не используются в desktop.
+- [x] регистрация KTMA/UBSI procedures и discovery TU-сценариев вынесены из reusable `MainWindow` в `KtmaMainWindow`.
 
 Остаётся:
 
-- [ ] вынести KTMA registrar/scenario/profile bootstrap из `MainWindow` в delivery/application composition;
-- [ ] убрать оставшиеся `DeviceProfile`-совместимые desktop reads в пользу `ComponentProfile`;
+- [ ] вынести KTMA registrar/profile bootstrap из `MainWindow` в delivery/application composition;
 - [ ] по мере выноса composition сокращать защищённый `integration*()` API `MainWindow`;
 - [ ] product/delivery package подключать композицией, а не наследованием аппаратной логики;
 - [ ] операторский UX УБСИ не перерабатывать в рамках backend migration.
@@ -212,7 +213,7 @@ COM/baud/IP/credentials принадлежат delivery/environment, а не sta
 ## Следующие шаги
 
 1. держать каждый backend-срез зелёным по CI;
-2. вынести KTMA registrar/scenario/profile bootstrap из reusable `MainWindow`;
+2. вынести оставшийся KTMA registrar/profile bootstrap из reusable `MainWindow`;
 3. закончить resource migration standalone YTP и остальных TU-сценариев после resource-aware test fixture;
 4. перевести оставшиеся внутренние KTMA includes на канонические `ktma/ubsi/*` и убрать wrappers после последнего consumer;
 5. связать `execution_runtime` с run/evidence и подключить первый существующий Python/Lua стенд;
