@@ -1,11 +1,18 @@
 schema: 1
 id: ktma.ubsi.production.yalk
 title: Производство УБСИ · ЯЛК-96
-version: 1.0.0
+version: 1.0.1
 catalog_version: 2026.08.29-yalk-1
 object_type: UBSI_468157_002
 state: published
 steps:
+  - id: isd_baseline
+    title: Исходное состояние ИСД перед новым production run
+    tu: PRODUCTION / ISD / BASELINE
+    procedure: ubsi.isd_baseline
+    requires:
+      - stand.switch_matrix
+
   - id: supply_status
     title: Включение и контроль питания перед проверкой ЯЛК
     tu: PRODUCTION / YALK / POWER
