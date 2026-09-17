@@ -1,7 +1,7 @@
 schema: 1
 id: ubsi.468157.002.tu5_6.normal
 title: УБСИ ЛВРМ.468157.002 — legacy trace сценарий 5.6
-version: 1.6.3
+version: 1.6.4
 catalog_version: 2026.08.29-yalk-1
 object_type: UBSI_468157_002
 # Trace-only draft. Текущий published full run — ubsi_ulk_combined_check.yaml.
@@ -10,6 +10,13 @@ object_type: UBSI_468157_002
 state: draft
 
 steps:
+  - id: isd_baseline
+    title: Исходное состояние ИСД перед новым прогоном
+    tu: 5.6 / ИСД · исходное состояние
+    procedure: ubsi.isd_baseline
+    requires:
+      - stand.switch_matrix
+
   - id: power_and_readiness
     title: Питание и готовность блока
     steps:
@@ -118,17 +125,16 @@ steps:
     title: ЯТП — термосопротивления
     steps:
       - id: ytp_stream
-        title: Запуск потока ЯТП
+        title: Запуск потока ЯТП через адаптер ROKT
         tu: 5.6 / ЯТП
         procedure: ytp.start_stream
         requires:
           - ulk.parameter_source
-          - stand.switch_matrix
         args:
           protocol: rokt_ytp68
           ytp_endpoint: 1
-          isd_switch_type: 7
-          isd_route_channels: 3,9,12,17
+          configure_settle_ms: 500
+          stream_settle_ms: 1000
           timeout_ms: 3000
       - id: ytp_calibration
         title: Калибровка ЯТП 32/31
@@ -166,10 +172,6 @@ steps:
         procedure: ytp.safe_cleanup
         requires:
           - ulk.parameter_source
-          - stand.switch_matrix
-        args:
-          isd_switch_type: 7
-          isd_route_channels: 3,9,12,17
 
   - id: yvp_8
     title: ЯВП-8 — измерение через ИСД и В7
