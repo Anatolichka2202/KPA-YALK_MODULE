@@ -73,7 +73,6 @@ jobs:
         run: |
           test -f build-ci/apps/desktop/MilTechStation.exe
           test -f build-ci/apps/desktop/MilTechStationSimulator.exe
-          test -f build-ci/apps/desktop/orbita_yvp_rokt_probe.exe
 
       - name: Assemble portable package
         shell: msys2 {0}
@@ -82,7 +81,6 @@ jobs:
           mkdir -p deploy
           cp build-ci/apps/desktop/MilTechStation.exe deploy/
           cp build-ci/apps/desktop/MilTechStationSimulator.exe deploy/
-          cp build-ci/apps/desktop/orbita_yvp_rokt_probe.exe deploy/
 
           for item in address catalog profiles scenarios plugins parameters.db Lusbapi64.dll; do
             if [ -e "build-ci/apps/desktop/$item" ]; then
@@ -103,14 +101,13 @@ jobs:
             cp "/ucrt64/bin/$dll" deploy/
           done
 
-          printf 'branch=new-dis\ncommit=%s\n' "$GITHUB_SHA" > deploy/BUILD_INFO.txt
+          printf 'branch=%s\ncommit=%s\n' "${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}" "$GITHUB_SHA" > deploy/BUILD_INFO.txt
 
       - name: Verify portable package
         shell: msys2 {0}
         run: |
           test -f deploy/MilTechStation.exe
           test -f deploy/MilTechStationSimulator.exe
-          test -f deploy/orbita_yvp_rokt_probe.exe
           test -f deploy/Qt6Core.dll
           test -f deploy/Qt6Gui.dll
           test -f deploy/Qt6Widgets.dll
