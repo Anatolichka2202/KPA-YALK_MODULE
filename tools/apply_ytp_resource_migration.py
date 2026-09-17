@@ -132,16 +132,17 @@ def migrate_ytp(path: str, version_old: str) -> None:
         2,
         path,
     )
-    text = replace_once(
-        text,
-        '''    requires:\n      - catalog.parameter_resolver\n      - ulk.parameter_source\n''',
-        '''    requires:\n      - catalog.parameter_resolver\n    resources:\n      - resource: dut.parameter_source\n        capability: ulk.parameter_source\n''',
-        path,
-    )
+    # Match the longer channel block before the calibration prefix it contains.
     text = replace_once(
         text,
         '''    requires:\n      - catalog.parameter_resolver\n      - ulk.parameter_source\n      - operator.manual_input\n''',
         '''    requires:\n      - catalog.parameter_resolver\n      - operator.manual_input\n    resources:\n      - resource: dut.parameter_source\n        capability: ulk.parameter_source\n''',
+        path,
+    )
+    text = replace_once(
+        text,
+        '''    requires:\n      - catalog.parameter_resolver\n      - ulk.parameter_source\n''',
+        '''    requires:\n      - catalog.parameter_resolver\n    resources:\n      - resource: dut.parameter_source\n        capability: ulk.parameter_source\n''',
         path,
     )
     write(path, text)
