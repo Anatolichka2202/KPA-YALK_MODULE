@@ -20,7 +20,7 @@ add_executable(MilTechStation
     registrar_page_clean.cpp
     registrar_page_production.cpp
     registrar_page.h
-    test_page_clean.cpp
+    test_page_final.cpp
     test_page.h
     ubsi_ui_model.h
     ubsi_measurement_views.h
@@ -146,9 +146,8 @@ add_dependencies(OrbitaRuntimeResources MilTechStation orbita_equipment_plugins
     visa_discover)
 
 if(BUILD_TESTING)
-    add_executable(test_page_smoke_test
-        tests/test_page_prototype_acceptance.cpp
-        test_page_clean.cpp
+    set(UBSI_UI_TEST_SOURCES
+        test_page_final.cpp
         test_page.h
         ubsi_ui_model.h
         ubsi_measurement_views.h
@@ -158,75 +157,59 @@ if(BUILD_TESTING)
         equipment_control_widget.h
     )
 
+    add_executable(test_page_smoke_test
+        tests/test_page_prototype_acceptance.cpp
+        ${UBSI_UI_TEST_SOURCES}
+    )
     target_include_directories(test_page_smoke_test PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_SOURCE_DIR}/orbita/include
     )
-
     target_link_libraries(test_page_smoke_test PRIVATE
-        orbita_stand_domain
-        Qt6::Core
-        Qt6::Widgets
-    )
-
+        orbita_stand_domain Qt6::Core Qt6::Widgets)
     add_test(NAME desktop.test_page_smoke COMMAND test_page_smoke_test -platform offscreen)
 
     add_executable(test_page_yvp_event_test
         tests/test_page_yvp_event_test.cpp
-        test_page_clean.cpp
-        test_page.h
-        ubsi_ui_model.h
-        ubsi_measurement_views.h
-        tu_flow_widget_clean.cpp
-        tu_flow_widget.h
-        equipment_control_widget.cpp
-        equipment_control_widget.h
+        ${UBSI_UI_TEST_SOURCES}
     )
-
     target_include_directories(test_page_yvp_event_test PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_SOURCE_DIR}/orbita/include
     )
-
     target_link_libraries(test_page_yvp_event_test PRIVATE
-        orbita_stand_domain
-        Qt6::Core
-        Qt6::Widgets
-    )
-
+        orbita_stand_domain Qt6::Core Qt6::Widgets)
     add_test(NAME desktop.test_page_yvp_event COMMAND test_page_yvp_event_test -platform offscreen)
 
     add_executable(test_page_power_yalk_event_test
         tests/test_page_power_yalk_event_test.cpp
-        test_page_clean.cpp
-        test_page.h
-        ubsi_ui_model.h
-        ubsi_measurement_views.h
-        tu_flow_widget_clean.cpp
-        tu_flow_widget.h
-        equipment_control_widget.cpp
-        equipment_control_widget.h
+        ${UBSI_UI_TEST_SOURCES}
     )
-
     target_include_directories(test_page_power_yalk_event_test PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_SOURCE_DIR}/orbita/include
     )
-
     target_link_libraries(test_page_power_yalk_event_test PRIVATE
-        orbita_stand_domain
-        Qt6::Core
-        Qt6::Widgets
-    )
-
+        orbita_stand_domain Qt6::Core Qt6::Widgets)
     add_test(NAME desktop.test_page_power_yalk_event COMMAND test_page_power_yalk_event_test -platform offscreen)
+
+    add_executable(test_page_tu_runtime_test
+        tests/test_page_tu_runtime_test.cpp
+        ${UBSI_UI_TEST_SOURCES}
+    )
+    target_include_directories(test_page_tu_runtime_test PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_SOURCE_DIR}/orbita/include
+    )
+    target_link_libraries(test_page_tu_runtime_test PRIVATE
+        orbita_stand_domain Qt6::Core Qt6::Widgets)
+    add_test(NAME desktop.test_page_tu_runtime COMMAND test_page_tu_runtime_test -platform offscreen)
 
     add_executable(tu_flow_widget_test
         tests/tu_flow_widget_test.cpp
         tu_flow_widget_clean.cpp
         tu_flow_widget.h
     )
-
     target_include_directories(tu_flow_widget_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     target_link_libraries(tu_flow_widget_test PRIVATE Qt6::Core Qt6::Widgets)
     add_test(NAME desktop.tu_flow_widget COMMAND tu_flow_widget_test -platform offscreen)
@@ -236,6 +219,7 @@ if(BUILD_TESTING)
         desktop.test_page_smoke
         desktop.test_page_yvp_event
         desktop.test_page_power_yalk_event
+        desktop.test_page_tu_runtime
         desktop.tu_flow_widget
         PROPERTIES ENVIRONMENT "QT_PLUGIN_PATH=${QT_TEST_PLUGIN_DIR}"
     )
@@ -244,6 +228,7 @@ if(BUILD_TESTING)
             desktop.test_page_smoke
             desktop.test_page_yvp_event
             desktop.test_page_power_yalk_event
+            desktop.test_page_tu_runtime
             desktop.tu_flow_widget
             PROPERTIES ENVIRONMENT_MODIFICATION
                 "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
