@@ -1,6 +1,8 @@
 #pragma once
 
+#include <QAbstractButton>
 #include <QStringList>
+#include <QStyle>
 #include <QWidget>
 
 #include <functional>
