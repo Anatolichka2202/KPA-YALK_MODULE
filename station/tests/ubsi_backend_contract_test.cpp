@@ -328,8 +328,23 @@ void procedureRuntimeContract()
                 && disabledAnalog < enabledBus,
         "V7+ISD must execute DM output OFF before connecting the external signal to the V7 bus");
     require(std::count(v7Equipment.operations.begin(), v7Equipment.operations.end(),
-                       "stand.switch_matrix:full_reset") >= 2,
-        "V7+ISD must use the firmware full reset before and after the channel");
+                       "stand.switch_matrix:full_reset") == 0,
+        "V7+ISD must not block the live ISD with the global type=4 reset");
+    const auto inputOff = std::find_if(v7Equipment.requests.begin(), v7Equipment.requests.end(),
+        [](const auto& request) {
+            return request.first == "stand.switch_matrix:switch"
+                && request.second.at("channel") == "102"
+                && request.second.at("enabled") == "false";
+        });
+    const auto measurementOff = std::find_if(v7Equipment.requests.begin(), v7Equipment.requests.end(),
+        [](const auto& request) {
+            return request.first == "stand.switch_matrix:switch"
+                && request.second.at("channel") == "202"
+                && request.second.at("enabled") == "false";
+        });
+    require(inputOff != v7Equipment.requests.end()
+                && measurementOff != v7Equipment.requests.end(),
+        "V7+ISD must explicitly remove the input and V7 measurement routes");
     for (const auto& measurement : v7Run.steps.front().measurements) {
         if (measurement.attributes.at("set_frequency_hz") == "0.150000") {
             require(measurement.attributes.at("frequency_verification")

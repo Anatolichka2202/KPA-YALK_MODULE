@@ -305,12 +305,33 @@ ProcedureResult yvpV7Isd(const ScenarioNode& node, ProcedureContext& context)
         context.equipment.invoke("signal.generator", "output", {
             {"channel", "1"}, {"enabled", "false"}});
     };
+    std::vector<unsigned> activeInputContacts;
+    std::vector<unsigned> activeMeasurementContacts;
+    std::vector<unsigned> activeGainContacts;
+    auto disableContacts = [&](unsigned type, std::vector<unsigned>& active) {
+        for (auto contact = active.rbegin(); contact != active.rend(); ++contact) {
+            try { setContacts(context, type, {*contact}, false); } catch (...) {}
+        }
+        active.clear();
+    };
+    auto disableMeasurementContacts = [&] {
+        for (auto contact = activeMeasurementContacts.rbegin();
+             contact != activeMeasurementContacts.rend(); ++contact) {
+            try {
+                setMeasurementContacts(context, measurementAnalogType, measurementType,
+                                       {*contact}, false);
+            } catch (...) {}
+        }
+        activeMeasurementContacts.clear();
+    };
     auto safeReset = [&] {
+        // The live ISD can leave its single HTTP worker blocked in type=4 when
+        // one of the internal modules does not answer.  YVP owns every route it
+        // enables, so clean up only those routes and always remove Rigol first.
         try { generatorOff(); } catch (...) {}
-        // type=4 is the confirmed firmware command for a complete ISD reset.
-        // Sending an OFF request for every possible YVP contact first creates
-        // dozens of redundant HTTP transactions and overruns the live ISD.
-        try { context.equipment.invoke("stand.switch_matrix", "full_reset", {}); } catch (...) {}
+        disableContacts(gainType, activeGainContacts);
+        disableMeasurementContacts();
+        disableContacts(inputType, activeInputContacts);
     };
 
     ProcedureResult result{RunVerdict::Incomplete,
@@ -320,16 +341,23 @@ ProcedureResult yvpV7Isd(const ScenarioNode& node, ProcedureContext& context)
     try {
         safeReset();
         for (const unsigned channel : selectedChannels) {
-            setContacts(context, inputType, inputMap[channel], true);
-            setMeasurementContacts(context, measurementAnalogType, measurementType,
-                                   measurementMap[channel], true);
+            for (const unsigned contact : inputMap[channel]) {
+                setContacts(context, inputType, {contact}, true);
+                activeInputContacts.push_back(contact);
+            }
+            for (const unsigned contact : measurementMap[channel]) {
+                setMeasurementContacts(context, measurementAnalogType, measurementType,
+                                       {contact}, true);
+                activeMeasurementContacts.push_back(contact);
+            }
 
-            std::vector<unsigned> activeGainContacts;
             for (const double gain : gains) {
                 generatorOff();
-                setContacts(context, gainType, activeGainContacts, false);
-                activeGainContacts = gainMap[channel].at(gain);
-                setContacts(context, gainType, activeGainContacts, true);
+                disableContacts(gainType, activeGainContacts);
+                for (const unsigned contact : gainMap[channel].at(gain)) {
+                    setContacts(context, gainType, {contact}, true);
+                    activeGainContacts.push_back(contact);
+                }
                 const double inputVpp = yvpStimulusVppForGain(gain);
 
                 for (const double frequency : frequencies) {
