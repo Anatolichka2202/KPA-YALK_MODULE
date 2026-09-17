@@ -662,23 +662,24 @@ struct TestPage::Impl
         body->addWidget(stageStack, 1);
         layout->addLayout(body, 1);
 
-        auto* footer = new QFrame(runtimePageWidget);
-        footer->setFixedHeight(168);
-        footer->setProperty("panel", true);
-        auto* footerLayout = new QHBoxLayout(footer);
+        productionTelemetryFooter = new QFrame(runtimePageWidget);
+        productionTelemetryFooter->setObjectName(QStringLiteral("productionTelemetryFooter"));
+        productionTelemetryFooter->setFixedHeight(168);
+        productionTelemetryFooter->setProperty("panel", true);
+        auto* footerLayout = new QHBoxLayout(productionTelemetryFooter);
         footerLayout->setContentsMargins(16, 10, 16, 10);
         auto* stats = new QVBoxLayout;
-        stats->addWidget(caption(QStringLiteral("ВРЕМЯ"), footer));
-        elapsed = heading(QStringLiteral("00:00"), 18, footer);
+        stats->addWidget(caption(QStringLiteral("ВРЕМЯ"), productionTelemetryFooter));
+        elapsed = heading(QStringLiteral("00:00"), 18, productionTelemetryFooter);
         stats->addWidget(elapsed);
-        stats->addWidget(caption(QStringLiteral("ОБЩИЙ ТОК"), footer));
-        current = heading(QStringLiteral("— А"), 18, footer);
+        stats->addWidget(caption(QStringLiteral("ОБЩИЙ ТОК"), productionTelemetryFooter));
+        current = heading(QStringLiteral("— А"), 18, productionTelemetryFooter);
         stats->addWidget(current);
         footerLayout->addLayout(stats);
-        currentPlot = new HistoryPlot(footer);
+        currentPlot = new HistoryPlot(productionTelemetryFooter);
         currentPlot->configure(QStringLiteral("Общий ток УБСИ"), QStringLiteral("А"), QStringLiteral("I"));
         footerLayout->addWidget(currentPlot, 1);
-        layout->addWidget(footer);
+        layout->addWidget(productionTelemetryFooter);
 
         pages->addWidget(runtimePageWidget);
 
@@ -1439,6 +1440,7 @@ struct TestPage::Impl
     QVector<TuRequirementRow> tuRows;
     QHash<QString, int> tuIndex;
     QStackedWidget* stageStack = nullptr;
+    QFrame* productionTelemetryFooter = nullptr;
     QLabel* elapsed = nullptr;
     QLabel* current = nullptr;
     HistoryPlot* currentPlot = nullptr;
@@ -1582,6 +1584,8 @@ bool TestPage::isEngineerMode() const
 void TestPage::setProductionMode(bool enabled)
 {
     impl_->productionMode = enabled;
+    if (impl_->productionTelemetryFooter)
+        impl_->productionTelemetryFooter->setVisible(enabled);
     rebuildScopes();
     if (enabled) {
         impl_->pages->setCurrentWidget(impl_->sessionPage);
@@ -1730,6 +1734,8 @@ void TestPage::startSelectedTest()
         : QStringLiteral("Проверка по ТУ · автоматизированный маршрут"));
     impl_->runtimeBack->setText(impl_->productionMode ? QStringLiteral("← Сессия") : QStringLiteral("← ТУ"));
     impl_->sidebarStack->setCurrentWidget(impl_->productionMode ? impl_->productionSidebar : impl_->tuSidebar);
+    if (impl_->productionTelemetryFooter)
+        impl_->productionTelemetryFooter->setVisible(impl_->productionMode);
     impl_->tuSerial->setText(QStringLiteral("УБСИ %1 · %2").arg(impl_->activeSerial, impl_->activeOperator));
     impl_->nextProduct->setVisible(impl_->productionMode);
     impl_->returnAction->setText(impl_->productionMode
