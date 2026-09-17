@@ -109,6 +109,8 @@ int main()
         require(failureObserved, "Injected transport failure was not propagated");
         require(driver.state() == IsdDriverState::Unknown,
                 "Transport failure must move the driver to UNKNOWN");
+        require(driver.statusText().find("active_count=2") != std::string::npos,
+                "Indeterminate ON route was not retained for cleanup");
         require(driver.traceText().find("result=indeterminate") != std::string::npos,
                 "Indeterminate transaction was not recorded in trace");
 
@@ -117,6 +119,15 @@ int main()
         catch (const std::runtime_error&) { mutationBlocked = true; }
         require(mutationBlocked,
                 "Active mutation was allowed while ISD state was UNKNOWN");
+
+        const unsigned resetsBeforeUnknownCleanup = fake.resetCount;
+        driver.safeStopAll();
+        require(fake.resetCount == resetsBeforeUnknownCleanup,
+                "UNKNOWN cleanup must not fall back to full reset");
+        require(driver.statusText().find("active_count=0") != std::string::npos,
+                "UNKNOWN cleanup did not attempt all possibly-active outputs");
+        require(driver.state() == IsdDriverState::Unknown,
+                "Best-effort cleanup must not pretend UNKNOWN hardware state is KNOWN");
 
         driver.reset("recovery");
         require(driver.state() == IsdDriverState::Known,
