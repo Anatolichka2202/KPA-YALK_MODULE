@@ -784,12 +784,10 @@ void markCommissioning(ProcedureResult& result, bool confirmed)
 
 ProcedureResult yalkStartStream(const ScenarioNode& node, ProcedureContext& context)
 {
-    context.equipment.invoke("stand.switch_matrix", "yalk_prepare", {});
     context.equipment.invoke("ulk.parameter_source", "start_record", {{"run_id", context.runId}});
     context.equipment.invoke(
         "ulk.parameter_source", "prepare_yalk_reference", {});
     wait(context, natural(node, "configure_settle_ms", 500));
-    context.equipment.invoke("stand.switch_matrix", "yalk_prepare", {});
     const auto response = responseValues(context.equipment.invoke(
         "ulk.parameter_source", "start_prepared_yalk_reference", {
             {"timeout_ms", std::to_string(natural(node, "timeout_ms", 3000))}}));
