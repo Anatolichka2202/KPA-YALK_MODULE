@@ -24,15 +24,6 @@ std::string argument(const ScenarioNode& node, const std::string& key,
     return found == node.arguments.end() ? std::move(fallback) : found->second;
 }
 
-bool flag(const ScenarioNode& node, const std::string& key, bool fallback = false)
-{
-    const auto text = argument(node, key);
-    if (text.empty()) return fallback;
-    if (text == "true" || text == "1" || text == "yes") return true;
-    if (text == "false" || text == "0" || text == "no") return false;
-    throw std::invalid_argument("Некорректный логический аргумент " + key);
-}
-
 unsigned natural(const ScenarioNode& node, const std::string& key, unsigned fallback = 0)
 {
     const auto text = argument(node, key);
@@ -86,38 +77,6 @@ std::vector<unsigned> contacts(const ScenarioNode& node, const std::string& key,
     }
     if (!allowNone && result.empty())
         throw std::invalid_argument("ЯВП V7/ИСД: пустая карта " + key);
-    return result;
-}
-
-std::vector<unsigned> commissioningChannels(const ScenarioNode& node,
-                                            unsigned channelCount)
-{
-    const auto found = node.arguments.find("commissioning_channels");
-    if (found == node.arguments.end() || found->second.empty()) {
-        std::vector<unsigned> result;
-        for (unsigned channel = 1; channel <= channelCount; ++channel)
-            result.push_back(channel - 1);
-        return result;
-    }
-
-    std::vector<unsigned> result;
-    std::set<unsigned> unique;
-    std::stringstream stream(found->second);
-    std::string item;
-    while (std::getline(stream, item, ',')) {
-        if (item.empty())
-            throw std::invalid_argument("ЯВП V7/ИСД: пустой commissioning channel");
-        std::size_t parsed = 0;
-        const auto value = std::stoul(item, &parsed, 0);
-        if (parsed != item.size() || value < 1 || value > channelCount
-            || !unique.insert(static_cast<unsigned>(value)).second) {
-            throw std::invalid_argument(
-                "ЯВП V7/ИСД: commissioning_channels должен содержать уникальные номера 1..8");
-        }
-        result.push_back(static_cast<unsigned>(value - 1));
-    }
-    if (result.empty())
-        throw std::invalid_argument("ЯВП V7/ИСД: commissioning_channels не задан");
     return result;
 }
 
@@ -226,19 +185,6 @@ ProcedureResult yvpV7Isd(const ScenarioNode& node, ProcedureContext& context)
         throw std::invalid_argument("ЯВП V7/ИСД: не заданы коэффициенты или частоты методики");
     for (const double gain : gains) (void)gainKey(gain);
 
-    // Новый production backend намеренно не использует адаптер КТМА/ROKT для
-    // измерения. До подтверждения Э3-карты ИСД никакие активные коммутации и
-    // OUTPUT генератора не выполняются.
-    if (!flag(node, "mapping_confirmed")) {
-        return {RunVerdict::Incomplete,
-            "ЯВП V7/ИСД: backend выбран, но карта ИСД (входы, КУ и выходы ЯВП -> В7) ещё не подтверждена; воздействие не выполнялось",
-            {}};
-    }
-    if (!flag(node, "active_outputs_confirmed")) {
-        return {RunVerdict::Incomplete,
-            "ЯВП V7/ИСД: активное воздействие Rigol не разрешено сценарием", {}};
-    }
-
     const unsigned inputType = natural(node, "input_switch_type");
     const unsigned gainType = natural(node, "gain_switch_type");
     const unsigned measurementType = natural(node, "measurement_switch_type");
@@ -260,46 +206,38 @@ ProcedureResult yvpV7Isd(const ScenarioNode& node, ProcedureContext& context)
     // KU bit on each channel.  Keep both parts explicit instead of deriving
     // contacts with base+offset arithmetic.
     std::vector<std::map<double, std::vector<unsigned>>> gainMap(channelCount);
-    const bool hasPerChannelGainMap =
-        node.arguments.count("channel_1_gain_contacts") != 0;
-    if (hasPerChannelGainMap) {
-        std::vector<std::vector<unsigned>> channelGainContacts(channelCount);
+    std::vector<std::vector<unsigned>> channelGainContacts(channelCount);
+    for (unsigned channel = 0; channel < channelCount; ++channel) {
+        const auto key = "channel_" + std::to_string(channel + 1) + "_gain_contacts";
+        channelGainContacts[channel] = contacts(node, key);
+        if (channelGainContacts[channel].size() != 4)
+            throw std::invalid_argument("ЯВП: " + key + " должен содержать KU1..KU4");
+    }
+    for (const double gain : gains) {
+        const auto bits = contacts(node, gainBitsKey(gain), true);
+        std::set<unsigned> uniqueBits;
+        for (const unsigned bit : bits) {
+            if (bit < 1 || bit > 4 || !uniqueBits.insert(bit).second)
+                throw std::invalid_argument("ЯВП: карта KU должна содержать уникальные биты 1..4");
+        }
         for (unsigned channel = 0; channel < channelCount; ++channel) {
-            const auto key = "channel_" + std::to_string(channel + 1)
-                + "_gain_contacts";
-            channelGainContacts[channel] = contacts(node, key);
-            if (channelGainContacts[channel].size() != 4)
-                throw std::invalid_argument(
-                    "ЯВП V7/ИСД: " + key + " должен содержать KU1..KU4");
-        }
-        for (const double gain : gains) {
-            const auto bits = contacts(node, gainBitsKey(gain), true);
-            std::set<unsigned> uniqueBits;
-            for (const unsigned bit : bits) {
-                if (bit < 1 || bit > 4 || !uniqueBits.insert(bit).second)
-                    throw std::invalid_argument(
-                        "ЯВП V7/ИСД: карта " + gainBitsKey(gain)
-                        + " должна содержать уникальные KU-биты 1..4");
-            }
-            for (unsigned channel = 0; channel < channelCount; ++channel) {
-                auto& row = gainMap[channel][gain];
-                for (const unsigned bit : bits)
-                    row.push_back(channelGainContacts[channel][bit - 1]);
-            }
-        }
-    } else {
-        // Compatibility for synthetic and retained commissioning scenarios.
-        for (const double gain : gains) {
-            const auto row = contacts(node, gainKey(gain), true);
-            for (auto& channelMap : gainMap) channelMap[gain] = row;
+            auto& row = gainMap[channel][gain];
+            for (const unsigned bit : bits) row.push_back(channelGainContacts[channel][bit - 1]);
         }
     }
 
-    const double capacitancePf = number(node, "coupling_capacitance_pf", 1000.0);
+    if (!node.arguments.count("coupling_capacitance_pf"))
+        throw std::invalid_argument("ЯВП: coupling_capacitance_pf обязан быть задан сценарием");
+    const double capacitancePf = number(node, "coupling_capacitance_pf");
     if (!(capacitancePf > 0.0))
         throw std::invalid_argument("ЯВП V7/ИСД: coupling_capacitance_pf должен быть > 0");
     const unsigned settleMs = natural(node, "settle_ms", 200);
-    const auto selectedChannels = commissioningChannels(node, channelCount);
+    const double referenceFrequency = number(node, "reference_frequency_hz");
+    const double gainTolerance = number(node, "gain_tolerance_percent");
+    const double attenuationMinimum = number(node, "attenuation_min_db");
+    if (!(referenceFrequency > 0.0) || !(gainTolerance > 0.0)
+        || !(attenuationMinimum > 0.0))
+        throw std::invalid_argument("ЯВП: не заданы production-критерии");
 
     auto generatorOff = [&] {
         context.equipment.invoke("signal.generator", "output", {
@@ -334,13 +272,17 @@ ProcedureResult yvpV7Isd(const ScenarioNode& node, ProcedureContext& context)
         disableContacts(inputType, activeInputContacts);
     };
 
-    ProcedureResult result{RunVerdict::Incomplete,
-        "ЯВП V7/ИСД: измерительная матрица выполнена без приёмочного verdict; критерии будут подключены после commissioning",
-        {}};
+    ProcedureResult result{RunVerdict::Ok, "ЯВП-8 соответствует производственной методике", {}};
+    auto addAcceptance = [&](MeasurementResult value) {
+        result.verdict = combineVerdicts(result.verdict, value.verdict);
+        result.measurements.push_back(std::move(value));
+    };
 
     try {
+        // Read-only HTTP readiness must succeed before any active route or Rigol output.
+        context.equipment.invoke("stand.switch_matrix", "probe", {});
         safeReset();
-        for (const unsigned channel : selectedChannels) {
+        for (unsigned channel = 0; channel < channelCount; ++channel) {
             for (const unsigned contact : inputMap[channel]) {
                 setContacts(context, inputType, {contact}, true);
                 activeInputContacts.push_back(contact);
@@ -360,6 +302,7 @@ ProcedureResult yvpV7Isd(const ScenarioNode& node, ProcedureContext& context)
                 }
                 const double inputVpp = yvpStimulusVppForGain(gain);
 
+                std::map<double, double> measuredGain;
                 for (const double frequency : frequencies) {
                     context.equipment.invoke("signal.generator", "set_sine", {
                         {"channel", "1"},
@@ -375,20 +318,25 @@ ProcedureResult yvpV7Isd(const ScenarioNode& node, ProcedureContext& context)
                     std::string measuredFrequencyText;
                     std::string frequencyVerification;
                     if (frequency >= 10.0) {
-                        measuredFrequencyText = std::to_string(responseNumber(
-                            context.equipment.invoke(
-                                "measure.reference_frequency", "read_frequency", {}),
-                            "hertz"));
-                        frequencyVerification = "v7";
+                        try {
+                            measuredFrequencyText = std::to_string(responseNumber(
+                                context.equipment.invoke(
+                                    "measure.reference_frequency", "read_frequency", {}),
+                                "hertz"));
+                            frequencyVerification = "v7_diagnostic";
+                        } catch (...) {
+                            frequencyVerification = "unavailable_by_v7";
+                        }
                     } else {
                         frequencyVerification = "unavailable_by_v7";
                     }
                     const double outputVpp = measuredRms * 2.0 * std::sqrt(2.0);
                     const double chargePc = yvpChargePc(capacitancePf, inputVpp);
                     const double calculatedGain = yvpGainMvPerPc(outputVpp, chargePc);
+                    measuredGain[frequency] = calculatedGain;
 
                     MeasurementResult point;
-                    point.parameterKey = "ubsi.yvp.v7_isd." + std::to_string(channel + 1);
+                    point.parameterKey = "ubsi.yvp.raw." + std::to_string(channel + 1);
                     point.title = "ЯВП " + std::to_string(channel + 1)
                         + ": K=" + std::to_string(gain)
                         + " мВ/пКл, " + std::to_string(frequency) + " Гц";
@@ -398,9 +346,9 @@ ProcedureResult yvpV7Isd(const ScenarioNode& node, ProcedureContext& context)
                     point.upperLimit = 0.0;
                     point.unit = "мВ/пКл";
                     point.verdict = RunVerdict::NotRun;
-                    point.message = "Commissioning: измерение В7 сохранено без приёмочного критерия";
+                    point.message = "Диагностическое измерение В7; verdict формируется критериями K/АЧХ";
                     point.attributes = {
-                        {"backend", "v7_isd"},
+                        {"backend", "production_isd_v7"},
                         {"yvp_channel", std::to_string(channel + 1)},
                         {"gain_mv_per_pc", std::to_string(gain)},
                         {"set_frequency_hz", std::to_string(frequency)},
@@ -412,13 +360,70 @@ ProcedureResult yvpV7Isd(const ScenarioNode& node, ProcedureContext& context)
                         {"capacitance_pf", std::to_string(capacitancePf)},
                         {"charge_pc_from_commanded_vpp", std::to_string(chargePc)},
                         {"calculated_gain_mv_per_pc", std::to_string(calculatedGain)},
-                        {"acceptance", "not_applied"}};
+                        {"acceptance", "evaluated_after_gain_sweep"}};
                     context.eventSink({std::chrono::system_clock::now(), node.id,
                         "YVP_V7_POINT", point.title, RunVerdict::NotRun, point.attributes});
                     result.measurements.push_back(std::move(point));
 
                     generatorOff();
                 }
+
+                const auto reference = measuredGain.find(referenceFrequency);
+                if (reference == measuredGain.end())
+                    throw std::invalid_argument("ЯВП: reference_frequency_hz отсутствует в frequencies_hz");
+
+                MeasurementResult gainResult;
+                gainResult.parameterKey = "ubsi.yvp.gain." + std::to_string(channel + 1)
+                    + "." + gainKey(gain);
+                gainResult.title = "ЯВП " + std::to_string(channel + 1)
+                    + ": коэффициент при " + std::to_string(referenceFrequency) + " Гц";
+                gainResult.reference = gain;
+                gainResult.measured = reference->second;
+                gainResult.lowerLimit = gain * (1.0 - gainTolerance / 100.0);
+                gainResult.upperLimit = gain * (1.0 + gainTolerance / 100.0);
+                gainResult.unit = "мВ/пКл";
+                gainResult.verdict = std::abs(yvpRelativeErrorPercent(reference->second, gain))
+                        <= gainTolerance ? RunVerdict::Ok : RunVerdict::Fail;
+                gainResult.message = gainResult.verdict == RunVerdict::Ok ? "Норма" : "Вне допуска ±7%";
+                addAcceptance(std::move(gainResult));
+
+                for (const auto& [frequency, tolerance] :
+                     std::vector<std::pair<double, double>>{{2,10},{6,5},{20,5},{1800,5},{2000,10}}) {
+                    const auto point = measuredGain.find(frequency);
+                    if (point == measuredGain.end())
+                        throw std::invalid_argument("ЯВП: отсутствует обязательная точка АЧХ");
+                    const double deviation = yvpAfcPercent(point->second, reference->second);
+                    MeasurementResult afc;
+                    afc.parameterKey = "ubsi.yvp.afc." + std::to_string(channel + 1)
+                        + "." + std::to_string(static_cast<unsigned>(frequency));
+                    afc.title = "ЯВП " + std::to_string(channel + 1) + ": АЧХ "
+                        + std::to_string(frequency) + " Гц относительно 500 Гц";
+                    afc.reference = 0.0; afc.measured = deviation;
+                    afc.lowerLimit = -tolerance; afc.upperLimit = tolerance; afc.unit = "%";
+                    afc.verdict = std::abs(deviation) <= tolerance ? RunVerdict::Ok : RunVerdict::Fail;
+                    afc.message = afc.verdict == RunVerdict::Ok ? "Норма" : "Вне допуска АЧХ";
+                    addAcceptance(std::move(afc));
+                }
+
+                const auto high = measuredGain.find(4000.0);
+                if (high == measuredGain.end())
+                    throw std::invalid_argument("ЯВП: отсутствует обязательная точка 4000 Гц");
+                const double attenuation = yvpAttenuationDb(reference->second, high->second);
+                MeasurementResult attenuationResult;
+                attenuationResult.parameterKey = "ubsi.yvp.attenuation."
+                    + std::to_string(channel + 1) + "." + gainKey(gain);
+                attenuationResult.title = "ЯВП " + std::to_string(channel + 1)
+                    + ": затухание 4000 Гц относительно 500 Гц";
+                attenuationResult.reference = attenuationMinimum;
+                attenuationResult.measured = attenuation;
+                attenuationResult.lowerLimit = attenuationMinimum;
+                attenuationResult.upperLimit = 1.0e9;
+                attenuationResult.unit = "дБ";
+                attenuationResult.verdict = attenuation >= attenuationMinimum
+                    ? RunVerdict::Ok : RunVerdict::Fail;
+                attenuationResult.message = attenuationResult.verdict == RunVerdict::Ok
+                    ? "Норма" : "Затухание ниже допустимого";
+                addAcceptance(std::move(attenuationResult));
             }
 
             safeReset();
@@ -428,16 +433,15 @@ ProcedureResult yvpV7Isd(const ScenarioNode& node, ProcedureContext& context)
         throw;
     }
 
+    if (result.verdict == RunVerdict::Fail)
+        result.message = "ЯВП-8 не соответствует производственной методике";
     return result;
 }
 
 } // namespace
 
-void registerYvpV7Procedures(ScenarioEngine& engine)
+void registerProductionYvpProcedure(ScenarioEngine& engine)
 {
-    engine.registerProcedure("yvp.v7_isd", yvpV7Isd);
-    // Production alias: old experimental backends keep their own ids and are
-    // no longer selected by ubsi.yvp.
     engine.registerProcedure("ubsi.yvp", yvpV7Isd);
 }
 

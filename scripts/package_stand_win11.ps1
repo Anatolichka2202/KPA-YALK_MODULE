@@ -56,8 +56,7 @@ foreach ($name in @(
     'MilTechStation.exe', 'MilTechStationSimulator.exe', 'Lusbapi64.dll', 'Qt6SerialPort.dll',
     'parameters.db', 'stand.ini',
     'orbita_equipment_probe.exe', 'orbita_telemetry_probe.exe',
-    'orbita_ubsi_udp_probe.exe', 'orbita_yvp_rokt_probe.exe',
-    'orbita_yvp_v7_probe.exe',
+    'orbita_ubsi_udp_probe.exe',
     'visa_discover.exe'
 )) {
     $source = Join-Path $runtimeRoot $name
@@ -101,8 +100,6 @@ $required = @(
     'plugins\orbita_plugin_isd_http.dll',
     'plugins\orbita_plugin_ktma_adapter_udp.dll',
     'plugins\orbita_plugin_v7_visa.dll',
-    'orbita_yvp_rokt_probe.exe',
-    'orbita_yvp_v7_probe.exe',
     'platforms\qwindows.dll', 'Qt6SerialPort.dll'
 )
 foreach ($relative in $required) {

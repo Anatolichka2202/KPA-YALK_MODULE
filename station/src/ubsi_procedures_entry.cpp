@@ -3,16 +3,13 @@
 namespace orbita::stand {
 
 void registerRoktUbsiProcedures(ScenarioEngine& engine);
-void registerYvpV7Procedures(ScenarioEngine& engine);
+void registerProductionYvpProcedure(ScenarioEngine& engine);
 
 void registerUbsiProcedures(ScenarioEngine& engine)
 {
-    // Historical/current callbacks remain compiled and registered first.
-    // The final production alias ubsi.yvp is then replaced by the V7+ISD
-    // implementation. This preserves the previous work without selecting it
-    // for production.
+    // Register current YALK/YTP delivery procedures, then the only YVP backend.
     registerRoktUbsiProcedures(engine);
-    registerYvpV7Procedures(engine);
+    registerProductionYvpProcedure(engine);
 }
 
 } // namespace orbita::stand

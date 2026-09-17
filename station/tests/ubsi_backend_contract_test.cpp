@@ -76,8 +76,9 @@ void yvpScenarioContract()
             && contains(standalone, "stand.switch_matrix")
             && contains(standalone, "signal.generator"),
         "V7+ISD production YVP must require Rigol, ISD and V7");
-    require(contains(standalone, "mapping_confirmed: true"),
-        "YVP production must use the confirmed ISD E3/firmware map");
+    require(!contains(standalone, "mapping_confirmed")
+            && !contains(standalone, "active_outputs_confirmed"),
+        "Confirmed production map must not retain commissioning gates");
     require(contains(standalone, "input_1_contacts: 33")
             && contains(standalone, "channel_8_gain_contacts: 29,30,31,32"),
         "YVP production must retain explicit input, output and per-channel KU maps");
@@ -91,13 +92,37 @@ void yvpScenarioContract()
         const auto yaml = readFile(scenario);
         for (const auto& entry : measurementMap)
             require(contains(yaml, entry), std::string(scenario) + " YVP map differs: " + entry);
+        require(contains(yaml, "frequencies_hz: 2,6,20,500,1800,2000,4000")
+                && contains(yaml, "reference_frequency_hz: 500")
+                && contains(yaml, "gain_tolerance_percent: 7")
+                && contains(yaml, "attenuation_min_db: 20.0"),
+            std::string(scenario) + " does not use the common production YVP method");
+        require(!contains(yaml, "procedure: yvp.")
+                && !contains(yaml, "active_outputs_confirmed"),
+            std::string(scenario) + " retains a legacy/commissioning YVP contract");
     }
     require(contains(standalone, "gains_mv_per_pcl: 0.25,0.5,1,2,4,8,32"),
         "YVP method must use the seven confirmed gain values");
-    require(contains(standalone, "frequencies_hz: 0.15,20,250,500,1800,2000,4000"),
-        "YVP method must retain the confirmed frequency set");
+    require(contains(standalone, "frequencies_hz: 2,6,20,500,1800,2000,4000"),
+        "YVP method must use the production frequency set");
     require(contains(standalone, "settle_ms: 2000"),
         "YVP must allow the live generator/YVP/V7 path to settle before measurement");
+
+    const auto cmake = readFile("station/CMakeLists.txt");
+    const auto desktopCmake = readFile("apps/desktop/CMakeLists.txt");
+    const auto registrar = readFile("station/src/ubsi_procedures_yvp_v7.cpp");
+    const auto isdPlugin = readFile("station/plugins/isd_http_plugin.cpp");
+    const auto equipmentProbe = readFile("station/tools/equipment_probe.cpp");
+    require(!contains(cmake, "orbita_yvp_rokt_probe")
+            && !contains(cmake, "orbita_yvp_v7_probe")
+            && !contains(desktopCmake, "orbita_yvp_"),
+        "Legacy YVP probe targets remain in the production build");
+    require(!contains(registrar, "registerProcedure(\"yvp.")
+            && contains(registrar, "registerProcedure(\"ubsi.yvp\""),
+        "Production registrar must expose only ubsi.yvp");
+    require(contains(isdPlugin, "void safeStop(void*) {}")
+            && !contains(equipmentProbe, "full_reset"),
+        "Generic ISD/equipment-probe cleanup can still issue type=4");
 }
 
 void scenarioContract()
@@ -137,12 +162,24 @@ void yvpMathContract()
         "gain relative error calculation is wrong");
     require(std::abs(yvpAfcPercent(1.05, 1.0) - 5.0) < 1e-9,
         "AFC calculation is wrong");
+    require(std::abs(yvpRelativeErrorPercent(1.07, 1.0)) <= 7.0 + 1e-9
+            && std::abs(yvpRelativeErrorPercent(1.071, 1.0)) > 7.0,
+        "Gain ±7% boundary is wrong");
+    require(std::abs(yvpAfcPercent(1.10, 1.0)) <= 10.0 + 1e-9
+            && std::abs(yvpAfcPercent(1.101, 1.0)) > 10.0,
+        "AFC ±10% edge band is wrong");
+    require(std::abs(yvpAfcPercent(1.05, 1.0)) <= 5.0 + 1e-9
+            && std::abs(yvpAfcPercent(1.051, 1.0)) > 5.0,
+        "AFC ±5% middle band is wrong");
     require(std::abs(yvpAttenuationDb(1.0, 0.1) - 20.0) < 1e-9,
         "attenuation calculation is wrong");
     require(yvpStimulusVppForGain(0.25) == 8.0, "0.25 mV/pC stimulus must be 8 Vpp");
     require(yvpStimulusVppForGain(0.5) == 4.0, "0.5 mV/pC stimulus must be 4 Vpp");
     require(yvpStimulusVppForGain(1.0) == 2.0, "1 mV/pC stimulus must be 2 Vpp");
-    require(yvpStimulusVppForGain(2.0) == 1.0, ">1 mV/pC stimulus must be 1 Vpp");
+    require(yvpStimulusVppForGain(2.0) == 1.0, "2 mV/pC stimulus must be 1 Vpp");
+    require(yvpStimulusVppForGain(4.0) == 0.5, "4 mV/pC stimulus must be 0.5 Vpp");
+    require(yvpStimulusVppForGain(8.0) == 0.25, "8 mV/pC stimulus must be 0.25 Vpp");
+    require(yvpStimulusVppForGain(32.0) == 0.0625, "32 mV/pC stimulus must be 0.0625 Vpp");
 }
 
 class ContractEquipment final : public ICapabilityProvider {
@@ -154,6 +191,14 @@ public:
     {
         operations.push_back(capability + ":" + operation);
         requests.push_back({capability + ":" + operation, arguments});
+        if (capability == "stand.switch_matrix" && operation == "probe") {
+            if (failIsdProbe) throw std::runtime_error("ISD unavailable");
+            return "status=ready\nalive=1\n";
+        }
+        if (capability == "signal.generator" && operation == "set_sine") {
+            currentFrequency = std::stod(arguments.at("frequency_hz"));
+            return "status=ok\n";
+        }
         if (capability == "ulk.parameter_source" && operation == "start_yvp_probe") {
             ++yvpStarts;
             return "status=capturing\n";
@@ -175,7 +220,10 @@ public:
         if (capability == "measure.reference_ac_voltage"
             && operation == "read_ac_voltage") {
             ++acVoltageReads;
-            return "status=ready\nvolts=1.41421356237\n";
+            const double attenuation = std::abs(currentFrequency - 4000.0) < 0.01
+                ? 0.09 : 1.0;
+            return "status=ready\nvolts="
+                + std::to_string(0.7071067811865476 * attenuation * acScale) + "\n";
         }
         if (capability == "measure.reference_frequency"
             && operation == "read_frequency") {
@@ -204,6 +252,9 @@ public:
     unsigned yvpStarts = 0;
     unsigned acVoltageReads = 0;
     unsigned frequencyReads = 0;
+    double currentFrequency = 0.0;
+    double acScale = 1.0;
+    bool failIsdProbe = false;
 };
 
 ScenarioDefinition oneStep(std::string procedure,
@@ -230,155 +281,68 @@ void procedureRuntimeContract()
     ScenarioEngine engine;
     registerUbsiProcedures(engine);
 
-    ContractEquipment yvpEquipment;
-    const auto yvpRun = engine.run(oneStep("ubsi.yvp", {
-        {"channel_count", "8"},
-        {"gains_mv_per_pcl", "0.25,0.5,1,2,4,8,32"},
-        {"frequencies_hz", "0.15,20,250,500,1800,2000,4000"},
-        {"mapping_confirmed", "false"},
-        {"active_outputs_confirmed", "true"}}), yvpEquipment, "p", "", false);
-    require(yvpRun.verdict == RunVerdict::Incomplete,
-        "V7+ISD YVP must remain INCOMPLETE until the ISD map is confirmed");
-    require(yvpEquipment.operations.empty(),
-        "V7+ISD YVP must perform no hardware operation before mapping_confirmed=true");
-
-    ContractEquipment roktEquipment;
-    const auto roktRun = engine.run(oneStep("yvp.enter_mode", {
-        {"yvp_cell", "1"}, {"timeout_ms", "100"}}), roktEquipment, "p", "", false);
-    require(roktRun.verdict == RunVerdict::Ok && roktEquipment.yvpStarts == 1,
-        "ROKT commissioning path must remain available separately");
-    require(std::count(roktEquipment.operations.begin(), roktEquipment.operations.end(),
-                "ulk.parameter_source:start_yvp_probe") == 1,
-        "ROKT commissioning must not be selected by ubsi.yvp");
-
-    ContractEquipment roktBackendEquipment;
-    const auto roktBackendRun = engine.run(oneStep("yvp.rokt", {
-        {"channel_count", "8"}, {"yvp_cell", "1"}}),
-        roktBackendEquipment, "p", "", false);
-    require(roktBackendRun.verdict == RunVerdict::Incomplete,
-        "The retained adapter/ROKT backend must remain a diagnostic path");
-    require(std::count(roktBackendEquipment.operations.begin(),
-                       roktBackendEquipment.operations.end(),
-                       "ulk.parameter_source:start_yvp_channel_probe") == 8,
-        "The explicit yvp.rokt alias must execute the retained channel probe");
-
-    ContractEquipment v7Equipment;
-    const auto v7Run = engine.run(oneStep("yvp.v7_isd", {
-        {"channel_count", "8"},
-        {"commissioning_channels", "2"},
-        {"gains_mv_per_pcl", "1"},
-        {"frequencies_hz", "0.15,20"},
-        {"mapping_confirmed", "true"},
-        {"active_outputs_confirmed", "true"},
-        {"input_switch_type", "2"},
-        {"gain_switch_type", "2"},
-        {"measurement_switch_type", "2"},
-        {"measurement_analog_type", "1"},
-        {"input_1_contacts", "101"},
-        {"input_2_contacts", "102"},
-        {"input_3_contacts", "103"},
-        {"input_4_contacts", "104"},
-        {"input_5_contacts", "105"},
-        {"input_6_contacts", "106"},
-        {"input_7_contacts", "107"},
-        {"input_8_contacts", "108"},
-        {"measurement_1_contacts", "201"},
-        {"measurement_2_contacts", "202"},
-        {"measurement_3_contacts", "203"},
-        {"measurement_4_contacts", "204"},
-        {"measurement_5_contacts", "205"},
-        {"measurement_6_contacts", "206"},
-        {"measurement_7_contacts", "207"},
-        {"measurement_8_contacts", "208"},
-        {"channel_1_gain_contacts", "1,2,3,4"},
-        {"channel_2_gain_contacts", "5,6,7,8"},
-        {"channel_3_gain_contacts", "9,10,11,12"},
-        {"channel_4_gain_contacts", "13,14,15,16"},
-        {"channel_5_gain_contacts", "17,18,19,20"},
-        {"channel_6_gain_contacts", "21,22,23,24"},
-        {"channel_7_gain_contacts", "25,26,27,28"},
-        {"channel_8_gain_contacts", "29,30,31,32"},
-        {"gain_1_bits", "2"},
-        {"settle_ms", "0"}}), v7Equipment, "p", "", false);
-    require(v7Run.verdict == RunVerdict::Incomplete
-                && v7Run.steps.front().measurements.size() == 2,
-        "V7+ISD commissioning filter must execute one channel and retain both points");
-    require(v7Equipment.acVoltageReads == 2 && v7Equipment.frequencyReads == 1,
-        "V7 must skip frequency read at 0.15 Hz and read it at 20 Hz");
-    require(std::count(v7Equipment.operations.begin(), v7Equipment.operations.end(),
-                       "signal.generator:output") >= 4,
-        "V7+ISD commissioning must switch Rigol safely around both points");
-    require(std::count(v7Equipment.operations.begin(), v7Equipment.operations.end(),
-                       "stand.switch_matrix:analog") >= 1,
-        "V7+ISD measurement routing must disable the analog output before the V7 bus");
-    const auto disabledAnalog = std::find_if(v7Equipment.requests.begin(), v7Equipment.requests.end(),
-        [](const auto& request) {
-            return request.first == "stand.switch_matrix:analog"
-                && request.second.at("channel") == "202"
-                && request.second.at("enabled") == "false";
-        });
-    const auto enabledBus = std::find_if(v7Equipment.requests.begin(), v7Equipment.requests.end(),
-        [](const auto& request) {
-            return request.first == "stand.switch_matrix:switch"
-                && request.second.at("channel") == "202"
-                && request.second.at("enabled") == "true";
-        });
-    require(disabledAnalog != v7Equipment.requests.end()
-                && enabledBus != v7Equipment.requests.end()
-                && disabledAnalog < enabledBus,
-        "V7+ISD must execute DM output OFF before connecting the external signal to the V7 bus");
-    require(std::count(v7Equipment.operations.begin(), v7Equipment.operations.end(),
-                       "stand.switch_matrix:full_reset") == 0,
-        "V7+ISD must not block the live ISD with the global type=4 reset");
-    const auto inputOff = std::find_if(v7Equipment.requests.begin(), v7Equipment.requests.end(),
-        [](const auto& request) {
-            return request.first == "stand.switch_matrix:switch"
-                && request.second.at("channel") == "102"
-                && request.second.at("enabled") == "false";
-        });
-    const auto measurementOff = std::find_if(v7Equipment.requests.begin(), v7Equipment.requests.end(),
-        [](const auto& request) {
-            return request.first == "stand.switch_matrix:switch"
-                && request.second.at("channel") == "202"
-                && request.second.at("enabled") == "false";
-        });
-    require(inputOff != v7Equipment.requests.end()
-                && measurementOff != v7Equipment.requests.end(),
-        "V7+ISD must explicitly remove the input and V7 measurement routes");
-    for (const auto& measurement : v7Run.steps.front().measurements) {
-        if (measurement.attributes.at("set_frequency_hz") == "0.150000") {
-            require(measurement.attributes.at("frequency_verification")
-                        == "unavailable_by_v7"
-                        && measurement.attributes.at("measured_frequency_hz").empty(),
-                "0.15 Hz must remain unverified by V7 frequency readout");
+    auto arguments = [] {
+        std::map<std::string, std::string> args{
+            {"channel_count", "8"}, {"gains_mv_per_pcl", "0.25,0.5,1,2,4,8,32"},
+            {"frequencies_hz", "2,6,20,500,1800,2000,4000"},
+            {"coupling_capacitance_pf", "1000"}, {"reference_frequency_hz", "500"},
+            {"gain_tolerance_percent", "7"}, {"attenuation_min_db", "20"},
+            {"settle_ms", "0"}, {"input_switch_type", "2"},
+            {"gain_switch_type", "2"}, {"measurement_switch_type", "3"},
+            {"measurement_analog_type", "1"},
+            {"gain_0_25_bits", "none"}, {"gain_0_5_bits", "1"},
+            {"gain_1_bits", "2"}, {"gain_2_bits", "3"},
+            {"gain_4_bits", "1,3"}, {"gain_8_bits", "4"}, {"gain_32_bits", "2,4"}
+        };
+        const unsigned measurements[] = {44,29,30,31,71,72,88,73};
+        for (unsigned channel = 1; channel <= 8; ++channel) {
+            args["input_" + std::to_string(channel) + "_contacts"] = std::to_string(32 + channel);
+            args["measurement_" + std::to_string(channel) + "_contacts"] = std::to_string(measurements[channel - 1]);
+            const unsigned first = (channel - 1) * 4 + 1;
+            args["channel_" + std::to_string(channel) + "_gain_contacts"] =
+                std::to_string(first) + "," + std::to_string(first + 1) + "," +
+                std::to_string(first + 2) + "," + std::to_string(first + 3);
         }
+        return args;
+    };
+
+    ContractEquipment okEquipment;
+    const auto okRun = engine.run(oneStep("ubsi.yvp", arguments()), okEquipment, "p", "", false);
+    require(okRun.verdict == RunVerdict::Ok,
+        "Production YVP must return OK for measurements inside all limits");
+    require(!okEquipment.operations.empty() && okEquipment.operations.front() == "stand.switch_matrix:probe",
+        "ISD HTTP probe must run before active YVP operations");
+    require(std::none_of(okEquipment.operations.begin(), okEquipment.operations.end(),
+        [](const std::string& operation) {
+            return operation.find("ulk.parameter_source") != std::string::npos
+                || operation == "stand.switch_matrix:full_reset";
+        }), "Production YVP must use neither adapter/ROKT nor ISD full reset");
+    require(okEquipment.acVoltageReads == 8u * 7u * 7u,
+        "Production YVP must measure the complete 8x7x7 matrix");
+    require(okEquipment.frequencyReads == 8u * 7u * 5u,
+        "V7 frequency must be diagnostic only and skipped below 10 Hz");
+
+    ContractEquipment failEquipment;
+    failEquipment.acScale = 1.08;
+    const auto failRun = engine.run(oneStep("ubsi.yvp", arguments()), failEquipment, "p", "", false);
+    require(failRun.verdict == RunVerdict::Fail,
+        "Production YVP must return FAIL when 500 Hz gain exceeds ±7%");
+
+    ContractEquipment probeFailure;
+    probeFailure.failIsdProbe = true;
+    const auto errorRun = engine.run(oneStep("ubsi.yvp", arguments()), probeFailure, "p", "", false);
+    require(errorRun.verdict == RunVerdict::Error
+            && std::count(probeFailure.operations.begin(), probeFailure.operations.end(),
+                          "signal.generator:set_sine") == 0,
+        "ISD preflight failure must be a technical ERROR before active stimulus");
+
+    for (const auto& legacy : {"yvp.v7_isd", "yvp.enter_mode", "yvp.safe_cleanup",
+                               "yvp.rokt", "yvp.rokt.enter_mode",
+                               "yvp.rokt.channels", "yvp.rokt.safe_cleanup"}) {
+        require(!engine.validate(oneStep(legacy)).empty(),
+            std::string("Legacy YVP procedure remains registered: ") + legacy);
     }
 
-    ContractEquipment supplyEquipment;
-    const auto supplyRun = engine.run(oneStep("ubsi.supply_range", {
-        {"voltage_points_v", "24,27,35"},
-        {"maximum_total_current_a", "0.4"},
-        {"supply_current_limit_a", "0.6"},
-        {"voltage_tolerance_v", "0.5"},
-        {"settle_ms", "0"}, {"restore_voltage_v", "27"}}),
-        supplyEquipment, "p", "", false);
-    require(supplyEquipment.hardwareCurrentLimit == 0.6,
-        "hardware current limit must be configured independently at 0.6 A: " + supplyRun.steps.front().message);
-    require(supplyRun.verdict == RunVerdict::Fail,
-        "0.41 A whole-block consumption at 35 V must fail the 0.4 A criterion");
-    require(!supplyRun.steps.empty(), "supply contract must produce a step result");
-    unsigned currentMeasurements = 0;
-    unsigned failedCurrentMeasurements = 0;
-    for (const auto& value : supplyRun.steps.front().measurements) {
-        if (value.parameterKey == "ubsi.supply.total_current") {
-            ++currentMeasurements;
-            if (value.verdict == RunVerdict::Fail) ++failedCurrentMeasurements;
-        }
-    }
-    require(currentMeasurements == 3,
-        "whole-block current must be checked at 24, 27 and 35 V");
-    require(failedCurrentMeasurements == 1,
-        "only the synthetic 35 V / 0.41 A point must fail");
 }
 
 } // namespace

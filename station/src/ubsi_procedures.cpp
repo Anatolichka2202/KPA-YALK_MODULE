@@ -10,6 +10,7 @@
 #include <thread>
 
 namespace orbita::stand {
+
 namespace {
 
 std::map<std::string, std::string> responseValues(const std::string& response)
@@ -1612,101 +1613,6 @@ ProcedureResult ytpLegacyStub(const ScenarioNode&, ProcedureContext&)
         "сценарий ЯТП с отдельным декодером и raw-захватом", {}};
 }
 
-ProcedureResult yvp(const ScenarioNode& node, ProcedureContext& context)
-{
-    ProcedureResult result{RunVerdict::Ok, "Проверены каналы ЯВП, АЧХ и усиление", {}};
-    const unsigned channels = natural(node, "channel_count", 8);
-    const auto frequencies = numbers(node, "frequencies_hz");
-    const auto gains = numbers(node, "gains_mv_per_pcl");
-    const std::string parameterGroup = argument(node, "parameter_group", "yvp_yalk");
-    if (frequencies.empty() || gains.empty()) throw std::invalid_argument("Не заданы частоты и коэффициенты ЯВП");
-    if (!bindingsReady(context, parameterGroup, channels, true)) {
-        return {RunVerdict::Incomplete,
-            "Адреса ЯЛК 89–96/маршруты ЯВП-8 не подтверждены; генератор не включался", {}};
-    }
-    for (unsigned channel = 0; channel < channels; ++channel) {
-        const auto binding = resolveLogicalBinding(context, parameterGroup, channel);
-        if (binding.source != "ulk.parameter_source" || binding.locatorType != "ulk_address"
-            || std::stoul(binding.locator) != 89 + channel) {
-            return {RunVerdict::Incomplete,
-                "ЯВП должен читаться через подтверждённые адреса ЯЛК 89–96; генератор не включался", {}};
-        }
-    }
-    const double amplitude = number(node, "amplitude_vpp", 0.3875);
-    const std::string inputRoute = argument(node, "input_route", "yvp_input");
-    const std::string gainRoute = argument(node, "gain_route", "yvp_gain");
-    auto cleanup = [&]() {
-        try { context.equipment.invoke("signal.generator", "output", {{"channel", "1"}, {"enabled", "false"}}); } catch (...) {}
-        for (unsigned channel = 0; channel < channels; ++channel) {
-            try { context.equipment.invoke("stand.switch_matrix", "switch", {{"route", inputRoute}, {"offset", std::to_string(channel)}, {"enabled", "false"}}); } catch (...) {}
-        }
-        for (std::size_t index = 0; index < channels * gains.size(); ++index) {
-            try { context.equipment.invoke("stand.switch_matrix", "switch", {{"route", gainRoute}, {"offset", std::to_string(index)}, {"enabled", "false"}}); } catch (...) {}
-        }
-        try { context.equipment.invoke("stand.switch_matrix", "full_reset", {}); } catch (...) {}
-    };
-    try {
-    for (unsigned channel = 1; channel <= channels; ++channel) {
-        context.equipment.invoke("stand.switch_matrix", "switch", {
-            {"route", inputRoute}, {"offset", std::to_string(channel - 1)}, {"enabled", "true"}});
-        for (const double frequency : frequencies) {
-            context.equipment.invoke("signal.generator", "set_sine", {
-                {"channel", "1"}, {"frequency_hz", std::to_string(frequency)},
-                {"amplitude_vpp", std::to_string(amplitude)}, {"offset_v", "0"}});
-            context.equipment.invoke("signal.generator", "output", {{"channel", "1"}, {"enabled", "true"}});
-            wait(context, natural(node, "settle_ms", 200));
-            const double measuredFrequency = readReferenceFrequency(context);
-            const double measuredRms = readReferenceAcVoltage(context);
-            const double referenceVpp = measuredRms * 2.0 * std::sqrt(2.0);
-            const double orbitaValue = readLogicalParameter(
-                context, parameterGroup, channel - 1, natural(node, "sample_count", 16));
-            const double frequencyTolerance = number(node, "frequency_tolerance_percent", 1.0);
-            append(result, measurement("ubsi.yvp.frequency." + std::to_string(channel),
-                "ЯВП " + std::to_string(channel) + ": частота воздействия",
-                frequency, measuredFrequency, frequency * (1.0 - frequencyTolerance / 100.0),
-                frequency * (1.0 + frequencyTolerance / 100.0), "Гц"));
-            const double stimulusTolerance = number(node, "stimulus_tolerance_percent", 5.0);
-            append(result, measurement("ubsi.yvp.stimulus." + std::to_string(channel),
-                "ЯВП " + std::to_string(channel) + ": воздействие по В7",
-                amplitude, referenceVpp, amplitude * (1.0 - stimulusTolerance / 100.0),
-                amplitude * (1.0 + stimulusTolerance / 100.0), "В пик-пик"));
-            const double percent = std::abs(frequency - 2.0) < 0.001 || std::abs(frequency - 2000.0) < 0.001
-                ? number(node, "edge_tolerance_percent", 10.0) : number(node, "middle_tolerance_percent", 5.0);
-            append(result, measurement("ubsi.yvp." + std::to_string(channel),
-                "ЯВП " + std::to_string(channel) + ", " + std::to_string(frequency) + " Гц",
-                referenceVpp, orbitaValue, referenceVpp * (1.0 - percent / 100.0),
-                referenceVpp * (1.0 + percent / 100.0), "В пик-пик"));
-        }
-        if (argument(node, "gain_conversion_confirmed", "false") == "true") {
-            for (std::size_t gainIndex = 0; gainIndex < gains.size(); ++gainIndex) {
-            // Выбор усиления выполняется внешней кроссировкой ИСД; профиль задаёт
-            // базовый канал и один шаг на значение ряда.
-            context.equipment.invoke("stand.switch_matrix", "switch", {
-                {"route", gainRoute},
-                 {"offset", std::to_string((channel - 1) * gains.size() + gainIndex)}, {"enabled", "true"}});
-            // Формула будет включена только вместе с подтверждённым преобразованием
-            // конкретного адреса Орбиты; до этого ветка недоступна из published YAML.
-            throw std::runtime_error("Для коэффициентов ЯВП не задан подтверждённый пересчёт");
-            context.equipment.invoke("stand.switch_matrix", "switch", {
-                {"route", gainRoute},
-                 {"offset", std::to_string((channel - 1) * gains.size() + gainIndex)}, {"enabled", "false"}});
-            }
-        } else {
-            result.verdict = combineVerdicts(result.verdict, RunVerdict::Incomplete);
-            result.message = "АЧХ измерена; коэффициенты ЯВП не коммутировались: "
-                "пересчёт данных Орбиты по референсу KPA ещё не подтверждён";
-        }
-        context.equipment.invoke("stand.switch_matrix", "switch", {
-            {"route", inputRoute}, {"offset", std::to_string(channel - 1)}, {"enabled", "false"}});
-    }
-    cleanup();
-    } catch (...) {
-        cleanup();
-        throw;
-    }
-    return result;
-}
-
 } // namespace
 
 void registerUbsiProcedures(ScenarioEngine& engine)
@@ -1733,10 +1639,6 @@ void registerUbsiProcedures(ScenarioEngine& engine)
     engine.registerProcedure("ytp.check_channels", ytpCheckChannels);
     engine.registerProcedure("ytp.safe_cleanup", ytpSafeCleanup);
     engine.registerProcedure("ubsi.ytp", ytpLegacyStub);
-    // Keep the historical YVP callback addressable for diagnostics. The
-    // production alias is layered later by the V7+ISD registrar.
-    engine.registerProcedure("yvp.legacy", yvp);
-    engine.registerProcedure("ubsi.yvp", yvp);
 }
 
 } // namespace orbita::stand
