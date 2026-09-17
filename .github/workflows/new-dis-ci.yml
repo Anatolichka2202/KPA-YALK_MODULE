@@ -94,6 +94,30 @@ jobs:
           if-no-files-found: warn
           retention-days: 3
 
+      - name: Capture frozen UI states
+        if: success()
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          rm -rf ui-captures
+          mkdir -p ui-captures
+          for scene in SESSION PREPARATION POWER YALK_INITIAL YALK YALK_CONTACT YALK_OVERLOAD YTP YVP FINISH; do
+            QT_QPA_PLATFORM=offscreen \
+            MILTECH_UI_SCENE="$scene" \
+            ORBITA_UI_SCREENSHOT="$PWD/ui-captures/$scene" \
+              ./build-ci/apps/desktop/test_page_smoke_test.exe -platform offscreen
+          done
+          test "$(find ui-captures -type f -name '*.png' | wc -l)" -eq 20
+
+      - name: Upload frozen UI states
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: MilTechStation-${{ github.run_id }}-ui-captures
+          path: ui-captures/*.png
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Verify expected executables
         shell: msys2 {0}
         run: |
