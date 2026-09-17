@@ -3,12 +3,19 @@ id: ktma.ubsi.production.power
 # Production package: this is not a TU acceptance document. It reuses the
 # same verified measurement procedures and stores the result in Production lifecycle.
 title: Производство УБСИ · питание / потребление
-version: 1.0.0
+version: 1.0.1
 catalog_version: 2026.08.29-yalk-1
 object_type: UBSI_468157_002
 state: published
 
 steps:
+  - id: isd_baseline
+    title: Исходное состояние ИСД перед новым production run
+    tu: PRODUCTION / ISD / BASELINE
+    procedure: ubsi.isd_baseline
+    requires:
+      - stand.switch_matrix
+
   - id: supply_range
     title: Питание 24 / 27 / 35 В, общий ток и выдержки 19 / 37 В
     tu: PRODUCTION / POWER_CONSUMPTION
