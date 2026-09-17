@@ -52,6 +52,19 @@ int main(int argc,char** argv)
     auto* context=page.findChild<QLabel*>(QStringLiteral("frozenProcedureContext"));
     require(scope&&test&&operatorSelector&&registry&&queue&&enter&&equipment&&histogram&&initial&&contacts&&overload&&ytp&&yvp&&context,"clean prototype controls missing");
 
+    histogram->ensurePolished();contacts->ensurePolished();overload->ensurePolished();ytp->ensurePolished();QApplication::processEvents();
+    auto* yalkFull=histogram->findChild<QPushButton*>(QStringLiteral("yalkFullScaleButton"));
+    auto* yalkReset=histogram->findChild<QPushButton*>(QStringLiteral("yalkResetZoomButton"));
+    auto* contactReset=contacts->findChild<QPushButton*>(QStringLiteral("yalkContactResetZoomButton"));
+    auto* overloadReset=overload->findChild<QPushButton*>(QStringLiteral("yalkOverloadResetZoomButton"));
+    auto* ytpFull=ytp->findChild<QPushButton*>(QStringLiteral("ytpFullScaleButton"));
+    auto* ytpReset=ytp->findChild<QPushButton*>(QStringLiteral("ytpResetZoomButton"));
+    require(yalkFull&&yalkReset&&contactReset&&overloadReset&&ytpFull&&ytpReset,"prototype zoom/full-scale actions missing");
+    yalkFull->click();require(histogram->property("fullScale").toBool(),"YALK full physical scale action is not wired");
+    yalkReset->click();require(!histogram->property("fullScale").toBool()&&std::abs(histogram->property("zoomScale").toDouble()-1.0)<1e-9,"YALK reset must restore working range");
+    ytpFull->click();require(ytp->property("fullScale").toBool(),"YTP absolute scale action is not wired");
+    ytpReset->click();require(!ytp->property("fullScale").toBool()&&std::abs(ytp->property("zoomScale").toDouble()-1.0)<1e-9,"YTP reset must restore working range");
+
     page.setProductionMode(true);
     page.setScenarioInfo(QStringLiteral("PROD_FULL"),true,false,{},QStringLiteral("ready"));
     page.setAvailableProductionProducts({QStringLiteral("345"),QStringLiteral("346")});
