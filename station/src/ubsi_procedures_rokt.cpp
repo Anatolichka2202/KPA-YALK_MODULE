@@ -38,13 +38,6 @@ std::string argument(const ScenarioNode& node, const std::string& key,
     return found == node.arguments.end() ? std::move(fallback) : found->second;
 }
 
-bool enabled(const ScenarioNode& node, const std::string& key, bool fallback)
-{
-    const auto text = argument(node, key);
-    if (text.empty()) return fallback;
-    return text == "true" || text == "1" || text == "yes";
-}
-
 unsigned natural(const ScenarioNode& node, const std::string& key, unsigned fallback)
 {
     const auto text = argument(node, key);
@@ -53,14 +46,6 @@ unsigned natural(const ScenarioNode& node, const std::string& key, unsigned fall
     const auto value = std::stoul(text, &parsed, 0);
     if (parsed != text.size()) throw std::invalid_argument("Некорректный аргумент " + key);
     return static_cast<unsigned>(value);
-}
-
-unsigned valueOrZero(const std::map<std::string, std::string>& values,
-                     const std::string& key)
-{
-    const auto found = values.find(key);
-    if (found == values.end() || found->second.empty()) return 0;
-    return static_cast<unsigned>(std::stoul(found->second));
 }
 
 unsigned responseUnsigned(const std::string& response, const std::string& key)
@@ -178,34 +163,28 @@ ProcedureResult yalkOverloadWithProgress(const ScenarioNode& node, ProcedureCont
         node, "positive_overload_route", "yalk_overload_positive");
     const std::string negativeRoute = argument(
         node, "negative_overload_route", "yalk_overload_negative");
+    const std::string isdOwner = "run:" + context.runId + ":yalk-overload:" + node.id;
 
     auto analogCode = [](unsigned channel) {
         return channel <= 10 ? 780u + (channel - 1) * 30u
                              : 1800u + (channel - 11) * 20u;
     };
-    auto setAnalog = [&context](unsigned channel, unsigned code, bool enabled) {
+    auto setAnalog = [&](unsigned channel, unsigned code, bool enabled) {
         context.equipment.invoke("stand.switch_matrix", "analog", {
             {"channel", std::to_string(channel)}, {"code", std::to_string(code)},
-            {"enabled", enabled ? "true" : "false"}});
+            {"enabled", enabled ? "true" : "false"}, {"owner", isdOwner}});
     };
-    auto setSwitch = [&context](std::map<std::string, std::string> args) {
+    auto setSwitch = [&](std::map<std::string, std::string> args) {
         args["type"] = "3";
+        args["owner"] = isdOwner;
         context.equipment.invoke("stand.switch_matrix", "switch", args);
     };
-    auto sourceOff = [&]() {
-        for (const auto& route : {positiveRoute, negativeRoute}) {
-            try { setSwitch({{"route", route}, {"enabled", "false"}}); } catch (...) {}
-        }
-    };
-    auto dacOff = [&]() {
-        for (unsigned channel = 1; channel <= physicalCount; ++channel) {
-            try { setAnalog(channel, 0, false); } catch (...) {}
-        }
-    };
     auto makeSafe = [&]() {
-        sourceOff();
-        context.equipment.invoke("stand.switch_matrix", "full_reset", {});
-        dacOff();
+        // Do not use firmware type=4 here. Every route activated by this
+        // procedure carries one owner; releaseOwner sends targeted OFF in
+        // reverse order, including possibly-active commands that lost ACK.
+        context.equipment.invoke("stand.switch_matrix", "release_owner", {
+            {"owner", isdOwner}});
         waitScaled(context, cleanupSettle);
     };
     auto applyReferenceStaircase = [&]() {
@@ -239,13 +218,11 @@ ProcedureResult yalkOverloadWithProgress(const ScenarioNode& node, ProcedureCont
                      {"impact_count", std::to_string(impactCount)},
                      {"settle_ms", std::to_string(overloadSettle)}}});
 
-                bool targetConnected = false;
                 try {
                     applyReferenceStaircase();
                     setSwitch({{"route", polarity.first}, {"enabled", "true"}});
                     setAnalog(target, 0, false);
                     setSwitch({{"channel", std::to_string(target)}, {"enabled", "true"}});
-                    targetConnected = true;
                     waitScaled(context, overloadSettle);
                     const auto current = readFreshYalkSnapshot(context, samples);
 
@@ -275,13 +252,8 @@ ProcedureResult yalkOverloadWithProgress(const ScenarioNode& node, ProcedureCont
                             "MEASUREMENT", value.title, value.verdict, value.attributes});
                         append(result, std::move(value));
                     }
-                    targetConnected = false;
                     makeSafe();
                 } catch (...) {
-                    if (targetConnected) {
-                        try { setSwitch({{"channel", std::to_string(target)}, {"enabled", "false"}}); }
-                        catch (...) {}
-                    }
                     try { makeSafe(); } catch (...) {}
                     throw;
                 }
@@ -300,8 +272,8 @@ ProcedureResult yalkOverloadWithProgress(const ScenarioNode& node, ProcedureCont
 void registerUbsiProcedures(ScenarioEngine& engine)
 {
     registerCurrentUbsiProcedures(engine);
-    // Replace the legacy callback only to expose per-impact progress. The
-    // measurement sequence, limits and safe-state behaviour stay identical.
+    // Replace the legacy callback only to expose per-impact progress while
+    // keeping ISD cleanup targeted to the current procedure owner.
     engine.registerProcedure("yalk.check_overload", yalkOverloadWithProgress);
 }
 
