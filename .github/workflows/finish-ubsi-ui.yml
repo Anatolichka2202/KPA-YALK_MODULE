@@ -1,0 +1,409 @@
+name: Finish UBSI UI bindings
+
+on:
+  push:
+    branches: [new-dis]
+    paths:
+      - .github/workflows/finish-ubsi-ui.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: new-dis
+          fetch-depth: 0
+      - name: Apply final UI bindings
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected exactly one match, got {count}')
+              p.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          # 1) Backend -> UI live events for the real YALK open-circuit/initial-state check.
+          path = 'station/src/ubsi_procedures.cpp'
+          old = '''        analog.attributes = {{"ulk_address", binding.locator},
+                             {"raw", std::to_string(reading.raw)},
+                             {"analog_code", std::to_string(reading.code)},
+                             {"yalk_v", std::to_string(volts)},
+                             {"signal", reading.signal ? "1" : "0"}};
+        append(result, std::move(analog));
+        append(result, measurement("ubsi.yalk.initial.signal." + binding.locator,
+            "ЯЛК адрес " + binding.locator + ": исходный сигнал",
+            1, reading.signal ? 1 : 0, 1, 1, "лог."));
+'''
+          new = '''        analog.attributes = {{"ulk_address", binding.locator},
+                             {"raw", std::to_string(reading.raw)},
+                             {"analog_code", std::to_string(reading.code)},
+                             {"yalk_v", std::to_string(volts)},
+                             {"signal", reading.signal ? "1" : "0"}};
+        auto signalResult = measurement("ubsi.yalk.initial.signal." + binding.locator,
+            "ЯЛК адрес " + binding.locator + ": исходный сигнал",
+            1, reading.signal ? 1 : 0, 1, 1, "лог.");
+        signalResult.attributes = {{"ulk_address", binding.locator},
+                                   {"signal", reading.signal ? "1" : "0"},
+                                   {"expected_signal", "1"}};
+        const auto channelVerdict = combineVerdicts(analog.verdict, signalResult.verdict);
+        auto eventData = analog.attributes;
+        eventData["channel_index"] = std::to_string(channel + 1);
+        eventData["channel_count"] = std::to_string(count);
+        eventData["expected_signal"] = "1";
+        eventData["analog_ok"] = analog.verdict == RunVerdict::Ok ? "1" : "0";
+        eventData["signal_ok"] = signalResult.verdict == RunVerdict::Ok ? "1" : "0";
+        context.eventSink({std::chrono::system_clock::now(), node.id, "YALK_INITIAL",
+            analog.title, channelVerdict, std::move(eventData)});
+        append(result, std::move(analog));
+        append(result, std::move(signalResult));
+'''
+          replace_once(path, old, new)
+
+          # 2) Initial-state grid: display the actual physical YALK addresses and both criteria.
+          path = 'apps/desktop/test_page_ui.h'
+          p = Path(path)
+          text = p.read_text(encoding='utf-8')
+          start = text.index('class StateGrid final : public QWidget')
+          end = text.index('\nQString pageStyle()', start)
+          new_class = r'''class StateGrid final : public QWidget
+{
+public:
+    explicit StateGrid(QWidget* parent=nullptr):QWidget(parent)
+    {
+        setObjectName(QStringLiteral("yalkInitialStateGrid"));
+        setMinimumHeight(280);
+    }
+
+    void clear()
+    {
+        states_.clear();
+        order_.clear();
+        current_.clear();
+        setProperty("initialMeasurementCount", 0);
+        setProperty("initialFailureCount", 0);
+        update();
+    }
+
+    void setInitial(QString key, double volts, int signal, bool passed)
+    {
+        if (!states_.contains(key)) {
+            order_.push_back(key);
+            std::sort(order_.begin(), order_.end(), [](const QString& left, const QString& right) {
+                return left.toInt() < right.toInt();
+            });
+        }
+        states_[key] = {volts, signal, passed, true};
+        current_ = std::move(key);
+        int failures = 0;
+        for (auto it = states_.cbegin(); it != states_.cend(); ++it)
+            if (!it.value().passed) ++failures;
+        setProperty("initialMeasurementCount", states_.size());
+        setProperty("initialFailureCount", failures);
+        update();
+    }
+
+    // Kept for compatibility with older callers; the initial-state screen uses setInitial().
+    void setCurrent(QString key, int signal, int expected)
+    {
+        setInitial(std::move(key), 0.0, signal, signal == expected);
+    }
+
+protected:
+    void paintEvent(QPaintEvent*) override
+    {
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing);
+        p.fillRect(rect(), QColor("#0e1115"));
+        const int cols = 10;
+        const int rows = 8;
+        const double gap = 3.0, margin = 8.0;
+        const double cw = (width() - 2 * margin - gap * (cols - 1)) / cols;
+        const double ch = (height() - 2 * margin - gap * (rows - 1)) / rows;
+
+        for (int index = 0; index < 80; ++index) {
+            const int row = index / cols, col = index % cols;
+            const QRectF cell(margin + col * (cw + gap), margin + row * (ch + gap), cw, ch);
+            const QString key = index < order_.size() ? order_[index] : QString();
+            const bool known = !key.isEmpty() && states_.contains(key);
+            const InitialState state = known ? states_.value(key) : InitialState{};
+            QColor fill = QColor("#111820");
+            QColor border = QColor("#27313c");
+            if (known) {
+                fill = state.passed ? QColor("#13251c") : QColor("#261719");
+                border = state.passed ? QColor("#315c43") : QColor("#8f4549");
+            }
+            if (key == current_) {
+                fill = QColor("#132033");
+                border = QColor("#5e93b8");
+            }
+            p.setPen(QPen(border, key == current_ ? 2 : 1));
+            p.setBrush(fill);
+            p.drawRoundedRect(cell, 3, 3);
+            p.setBrush(Qt::NoBrush);
+
+            p.setPen(QColor("#9aafbf"));
+            p.setFont(QFont("Segoe UI", 8));
+            p.drawText(cell.adjusted(5, 2, -5, -2), Qt::AlignTop | Qt::AlignLeft,
+                       known ? QStringLiteral("Адрес %1").arg(key) : QStringLiteral("—"));
+            if (!known) continue;
+
+            p.setPen(state.passed ? QColor("#dce6ef") : QColor("#e1766d"));
+            p.setFont(QFont("Segoe UI", 8, QFont::DemiBold));
+            p.drawText(cell.adjusted(5, 12, -5, -2), Qt::AlignBottom | Qt::AlignLeft,
+                       QStringLiteral("U %1 В · D %2")
+                           .arg(state.volts, 0, 'f', 2).arg(state.signal));
+        }
+    }
+
+private:
+    struct InitialState {
+        double volts = 0.0;
+        int signal = 0;
+        bool passed = false;
+        bool known = false;
+    };
+    QHash<QString, InitialState> states_;
+    QVector<QString> order_;
+    QString current_;
+};
+'''
+          p.write_text(text[:start] + new_class + text[end:], encoding='utf-8')
+
+          # 3) TestPage: correct phase routing, consume YALK_INITIAL, and show real final summaries.
+          path = 'apps/desktop/test_page.cpp'
+          p = Path(path)
+          text = p.read_text(encoding='utf-8')
+
+          marker = '''YalkAnalogOverview* findYalkAnalogOverview(TestPage* page)
+{
+    return dynamic_cast<YalkAnalogOverview*>(
+        page->findChild<QWidget*>(QStringLiteral("yalkAnalogOverviewV05")));
+}
+'''
+          helper = marker + r'''
+struct ResultStageSummary {
+    orbita::stand::RunVerdict verdict = orbita::stand::RunVerdict::NotRun;
+    int count = 0;
+};
+
+int resultStageForNode(const std::string& nodeId)
+{
+    const QString id = QString::fromStdString(nodeId);
+    if (id == QStringLiteral("readiness") || id.startsWith(QStringLiteral("supply_"))
+        || id == QStringLiteral("power_off")) return 0;
+    if (id.startsWith(QStringLiteral("yalk_"))) return 1;
+    if (id.startsWith(QStringLiteral("ytp_"))) return 2;
+    if (id.startsWith(QStringLiteral("yvp_"))) return 3;
+    return -1;
+}
+
+void collectResultStages(const orbita::stand::StepRunResult& step,
+                         ResultStageSummary (&summaries)[4])
+{
+    if (!step.children.empty()) {
+        for (const auto& child : step.children) collectResultStages(child, summaries);
+        return;
+    }
+    const int stage = resultStageForNode(step.nodeId);
+    if (stage < 0) return;
+    auto& summary = summaries[stage];
+    summary.verdict = orbita::stand::combineVerdicts(summary.verdict, step.verdict);
+    ++summary.count;
+}
+
+void applyResultSummary(QLabel* label, const ResultStageSummary& summary)
+{
+    if (!label) return;
+    if (summary.count == 0) {
+        label->setText(QStringLiteral("—"));
+        label->setStyleSheet(QStringLiteral("font-size:20px;font-weight:700;color:#7e8a98;"));
+        return;
+    }
+    label->setText(summary.count == 1
+        ? verdictText(summary.verdict)
+        : QStringLiteral("%1 · %2 шагов").arg(verdictText(summary.verdict)).arg(summary.count));
+    label->setStyleSheet(QStringLiteral("font-size:20px;font-weight:700;color:%1;")
+        .arg(verdictColor(summary.verdict).name()));
+}
+'''
+          if text.count(marker) != 1:
+              raise SystemExit('test_page.cpp: helper insertion marker mismatch')
+          text = text.replace(marker, helper, 1)
+
+          old = '''            } else if (node.startsWith(QStringLiteral("yalk_")) && !node.startsWith(QStringLiteral("yvp_"))) {
+                impl_->setTopStage(TopStage::Yalk);
+                if (node.contains(QStringLiteral("contact"))) impl_->setYalkPhase(YalkPhase::Discrete);
+                else if (node.contains(QStringLiteral("overload"))) impl_->setYalkPhase(YalkPhase::Overload);
+                else if (node.contains(QStringLiteral("reference"))) impl_->setYalkPhase(YalkPhase::Reference);
+                else impl_->setYalkPhase(YalkPhase::Analog);
+'''
+          new = '''            } else if (node.startsWith(QStringLiteral("yalk_")) && !node.startsWith(QStringLiteral("yvp_"))) {
+                impl_->setTopStage(TopStage::Yalk);
+                if (node.contains(QStringLiteral("initial"))) impl_->setYalkPhase(YalkPhase::Initial);
+                else if (node.contains(QStringLiteral("contact"))) impl_->setYalkPhase(YalkPhase::Discrete);
+                else if (node.contains(QStringLiteral("overload"))) impl_->setYalkPhase(YalkPhase::Overload);
+                else if (node.contains(QStringLiteral("reference"))) impl_->setYalkPhase(YalkPhase::Reference);
+                else impl_->setYalkPhase(YalkPhase::Analog);
+'''
+          if text.count(old) != 1:
+              raise SystemExit('test_page.cpp: YALK phase routing marker mismatch')
+          text = text.replace(old, new, 1)
+
+          old = '''        if (auto* overview = findYvpOverview(this)) overview->clear();
+        if (auto* overview = findYalkAnalogOverview(this)) overview->clear();
+        freezeProductionSidebar(this, QStringLiteral("Подготовка"),
+'''
+          new = '''        if (auto* overview = findYvpOverview(this)) overview->clear();
+        if (auto* overview = findYalkAnalogOverview(this)) overview->clear();
+        impl_->yalkInitial->clear();
+        freezeProductionSidebar(this, QStringLiteral("Подготовка"),
+'''
+          if text.count(old) != 1:
+              raise SystemExit('test_page.cpp: initial clear marker mismatch')
+          text = text.replace(old, new, 1)
+
+          old = '''    if (event.stage != "MEASUREMENT") return;
+
+    if (!eventValue(event, "observed_channel").isEmpty() && !eventValue(event, "delta_code").isEmpty()) {
+'''
+          new = '''    if (event.stage == "YALK_INITIAL") {
+        impl_->setTopStage(TopStage::Yalk);
+        impl_->setYalkPhase(YalkPhase::Initial);
+        const QString address = eventValue(event, "ulk_address");
+        const double volts = eventValue(event, "yalk_v").toDouble();
+        const int signal = eventValue(event, "signal").toInt();
+        const int index = eventValue(event, "channel_index").toInt();
+        const int count = eventValue(event, "channel_count").toInt();
+        impl_->yalkInitial->setInitial(address, volts, signal,
+            event.verdict == orbita::stand::RunVerdict::Ok);
+        setRouteDetail(static_cast<int>(TopStage::Yalk),
+            QStringLiteral("Обрыв · адрес %1 · %2 / %3 · U %4 В · D %5")
+                .arg(address).arg(index).arg(count).arg(volts, 0, 'f', 3).arg(signal));
+        impl_->updateProgressByStage();
+        return;
+    }
+
+    if (event.stage != "MEASUREMENT") return;
+
+    if (!eventValue(event, "observed_channel").isEmpty() && !eventValue(event, "delta_code").isEmpty()) {
+'''
+          if text.count(old) != 1:
+              raise SystemExit('test_page.cpp: YALK_INITIAL insertion marker mismatch')
+          text = text.replace(old, new, 1)
+
+          old = '''    impl_->finishPower->setText(QStringLiteral("завершено"));
+    impl_->finishYalk->setText(QStringLiteral("завершено"));
+    impl_->finishYtp->setText(QStringLiteral("завершено"));
+    impl_->finishYvp->setText(impl_->includeYvpCheck->isChecked() ? QStringLiteral("по сценарию") : QStringLiteral("—"));
+'''
+          new = '''    ResultStageSummary summaries[4];
+    for (const auto& step : result.steps) collectResultStages(step, summaries);
+    applyResultSummary(impl_->finishPower, summaries[0]);
+    applyResultSummary(impl_->finishYalk, summaries[1]);
+    applyResultSummary(impl_->finishYtp, summaries[2]);
+    applyResultSummary(impl_->finishYvp, summaries[3]);
+'''
+          if text.count(old) != 1:
+              raise SystemExit('test_page.cpp: final summary marker mismatch')
+          text = text.replace(old, new, 1)
+
+          # Stable object names make the final summary contract testable.
+          old = '''    rebuildScopes();
+
+    impl_->sessionDataPanel->hide();
+'''
+          new = '''    rebuildScopes();
+    impl_->finishPower->setObjectName(QStringLiteral("finishPowerSummary"));
+    impl_->finishYalk->setObjectName(QStringLiteral("finishYalkSummary"));
+    impl_->finishYtp->setObjectName(QStringLiteral("finishYtpSummary"));
+    impl_->finishYvp->setObjectName(QStringLiteral("finishYvpSummary"));
+
+    impl_->sessionDataPanel->hide();
+'''
+          if text.count(old) != 1:
+              raise SystemExit('test_page.cpp: final object-name marker mismatch')
+          text = text.replace(old, new, 1)
+          p.write_text(text, encoding='utf-8')
+
+          # 4) Extend the already-built desktop event regression test.
+          path = 'apps/desktop/tests/test_page_power_yalk_event_test.cpp'
+          p = Path(path)
+          text = p.read_text(encoding='utf-8')
+          old = '''    require(analog->property("renderedChannelCount").toInt() == 80,
+            "restored YALK plane must retain all 80 channels, not only the current one");
+
+    std::cout << "Power and restored YALK overview event test passed\\n";
+'''
+          new = '''    require(analog->property("renderedChannelCount").toInt() == 80,
+            "restored YALK plane must retain all 80 channels, not only the current one");
+
+    auto* initial = page.findChild<QWidget*>(QStringLiteral("yalkInitialStateGrid"));
+    require(initial, "YALK initial/open-circuit grid not found");
+    orbita::stand::RunEvent initialPoint;
+    initialPoint.nodeId = "yalk_initial";
+    initialPoint.stage = "YALK_INITIAL";
+    initialPoint.verdict = orbita::stand::RunVerdict::Ok;
+    initialPoint.data = {{"ulk_address", "32"}, {"channel_index", "29"},
+                         {"channel_count", "80"}, {"yalk_v", "-0.971"},
+                         {"signal", "1"}, {"expected_signal", "1"}};
+    page.setRunEvent(initialPoint);
+    QApplication::processEvents();
+    require(initial->property("initialMeasurementCount").toInt() == 1,
+            "YALK initial event must populate the physical-address grid");
+    require(initial->property("initialFailureCount").toInt() == 0,
+            "passing YALK open-circuit event must not be shown as failure");
+
+    orbita::stand::ScenarioRunResult result;
+    result.runId = "ui-summary-test";
+    result.verdict = orbita::stand::RunVerdict::Fail;
+    auto addStep = [&result](const char* id, orbita::stand::RunVerdict verdict) {
+        orbita::stand::StepRunResult step;
+        step.nodeId = id;
+        step.verdict = verdict;
+        result.steps.push_back(std::move(step));
+    };
+    addStep("supply_status", orbita::stand::RunVerdict::Ok);
+    addStep("yalk_initial", orbita::stand::RunVerdict::Fail);
+    addStep("ytp_channels", orbita::stand::RunVerdict::Ok);
+    addStep("yvp_v7_isd", orbita::stand::RunVerdict::Incomplete);
+    page.setRunResult(result, {}, {});
+    auto* powerSummary = page.findChild<QLabel*>(QStringLiteral("finishPowerSummary"));
+    auto* yalkSummary = page.findChild<QLabel*>(QStringLiteral("finishYalkSummary"));
+    auto* ytpSummary = page.findChild<QLabel*>(QStringLiteral("finishYtpSummary"));
+    auto* yvpSummary = page.findChild<QLabel*>(QStringLiteral("finishYvpSummary"));
+    require(powerSummary && yalkSummary && ytpSummary && yvpSummary,
+            "final per-stage summary labels not found");
+    require(powerSummary->text().contains(QStringLiteral("НОРМА")),
+            "final power summary must come from ScenarioRunResult");
+    require(yalkSummary->text().contains(QStringLiteral("НЕ НОРМА")),
+            "final YALK summary must preserve a failed step");
+    require(ytpSummary->text().contains(QStringLiteral("НОРМА")),
+            "final YTP summary must come from ScenarioRunResult");
+    require(yvpSummary->text().contains(QStringLiteral("НЕПОЛНАЯ")),
+            "final YVP summary must preserve incomplete acceptance");
+
+    std::cout << "Power, YALK initial and final summary event test passed\\n";
+'''
+          if text.count(old) != 1:
+              raise SystemExit('desktop regression test marker mismatch')
+          p.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+
+      - name: Commit patch
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add station/src/ubsi_procedures.cpp apps/desktop/test_page_ui.h apps/desktop/test_page.cpp apps/desktop/tests/test_page_power_yalk_event_test.cpp
+          git diff --cached --check
+          git commit -m "ui: finish YALK initial state and result summary"
+          git push origin HEAD:new-dis
