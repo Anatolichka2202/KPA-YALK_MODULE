@@ -1,23 +1,16 @@
 #include "plugin_support.h"
 #include "orbita_stand/equipment_adapters.h"
 #include "orbita_stand/isd_driver.h"
+#include "orbita_stand/isd_http_transport.h"
 
+#include <chrono>
 #include <memory>
 #include <sstream>
+#include <thread>
+#include <utility>
 
 namespace {
 using namespace orbita::stand;
-
-std::vector<unsigned> channels(const std::string& value)
-{
-    std::vector<unsigned> result;
-    std::stringstream stream(value);
-    std::string token;
-    while (std::getline(stream, token, ',')) {
-        if (!token.empty()) result.push_back(std::stoul(token));
-    }
-    return result;
-}
 
 std::string ownerOf(const std::map<std::string, std::string>& args,
                     const std::string& fallback = "legacy")
@@ -28,7 +21,7 @@ std::string ownerOf(const std::map<std::string, std::string>& args,
 
 struct Instance {
     std::map<std::string, std::string> config;
-    std::unique_ptr<IsdHttpRouter> router;
+    std::unique_ptr<IsdHttpTransport> transport;
     std::unique_ptr<IsdDriver> driver;
 };
 
@@ -39,29 +32,38 @@ orbita_plugin_status_v1 create(const char*, const char* text, void** output,
         if (!output) throw std::invalid_argument("Instance output pointer is required");
         auto instance = std::make_unique<Instance>();
         instance->config = plugin::arguments(text);
-        instance->router = std::make_unique<IsdHttpRouter>(IsdHttpConfig{
+        instance->transport = std::make_unique<IsdHttpTransport>(IsdHttpTransportConfig{
             plugin::required(instance->config, "host"),
             static_cast<std::uint16_t>(plugin::unsignedValue(instance->config, "port", 80)),
-            plugin::unsignedValue(instance->config, "timeout_ms", 1500),
-            plugin::unsignedValue(instance->config, "switch_type", 2),
-            channels(instance->config["reset_channels"])});
+            plugin::unsignedValue(instance->config, "timeout_ms", 1500)});
 
-        auto* router = instance->router.get();
+        auto* transport = instance->transport.get();
         IsdDriverOps operations;
-        operations.probe = [router] { return router->probe(); };
-        operations.reset = [router] { router->reset(); };
-        operations.prepareYalk = [router] { router->prepareYalk(); };
-        operations.setSwitch = [router](unsigned type, unsigned channel, bool enabled) {
-            router->setSwitch(type, channel, enabled);
+        operations.probe = [transport] { return transport->probe(); };
+        operations.reset = [transport] {
+            transport->command(IsdHttpRouter::fullResetPath());
         };
-        operations.setAnalog = [router](unsigned channel, unsigned value, bool enabled) {
-            router->setAnalog(channel, value, enabled);
+        operations.prepareYalk = [transport] {
+            // This is deliberately one compound driver operation. The transport
+            // performs no implicit retry: if either phase loses its acknowledgement,
+            // IsdDriver moves to UNKNOWN and requires explicit recovery.
+            transport->command(IsdHttpRouter::fullResetPath());
+            std::this_thread::sleep_for(std::chrono::milliseconds(400));
+            transport->command(IsdHttpRouter::yalkPreparePath());
         };
-        operations.setYalkVoltage = [router](unsigned channel, double volts) {
-            router->setYalkVoltage(channel, volts);
+        operations.setSwitch = [transport](unsigned type, unsigned channel, bool enabled) {
+            transport->command(IsdHttpRouter::switchPath(type, channel, enabled));
         };
-        operations.disableYalkOutput = [router](unsigned channel) {
-            router->disableYalkOutput(channel);
+        operations.setAnalog = [transport](unsigned channel, unsigned value, bool enabled) {
+            transport->command(IsdHttpRouter::analogPath(channel, value, enabled));
+        };
+        operations.setYalkVoltage = [transport](unsigned channel, double volts) {
+            transport->command(IsdHttpRouter::yalkVoltagePath(channel, volts));
+        };
+        operations.disableYalkOutput = [transport](unsigned channel) {
+            transport->command(IsdHttpRouter::yalkOutputBusOffPath(channel));
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            transport->command(IsdHttpRouter::yalkOutputOffPath(channel));
         };
         instance->driver = std::make_unique<IsdDriver>(
             std::move(operations), plugin::unsignedValue(instance->config, "trace_capacity", 256));
