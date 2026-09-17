@@ -93,13 +93,13 @@ devices:
     bind:
       - stand.switch_matrix
     config:
-      # ЯЛК: подготовка type=4/type=7, напряжение type=5 в вольтах с bus=1.
+      # ЯЛК: напряжение type=5 в вольтах с bus=1.
       # Старый type=1 с целым кодом остаётся только для иных маршрутов ИСД.
       host: 192.168.0.101
       port: 80
       timeout_ms: 1500
       switch_type: 2
-      # Форматы type=1/2/3/4/5/7 подтверждены Delphi и KPA.
+      # Форматы type=1/2/3/4/5 подтверждены Delphi и KPA.
       # Карта ЯВП type/num задаётся явными таблицами в сценариях.
       device.active_commands_confirmed: true
   - id: v7-reference

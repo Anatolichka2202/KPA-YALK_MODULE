@@ -85,15 +85,11 @@ int main()
                     && UlkUdpTransport::classify(200) == UlkFrameKind::Slow200
                     && UlkUdpTransport::classify(204) == UlkFrameKind::Reference204
                     && UlkUdpTransport::classify(65) == UlkFrameKind::YtpLegacy65
-                    && UlkUdpTransport::classify(68) == UlkFrameKind::YtpRokt68
-                    && UlkUdpTransport::classify(136) == UlkFrameKind::YvpRokt136
-                    && UlkUdpTransport::classify(132) == UlkFrameKind::YvpChannelRokt132,
+                    && UlkUdpTransport::classify(68) == UlkFrameKind::YtpRokt68,
                 "ULK frame classifier is wrong");
         require(static_cast<unsigned>(UlkFrameKind::Unknown) == 4
                     && static_cast<unsigned>(UlkFrameKind::YtpLegacy65) == 5
-                    && static_cast<unsigned>(UlkFrameKind::YtpRokt68) == 6
-                    && static_cast<unsigned>(UlkFrameKind::YvpRokt136) == 7
-                    && static_cast<unsigned>(UlkFrameKind::YvpChannelRokt132) == 8,
+                    && static_cast<unsigned>(UlkFrameKind::YtpRokt68) == 6,
                 "ULK raw-record kind ids must remain backward compatible");
         const auto ytpStart = UlkUdpTransport::ytpRoktStartCommand(1);
         require(ytpStart.size() == 128
@@ -105,26 +101,6 @@ int main()
                     && std::all_of(ytpStart.begin() + 9, ytpStart.end(),
                         [](std::uint8_t byte) { return byte == 0; }),
                 "YTP ROKT 0A 02 start command is wrong");
-        const auto yvpStart = UlkUdpTransport::yvpRoktStartCommand(1);
-        require(yvpStart.size() == 128
-                    && yvpStart[0] == 'R' && yvpStart[1] == 'O'
-                    && yvpStart[2] == 'K' && yvpStart[3] == 'T'
-                    && yvpStart[4] == 0x0A && yvpStart[5] == 0x01
-                    && yvpStart[6] == 0x00 && yvpStart[7] == 0x01
-                    && std::all_of(yvpStart.begin() + 8, yvpStart.end(),
-                        [](std::uint8_t byte) { return byte == 0; }),
-                "YVP ROKT 0A 01 start command is wrong");
-        const auto yvpChannel = UlkUdpTransport::yvpRoktChannelStartCommand(8, 2);
-        require(yvpChannel.size() == 128
-                    && yvpChannel[4] == 0x0A && yvpChannel[5] == 0x03
-                    && yvpChannel[6] == 0x07 && yvpChannel[7] == 0x02
-                    && std::all_of(yvpChannel.begin() + 8, yvpChannel.end(),
-                        [](std::uint8_t byte) { return byte == 0; }),
-                "YVP channel ROKT 0A 03 start command is wrong");
-        bool badYvpChannelRejected = false;
-        try { (void)UlkUdpTransport::yvpRoktChannelStartCommand(9, 1); }
-        catch (const std::invalid_argument&) { badYvpChannelRejected = true; }
-        require(badYvpChannelRejected, "YVP ROKT accepted channel outside 1..8");
         std::vector<std::uint8_t> yalkPacket(200, 0);
         yalkPacket[0] = 0x34;
         yalkPacket[1] = 0xA2;

@@ -25,8 +25,6 @@ enum class UlkFrameKind : std::uint8_t {
     Unknown,
     YtpLegacy65,
     YtpRokt68,
-    YvpRokt136,
-    YvpChannelRokt132,
 };
 
 struct UlkFrame {
@@ -46,8 +44,6 @@ struct UlkStreamStats {
     std::uint64_t reference204 = 0;
     std::uint64_t ytpLegacy65 = 0;
     std::uint64_t ytpRokt68 = 0;
-    std::uint64_t yvpRokt136 = 0;
-    std::uint64_t yvpChannelRokt132 = 0;
     std::uint64_t unknown = 0;
     std::uint64_t dropped = 0;
 };
@@ -67,9 +63,6 @@ public:
     void prepareYtpRokt();
     void startPreparedYtpRokt(std::uint8_t endpointNumber = 1);
     void startYtpRokt(std::uint8_t endpointNumber = 1);
-    void startYvpRokt(std::uint8_t cellNumber = 1);
-    void startYvpChannelRokt(std::uint8_t channelNumber,
-                             std::uint8_t cellNumber = 1);
     void stop() noexcept;
     UlkFrame waitFrame(UlkFrameKind kind, std::uint64_t afterSequence,
                        std::chrono::milliseconds timeout);
@@ -81,10 +74,6 @@ public:
     static std::vector<std::uint8_t> modeCommand(std::uint8_t mode);
     static std::vector<std::uint8_t> ytpRoktStartCommand(
         std::uint8_t endpointNumber);
-    static std::vector<std::uint8_t> yvpRoktStartCommand(
-        std::uint8_t cellNumber = 1);
-    static std::vector<std::uint8_t> yvpRoktChannelStartCommand(
-        std::uint8_t channelNumber, std::uint8_t cellNumber = 1);
     static UlkFrameKind classify(std::size_t payloadSize) noexcept;
 
 private:
