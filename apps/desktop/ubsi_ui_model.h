@@ -85,6 +85,22 @@ inline QVector<double> csvNumbers(const QString& text)
     return result;
 }
 
+// Background monitor frames are positional arrays: an unavailable element must
+// not shift every channel that follows it. Preserve array length and use NaN as
+// the missing-value marker.
+inline QVector<double> csvNumbersWithGaps(const QString& text)
+{
+    QVector<double> result;
+    if (text.isEmpty()) return result;
+    for (const auto& token : text.split(',', Qt::KeepEmptyParts)) {
+        bool ok = false;
+        const double value = token.trimmed().toDouble(&ok);
+        result.push_back(ok && std::isfinite(value)
+            ? value : std::numeric_limits<double>::quiet_NaN());
+    }
+    return result;
+}
+
 inline QVector<int> yalkPhysicalAddresses()
 {
     QVector<int> keys;
@@ -280,8 +296,11 @@ public:
             applyPower(event);
         }
         if (stage == QStringLiteral("POWER_YALK")) applyPowerYalk(event);
-        if (stage == QStringLiteral("BACKGROUND")
-            && eventValue(event, "section") == QStringLiteral("YALK")) applyYalkBackground(event);
+        if (stage == QStringLiteral("BACKGROUND")) {
+            const QString section = eventValue(event, "section");
+            if (section == QStringLiteral("YALK")) applyYalkBackground(event);
+            else if (section == QStringLiteral("YTP")) applyYtpBackground(event);
+        }
         if (node.contains(QStringLiteral("yalk_initial")) || stage == QStringLiteral("YALK_INITIAL"))
             applyYalkInitial(event);
         if (node == QStringLiteral("yalk_channels") && stage == QStringLiteral("MEASUREMENT"))
@@ -391,15 +410,36 @@ private:
 
     void applyYalkBackground(const orbita::stand::RunEvent& event)
     {
-        const auto mean = csvNumbers(eventValue(event, "background_mean"));
-        const auto minimum = csvNumbers(eventValue(event, "background_min"));
-        const auto maximum = csvNumbers(eventValue(event, "background_max"));
+        const auto mean = csvNumbersWithGaps(eventValue(event, "background_mean"));
+        const auto minimum = csvNumbersWithGaps(eventValue(event, "background_min"));
+        const auto maximum = csvNumbersWithGaps(eventValue(event, "background_max"));
         const auto addresses = yalkPhysicalAddresses();
         for (int i = 0; i < addresses.size(); ++i) {
             const int source = addresses[i] - 1;
-            if (source < mean.size()) yalkAnalog.channels[i].currentV = mean[source];
-            if (source < minimum.size()) yalkAnalog.channels[i].minimumV = minimum[source];
-            if (source < maximum.size()) yalkAnalog.channels[i].maximumV = maximum[source];
+            if (source < mean.size() && std::isfinite(mean[source])) {
+                yalkAnalog.channels[i].currentV = mean[source];
+                yalkContact.channels[i].currentV = mean[source];
+            }
+            if (source < minimum.size() && std::isfinite(minimum[source])) {
+                yalkAnalog.channels[i].minimumV = minimum[source];
+                yalkContact.channels[i].minimumV = minimum[source];
+            }
+            if (source < maximum.size() && std::isfinite(maximum[source])) {
+                yalkAnalog.channels[i].maximumV = maximum[source];
+                yalkContact.channels[i].maximumV = maximum[source];
+            }
+        }
+    }
+
+    void applyYtpBackground(const orbita::stand::RunEvent& event)
+    {
+        const auto mean = csvNumbersWithGaps(eventValue(event, "background_mean"));
+        const auto minimum = csvNumbersWithGaps(eventValue(event, "background_min"));
+        const auto maximum = csvNumbersWithGaps(eventValue(event, "background_max"));
+        for (int i = 0; i < ytp.channels.size(); ++i) {
+            if (i < mean.size() && std::isfinite(mean[i])) ytp.channels[i].currentOhm = mean[i];
+            if (i < minimum.size() && std::isfinite(minimum[i])) ytp.channels[i].minimumOhm = minimum[i];
+            if (i < maximum.size() && std::isfinite(maximum[i])) ytp.channels[i].maximumOhm = maximum[i];
         }
     }
 
