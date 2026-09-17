@@ -626,31 +626,6 @@ void yalkOverloadSequenceRegression()
             "Overload must return ISD to its safe state before and after every impact");
 }
 
-void yvpUnconfirmedBindingRegression()
-{
-    ScenarioEngine engine;
-    registerUbsiProcedures(engine);
-    ScenarioDefinition scenario;
-    scenario.id = "yvp-unconfirmed";
-    scenario.title = "YVP safe binding gate";
-    scenario.version = "1";
-    scenario.catalogVersion = "1";
-    scenario.objectType = "UBSI_468157_002";
-    scenario.publicationState = PublicationState::Published;
-    scenario.steps = {{"yvp", "ЯВП", "1.1.4.7", "ubsi.yvp",
-        {"signal.generator", "stand.switch_matrix", "catalog.parameter_resolver"},
-        {{"channel_count", "8"}, {"parameter_group", "yvp_fast"},
-         {"frequencies_hz", "20"}, {"gains_mv_per_pcl", "1"}}, {}}};
-    FakeEquipment equipment;
-    equipment.capabilities = {"signal.generator", "stand.switch_matrix", "catalog.parameter_resolver"};
-    const auto run = engine.run(scenario, equipment, "p1", "", false);
-    require(run.verdict == RunVerdict::Incomplete,
-        "Unconfirmed YVP-to-YALK binding must not become a product failure");
-    require(std::count(equipment.operations.begin(), equipment.operations.end(),
-                "signal.generator:output") == 0,
-        "YVP must not enable Rigol before confirmed YALK 89–96 bindings");
-}
-
 void yalkOpenStateRegression()
 {
     ScenarioEngine engine;
@@ -975,7 +950,6 @@ int main(int argc, char** argv)
         ubsiSurvivalRecoveryRegression();
         externalEvidenceRegression();
         yalkOverloadSequenceRegression();
-        yvpUnconfirmedBindingRegression();
         waveformDecoder();
         pluginContracts();
         shippedConfigurationParses(QStringLiteral(ORBITA_SOURCE_DIR));

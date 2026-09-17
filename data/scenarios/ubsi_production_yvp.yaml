@@ -42,15 +42,13 @@ steps:
     args:
       channel_count: 8
       gains_mv_per_pcl: 0.25,0.5,1,2,4,8,32
-      frequencies_hz: 0.15,20,250,500,1800,2000,4000
+      frequencies_hz: 2,6,20,500,1800,2000,4000
       coupling_capacitance_pf: 1000
       settle_ms: 2000
-
-      # Rigol автоматизирован; драйвер задаёт амплитуду в Vpp:
-      # K=0.25 -> 8 Vpp; K=0.5 -> 4 Vpp; K=1 -> 2 Vpp; K>1 -> 1 Vpp.
-      active_outputs_confirmed: true
-
-      mapping_confirmed: true
+      reference_frequency_hz: 500
+      gain_tolerance_percent: 7
+      # Project acceptance: нижняя граница требования ТУ «20–30 дБ».
+      attenuation_min_db: 20.0
       input_switch_type: 2
       gain_switch_type: 2
       measurement_analog_type: 1

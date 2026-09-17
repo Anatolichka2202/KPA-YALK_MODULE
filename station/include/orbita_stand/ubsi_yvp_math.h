@@ -41,11 +41,9 @@ inline double yvpAttenuationDb(double referenceAmplitude, double amplitude)
 
 inline double yvpStimulusVppForGain(double gainMvPerPc)
 {
-    if (std::abs(gainMvPerPc - 0.25) < 1e-9) return 8.0;
-    if (std::abs(gainMvPerPc - 0.5) < 1e-9) return 4.0;
-    if (std::abs(gainMvPerPc - 1.0) < 1e-9) return 2.0;
-    if (gainMvPerPc > 1.0) return 1.0;
-    throw std::invalid_argument("Unsupported YVP gain");
+    if (!(gainMvPerPc > 0.0) || !std::isfinite(gainMvPerPc))
+        throw std::invalid_argument("Unsupported YVP gain");
+    return 2.0 / gainMvPerPc;
 }
 
 } // namespace orbita::stand

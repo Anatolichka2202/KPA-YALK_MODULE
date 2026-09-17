@@ -22,9 +22,9 @@ add_library(orbita_stand_domain STATIC
     src/telemetry_procedures.cpp
 )
 
-# Keep each generation of UBSI/YVP procedures isolated behind its own
-# registrar. The entry registrar layers them and gives the production ubsi.yvp
-# alias to the final V7+ISD backend.
+# Keep legacy/current UBSI generations isolated behind their registrars. The
+# entry registrar preserves the new-dis YALK/power overrides and gives the
+# production ubsi.yvp alias only to the finalized YVP backend.
 set_source_files_properties(src/ubsi_procedures.cpp PROPERTIES
     COMPILE_DEFINITIONS "registerUbsiProcedures=registerLegacyUbsiProcedures")
 set_source_files_properties(src/ubsi_procedures_current.cpp PROPERTIES
@@ -204,17 +204,6 @@ if(WIN32)
             -static -static-libgcc -static-libstdc++)
     endif()
 endif()
-
-if(WIN32)
-    add_executable(orbita_yvp_rokt_probe
-        tools/yvp_rokt_probe.cpp
-    )
-    target_link_libraries(orbita_yvp_rokt_probe PRIVATE
-        orbita_stand_adapters orbita_stand_runtime Qt6::Core)
-endif()
-
-add_executable(orbita_yvp_v7_probe tools/yvp_v7_probe.cpp)
-target_link_libraries(orbita_yvp_v7_probe PRIVATE orbita_stand_runtime Qt6::Core)
 
 add_executable(yalk_timing_probe tools/yalk_timing_probe.cpp)
 target_link_libraries(yalk_timing_probe PRIVATE orbita_stand_adapters)

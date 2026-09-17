@@ -60,7 +60,7 @@ orbita_plugin_status_v1 invoke(void* value, const char* capability, const char* 
                 if (!instance.config.count(key)) throw std::invalid_argument("Не назначен маршрут ИСД " + args.at("route"));
                 if (args.count("ulk_address")) {
                     const unsigned address = plugin::unsignedValue(args, "ulk_address");
-                    if (!address) throw std::invalid_argument("Адрес УЛК начинается с 1");
+                    if (!address) throw std::invalid_argument("Адрес ЯЛК начинается с 1");
                     return plugin::unsignedValue(instance.config, key) + address - 1;
                 }
                 return plugin::unsignedValue(instance.config, key) + plugin::unsignedValue(args, "offset", 0);
@@ -100,14 +100,11 @@ orbita_plugin_status_v1 invoke(void* value, const char* capability, const char* 
     });
 }
 void cancel(void*) {}
-void safeStop(void* value)
-{
-    if (!value) return;
-    auto& instance = *static_cast<Instance*>(value);
-    try { if (plugin::booleanValue(instance.config, "profile.active_outputs_confirmed")
-        || plugin::booleanValue(instance.config, "device.active_commands_confirmed")) instance.router->reset(); }
-    catch (...) {}
-}
+// Generic plugin lifecycle cleanup cannot prove ownership of routes enabled by
+// another procedure.  Procedures therefore remove only their own routes.  A
+// full ISD reset remains an explicit operation for confirmed initialization
+// flows and must never be emitted by safeStop()/device destruction.
+void safeStop(void*) {}
 const orbita_equipment_api_v1 api{ORBITA_EQUIPMENT_ABI_V1, sizeof(orbita_equipment_api_v1),
     "orbita.isd_http", "Имитатор сигналов датчиков", "stand.switch_matrix",
     create, destroy, invoke, cancel, safeStop};

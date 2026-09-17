@@ -295,117 +295,6 @@ ProcedureResult yalkOverloadWithProgress(const ScenarioNode& node, ProcedureCont
     return result;
 }
 
-std::map<std::string, std::string> waitForYvpTraffic(
-    ProcedureContext& context, unsigned timeoutMs)
-{
-    const auto started = std::chrono::steady_clock::now();
-    do {
-        if (context.stopRequested.load())
-            throw std::runtime_error("Остановлено оператором");
-
-        const auto values = responseValues(context.equipment.invoke(
-            "ulk.parameter_source", "stats", {}));
-        if (valueOrZero(values, "last_sequence") > 0) return values;
-
-        const auto elapsed = static_cast<unsigned>(
-            std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::chrono::steady_clock::now() - started).count());
-        if (elapsed >= timeoutMs)
-            throw std::runtime_error("ЯВП: после ROKT-команды не получено ни одного UDP-кадра");
-
-        std::this_thread::sleep_for(std::chrono::milliseconds(
-            std::min(50u, timeoutMs - elapsed)));
-    } while (true);
-}
-
-std::map<std::string, std::string> trafficData(
-    const std::map<std::string, std::string>& stats)
-{
-    std::map<std::string, std::string> data;
-    for (const char* key : {"last_sequence", "service4", "fast120", "slow200",
-                            "reference204", "ytp_legacy65", "ytp_rokt68",
-                            "yvp_rokt136", "yvp_channel_rokt132",
-                            "unknown", "dropped"}) {
-        const auto found = stats.find(key);
-        if (found != stats.end()) data[key] = found->second;
-    }
-    return data;
-}
-
-ProcedureResult yvpEnterMode(const ScenarioNode& node, ProcedureContext& context)
-{
-    const unsigned cell = natural(node, "yvp_cell", natural(node, "cell", 1));
-    const unsigned timeoutMs = natural(node, "timeout_ms", 3000);
-    if (cell < 1 || cell > 255)
-        throw std::invalid_argument("ЯВП: номер ячейки должен быть 1..255");
-
-    context.equipment.invoke("ulk.parameter_source", "start_yvp_probe", {
-        {"cell", std::to_string(cell)},
-        {"readout_yalk", enabled(node, "readout_yalk", true) ? "true" : "false"}});
-
-    const auto stats = waitForYvpTraffic(context, timeoutMs);
-    auto data = trafficData(stats);
-    data["cell"] = std::to_string(cell);
-    data["active_command"] = "ROKT_0A_01";
-    data["decoder"] = "raw_unscaled";
-    context.eventSink({std::chrono::system_clock::now(), node.id, "YVP_MODE",
-        "ROKT 0A 01 отправлена; выбранный тракт чтения ЯВП через ЯЛК активирован",
-        RunVerdict::Ok, std::move(data)});
-
-    return {RunVerdict::Ok,
-        "Режим ЯВП включён командой ROKT 0A 01; получен сырой поток ЯВП 136 байт",
-        {}};
-}
-
-ProcedureResult yvpRoktChannels(const ScenarioNode& node, ProcedureContext& context)
-{
-    const unsigned channels = natural(node, "channel_count", 8);
-    const unsigned cell = natural(node, "yvp_cell", natural(node, "cell", 1));
-    const unsigned timeoutMs = natural(node, "timeout_ms", 3000);
-    if (channels != 8)
-        throw std::invalid_argument("ЯВП-8: текущая подтверждённая ROKT-команда рассчитана на 8 каналов");
-    if (cell < 1 || cell > 255)
-        throw std::invalid_argument("ЯВП: номер ячейки должен быть 1..255");
-
-    for (unsigned channel = 1; channel <= channels; ++channel) {
-        context.equipment.invoke("ulk.parameter_source", "start_yvp_channel_probe", {
-            {"channel", std::to_string(channel)},
-            {"cell", std::to_string(cell)}});
-
-        const auto stats = waitForYvpTraffic(context, timeoutMs);
-        auto data = trafficData(stats);
-        data["channel"] = std::to_string(channel);
-        data["cell"] = std::to_string(cell);
-        data["active_command"] = "ROKT_0A_03";
-        data["wire_channel"] = std::to_string(channel - 1);
-        data["decoder"] = "unconfirmed";
-        context.eventSink({std::chrono::system_clock::now(), node.id, "YVP_CHANNEL",
-            "Канал ЯВП " + std::to_string(channel)
-                + ": ROKT 0A 03 отправлена, свежий UDP-трафик получен",
-            RunVerdict::NotRun, std::move(data)});
-    }
-
-    return {RunVerdict::Incomplete,
-        "ROKT-переключение всех 8 каналов ЯВП подтверждено трафиком. Формат полезной нагрузки, "
-        "масштабирование и критерии приёмочного измерения пока не подтверждены; изделию не присваивается НОРМА/НЕ НОРМА",
-        {}};
-}
-
-ProcedureResult yvpSafeCleanup(const ScenarioNode&, ProcedureContext& context)
-{
-    std::string diagnostics;
-    try { context.equipment.invoke("signal.generator", "output", {
-        {"channel", "1"}, {"enabled", "false"}}); }
-    catch (const std::exception& error) { diagnostics += std::string(" Rigol: ") + error.what(); }
-    try { context.equipment.invoke("stand.switch_matrix", "full_reset", {}); }
-    catch (const std::exception& error) { diagnostics += std::string(" ИСД: ") + error.what(); }
-    try { context.equipment.invoke("ulk.parameter_source", "stop_stream", {}); }
-    catch (const std::exception& error) { diagnostics += std::string(" Адаптер: ") + error.what(); }
-    if (!diagnostics.empty()) return {RunVerdict::Error,
-        "Безопасный сброс ЯВП выполнен не полностью:" + diagnostics, {}};
-    return {RunVerdict::Ok, "Rigol OUTPUT OFF, ИСД сброшен, поток ЯВП остановлен", {}};
-}
-
 } // namespace
 
 void registerUbsiProcedures(ScenarioEngine& engine)
@@ -414,11 +303,6 @@ void registerUbsiProcedures(ScenarioEngine& engine)
     // Replace the legacy callback only to expose per-impact progress. The
     // measurement sequence, limits and safe-state behaviour stay identical.
     engine.registerProcedure("yalk.check_overload", yalkOverloadWithProgress);
-    engine.registerProcedure("yvp.rokt.enter_mode", yvpEnterMode);
-    engine.registerProcedure("yvp.rokt.channels", yvpRoktChannels);
-    engine.registerProcedure("yvp.rokt.safe_cleanup", yvpSafeCleanup);
-    engine.registerProcedure("yvp.enter_mode", yvpEnterMode);
-    engine.registerProcedure("yvp.safe_cleanup", yvpSafeCleanup);
 }
 
 } // namespace orbita::stand
