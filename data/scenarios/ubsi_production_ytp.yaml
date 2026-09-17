@@ -1,15 +1,21 @@
 schema: 1
 id: ktma.ubsi.production.ytp
 title: Производство УБСИ · ЯТП
-version: 1.0.1
+version: 1.0.2
 catalog_version: 2026.08.29-yalk-1
 object_type: UBSI_468157_002
 state: published
 
-# В предоставленном firmware case 7 не выполняет подтверждённой коммутации.
-# До отдельного живого подтверждения маршрута ЯТП start_stream возвращает
-# INCOMPLETE и не посылает активных команд ИСД.
+# ЯТП работает через адаптер/ROKT 0A 02 и поток 68 байт.
+# ИСД type=7 не участвует; type=4 применяется только один раз как стартовый baseline.
 steps:
+  - id: isd_baseline
+    title: Исходное состояние ИСД перед новым production run
+    tu: PRODUCTION / ISD / BASELINE
+    procedure: ubsi.isd_baseline
+    requires:
+      - stand.switch_matrix
+
   - id: supply_status
     title: Включение и контроль питания перед проверкой ЯТП
     tu: PRODUCTION / YTP / POWER
@@ -25,7 +31,7 @@ steps:
       startup_settle_ms: 500
 
   - id: ytp_stream
-    title: Запуск потока ЯТП · маршрут ИСД требует повторного подтверждения
+    title: Запуск потока ЯТП через адаптер ROKT
     tu: PRODUCTION / YTP / STREAM
     procedure: ytp.start_stream
     requires:
@@ -33,6 +39,7 @@ steps:
     args:
       protocol: rokt_ytp68
       ytp_endpoint: 1
+      configure_settle_ms: 500
       stream_settle_ms: 1000
       timeout_ms: 3000
 
@@ -69,7 +76,7 @@ steps:
       criteria_confirmed: true
 
   - id: ytp_cleanup
-    title: Остановка потока/записи ЯТП без неподтверждённой коммутации ИСД
+    title: Остановка потока и записи ЯТП
     tu: PRODUCTION / YTP / SAFE_CLEANUP
     procedure: ytp.safe_cleanup
     requires:
