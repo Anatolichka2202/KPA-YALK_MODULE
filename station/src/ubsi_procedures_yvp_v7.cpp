@@ -129,13 +129,15 @@ std::string gainKey(double gain)
 }
 
 void setContacts(ProcedureContext& context, unsigned type,
-                 const std::vector<unsigned>& values, bool enabled)
+                 const std::vector<unsigned>& values, bool enabled,
+                 const std::string& owner)
 {
     for (const unsigned channel : values) {
         context.equipment.invoke("stand.switch_matrix", "switch", {
             {"type", std::to_string(type)},
             {"channel", std::to_string(channel)},
-            {"enabled", enabled ? "true" : "false"}});
+            {"enabled", enabled ? "true" : "false"},
+            {"owner", owner}});
     }
 }
 
@@ -149,7 +151,7 @@ std::string gainBitsKey(double gain)
 
 void setMeasurementContacts(ProcedureContext& context, unsigned analogType,
                             unsigned switchType, const std::vector<unsigned>& values,
-                            bool enabled)
+                            bool enabled, const std::string& owner)
 {
     // The KPA overload scenario routes an externally driven line by disabling
     // its DM output first (type=1 work=0), then connecting the same analog
@@ -159,16 +161,17 @@ void setMeasurementContacts(ProcedureContext& context, unsigned analogType,
         if (enabled && analogType) {
             context.equipment.invoke("stand.switch_matrix", "analog", {
                 {"channel", std::to_string(channel)}, {"value", "0"},
-                {"enabled", "false"}});
+                {"enabled", "false"}, {"owner", owner}});
         }
         context.equipment.invoke("stand.switch_matrix", "switch", {
             {"type", std::to_string(switchType)},
             {"channel", std::to_string(channel)},
-            {"enabled", enabled ? "true" : "false"}});
+            {"enabled", enabled ? "true" : "false"},
+            {"owner", owner}});
         if (!enabled && analogType) {
             context.equipment.invoke("stand.switch_matrix", "analog", {
                 {"channel", std::to_string(channel)}, {"value", "0"},
-                {"enabled", "false"}});
+                {"enabled", "false"}, {"owner", owner}});
         }
     }
 }
@@ -239,6 +242,7 @@ ProcedureResult yvpV7Isd(const ScenarioNode& node, ProcedureContext& context)
         || !(attenuationMinimum > 0.0))
         throw std::invalid_argument("ЯВП: не заданы production-критерии");
 
+    const std::string isdOwner = "run:" + context.runId + ":yvp:" + node.id;
     auto generatorOff = [&] {
         context.equipment.invoke("signal.generator", "output", {
             {"channel", "1"}, {"enabled", "false"}});
@@ -248,7 +252,7 @@ ProcedureResult yvpV7Isd(const ScenarioNode& node, ProcedureContext& context)
     std::vector<unsigned> activeGainContacts;
     auto disableContacts = [&](unsigned type, std::vector<unsigned>& active) {
         for (auto contact = active.rbegin(); contact != active.rend(); ++contact) {
-            try { setContacts(context, type, {*contact}, false); } catch (...) {}
+            try { setContacts(context, type, {*contact}, false, isdOwner); } catch (...) {}
         }
         active.clear();
     };
@@ -257,19 +261,24 @@ ProcedureResult yvpV7Isd(const ScenarioNode& node, ProcedureContext& context)
              contact != activeMeasurementContacts.rend(); ++contact) {
             try {
                 setMeasurementContacts(context, measurementAnalogType, measurementType,
-                                       {*contact}, false);
+                                       {*contact}, false, isdOwner);
             } catch (...) {}
         }
         activeMeasurementContacts.clear();
     };
-    auto safeReset = [&] {
-        // The live ISD can leave its single HTTP worker blocked in type=4 when
-        // one of the internal modules does not answer.  YVP owns every route it
-        // enables, so clean up only those routes and always remove Rigol first.
+    auto cleanupOwned = [&](bool suppressFailure) {
+        // Keep the established targeted order, then ask the driver to release
+        // anything that timed out before the local bookkeeping could record it.
         try { generatorOff(); } catch (...) {}
         disableContacts(gainType, activeGainContacts);
         disableMeasurementContacts();
         disableContacts(inputType, activeInputContacts);
+        try {
+            context.equipment.invoke("stand.switch_matrix", "release_owner", {
+                {"owner", isdOwner}});
+        } catch (...) {
+            if (!suppressFailure) throw;
+        }
     };
 
     ProcedureResult result{RunVerdict::Ok, "ЯВП-8 соответствует производственной методике", {}};
@@ -279,17 +288,18 @@ ProcedureResult yvpV7Isd(const ScenarioNode& node, ProcedureContext& context)
     };
 
     try {
-        // Read-only HTTP readiness must succeed before any active route or Rigol output.
+        // Read-only HTTP connectivity check only. It does not establish a known
+        // relay/UART state and does not alter ownership.
         context.equipment.invoke("stand.switch_matrix", "probe", {});
-        safeReset();
+        cleanupOwned(false);
         for (unsigned channel = 0; channel < channelCount; ++channel) {
             for (const unsigned contact : inputMap[channel]) {
-                setContacts(context, inputType, {contact}, true);
+                setContacts(context, inputType, {contact}, true, isdOwner);
                 activeInputContacts.push_back(contact);
             }
             for (const unsigned contact : measurementMap[channel]) {
                 setMeasurementContacts(context, measurementAnalogType, measurementType,
-                                       {contact}, true);
+                                       {contact}, true, isdOwner);
                 activeMeasurementContacts.push_back(contact);
             }
 
@@ -297,7 +307,7 @@ ProcedureResult yvpV7Isd(const ScenarioNode& node, ProcedureContext& context)
                 generatorOff();
                 disableContacts(gainType, activeGainContacts);
                 for (const unsigned contact : gainMap[channel].at(gain)) {
-                    setContacts(context, gainType, {contact}, true);
+                    setContacts(context, gainType, {contact}, true, isdOwner);
                     activeGainContacts.push_back(contact);
                 }
                 const double inputVpp = yvpStimulusVppForGain(gain);
@@ -426,10 +436,10 @@ ProcedureResult yvpV7Isd(const ScenarioNode& node, ProcedureContext& context)
                 addAcceptance(std::move(attenuationResult));
             }
 
-            safeReset();
+            cleanupOwned(false);
         }
     } catch (...) {
-        safeReset();
+        cleanupOwned(true);
         throw;
     }
 
