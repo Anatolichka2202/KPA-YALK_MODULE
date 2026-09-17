@@ -180,9 +180,44 @@ public:
         }
         return "status=ready\n";
     }
+    bool resourceHasCapability(
+        const std::string& resource,
+        const std::string& capability) const override
+    {
+        static const std::map<std::string, std::set<std::string>> bindings = {
+            {"power.dut", {"power.dc_supply"}},
+            {"dut.parameter_source", {"ulk.parameter_source"}},
+            {"switch_matrix.primary", {"stand.switch_matrix"}},
+            {"measure.reference", {
+                "measure.reference_voltage", "measure.dc_current",
+                "measure.reference_ac_voltage", "measure.reference_frequency"}},
+            {"signal.primary", {"signal.generator"}},
+            {"measure.waveform.primary", {"measure.waveform"}},
+        };
+        const auto found = bindings.find(resource);
+        return found != bindings.end()
+            && found->second.count(capability) != 0
+            && hasCapability(capability);
+    }
+
+    std::string invokeResource(
+        const std::string& resource,
+        const std::string& capability,
+        const std::string& operation,
+        const std::map<std::string, std::string>& arguments) override
+    {
+        if (!resourceHasCapability(resource, capability)) {
+            throw std::runtime_error(
+                "unexpected resource/capability: " + resource + ":" + capability);
+        }
+        resourceOperations.push_back(resource + ":" + capability + ":" + operation);
+        return invoke(capability, operation, arguments);
+    }
+
     void safeStopAll() noexcept override { stopped = true; }
     std::set<std::string> capabilities;
     std::vector<std::string> operations;
+    std::vector<std::string> resourceOperations;
     std::vector<std::map<std::string, std::string>> switchArguments;
     std::vector<double> yalkVoltages;
     std::vector<double> supplyVoltages;
@@ -490,6 +525,27 @@ void configurationAndCatalog(const QString& root)
                 && ytpEquipment.supplyDisableCount >= 2
                 && !ytpEquipment.supplyOutputEnabled,
             "A repeated YTP run must restore AKIP output and switch it off again");
+    const auto routedVia = [&ytpEquipment](const std::string& prefix) {
+        return std::any_of(ytpEquipment.resourceOperations.begin(),
+            ytpEquipment.resourceOperations.end(), [&prefix](const std::string& value) {
+                return value.rfind(prefix, 0) == 0;
+            });
+    };
+    require(routedVia("power.dut:power.dc_supply:"),
+            "YTP power operations must be routed through power.dut");
+    require(routedVia("dut.parameter_source:ulk.parameter_source:"),
+            "YTP adapter operations must be routed through dut.parameter_source");
+    require(routedVia("switch_matrix.primary:stand.switch_matrix:"),
+            "YTP ISD operations must be routed through switch_matrix.primary");
+
+    FakeEquipment ytp120Equipment;
+    ytp120Equipment.capabilities = {
+        "ulk.parameter_source", "stand.switch_matrix",
+        "catalog.parameter_resolver", "operator.manual_input", "power.dc_supply"};
+    const auto ytp120Run = engine.run(
+        ytp120, ytp120Equipment, profile.version, "", false);
+    require(ytp120Run.verdict == RunVerdict::Ok,
+            "Fixed 120-ohm YTP scenario must execute through delivery resources");
 }
 
 void builtinCapabilityBinding()

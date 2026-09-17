@@ -1,7 +1,7 @@
 schema: 1
 id: ubsi.468157.002.ytp.120ohm.check
 title: УБСИ · контроль 30 каналов ЯТП при 120 Ом
-version: 1.0.0
+version: 1.1.0
 catalog_version: 2026.08.29-yalk-1
 object_type: UBSI_468157_002
 state: published
@@ -13,8 +13,9 @@ steps:
     title: Включение и контроль питания УБСИ перед проверкой
     tu: 1.1.4.3, 1.1.4.5 · контрольный прогон
     procedure: ubsi.supply_status
-    requires:
-      - power.dc_supply
+    resources:
+      - resource: power.dut
+        capability: power.dc_supply
     args:
       nominal_voltage_v: 27
       minimum_voltage_v: 24
@@ -27,9 +28,11 @@ steps:
     title: Активный запуск ROKT и запись сырого потока ЯТП
     tu: 5.6 / ЯТП · контроль 120 Ом
     procedure: ytp.start_stream
-    requires:
-      - ulk.parameter_source
-      - stand.switch_matrix
+    resources:
+      - resource: dut.parameter_source
+        capability: ulk.parameter_source
+      - resource: switch_matrix.primary
+        capability: stand.switch_matrix
     args:
       protocol: rokt_ytp68
       ytp_endpoint: 1
@@ -44,7 +47,9 @@ steps:
     procedure: ytp.read_calibration
     requires:
       - catalog.parameter_resolver
-      - ulk.parameter_source
+    resources:
+      - resource: dut.parameter_source
+        capability: ulk.parameter_source
     args:
       calibration_zero_parameter: ytp_calibration_zero
       calibration_full_parameter: ytp_calibration_full
@@ -57,8 +62,10 @@ steps:
     procedure: ytp.check_channels
     requires:
       - catalog.parameter_resolver
-      - ulk.parameter_source
       - operator.manual_input
+    resources:
+      - resource: dut.parameter_source
+        capability: ulk.parameter_source
     args:
       channel_count: 30
       parameter_group: ytp_temperature
@@ -74,9 +81,11 @@ steps:
     title: Безопасная остановка потока и raw-записи ЯТП
     tu: 5.6 / завершение проверки
     procedure: ytp.safe_cleanup
-    requires:
-      - ulk.parameter_source
-      - stand.switch_matrix
+    resources:
+      - resource: dut.parameter_source
+        capability: ulk.parameter_source
+      - resource: switch_matrix.primary
+        capability: stand.switch_matrix
     args:
       isd_switch_type: 7
       isd_route_channels: 3,9,12,17
@@ -85,5 +94,6 @@ steps:
     title: Отключение питания УБСИ после проверки
     tu: безопасное завершение контрольного прогона
     procedure: ubsi.power_safe_off
-    requires:
-      - power.dc_supply
+    resources:
+      - resource: power.dut
+        capability: power.dc_supply

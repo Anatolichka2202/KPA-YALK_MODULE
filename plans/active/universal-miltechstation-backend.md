@@ -147,6 +147,8 @@ operation
 - [x] production scenarios используют delivery resources;
 - [x] canonical published full TU `ubsi_ulk_combined_check.yaml` использует delivery resources для физического оборудования;
 - [x] standalone published YALK TU использует delivery resources;
+- [x] standalone published YTP TU и fixed-120 diagnostic используют `power.dut`, `dut.parameter_source`, `switch_matrix.primary`;
+- [x] KTMA runtime test fixture поддерживает resource-aware routing и прогоняет оба standalone YTP сценария через logical roles;
 - [x] deferred equipment binding ограничивает logical resource только capabilities, объявленными конкретным delivery component;
 - [x] physical equipment reset сохраняет builtin services сценарного runtime;
 - [x] contract test сверяет scenario resource contracts с реальным `stand_ktma.yaml`;
@@ -156,8 +158,7 @@ operation
 
 Остаётся:
 
-- [ ] перевести standalone YTP и оставшиеся KTMA/TU scenarios;
-- [ ] перед этим перевести их runtime tests/fakes на resource-aware provider;
+- [ ] перевести оставшиеся KTMA/TU scenarios;
 - [ ] после полной миграции убрать физические capability-only `requires:` и запретить неоднозначный global default routing.
 
 ## 7. Serial / SSH / board debugging
@@ -215,7 +216,7 @@ COM/baud/IP/credentials принадлежат delivery/environment, а не sta
 
 1. держать каждый backend-срез зелёным по CI;
 2. сокращать защищённый `integration*()` API и постепенно заменить наследование product/delivery composition;
-3. закончить resource migration standalone YTP и остальных TU-сценариев после resource-aware test fixture;
+3. закончить resource migration оставшихся KTMA/TU-сценариев и затем убрать physical capability-only compatibility routing;
 4. перевести оставшиеся внутренние KTMA includes на канонические `ktma/ubsi/*` и убрать wrappers после последнего consumer;
 5. связать `execution_runtime` с run/evidence и подключить первый существующий Python/Lua стенд;
 6. после появления реального board consumer добавить serial/SSH transport contracts.
