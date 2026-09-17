@@ -84,7 +84,10 @@ YalkProcedureResult CheckYalkAnalogChannel::execute(
     bool channelWasConnected = false;
     bool sourceWasEnabled = false;
     try {
-        isd.reset();
+        // Do not issue a global ISD reset here. The firmware type=4 operation
+        // is a long all-channels-off sweep with no atomicity/readback and is not
+        // a valid generic procedure initializer. This helper owns only the
+        // selected channel and therefore cleans up only that channel.
         result.calibration = yalk.readCalibration(channel);
 
         // Validate calibration before enabling a physical output.
