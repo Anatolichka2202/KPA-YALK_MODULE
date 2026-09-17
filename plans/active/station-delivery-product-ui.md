@@ -1,75 +1,77 @@
-# Station / delivery / product UI migration
+# Миграция Station / Delivery / Product UI
 
-Base branch: `integration/master-yvp-ui`
-Working branch: `architecture/platform-delivery-ui`
+База: `integration/master-yvp-ui`
+Рабочая ветка: `architecture/platform-delivery-ui`
 
-## Invariants
+## Инварианты
 
-- master remains production backend truth for UBSI;
-- approved UBSI UI is not redesigned by this migration;
-- dependency direction is station -> delivery -> product;
-- product UI may depend on delivery UI; station UI never depends on product UI;
-- administration belongs to station, formats/runtimes are registered providers;
-- executable runtimes are disabled unless enabled by delivery composition;
-- `universal_miltechstation` and `isd_driver_safe` are donors, not wholesale
-  merge targets.
+- `master` остаётся production backend truth для УБСИ;
+- утверждённый UI УБСИ в этой миграции не передизайнивается;
+- зависимость только `station -> delivery -> product`;
+- product UI может зависеть от delivery UI, station UI от product UI не зависит;
+- администрирование принадлежит станции, форматы и runtime подключаются providers;
+- executable runtime запрещён, пока его явно не разрешила поставка;
+- `universal_miltechstation` и `isd_driver_safe` — доноры отдельных решений,
+  а не кандидаты на wholesale merge.
 
-## Phase 1 — composition boundary
+## Этап 1 — граница композиции
 
-- [x] add generic station UI manifest contract;
-- [x] add KTMA delivery UI target;
-- [x] add UBSI product UI module target;
-- [x] make desktop compose KTMA + UBSI at compile time;
-- [x] add contract test that KTMA contains UBSI;
-- [x] build/configure and the new `ktma.ubsi.ui_contract` test pass in CI;
-- [ ] full branch CI is currently blocked by the inherited
-  `desktop.test_page_tu_runtime` failure from the base integration branch
-  (same failure exists at base commit `55a449f`).
+- [x] добавить общий station UI manifest contract;
+- [x] добавить отдельный target KTMA delivery UI;
+- [x] добавить target UBSI product UI module;
+- [x] desktop compile-time композитит KTMA + UBSI;
+- [x] добавить contract-test, подтверждающий включение УБСИ в КТМА;
+- [x] configure/build и новый `ktma.ubsi.ui_contract` проходят CI;
+- [ ] полный CI пока блокирует унаследованный от base-ветки
+  `desktop.test_page_tu_runtime`: та же ошибка есть на base commit `55a449f`.
 
-## Phase 2 — physical UBSI UI ownership
+## Этап 2 — физическое владение UBSI UI
 
-- [ ] move `ubsi_ui_model`, measurement views, TU flow and TestPage implementation
-  behind `ktma_ubsi_ui`;
-- [ ] keep only station-generic widgets in desktop core;
-- [ ] preserve frozen Production/TU behavior and acceptance tests;
-- [ ] make UBSI UI consume backend RunEvent/ScenarioRunResult only.
+- [ ] перенести `ubsi_ui_model`, measurement views, TU flow и реализацию TestPage
+  за target `ktma_ubsi_ui`;
+- [ ] оставить в desktop core только действительно общие виджеты станции;
+- [ ] сохранить frozen Production/TУ UX и acceptance tests;
+- [ ] UBSI UI получает данные через RunEvent/ScenarioRunResult и не управляет
+  алгоритмом испытания напрямую.
 
-## Phase 3 — station administration
+## Этап 3 — station administration
 
-- [ ] replace YAML-specific administration entry point with ArtifactRegistry;
-- [ ] add DocumentProvider contract (load/save/validate/syntax metadata);
-- [ ] register YAML first without changing existing scenario semantics;
-- [ ] add JSON, INI and TXT providers;
-- [ ] add TOML only with the first real TOML consumer;
-- [ ] allow delivery/product typed editors without removing raw-text fallback.
+- [ ] заменить YAML-specific entry point на `ArtifactRegistry`;
+- [ ] ввести `DocumentProvider`: load/save/validate/syntax metadata;
+- [ ] первым зарегистрировать YAML без изменения семантики текущих сценариев;
+- [ ] добавить JSON, INI и TXT providers;
+- [ ] TOML добавлять только вместе с первым реальным TOML consumer;
+- [ ] разрешить delivery/product typed editors, сохранив raw-text fallback.
 
-## Phase 4 — scenario/runtime providers
+## Этап 4 — scenario/runtime providers
 
-- [ ] introduce ScenarioProvider boundary over common run/evidence lifecycle;
-- [ ] keep YAML ScenarioEngine as provider #1;
-- [ ] port process execution runtime from `universal_miltechstation`;
-- [ ] integrate the existing Python program as an external process;
-- [ ] add optional Lua 5.4 provider for PPB and enable it only in PPB composition.
+- [ ] ввести `ScenarioProvider` над общим run/evidence lifecycle;
+- [ ] оставить YAML ScenarioEngine provider №1;
+- [ ] перенести process execution runtime из `universal_miltechstation`;
+- [ ] подключить существующую Python-программу внешним процессом;
+- [ ] добавить optional Lua 5.4 provider для ППБ и разрешать его только
+  в PPB composition.
 
-## Phase 5 — KTMA delivery completion
+## Этап 5 — завершение KTMA delivery
 
-- [ ] integrate stateful ISD provider from `isd_driver_safe`;
-- [ ] port StationSession/component/resource model in small tested slices;
-- [ ] make KTMA own stand profile, registrar, equipment readiness and all KTMA
-  product registration;
-- [ ] leave explicit product slots for later KTMA modules besides UBSI.
+- [ ] интегрировать stateful ISD provider из `isd_driver_safe`;
+- [ ] переносить StationSession/component/resource model маленькими проверяемыми
+  срезами;
+- [ ] КТМА владеет stand profile, registrar, equipment readiness и регистрацией
+  всех своих product modules;
+- [ ] оставить явные product slots для следующих частей КТМА кроме УБСИ.
 
-## Phase 6 — remove transitional inheritance
+## Этап 6 — убрать переходное наследование
 
-- [ ] replace `KtmaMainWindow : MainWindow` hardware/product access with
-  composition;
-- [ ] shrink and remove protected `integration*()` escape hatches;
-- [ ] station desktop shell receives delivery contributions through contracts;
-- [ ] no `if (ktma)` / `if (ubsi)` in reusable station UI.
+- [ ] заменить hardware/product-доступ через `KtmaMainWindow : MainWindow`
+  композицией;
+- [ ] сократить и удалить защищённые `integration*()` escape hatches;
+- [ ] station desktop shell получает contributions через contracts;
+- [ ] в reusable station UI нет `if (ktma)` / `if (ubsi)`.
 
-## Acceptance
+## Критерий архитектуры
 
-A second delivery/product (PPB is the intended proof) must be attachable without
-copying MainWindow or adding PPB branches to station core. PPB may keep its own
-operator interface and enable Lua while reusing only the platform pieces it
-actually needs.
+Вторая реальная поставка/изделие — ППБ — должна подключаться без копирования
+MainWindow и без PPB-ветвлений в station core.
+ППБ сохраняет свой operator UI, может включать Lua и переиспользует только те
+части платформы, которые реально общие.
