@@ -1,8 +1,10 @@
 #include <QApplication>
-#include "ktma_mainwindow.h"
 #include <QFile>
 #include <QPalette>
+#include <QStatusBar>
 #include <QStyleFactory>
+
+#include "ktma_mainwindow.h"
 
 int main(int argc, char *argv[])
 {
@@ -30,7 +32,12 @@ int main(int argc, char *argv[])
     if (styleFile.open(QFile::ReadOnly))
         app.setStyleSheet(QLatin1String(styleFile.readAll()));
 
-    KtmaMainWindow w;
-    w.show();
+    KtmaMainWindow window;
+    // Approved operator layout is designed at 1920x1080 and remains usable at
+    // 1600x900. The legacy QMainWindow status strip is not part of that shell.
+    window.setMinimumSize(1600, 900);
+    window.resize(1920, 1080);
+    if (window.statusBar()) window.statusBar()->hide();
+    window.show();
     return app.exec();
 }
