@@ -149,7 +149,9 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: MilTechStation-${{ github.ref_name }}-portable-windows-ucrt64
+          # github.ref_name is "7/merge" for pull-request merge refs, and '/'
+          # is forbidden in artifact names. run_id is stable and filesystem-safe.
+          name: MilTechStation-${{ github.run_id }}-portable-windows-ucrt64
           path: deploy/**
           if-no-files-found: error
           retention-days: 7
