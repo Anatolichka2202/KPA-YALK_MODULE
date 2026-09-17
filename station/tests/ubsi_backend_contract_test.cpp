@@ -61,6 +61,18 @@ std::string section(const std::string& text, const std::string& begin,
     return text.substr(first, last == std::string::npos ? std::string::npos : last - first);
 }
 
+std::string ytpCleanupSection(const std::string& yaml)
+{
+    const auto first = yaml.find("id: ytp_cleanup");
+    if (first == std::string::npos) return {};
+    const auto yvp = yaml.find("id: yvp", first);
+    const auto power = yaml.find("id: power_off", first);
+    std::size_t last = std::string::npos;
+    if (yvp != std::string::npos) last = yvp;
+    if (power != std::string::npos && (last == std::string::npos || power < last)) last = power;
+    return yaml.substr(first, last == std::string::npos ? std::string::npos : last - first);
+}
+
 void sourceContract()
 {
     const auto finalizer = readFile("station/src/ubsi_procedures_production_finalize.cpp");
@@ -123,7 +135,7 @@ void scenarioContract()
             "data/scenarios/ubsi_ytp_120_check.yaml"}) {
         const auto yaml = readFile(path);
         const auto start = section(yaml, "id: ytp_stream", "id: ytp_calibration");
-        const auto cleanup = section(yaml, "id: ytp_cleanup", "id: power_off");
+        const auto cleanup = ytpCleanupSection(yaml);
         require(!start.empty() && contains(start, "ulk.parameter_source"),
             std::string(path) + " has no adapter YTP stream");
         require(!contains(start, "stand.switch_matrix")
