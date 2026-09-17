@@ -165,7 +165,7 @@ if(BUILD_TESTING)
     )
     target_include_directories(ubsi_ui_model_background_test PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
-        ${CMAKE_SOURCE_DIR}/orbita/include
+        ${CMAKE_SOURCE_DIR}/station/include
     )
     target_link_libraries(ubsi_ui_model_background_test PRIVATE Qt6::Core)
     add_test(NAME desktop.ubsi_ui_model_background COMMAND ubsi_ui_model_background_test)
