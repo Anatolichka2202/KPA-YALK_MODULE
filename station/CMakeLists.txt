@@ -16,6 +16,7 @@ add_library(orbita_stand_domain STATIC
     src/ubsi_procedures_current.cpp
     src/ubsi_procedures_rokt.cpp
     src/ubsi_procedures_isd_safe.cpp
+    src/ubsi_procedures_production_finalize.cpp
     src/ubsi_procedures_yvp_v7.cpp
     src/ubsi_procedures_entry.cpp
     src/telemetry_procedures.cpp
