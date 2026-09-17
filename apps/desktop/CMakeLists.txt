@@ -152,7 +152,7 @@ add_dependencies(OrbitaRuntimeResources MilTechStation orbita_equipment_plugins
 
 if(BUILD_TESTING)
     add_executable(test_page_smoke_test
-        tests/test_page_smoke_test.cpp
+        tests/test_page_prototype_acceptance.cpp
         test_page_clean.cpp
         test_page.h
         ubsi_ui_model.h
