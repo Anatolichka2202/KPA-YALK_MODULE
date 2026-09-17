@@ -105,8 +105,8 @@ legacy_count = migrate_physical_requirements(
     "data/scenarios/ubsi_tu_5_6.yaml", "1.6.1", "1.7.0")
 if contact_count != 6:
     raise SystemExit(f"contact-threshold scenario: expected 6 migrated requires blocks, got {contact_count}")
-if legacy_count != 12:
-    raise SystemExit(f"legacy trace scenario: expected 12 migrated requires blocks, got {legacy_count}")
+if legacy_count != 13:
+    raise SystemExit(f"legacy trace scenario: expected 13 migrated requires blocks, got {legacy_count}")
 
 
 # Extend the KTMA scenario contract test so a physical capability-only require
