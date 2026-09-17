@@ -1,7 +1,7 @@
 schema: 1
 id: ubsi.468157.002.ytp.120ohm.check
 title: УБСИ · контроль 30 каналов ЯТП при 120 Ом
-version: 1.0.0
+version: 1.0.1
 catalog_version: 2026.08.29-yalk-1
 object_type: UBSI_468157_002
 state: published
@@ -9,6 +9,13 @@ state: published
 # Рабочий одноточечный контроль для стенда, на котором Р4831 постоянно
 # установлен на 120 Ом. Это не заменяет полную проверку диапазона 0..240 Ом.
 steps:
+  - id: isd_baseline
+    title: Исходное состояние ИСД перед новым прогоном
+    tu: 5.6 / ИСД · исходное состояние
+    procedure: ubsi.isd_baseline
+    requires:
+      - stand.switch_matrix
+
   - id: supply_status
     title: Включение и контроль питания УБСИ перед проверкой
     tu: 1.1.4.3, 1.1.4.5 · контрольный прогон
@@ -29,12 +36,10 @@ steps:
     procedure: ytp.start_stream
     requires:
       - ulk.parameter_source
-      - stand.switch_matrix
     args:
       protocol: rokt_ytp68
       ytp_endpoint: 1
-      isd_switch_type: 7
-      isd_route_channels: 3,9,12,17
+      configure_settle_ms: 500
       stream_settle_ms: 1000
       timeout_ms: 3000
 
@@ -76,10 +81,6 @@ steps:
     procedure: ytp.safe_cleanup
     requires:
       - ulk.parameter_source
-      - stand.switch_matrix
-    args:
-      isd_switch_type: 7
-      isd_route_channels: 3,9,12,17
 
   - id: power_off
     title: Отключение питания УБСИ после проверки
