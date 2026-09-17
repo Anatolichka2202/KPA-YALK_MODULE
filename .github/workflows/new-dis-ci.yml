@@ -6,6 +6,7 @@ on:
     branches:
       - new-dis
       - integration/master-yvp-ui
+      - architecture/platform-delivery-ui
   pull_request:
     branches:
       - new-dis
