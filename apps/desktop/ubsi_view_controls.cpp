@@ -2,6 +2,7 @@
 
 #include <QCoreApplication>
 #include <QEvent>
+#include <QFrame>
 #include <QPushButton>
 #include <QWidget>
 
@@ -40,6 +41,34 @@ QPushButton* makeControl(const QString& text, const QString& name, QWidget* pare
     return button;
 }
 
+QWidget* operatorPageFor(QWidget* child)
+{
+    for (QWidget* current = child; current; current = current->parentWidget()) {
+        if (current->objectName() == QStringLiteral("operatorTestPage")) return current;
+    }
+    return nullptr;
+}
+
+QFrame* productionFooter(QWidget* page)
+{
+    if (!page) return nullptr;
+    if (auto* named = page->findChild<QFrame*>(QStringLiteral("productionTelemetryFooter")))
+        return named;
+    for (auto* frame : page->findChildren<QFrame*>()) {
+        if (frame->minimumHeight() == 168 && frame->maximumHeight() == 168) {
+            frame->setObjectName(QStringLiteral("productionTelemetryFooter"));
+            return frame;
+        }
+    }
+    return nullptr;
+}
+
+void syncTuChrome(QWidget* marker, bool tuRuntimeVisible)
+{
+    if (auto* footer = productionFooter(operatorPageFor(marker)))
+        footer->setVisible(!tuRuntimeVisible);
+}
+
 class PrototypeViewControls final : public QObject
 {
 public:
@@ -52,6 +81,11 @@ protected:
         if (!widget) return QObject::eventFilter(watched, event);
 
         const auto type = event->type();
+        if (widget->objectName() == QStringLiteral("tuRuntimeTitle")) {
+            if (type == QEvent::Show) syncTuChrome(widget, true);
+            else if (type == QEvent::Hide) syncTuChrome(widget, false);
+        }
+
         if (type == QEvent::Polish || type == QEvent::Show) attach(widget);
         if (type == QEvent::Resize || type == QEvent::Show) layout(widget);
         return QObject::eventFilter(watched, event);
