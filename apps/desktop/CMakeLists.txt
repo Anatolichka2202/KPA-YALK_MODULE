@@ -159,6 +159,17 @@ if(BUILD_TESTING)
         equipment_control_widget.h
     )
 
+    add_executable(ubsi_ui_model_background_test
+        tests/ubsi_ui_model_background_test.cpp
+        ubsi_ui_model.h
+    )
+    target_include_directories(ubsi_ui_model_background_test PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_SOURCE_DIR}/orbita/include
+    )
+    target_link_libraries(ubsi_ui_model_background_test PRIVATE Qt6::Core)
+    add_test(NAME desktop.ubsi_ui_model_background COMMAND ubsi_ui_model_background_test)
+
     add_executable(test_page_smoke_test
         tests/test_page_prototype_acceptance.cpp
         ${UBSI_UI_TEST_SOURCES}
@@ -218,6 +229,7 @@ if(BUILD_TESTING)
 
     get_filename_component(QT_TEST_PLUGIN_DIR "${Qt6_DIR}/../../../plugins" ABSOLUTE)
     set_tests_properties(
+        desktop.ubsi_ui_model_background
         desktop.test_page_smoke
         desktop.test_page_yvp_event
         desktop.test_page_power_yalk_event
@@ -227,6 +239,7 @@ if(BUILD_TESTING)
     )
     if(WIN32)
         set_tests_properties(
+            desktop.ubsi_ui_model_background
             desktop.test_page_smoke
             desktop.test_page_yvp_event
             desktop.test_page_power_yalk_event
