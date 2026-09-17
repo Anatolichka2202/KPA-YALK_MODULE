@@ -1,4 +1,5 @@
 name: new-dis CI
+# Also validates the frozen UBSI UI data bindings and completion summaries.
 
 on:
   push:
