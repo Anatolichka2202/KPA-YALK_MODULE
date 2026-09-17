@@ -20,47 +20,50 @@ jobs:
           fetch-depth: 0
 
       - name: Use canonical components in desktop equipment metadata
-        shell: python
+        shell: bash
         run: |
+          python - <<'PY'
           from pathlib import Path
 
           path = Path("apps/desktop/mainwindow.cpp")
           text = path.read_text(encoding="utf-8")
           old = '''        for (const auto& device : standProfile_.devices) {
-            const auto host = device.configuration.find("host");
-            const auto port = device.configuration.find("port");
-            QString endpoint = host == device.configuration.end()
-                ? QString::fromStdString(device.pluginId)
-                : QString::fromStdString(host->second);
-            if (port != device.configuration.end())
-                endpoint += QStringLiteral(":") + QString::fromStdString(port->second);
-            for (const auto& capability : device.bindCapabilities) {
-                const QString code = equipmentCode.value(QString::fromStdString(capability));
-                if (!code.isEmpty()) testPage_->setEquipmentConnection(code, endpoint);
-            }
-        }
+              const auto host = device.configuration.find("host");
+              const auto port = device.configuration.find("port");
+              QString endpoint = host == device.configuration.end()
+                  ? QString::fromStdString(device.pluginId)
+                  : QString::fromStdString(host->second);
+              if (port != device.configuration.end())
+                  endpoint += QStringLiteral(":") + QString::fromStdString(port->second);
+              for (const auto& capability : device.bindCapabilities) {
+                  const QString code = equipmentCode.value(QString::fromStdString(capability));
+                  if (!code.isEmpty()) testPage_->setEquipmentConnection(code, endpoint);
+              }
+          }
 '''
           new = '''        for (const auto& component : standProfile_.components) {
-            if (component.kind != "equipment") continue;
-            const auto host = component.configuration.find("host");
-            const auto port = component.configuration.find("port");
-            QString endpoint = host == component.configuration.end()
-                ? QString::fromStdString(component.provider)
-                : QString::fromStdString(host->second);
-            if (port != component.configuration.end())
-                endpoint += QStringLiteral(":") + QString::fromStdString(port->second);
-            for (const auto& capability : component.capabilities) {
-                const QString code = equipmentCode.value(QString::fromStdString(capability));
-                if (!code.isEmpty()) testPage_->setEquipmentConnection(code, endpoint);
-            }
-        }
+              if (component.kind != "equipment") continue;
+              const auto host = component.configuration.find("host");
+              const auto port = component.configuration.find("port");
+              QString endpoint = host == component.configuration.end()
+                  ? QString::fromStdString(component.provider)
+                  : QString::fromStdString(host->second);
+              if (port != component.configuration.end())
+                  endpoint += QStringLiteral(":") + QString::fromStdString(port->second);
+              for (const auto& capability : component.capabilities) {
+                  const QString code = equipmentCode.value(QString::fromStdString(capability));
+                  if (!code.isEmpty()) testPage_->setEquipmentConnection(code, endpoint);
+              }
+          }
 '''
           count = text.count(old)
           if count != 1:
               raise SystemExit(f"expected one legacy DeviceProfile metadata loop, got {count}")
           path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
 
       - name: Verify canonical desktop model
+        shell: bash
         run: |
           git diff --check
           ! grep -R -n 'standProfile_\.devices' apps/desktop
@@ -69,6 +72,7 @@ jobs:
           grep -n 'component.capabilities' apps/desktop/mainwindow.cpp
 
       - name: Commit source cleanup
+        shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
