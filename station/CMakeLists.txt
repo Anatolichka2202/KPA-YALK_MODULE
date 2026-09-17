@@ -131,6 +131,10 @@ if(BUILD_TESTING)
     target_link_libraries(ubsi_backend_contract_test PRIVATE orbita_stand_domain)
     add_test(NAME stand.ubsi_backend_contract COMMAND ubsi_backend_contract_test)
 
+    add_executable(isd_regression_test tests/isd_regression_test.cpp)
+    target_link_libraries(isd_regression_test PRIVATE orbita_stand_adapters)
+    add_test(NAME stand.isd_regression COMMAND isd_regression_test)
+
     if(WIN32)
         set(_orbita_qt_test_path "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
         set_tests_properties(
@@ -138,6 +142,7 @@ if(BUILD_TESTING)
             stand.isd_driver
             stand.isd_http_transport
             stand.scenario_runtime
+            stand.isd_regression
             PROPERTIES ENVIRONMENT_MODIFICATION "${_orbita_qt_test_path}")
     endif()
 endif()
