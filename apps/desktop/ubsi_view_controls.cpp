@@ -81,13 +81,15 @@ protected:
         if (!widget) return QObject::eventFilter(watched, event);
 
         const auto type = event->type();
+        const bool showing = type == QEvent::Show || type == QEvent::ShowToParent;
+        const bool hiding = type == QEvent::Hide || type == QEvent::HideToParent;
         if (widget->objectName() == QStringLiteral("tuRuntimeTitle")) {
-            if (type == QEvent::Show) syncTuChrome(widget, true);
-            else if (type == QEvent::Hide) syncTuChrome(widget, false);
+            if (showing) syncTuChrome(widget, true);
+            else if (hiding) syncTuChrome(widget, false);
         }
 
-        if (type == QEvent::Polish || type == QEvent::Show) attach(widget);
-        if (type == QEvent::Resize || type == QEvent::Show) layout(widget);
+        if (type == QEvent::Polish || showing) attach(widget);
+        if (type == QEvent::Resize || showing) layout(widget);
         return QObject::eventFilter(watched, event);
     }
 
