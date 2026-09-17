@@ -42,6 +42,13 @@ public:
         if (capability == "stand.switch_matrix" && operation == "switch") {
             switchArguments.push_back(arguments);
         }
+        if (capability == "stand.switch_matrix" && operation == "service_full_reset") {
+            return "status=ok\n";
+        }
+        if (capability == "stand.switch_matrix" && operation == "state") {
+            return "status=ready\nsession_state=operational\nowned_count=0\n"
+                   "global_hardware_state=not_readable\n";
+        }
         if (capability == "orbita.parameter_source" && operation == "health") {
             return "status=ready\nframes_processed=12\nphrase_error_percent=0\n"
                    "group_error_percent=0\nchannel_count=8\n";
@@ -341,12 +348,12 @@ void configurationAndCatalog(const QString& root)
                 ? "Standalone YTP scenario must validate"
                 : ytpValidationErrors.front());
     require(ytpScenario.publicationState == PublicationState::Published
-                && ytpScenario.steps.size() == 6,
-            "YTP must be a published six-stage powered manual-reference scenario");
-    require(engine.validate(ytp120).empty() && ytp120.steps.size() == 6,
-            "Fixed 120-ohm YTP scenario must validate");
-    require(engine.validate(combined).empty() && combined.steps.size() == 16,
-            "Canonical TU scenario must contain the accepted sixteen stages");
+                && ytpScenario.steps.size() == 7,
+            "YTP must be a published seven-stage scenario with one initial ISD baseline");
+    require(engine.validate(ytp120).empty() && ytp120.steps.size() == 7,
+            "Fixed 120-ohm YTP scenario must include the initial ISD baseline");
+    require(engine.validate(combined).empty() && combined.steps.size() == 17,
+            "Canonical TU scenario must contain one baseline plus the accepted sixteen stages");
     const auto combinedStep = [&combined](const std::string& id) -> const ScenarioNode* {
         const auto iterator = std::find_if(combined.steps.begin(), combined.steps.end(),
             [&id](const ScenarioNode& step) { return step.id == id; });
@@ -479,8 +486,11 @@ void configurationAndCatalog(const QString& root)
                 "operator.manual_input:confirm_value") == 3,
             "YTP must request all three manual R4831 points");
     require(std::count(ytpEquipment.operations.begin(), ytpEquipment.operations.end(),
-                "stand.switch_matrix:switch") == 8,
-            "YTP must enable and disable the four captured ISD type-7 routes");
+                "stand.switch_matrix:switch") == 0,
+            "YTP adapter/ROKT path must not toggle ISD routes");
+    require(std::count(ytpEquipment.operations.begin(), ytpEquipment.operations.end(),
+                "stand.switch_matrix:service_full_reset") == 1,
+            "Standalone YTP run must perform exactly one initial ISD baseline");
     require(!ytpEquipment.supplyOutputEnabled,
             "YTP scenario must switch the AKIP output off after the test");
     const auto repeatedYtpRun = engine.run(
@@ -488,8 +498,10 @@ void configurationAndCatalog(const QString& root)
     require(repeatedYtpRun.verdict == RunVerdict::Ok
                 && ytpEquipment.supplyEnableCount == 1
                 && ytpEquipment.supplyDisableCount >= 2
+                && std::count(ytpEquipment.operations.begin(), ytpEquipment.operations.end(),
+                    "stand.switch_matrix:service_full_reset") == 2
                 && !ytpEquipment.supplyOutputEnabled,
-            "A repeated YTP run must restore AKIP output and switch it off again");
+            "A repeated standalone YTP run must start from a fresh ISD baseline and switch power off again");
 }
 
 void builtinCapabilityBinding()
@@ -622,8 +634,11 @@ void yalkOverloadSequenceRegression()
                 && measurement.attributes.at("upper_delta_code") == "2",
             "Overload report must retain the per-observed-channel ±2-code evidence");
     require(std::count(equipment.operations.begin(), equipment.operations.end(),
-                "stand.switch_matrix:full_reset") >= 6,
-            "Overload must return ISD to its safe state before and after every impact");
+                "stand.switch_matrix:full_reset") == 0,
+            "YALK overload runtime cleanup must never use global type=4");
+    require(std::count(equipment.operations.begin(), equipment.operations.end(),
+                "stand.switch_matrix:release_owner") >= 6,
+            "YALK overload must release its owned routes before and after impacts");
 }
 
 void yalkOpenStateRegression()
