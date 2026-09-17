@@ -19,8 +19,10 @@ add_executable(MilTechStation
     registrar_page.cpp
     registrar_page_production.cpp
     registrar_page.h
-    test_page.cpp
+    test_page_clean.cpp
     test_page.h
+    ubsi_ui_model.h
+    ubsi_measurement_views.h
     tu_flow_widget.cpp
     tu_flow_widget.h
     plot_widget.cpp
@@ -151,8 +153,10 @@ add_dependencies(OrbitaRuntimeResources MilTechStation orbita_equipment_plugins
 if(BUILD_TESTING)
     add_executable(test_page_smoke_test
         tests/test_page_smoke_test.cpp
-        test_page.cpp
+        test_page_clean.cpp
         test_page.h
+        ubsi_ui_model.h
+        ubsi_measurement_views.h
         tu_flow_widget.cpp
         tu_flow_widget.h
         equipment_control_widget.cpp
@@ -174,8 +178,10 @@ if(BUILD_TESTING)
 
     add_executable(test_page_yvp_event_test
         tests/test_page_yvp_event_test.cpp
-        test_page.cpp
+        test_page_clean.cpp
         test_page.h
+        ubsi_ui_model.h
+        ubsi_measurement_views.h
         tu_flow_widget.cpp
         tu_flow_widget.h
         equipment_control_widget.cpp
@@ -197,8 +203,10 @@ if(BUILD_TESTING)
 
     add_executable(test_page_power_yalk_event_test
         tests/test_page_power_yalk_event_test.cpp
-        test_page.cpp
+        test_page_clean.cpp
         test_page.h
+        ubsi_ui_model.h
+        ubsi_measurement_views.h
         tu_flow_widget.cpp
         tu_flow_widget.h
         equipment_control_widget.cpp
