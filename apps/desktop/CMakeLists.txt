@@ -24,6 +24,7 @@ add_executable(MilTechStation
     test_page.h
     ubsi_ui_model.h
     ubsi_measurement_views.h
+    ubsi_view_controls.cpp
     tu_flow_widget_clean.cpp
     tu_flow_widget.h
     plot_widget.cpp
@@ -151,6 +152,7 @@ if(BUILD_TESTING)
         test_page.h
         ubsi_ui_model.h
         ubsi_measurement_views.h
+        ubsi_view_controls.cpp
         tu_flow_widget_clean.cpp
         tu_flow_widget.h
         equipment_control_widget.cpp
