@@ -1,112 +1,250 @@
 #include "plugin_support.h"
-#include "orbita_stand/equipment_adapters.h"
+#include "orbita_stand/isd_driver.h"
+#include "orbita_stand/isd_http_transport.h"
 
+#include <algorithm>
+#include <chrono>
+#include <cmath>
+#include <iomanip>
+#include <locale>
 #include <memory>
 #include <sstream>
+#include <thread>
 
 namespace {
 using namespace orbita::stand;
 
-std::vector<unsigned> channels(const std::string& value)
+std::string ownerOf(const std::map<std::string, std::string>& args)
 {
-    std::vector<unsigned> result;
-    std::stringstream stream(value);
-    std::string token;
-    while (std::getline(stream, token, ',')) if (!token.empty()) result.push_back(std::stoul(token));
-    return result;
+    const auto found = args.find("owner");
+    if (found != args.end() && !found->second.empty()) return found->second;
+    // Compatibility only. Production procedures should pass an explicit owner.
+    return "unscoped";
+}
+
+std::string switchPath(unsigned type, unsigned channel, bool enabled)
+{
+    if (!type || !channel) throw std::invalid_argument("ISD type and channel start at one");
+    return "/type=" + std::to_string(type) + "num=" + std::to_string(channel)
+        + "val=" + (enabled ? "1" : "0");
+}
+
+std::string analogPath(unsigned channel, unsigned value, bool enabled)
+{
+    if (!channel) throw std::invalid_argument("ISD channel starts at one");
+    return "/type=1num=" + std::to_string(channel) + "val=" + std::to_string(value)
+        + "work=" + (enabled ? "1" : "0");
+}
+
+std::string yalkVoltagePath(unsigned channel, double volts)
+{
+    if (!channel) throw std::invalid_argument("ISD channel starts at one");
+    if (!std::isfinite(volts) || volts < 0.0 || volts > 6.2) {
+        throw std::invalid_argument("YALK voltage must be in range 0.00..6.20 V");
+    }
+    std::ostringstream value;
+    value.imbue(std::locale::classic());
+    value << std::fixed << std::setprecision(2) << volts;
+    return "/type=5num=" + std::to_string(channel) + "val=" + value.str()
+        + "work=1bus=1";
+}
+
+std::string yalkOutputBusOffPath(unsigned channel)
+{
+    if (!channel) throw std::invalid_argument("ISD channel starts at one");
+    return "/type=1num=" + std::to_string(channel) + "val=0work=1bus=0";
+}
+
+std::string yalkOutputOffPath(unsigned channel)
+{
+    if (!channel) throw std::invalid_argument("ISD channel starts at one");
+    return "/type=1num=" + std::to_string(channel) + "val=0work=0";
 }
 
 struct Instance {
     std::map<std::string, std::string> config;
-    std::unique_ptr<IsdHttpRouter> router;
+    std::unique_ptr<IsdHttpTransport> transport;
+    std::unique_ptr<IsdDriver> driver;
+    unsigned defaultSwitchType = 2;
+    unsigned serviceTimeoutMilliseconds = 10000;
 };
 
-orbita_plugin_status_v1 create(const char*, const char* text, void** output, orbita_plugin_buffer_v1* diagnostic)
+orbita_plugin_status_v1 create(const char*, const char* text, void** output,
+                               orbita_plugin_buffer_v1* diagnostic)
 {
     return plugin::guarded(diagnostic, [&] {
         if (!output) throw std::invalid_argument("Instance output pointer is required");
         auto instance = std::make_unique<Instance>();
         instance->config = plugin::arguments(text);
-        instance->router = std::make_unique<IsdHttpRouter>(IsdHttpConfig{
+        const unsigned normalTimeout = plugin::unsignedValue(instance->config, "timeout_ms", 1500);
+        instance->serviceTimeoutMilliseconds = plugin::unsignedValue(
+            instance->config, "service_timeout_ms", std::max(10000u, normalTimeout));
+        instance->defaultSwitchType = plugin::unsignedValue(instance->config, "switch_type", 2);
+        instance->transport = std::make_unique<IsdHttpTransport>(IsdHttpTransportConfig{
             plugin::required(instance->config, "host"),
             static_cast<std::uint16_t>(plugin::unsignedValue(instance->config, "port", 80)),
-            plugin::unsignedValue(instance->config, "timeout_ms", 1500),
-            plugin::unsignedValue(instance->config, "switch_type", 2),
-            channels(instance->config["reset_channels"])});
+            normalTimeout});
+
+        auto* transport = instance->transport.get();
+        const unsigned serviceTimeout = instance->serviceTimeoutMilliseconds;
+        IsdDriverOps operations;
+        operations.probe = [transport] {
+            return transport->get("/").body;
+        };
+        operations.serviceFullReset = [transport, serviceTimeout] {
+            // Firmware type=4 is a long synchronous all-channels-off sweep.
+            // It is a SERVICE action and is attempted exactly once.
+            (void)transport->get("/type=4num=1", serviceTimeout);
+        };
+        operations.setSwitch = [transport](unsigned type, unsigned channel, bool enabled) {
+            (void)transport->get(switchPath(type, channel, enabled));
+        };
+        operations.setAnalog = [transport](unsigned channel, unsigned value, bool enabled) {
+            (void)transport->get(analogPath(channel, value, enabled));
+        };
+        operations.setYalkVoltage = [transport](unsigned channel, double volts) {
+            (void)transport->get(yalkVoltagePath(channel, volts));
+        };
+        operations.disableYalkOutput = [transport](unsigned channel) {
+            (void)transport->get(yalkOutputBusOffPath(channel));
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            (void)transport->get(yalkOutputOffPath(channel));
+        };
+        instance->driver = std::make_unique<IsdDriver>(
+            std::move(operations), plugin::unsignedValue(instance->config, "trace_capacity", 256));
+
         *output = instance.release();
-        return std::string("ISD HTTP router created");
+        return std::string("ISD HTTP stateful driver created");
     });
 }
-void destroy(void* value) { delete static_cast<Instance*>(value); }
+
+void destroy(void* value)
+{
+    delete static_cast<Instance*>(value);
+}
+
 orbita_plugin_status_v1 invoke(void* value, const char* capability, const char* operation,
                               const char* request, orbita_plugin_buffer_v1* response)
 {
     return plugin::guarded(response, [&] {
         auto& instance = *static_cast<Instance*>(value);
-        if (!capability || std::string(capability) != "stand.switch_matrix") throw std::invalid_argument("Unsupported capability");
+        if (!capability || std::string(capability) != "stand.switch_matrix") {
+            throw std::invalid_argument("Unsupported capability");
+        }
+
         std::string command = operation ? operation : "";
         if (command == "set_analog") command = "analog";
         if (command == "set_switch") command = "switch";
         const auto args = plugin::arguments(request);
+        const auto owner = ownerOf(args);
+
         if (command == "probe") {
-            const auto body = instance.router->probe();
-            return std::string("status=ready\nalive=1\nmessage=ИСД ответил по HTTP\nresponse=")
-                + body + "\n";
+            const auto body = instance.driver->probe();
+            return std::string("status=ready\nalive=1\nconnectivity=http\nsession_state=")
+                + toString(instance.driver->sessionState())
+                + "\nglobal_hardware_state=not_readable\n"
+                  "message=ИСД ответил по HTTP; состояние реле и внутренних UART не проверено\n"
+                  "response=" + body + "\n";
         }
+        if (command == "state" || command == "driver_state") {
+            return instance.driver->statusText();
+        }
+        if (command == "trace") return instance.driver->traceText();
+        if (command == "clear_trace") {
+            instance.driver->clearTrace();
+            return std::string("status=ok\noperation=clear_trace\n");
+        }
+        if (command == "release" || command == "release_owner") {
+            instance.driver->releaseOwner(owner);
+            return std::string("status=ok\noperation=release_owner\nowner=") + owner
+                + "\nsession_state=" + toString(instance.driver->sessionState()) + "\n";
+        }
+
         plugin::requireActiveOutputs(instance.config);
+
         const auto resolvedChannel = [&]() {
             if (args.count("route")) {
                 const std::string key = "route." + args.at("route");
-                if (!instance.config.count(key)) throw std::invalid_argument("Не назначен маршрут ИСД " + args.at("route"));
+                if (!instance.config.count(key)) {
+                    throw std::invalid_argument("Не назначен маршрут ИСД " + args.at("route"));
+                }
                 if (args.count("ulk_address")) {
                     const unsigned address = plugin::unsignedValue(args, "ulk_address");
                     if (!address) throw std::invalid_argument("Адрес ЯЛК начинается с 1");
                     return plugin::unsignedValue(instance.config, key) + address - 1;
                 }
-                return plugin::unsignedValue(instance.config, key) + plugin::unsignedValue(args, "offset", 0);
+                return plugin::unsignedValue(instance.config, key)
+                    + plugin::unsignedValue(args, "offset", 0);
             }
             return plugin::unsignedValue(args, "channel");
         };
-        if (command == "reset" || command == "full_reset") instance.router->reset();
-        else if (command == "yalk_prepare") instance.router->prepareYalk();
-        else if (command == "yalk_set_voltage") {
-            instance.router->setYalkVoltage(
-                resolvedChannel(), plugin::doubleValue(args, "volts"));
-        }
-        else if (command == "yalk_output_off") {
-            instance.router->disableYalkOutput(resolvedChannel());
-        }
-        else if (command == "switch") {
-            unsigned type = plugin::unsignedValue(args, "type",
-                plugin::unsignedValue(instance.config, "switch_type", 2));
-            if (args.count("route")) type = plugin::unsignedValue(instance.config,
-                "route." + args.at("route") + ".type", type);
-            instance.router->setSwitch(type, resolvedChannel(), plugin::booleanValue(args, "enabled"));
+
+        if (command == "service_full_reset") {
+            instance.driver->serviceFullReset(owner);
+        } else if (command == "yalk_set_voltage") {
+            instance.driver->setYalkVoltage(
+                resolvedChannel(), plugin::doubleValue(args, "volts"), owner);
+        } else if (command == "yalk_output_off") {
+            instance.driver->disableYalkOutput(resolvedChannel(), owner);
+        } else if (command == "switch") {
+            unsigned type = plugin::unsignedValue(args, "type", instance.defaultSwitchType);
+            if (args.count("route")) {
+                type = plugin::unsignedValue(instance.config,
+                    "route." + args.at("route") + ".type", type);
+            }
+            instance.driver->setSwitch(
+                type, resolvedChannel(), plugin::booleanValue(args, "enabled"), owner);
         } else if (command == "analog") {
-            const unsigned value = args.count("code")
-                ? plugin::unsignedValue(args, "code") : plugin::unsignedValue(args, "value");
+            const unsigned analogValue = args.count("code")
+                ? plugin::unsignedValue(args, "code")
+                : plugin::unsignedValue(args, "value");
             if (args.count("route")) {
                 const std::string prefix = "route." + args.at("route") + ".";
                 const unsigned minimum = plugin::unsignedValue(instance.config, prefix + "min", 0);
                 const unsigned maximum = plugin::unsignedValue(instance.config, prefix + "max", 4095);
-                if (value < minimum || value > maximum) throw std::invalid_argument(
-                    "Значение ИСД вне разрешённого диапазона маршрута " + args.at("route"));
+                if (analogValue < minimum || analogValue > maximum) {
+                    throw std::invalid_argument(
+                        "Значение ИСД вне разрешённого диапазона маршрута " + args.at("route"));
+                }
             }
-            instance.router->setAnalog(resolvedChannel(), value,
-                plugin::booleanValue(args, "enabled"));
+            instance.driver->setAnalog(
+                resolvedChannel(), analogValue,
+                plugin::booleanValue(args, "enabled"), owner);
+        } else {
+            throw std::invalid_argument("Unsupported ISD operation: " + command);
         }
-        else throw std::invalid_argument("Unsupported ISD operation: " + command);
-        return std::string("status=ok\noperation=") + command + "\n";
+
+        return std::string("status=ok\noperation=") + command
+            + "\nowner=" + owner
+            + "\nsession_state=" + toString(instance.driver->sessionState()) + "\n";
     });
 }
+
 void cancel(void*) {}
-// Generic plugin lifecycle cleanup cannot prove ownership of routes enabled by
-// another procedure.  Procedures therefore remove only their own routes.  A
-// full ISD reset remains an explicit operation for confirmed initialization
-// flows and must never be emitted by safeStop()/device destruction.
-void safeStop(void*) {}
-const orbita_equipment_api_v1 api{ORBITA_EQUIPMENT_ABI_V1, sizeof(orbita_equipment_api_v1),
-    "orbita.isd_http", "Имитатор сигналов датчиков", "stand.switch_matrix",
-    create, destroy, invoke, cancel, safeStop};
+
+void safeStop(void* value)
+{
+    if (!value) return;
+    auto& instance = *static_cast<Instance*>(value);
+    // Targeted only: never issue firmware type=4 from generic lifecycle cleanup.
+    instance.driver->safeStopAll();
 }
-extern "C" ORBITA_PLUGIN_EXPORT const orbita_equipment_api_v1* orbita_plugin_get_api_v1(void) { return &api; }
+
+const orbita_equipment_api_v1 api{
+    ORBITA_EQUIPMENT_ABI_V1,
+    sizeof(orbita_equipment_api_v1),
+    "orbita.isd_http",
+    "Имитатор сигналов датчиков",
+    "stand.switch_matrix",
+    create,
+    destroy,
+    invoke,
+    cancel,
+    safeStop};
+
+} // namespace
+
+extern "C" ORBITA_PLUGIN_EXPORT const orbita_equipment_api_v1* orbita_plugin_get_api_v1(void)
+{
+    return &api;
+}
