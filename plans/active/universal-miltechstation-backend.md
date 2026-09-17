@@ -191,11 +191,12 @@ COM/baud/IP/credentials принадлежат delivery/environment, а не sta
 - [x] physical readiness выбранного сценария подключается только в `KtmaMainWindow`;
 - [x] отдельный неиспользуемый Rigol readiness path удалён; Rigol проходит общий delivery readiness plan как обычный component.
 - [x] desktop equipment metadata читается из `ComponentProfile`; `standProfile_.devices` / `bindCapabilities` больше не используются в desktop.
-- [x] регистрация KTMA/UBSI procedures и discovery TU-сценариев вынесены из reusable `MainWindow` в `KtmaMainWindow`.
+- [x] регистрация KTMA/UBSI procedures и discovery TU-сценариев вынесены из reusable `MainWindow` в `KtmaMainWindow`;
+- [x] выбор/загрузка `stand_ktma.yaml` принадлежит KTMA application composition; reusable `MainWindow` получает уже настроенный `StandProfile`;
+- [x] KTMA `Registrar` и `registrar.db` создаются и принадлежат `KtmaMainWindow`; generic scenario runner/report finalizer больше не содержит production lifecycle регистратора.
 
 Остаётся:
 
-- [ ] вынести KTMA registrar/profile bootstrap из `MainWindow` в delivery/application composition;
 - [ ] по мере выноса composition сокращать защищённый `integration*()` API `MainWindow`;
 - [ ] product/delivery package подключать композицией, а не наследованием аппаратной логики;
 - [ ] операторский UX УБСИ не перерабатывать в рамках backend migration.
@@ -213,7 +214,7 @@ COM/baud/IP/credentials принадлежат delivery/environment, а не sta
 ## Следующие шаги
 
 1. держать каждый backend-срез зелёным по CI;
-2. вынести оставшийся KTMA registrar/profile bootstrap из reusable `MainWindow`;
+2. сокращать защищённый `integration*()` API и постепенно заменить наследование product/delivery composition;
 3. закончить resource migration standalone YTP и остальных TU-сценариев после resource-aware test fixture;
 4. перевести оставшиеся внутренние KTMA includes на канонические `ktma/ubsi/*` и убрать wrappers после последнего consumer;
 5. связать `execution_runtime` с run/evidence и подключить первый существующий Python/Lua стенд;

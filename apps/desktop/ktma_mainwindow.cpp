@@ -8,6 +8,7 @@
 #include "orbita_stand/config.h"
 #include "registrar.h"
 
+#include <QAction>
 #include <QApplication>
 #include <QComboBox>
 #include <QCoreApplication>
@@ -18,6 +19,7 @@
 #include <QInputDialog>
 #include <QLineEdit>
 #include <QMessageBox>
+#include <QMenu>
 #include <QMetaObject>
 #include <QSet>
 #include <QSignalBlocker>
