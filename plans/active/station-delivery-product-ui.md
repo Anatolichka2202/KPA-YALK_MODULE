@@ -21,7 +21,10 @@ Working branch: `architecture/platform-delivery-ui`
 - [x] add UBSI product UI module target;
 - [x] make desktop compose KTMA + UBSI at compile time;
 - [x] add contract test that KTMA contains UBSI;
-- [ ] run CI and keep this slice behavior-neutral.
+- [x] build/configure and the new `ktma.ubsi.ui_contract` test pass in CI;
+- [ ] full branch CI is currently blocked by the inherited
+  `desktop.test_page_tu_runtime` failure from the base integration branch
+  (same failure exists at base commit `55a449f`).
 
 ## Phase 2 — physical UBSI UI ownership
 
