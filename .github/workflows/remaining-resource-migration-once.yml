@@ -1,0 +1,40 @@
+name: Remaining KTMA resource migration
+
+on:
+  push:
+    branches: [universal_miltechstation]
+    paths:
+      - .github/workflows/remaining-resource-migration-once.yml
+      - tools/apply_remaining_resource_migration.py
+
+permissions:
+  contents: write
+
+jobs:
+  refactor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: universal_miltechstation
+          fetch-depth: 0
+
+      - name: Apply remaining resource migration
+        run: python tools/apply_remaining_resource_migration.py
+
+      - name: Verify and commit
+        run: |
+          git diff --check
+          grep -n 'resource: power.dut' data/scenarios/ubsi_yalk_contact_thresholds.yaml data/scenarios/ubsi_tu_5_6.yaml
+          grep -n 'resource: dut.parameter_source' data/scenarios/ubsi_yalk_contact_thresholds.yaml data/scenarios/ubsi_tu_5_6.yaml
+          grep -n 'resource: switch_matrix.primary' data/scenarios/ubsi_yalk_contact_thresholds.yaml data/scenarios/ubsi_tu_5_6.yaml
+          grep -n 'isPhysicalCapability' deliveries/ktma/ubsi/tests/production_scenario_test.cpp
+          grep -n 'legacy TU trace' plans/active/universal-miltechstation-backend.md
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/scenarios/ubsi_yalk_contact_thresholds.yaml \
+                  data/scenarios/ubsi_tu_5_6.yaml \
+                  deliveries/ktma/ubsi/tests/production_scenario_test.cpp \
+                  plans/active/universal-miltechstation-backend.md
+          git commit -m "refactor(ktma): finish scenario resource migration"
+          git push origin HEAD:universal_miltechstation
