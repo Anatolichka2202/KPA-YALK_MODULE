@@ -68,6 +68,13 @@ std::int64_t nowMilliseconds()
         std::chrono::system_clock::now().time_since_epoch()).count();
 }
 
+unsigned elapsedMilliseconds(std::chrono::steady_clock::time_point started)
+{
+    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - started).count();
+    return static_cast<unsigned>(std::max<std::int64_t>(0, elapsed));
+}
+
 } // namespace
 
 const char* toString(IsdDriverState state) noexcept
@@ -154,29 +161,29 @@ struct IsdDriver::Impl {
                          const std::string& detail, Function&& function,
                          Success&& success)
     {
-        requireKnownForMutation();
         const IsdDriverState before = state;
         const auto started = std::chrono::steady_clock::now();
         try {
             function();
             success();
-            const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::chrono::steady_clock::now() - started).count();
             appendTrace({0, 0, owner, operation, detail,
-                static_cast<unsigned>(std::max<std::int64_t>(0, elapsed)),
-                "ack", before, state, "OK"});
+                elapsedMilliseconds(started), "ack", before, state, "OK"});
         } catch (const std::exception& error) {
             state = IsdDriverState::Unknown;
-            const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::chrono::steady_clock::now() - started).count();
             appendTrace({0, 0, owner, operation, detail,
-                static_cast<unsigned>(std::max<std::int64_t>(0, elapsed)),
-                "indeterminate", before, state, clean(error.what())});
+                elapsedMilliseconds(started), "indeterminate", before, state,
+                clean(error.what())});
+            throw;
+        } catch (...) {
+            state = IsdDriverState::Unknown;
+            appendTrace({0, 0, owner, operation, detail,
+                elapsedMilliseconds(started), "indeterminate", before, state,
+                "unknown error"});
             throw;
         }
     }
 
-    bool deactivate(const ActiveAction& action, bool recordFailure)
+    bool deactivate(const ActiveAction& action)
     {
         const IsdDriverState before = state;
         const auto started = std::chrono::steady_clock::now();
@@ -189,40 +196,29 @@ struct IsdDriver::Impl {
                 ops.disableYalkOutput(action.channel);
             }
             markInactive(action);
-            const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::chrono::steady_clock::now() - started).count();
             appendTrace({0, 0, action.owner, "release",
                 std::string("kind=") + kindName(action.kind)
                     + ",type=" + std::to_string(action.type)
                     + ",channel=" + std::to_string(action.channel),
-                static_cast<unsigned>(std::max<std::int64_t>(0, elapsed)),
-                "ack", before, state, "OK"});
+                elapsedMilliseconds(started), "ack", before, state, "OK"});
             return true;
         } catch (const std::exception& error) {
             state = IsdDriverState::Unknown;
-            if (recordFailure) {
-                const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-                    std::chrono::steady_clock::now() - started).count();
-                appendTrace({0, 0, action.owner, "release",
-                    std::string("kind=") + kindName(action.kind)
-                        + ",type=" + std::to_string(action.type)
-                        + ",channel=" + std::to_string(action.channel),
-                    static_cast<unsigned>(std::max<std::int64_t>(0, elapsed)),
-                    "indeterminate", before, state, clean(error.what())});
-            }
+            appendTrace({0, 0, action.owner, "release",
+                std::string("kind=") + kindName(action.kind)
+                    + ",type=" + std::to_string(action.type)
+                    + ",channel=" + std::to_string(action.channel),
+                elapsedMilliseconds(started), "indeterminate", before, state,
+                clean(error.what())});
             return false;
         } catch (...) {
             state = IsdDriverState::Unknown;
-            if (recordFailure) {
-                const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-                    std::chrono::steady_clock::now() - started).count();
-                appendTrace({0, 0, action.owner, "release",
-                    std::string("kind=") + kindName(action.kind)
-                        + ",type=" + std::to_string(action.type)
-                        + ",channel=" + std::to_string(action.channel),
-                    static_cast<unsigned>(std::max<std::int64_t>(0, elapsed)),
-                    "indeterminate", before, state, "unknown error"});
-            }
+            appendTrace({0, 0, action.owner, "release",
+                std::string("kind=") + kindName(action.kind)
+                    + ",type=" + std::to_string(action.type)
+                    + ",channel=" + std::to_string(action.channel),
+                elapsedMilliseconds(started), "indeterminate", before, state,
+                "unknown error"});
             return false;
         }
     }
@@ -240,18 +236,13 @@ std::string IsdDriver::probe()
     const auto started = std::chrono::steady_clock::now();
     try {
         const auto response = impl_->ops.probe();
-        const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now() - started).count();
         impl_->appendTrace({0, 0, "system", "probe", {},
-            static_cast<unsigned>(std::max<std::int64_t>(0, elapsed)),
-            "ack", before, impl_->state, clean(response)});
+            elapsedMilliseconds(started), "ack", before, impl_->state, clean(response)});
         return response;
     } catch (const std::exception& error) {
-        const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now() - started).count();
         impl_->appendTrace({0, 0, "system", "probe", {},
-            static_cast<unsigned>(std::max<std::int64_t>(0, elapsed)),
-            "failed", before, impl_->state, clean(error.what())});
+            elapsedMilliseconds(started), "failed", before, impl_->state,
+            clean(error.what())});
         throw;
     }
 }
@@ -266,18 +257,13 @@ void IsdDriver::reset(const std::string& owner)
         impl_->ops.reset();
         impl_->active.clear();
         impl_->state = IsdDriverState::Known;
-        const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now() - started).count();
         impl_->appendTrace({0, 0, owner, "reset", "full_reset=1",
-            static_cast<unsigned>(std::max<std::int64_t>(0, elapsed)),
-            "ack", before, impl_->state, "OK"});
+            elapsedMilliseconds(started), "ack", before, impl_->state, "OK"});
     } catch (const std::exception& error) {
         impl_->state = IsdDriverState::Unknown;
-        const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now() - started).count();
         impl_->appendTrace({0, 0, owner, "reset", "full_reset=1",
-            static_cast<unsigned>(std::max<std::int64_t>(0, elapsed)),
-            "indeterminate", before, impl_->state, clean(error.what())});
+            elapsedMilliseconds(started), "indeterminate", before, impl_->state,
+            clean(error.what())});
         throw;
     }
 }
@@ -292,18 +278,13 @@ void IsdDriver::prepareYalk(const std::string& owner)
         impl_->ops.prepareYalk();
         impl_->active.clear();
         impl_->state = IsdDriverState::Known;
-        const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now() - started).count();
         impl_->appendTrace({0, 0, owner, "yalk_prepare", "reset_then_prepare=1",
-            static_cast<unsigned>(std::max<std::int64_t>(0, elapsed)),
-            "ack", before, impl_->state, "OK"});
+            elapsedMilliseconds(started), "ack", before, impl_->state, "OK"});
     } catch (const std::exception& error) {
         impl_->state = IsdDriverState::Unknown;
-        const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now() - started).count();
         impl_->appendTrace({0, 0, owner, "yalk_prepare", "reset_then_prepare=1",
-            static_cast<unsigned>(std::max<std::int64_t>(0, elapsed)),
-            "indeterminate", before, impl_->state, clean(error.what())});
+            elapsedMilliseconds(started), "indeterminate", before, impl_->state,
+            clean(error.what())});
         throw;
     }
 }
@@ -313,13 +294,19 @@ void IsdDriver::setSwitch(unsigned type, unsigned channel, bool enabled,
 {
     if (!type || !channel) throw std::invalid_argument("ISD type/channel starts at one");
     std::lock_guard<std::mutex> lock(impl_->mutex);
+    impl_->requireKnownForMutation();
     ActiveAction action{ActiveKind::Switch, type, channel, owner};
     impl_->ensureOwnerMayTouch(action);
+
+    // Track ON before sending. A timeout is indeterminate: the relay may have
+    // switched even when the HTTP acknowledgement was lost. Keeping it in the
+    // owned set lets safeStop/release explicitly drive it OFF afterwards.
+    if (enabled) impl_->markActive(action);
     impl_->executeMutation(owner, "switch",
         "type=" + std::to_string(type) + ",channel=" + std::to_string(channel)
             + ",enabled=" + (enabled ? "1" : "0"),
         [&] { impl_->ops.setSwitch(type, channel, enabled); },
-        [&] { enabled ? impl_->markActive(action) : impl_->markInactive(action); });
+        [&] { if (!enabled) impl_->markInactive(action); });
 }
 
 void IsdDriver::setAnalog(unsigned channel, unsigned value, bool enabled,
@@ -327,13 +314,15 @@ void IsdDriver::setAnalog(unsigned channel, unsigned value, bool enabled,
 {
     if (!channel) throw std::invalid_argument("ISD channel starts at one");
     std::lock_guard<std::mutex> lock(impl_->mutex);
+    impl_->requireKnownForMutation();
     ActiveAction action{ActiveKind::Analog, 1, channel, owner};
     impl_->ensureOwnerMayTouch(action);
+    if (enabled) impl_->markActive(action);
     impl_->executeMutation(owner, "analog",
         "channel=" + std::to_string(channel) + ",value=" + std::to_string(value)
             + ",enabled=" + (enabled ? "1" : "0"),
         [&] { impl_->ops.setAnalog(channel, value, enabled); },
-        [&] { enabled ? impl_->markActive(action) : impl_->markInactive(action); });
+        [&] { if (!enabled) impl_->markInactive(action); });
 }
 
 void IsdDriver::setYalkVoltage(unsigned channel, double volts,
@@ -341,19 +330,21 @@ void IsdDriver::setYalkVoltage(unsigned channel, double volts,
 {
     if (!channel) throw std::invalid_argument("ISD channel starts at one");
     std::lock_guard<std::mutex> lock(impl_->mutex);
+    impl_->requireKnownForMutation();
     ActiveAction action{ActiveKind::YalkOutput, 5, channel, owner};
     impl_->ensureOwnerMayTouch(action);
+    impl_->markActive(action);
     std::ostringstream detail;
     detail << "channel=" << channel << ",volts=" << volts;
     impl_->executeMutation(owner, "yalk_set_voltage", detail.str(),
-        [&] { impl_->ops.setYalkVoltage(channel, volts); },
-        [&] { impl_->markActive(action); });
+        [&] { impl_->ops.setYalkVoltage(channel, volts); }, [] {});
 }
 
 void IsdDriver::disableYalkOutput(unsigned channel, const std::string& owner)
 {
     if (!channel) throw std::invalid_argument("ISD channel starts at one");
     std::lock_guard<std::mutex> lock(impl_->mutex);
+    impl_->requireKnownForMutation();
     ActiveAction action{ActiveKind::YalkOutput, 5, channel, owner};
     impl_->ensureOwnerMayTouch(action);
     impl_->executeMutation(owner, "yalk_output_off",
@@ -368,7 +359,7 @@ void IsdDriver::releaseOwner(const std::string& owner)
     bool failed = false;
     const auto snapshot = impl_->active;
     for (auto iterator = snapshot.rbegin(); iterator != snapshot.rend(); ++iterator) {
-        if (iterator->owner == owner && !impl_->deactivate(*iterator, true)) failed = true;
+        if (iterator->owner == owner && !impl_->deactivate(*iterator)) failed = true;
     }
     if (failed) {
         throw std::runtime_error("ISD release completed with one or more indeterminate outputs");
@@ -381,11 +372,11 @@ void IsdDriver::safeStopAll() noexcept
         std::lock_guard<std::mutex> lock(impl_->mutex);
         const auto snapshot = impl_->active;
         for (auto iterator = snapshot.rbegin(); iterator != snapshot.rend(); ++iterator) {
-            (void)impl_->deactivate(*iterator, true);
+            (void)impl_->deactivate(*iterator);
         }
     } catch (...) {
-        // Safe stop is best-effort by ABI contract. Never replace it with full reset:
-        // live ISD type=4 may block when an internal RS-485 module does not answer.
+        // Best effort by ABI contract. Never replace this with full type=4:
+        // live ISD reset can block when an internal module does not answer.
     }
 }
 
