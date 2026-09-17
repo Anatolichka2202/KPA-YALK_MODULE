@@ -1,0 +1,42 @@
+name: YTP resource migration
+
+on:
+  push:
+    branches: [universal_miltechstation]
+    paths:
+      - .github/workflows/ytp-resource-migration-once.yml
+      - tools/apply_ytp_resource_migration.py
+
+permissions:
+  contents: write
+
+jobs:
+  refactor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: universal_miltechstation
+          fetch-depth: 0
+
+      - name: Apply YTP resource migration
+        run: python tools/apply_ytp_resource_migration.py
+
+      - name: Verify and commit
+        run: |
+          git diff --check
+          grep -n 'resourceHasCapability' deliveries/ktma/ubsi/tests/scenario_runtime_test.cpp
+          grep -n 'resource: power.dut' data/scenarios/ubsi_ytp_tu_5_6.yaml data/scenarios/ubsi_ytp_120_check.yaml
+          grep -n 'resource: dut.parameter_source' data/scenarios/ubsi_ytp_tu_5_6.yaml data/scenarios/ubsi_ytp_120_check.yaml
+          grep -n 'resource: switch_matrix.primary' data/scenarios/ubsi_ytp_tu_5_6.yaml data/scenarios/ubsi_ytp_120_check.yaml
+          ! grep -A2 '^    requires:$' data/scenarios/ubsi_ytp_tu_5_6.yaml | grep -E 'power\.dc_supply|ulk\.parameter_source|stand\.switch_matrix'
+          ! grep -A2 '^    requires:$' data/scenarios/ubsi_ytp_120_check.yaml | grep -E 'power\.dc_supply|ulk\.parameter_source|stand\.switch_matrix'
+          grep -n 'standalone published YTP TU' plans/active/universal-miltechstation-backend.md
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add deliveries/ktma/ubsi/tests/scenario_runtime_test.cpp \
+                  data/scenarios/ubsi_ytp_tu_5_6.yaml \
+                  data/scenarios/ubsi_ytp_120_check.yaml \
+                  plans/active/universal-miltechstation-backend.md
+          git commit -m "refactor(ktma): route standalone YTP through resources"
+          git push origin HEAD:universal_miltechstation
