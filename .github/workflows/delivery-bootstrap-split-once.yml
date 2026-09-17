@@ -1,0 +1,35 @@
+name: delivery bootstrap split
+
+on:
+  push:
+    branches: [universal_miltechstation]
+    paths:
+      - .github/workflows/delivery-bootstrap-split-once.yml
+      - tools/apply_delivery_bootstrap_split.py
+
+permissions:
+  contents: write
+
+jobs:
+  refactor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: universal_miltechstation
+          fetch-depth: 0
+      - name: Apply split
+        run: python tools/apply_delivery_bootstrap_split.py
+      - name: Verify and commit
+        run: |
+          git diff --check
+          ! grep -n 'orbita_stand/ubsi_procedures.h' apps/desktop/mainwindow.cpp
+          ! grep -n 'initializeStandRuntime();' apps/desktop/mainwindow.cpp
+          grep -n 'integrationDefaultStandProfile' apps/desktop/mainwindow.cpp apps/desktop/mainwindow.h apps/desktop/ktma_mainwindow.*
+          grep -n 'integrationRegisterDeliveryProcedures' apps/desktop/mainwindow.cpp apps/desktop/mainwindow.h apps/desktop/ktma_mainwindow.*
+          grep -n 'ktma/ubsi/procedures.h' apps/desktop/ktma_mainwindow.cpp
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/desktop/mainwindow.cpp apps/desktop/mainwindow.h apps/desktop/ktma_mainwindow.cpp apps/desktop/ktma_mainwindow.h
+          git commit -m "refactor(desktop): move delivery bootstrap hooks to KTMA"
+          git push origin HEAD:universal_miltechstation
