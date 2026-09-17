@@ -1,10 +1,10 @@
-# MilTechStation: station / delivery / product boundaries
+# MilTechStation: границы station / delivery / product
 
-Status: architecture baseline for production integration.
+Статус: базовая архитектурная спецификация для production-интеграции.
 
-## 1. Dependency axis
+## 1. Ось зависимостей
 
-The dependency direction is one-way:
+Зависимости идут только в одну сторону:
 
 ```text
 station platform + station UI
@@ -16,79 +16,80 @@ station platform + station UI
        + product UI
 ```
 
-A product UI may depend on its delivery UI contract. A delivery UI may depend on
-station UI contracts. The station must not depend on KTMA, UBSI, PPB or another
-product.
+Предметный UI может зависеть от UI-контракта своей поставки.
+UI поставки может зависеть от контрактов станции.
+Станция не должна зависеть от КТМА, УБСИ, ППБ или другого изделия.
 
-KTMA is a delivery. UBSI is the first production product module inside the KTMA
-delivery. PPB may arrive with its own complete UI and does not have to look like
-UBSI.
+КТМА — поставка. УБСИ — первый production product-module внутри КТМА.
+ППБ может прийти со своим полноценным интерфейсом и не обязан выглядеть как УБСИ.
 
-## 2. UI ownership
+## 2. Владение UI
 
 ### Station UI
 
-Owns only platform functions:
+Владеет только платформенными функциями:
 
-- application shell and common navigation;
-- administration shell;
-- logs, diagnostics and run/evidence browser;
-- generic equipment/runtime state;
-- artifact browser/editor host;
-- provider registries for documents, scenarios and execution runtimes.
+- shell приложения и общей навигацией;
+- оболочкой администрирования;
+- логами, диагностикой и просмотром run/evidence;
+- общим состоянием оборудования/runtime;
+- host-ом для просмотра/редактирования артефактов;
+- реестрами document/scenario/execution providers.
 
-It does not own UBSI workflow, KTMA registrar semantics or PPB pages.
+Station UI не владеет workflow УБСИ, семантикой регистратора КТМА или страницами ППБ.
 
 ### Delivery UI
 
-Owns delivery-wide functions and services. For KTMA this includes the place for
-the complete KTMA composition: stand profile, registrar integration, equipment
-service views and product registration.
+Владеет общими для конкретной поставки функциями и сервисами.
+Для КТМА это место для полного состава КТМА: stand profile, регистратора,
+сервисных страниц оборудования и регистрации предметных модулей.
 
-A delivery decides which product modules are built into the package and which
-optional runtimes are allowed.
+Поставка определяет, какие product-modules входят в сборку и какие optional runtime
+ей разрешены.
 
 ### Product UI
 
-Owns product-specific operator UX. UBSI owns Production/TU workspaces and its
-Power/YALK/YTP/YVP views. These remain product UI and are not generalized into a
-YAML-generated screen.
+Владеет предметным операторским UX.
+Для УБСИ это Production/TУ workspace и представления Питание/ЯЛК/ЯТП/ЯВП.
+Они не превращаются в универсальный экран, автоматически рисуемый из YAML.
 
-PPB can keep a product-specific interface. Shared controls are moved to station
-UI only after a second real consumer proves that they are generic.
+ППБ может сохранить собственный UI.
+Компонент переносится в station UI только после появления второго реального
+потребителя, который подтверждает, что компонент действительно общий.
 
-## 3. Administration and artifact formats
+## 3. Администрирование и форматы
 
-Administration is a station function, but file formats are providers, not the
-station architecture.
+Администрирование — функция станции, но форматы файлов являются providers,
+а не частью архитектуры станции.
 
-Artifacts are separated by semantics:
+Артефакты разделяются по смыслу:
 
 ```text
 document/config     -> codec/editor/validator
-scenario            -> scenario provider
-executable script   -> execution runtime
+scenario            -> ScenarioProvider
+executable script   -> ExecutionRuntime
 binary/data         -> viewer/importer
 ```
 
-Target provider model:
+Целевая модель providers:
 
-- YAML: current ScenarioEngine/document provider;
-- JSON: Qt JSON document provider;
-- INI: QSettings-backed provider;
-- TOML: optional provider; planned dependency is toml++;
-- TXT: plain-text provider with no invented schema;
-- Lua: executable runtime/provider, disabled unless a delivery enables it;
-- Python: external-process integration first; embedding is not required for the
-  first integration.
+- YAML — текущий ScenarioEngine/document provider;
+- JSON — provider на Qt JSON;
+- INI — provider на QSettings;
+- TOML — optional provider; зависимость toml++ добавляется только с первым
+  реальным TOML consumer;
+- TXT — plain-text provider без выдуманной схемы;
+- Lua — executable runtime/provider, по умолчанию запрещён;
+- Python — сначала external-process integration, embedded Python не требуется
+  для первой интеграции.
 
-A generic raw-text editor is allowed for textual artifacts. A typed editor is an
-optional delivery/product contribution. The station must not silently reinterpret
-INI/TOML/JSON/TXT as YAML.
+Для текстовых артефактов допустим общий raw-text editor.
+Typed editor — дополнительный contribution поставки или изделия.
+Станция не должна молча интерпретировать INI/TOML/JSON/TXT как YAML.
 
-## 4. Scenario boundary
+## 4. Граница сценариев
 
-Scenario format and run lifecycle are separate concerns.
+Формат сценария и lifecycle запуска — разные сущности:
 
 ```text
 scenario artifact
@@ -98,39 +99,41 @@ ScenarioProvider
 common run request / events / result / evidence
 ```
 
-The existing YAML ScenarioEngine is one provider. A future PPB Lua scenario
-provider may execute Lua while publishing the same run/evidence lifecycle.
-External Python software can be connected through the process runtime rather
-than rewritten into C++.
+Существующий YAML ScenarioEngine является provider №1.
+ППБ в будущем может подключить Lua ScenarioProvider и при этом публиковать тот же
+run/evidence lifecycle.
+Существующая программа на Python подключается через process runtime и не обязана
+переписываться на C++.
 
-Scripts are disabled by default. Delivery composition explicitly enables a
-runtime; this is where PPB may enable Lua while KTMA/UBSI does not need to.
+Исполняемые runtime выключены по умолчанию.
+Разрешение конкретного runtime задаёт delivery composition: например, ППБ может
+разрешить Lua, а КТМА/УБСИ не обязаны его иметь.
 
-## 5. Technology stack
+## 5. Стек
 
-Current production base:
+Текущая production-база:
 
 - C++17;
 - Qt 6 / Qt Widgets;
 - CMake;
-- yaml-cpp for existing YAML scenarios/config;
-- SQLite-based registrar/report/run data already used by the project;
-- equipment plugins behind the station equipment ABI.
+- yaml-cpp для существующих YAML-сценариев/конфигов;
+- SQLite в уже существующих registrar/report/run контурах;
+- equipment plugins через station equipment ABI.
 
-Planned platform providers:
+Целевые platform providers:
 
-- Qt JSON for JSON;
-- QSettings for INI;
-- toml++ for TOML when the first real TOML consumer is connected;
-- Lua 5.4 as an optional delivery-enabled runtime;
-- Python 3 as an external process first;
-- plain QFile/QTextStream path for TXT.
+- Qt JSON — JSON;
+- QSettings — INI;
+- toml++ — TOML при появлении реального consumer;
+- Lua 5.4 — optional delivery-enabled runtime;
+- Python 3 — сначала внешний процесс;
+- QFile/QTextStream — TXT.
 
-The `universal_miltechstation` branch is a donor for StationSession,
-component/resource composition and process execution runtime. It is not merged
-wholesale into the production branch.
+Ветка `universal_miltechstation` используется как донор StationSession,
+component/resource composition и process execution runtime.
+Целиком в production-ветку она не вливается.
 
-## 6. Repository ownership target
+## 6. Целевая структура репозитория
 
 ```text
 platform/
@@ -148,6 +151,6 @@ deliveries/ktma/
 station/                    reusable runtime/equipment/scenario infrastructure
 ```
 
-The first implementation slice introduces the compile-time
-`station -> KTMA delivery -> UBSI product` manifest boundary without changing
-the approved UBSI pixels or operator workflow.
+Первый реализованный срез вводит compile-time границу
+`station -> KTMA delivery -> UBSI product` без изменения утверждённого
+операторского интерфейса УБСИ.
