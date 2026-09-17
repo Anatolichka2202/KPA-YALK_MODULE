@@ -107,7 +107,13 @@ jobs:
             ORBITA_UI_SCREENSHOT="$PWD/ui-captures/$scene" \
               ./build-ci/apps/desktop/test_page_smoke_test.exe -platform offscreen
           done
-          test "$(find ui-captures -type f -name '*.png' | wc -l)" -eq 20
+          for scene in TU_ENTRY TU_READY TU_RUNTIME TU_FINISH; do
+            QT_QPA_PLATFORM=offscreen \
+            MILTECH_UI_SCENE="$scene" \
+            ORBITA_UI_SCREENSHOT="$PWD/ui-captures/$scene" \
+              ./build-ci/apps/desktop/test_page_tu_runtime_test.exe -platform offscreen
+          done
+          test "$(find ui-captures -type f -name '*.png' | wc -l)" -eq 28
 
       - name: Upload frozen UI states
         if: success()
