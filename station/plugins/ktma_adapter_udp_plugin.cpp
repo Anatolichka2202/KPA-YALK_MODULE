@@ -25,8 +25,6 @@ struct Instance {
     bool ytpPassive = false;
     bool ytpLegacyMode2 = false;
     bool ytpRokt68 = false;
-    bool yvpProbe = false;
-    bool yvpReadoutYalk = false;
 };
 
 unsigned timeout(const Instance& instance, const std::map<std::string, std::string>& args)
@@ -48,8 +46,6 @@ std::string statsText(const UlkStreamStats& stats)
         << "\nreference204=" << stats.reference204
         << "\nytp_legacy65=" << stats.ytpLegacy65
         << "\nytp_rokt68=" << stats.ytpRokt68
-        << "\nyvp_rokt136=" << stats.yvpRokt136
-        << "\nyvp_channel_rokt132=" << stats.yvpChannelRokt132
         << "\nunknown=" << stats.unknown
         << "\ndropped=" << stats.dropped << '\n';
     return out.str();
@@ -58,8 +54,7 @@ std::string statsText(const UlkStreamStats& stats)
 UlkFrame waitYalk(Instance& instance, std::uint64_t after, unsigned timeoutMs)
 {
     if (instance.cancelled.load()) throw std::runtime_error("Operation cancelled");
-    if (instance.ytpPassive || instance.ytpLegacyMode2 || instance.ytpRokt68
-        || instance.yvpProbe) {
+    if (instance.ytpPassive || instance.ytpLegacyMode2 || instance.ytpRokt68) {
         throw std::runtime_error("Активен поток с другим форматом; декодер ЯЛК неприменим");
     }
     return instance.transport->waitFrame(
@@ -321,8 +316,6 @@ orbita_plugin_status_v1 invoke(void* value, const char* capability, const char* 
             instance.ytpPassive = false;
             instance.ytpLegacyMode2 = false;
             instance.ytpRokt68 = false;
-            instance.yvpProbe = false;
-            instance.yvpReadoutYalk = false;
             instance.transport->prepareYalkReference();
             instance.selectedMode = -2;
             return std::string("status=prepared\nprotocol=rokt_yalk\n");
@@ -345,8 +338,6 @@ orbita_plugin_status_v1 invoke(void* value, const char* capability, const char* 
             instance.ytpPassive = false;
             instance.ytpLegacyMode2 = false;
             instance.ytpRokt68 = true;
-            instance.yvpProbe = false;
-            instance.yvpReadoutYalk = false;
             instance.transport->prepareYtpRokt();
             instance.selectedMode = -5;
             return std::string("status=prepared\nprotocol=rokt_ytp68\n");
@@ -377,8 +368,6 @@ orbita_plugin_status_v1 invoke(void* value, const char* capability, const char* 
             instance.ytpPassive = false;
             instance.ytpLegacyMode2 = false;
             instance.ytpRokt68 = false;
-            instance.yvpProbe = false;
-            instance.yvpReadoutYalk = false;
             const std::string protocol = args.count("protocol")
                 ? args.at("protocol") : "passive_capture";
             if (protocol == "passive_capture") {
@@ -425,46 +414,12 @@ orbita_plugin_status_v1 invoke(void* value, const char* capability, const char* 
                 "status=ready\nprotocol=legacy_mode2_65\nmode=2\nfirst_sequence=")
                 + std::to_string(frame.sequence) + '\n';
         }
-        if (command == "start_yvp_probe" || command == "start_yvp_channel_probe") {
-            plugin::requireActiveOutputs(instance.config);
-            instance.cancelled.store(false);
-            instance.yalkReference = false;
-            instance.ytpPassive = false;
-            instance.ytpLegacyMode2 = false;
-            instance.ytpRokt68 = false;
-            instance.yvpReadoutYalk = false;
-            const unsigned cell = plugin::unsignedValue(args, "cell", 1);
-            if (cell < 1 || cell > 255) {
-                throw std::invalid_argument("Номер ячейки ЯВП должен быть 1..255");
-            }
-            if (command == "start_yvp_channel_probe") {
-                const unsigned channel = plugin::unsignedValue(args, "channel");
-                if (channel < 1 || channel > 8) {
-                    throw std::invalid_argument("Номер канала ЯВП должен быть 1..8");
-                }
-                instance.transport->startYvpChannelRokt(
-                    static_cast<std::uint8_t>(channel), static_cast<std::uint8_t>(cell));
-                instance.yvpProbe = true;
-                instance.selectedMode = -7;
-                return std::string("status=capturing\nprotocol=rokt_yvp_channel_132\n")
-                    + "active_command=ROKT_0A_03\nchannel=" + std::to_string(channel)
-                    + "\ncell=" + std::to_string(cell) + "\ndecoder=raw_u8_unscaled\n";
-            }
-            instance.transport->startYvpRokt(static_cast<std::uint8_t>(cell));
-            instance.yvpProbe = true;
-            instance.selectedMode = -6;
-            return std::string("status=capturing\nprotocol=rokt_yvp_136\n")
-                + "active_command=ROKT_0A_01\ncell=" + std::to_string(cell)
-                + "\ndecoder=raw_unscaled\n";
-        }
         if (command == "start_stream" || command == "probe") {
             plugin::requireActiveOutputs(instance.config);
             instance.cancelled.store(false);
             instance.ytpPassive = false;
             instance.ytpLegacyMode2 = false;
             instance.ytpRokt68 = false;
-            instance.yvpProbe = false;
-            instance.yvpReadoutYalk = false;
             const std::string protocol = args.count("protocol")
                 ? args.at("protocol")
                 : (instance.config.count("protocol") ? instance.config.at("protocol") : "legacy_mode6");
@@ -497,115 +452,9 @@ orbita_plugin_status_v1 invoke(void* value, const char* capability, const char* 
             instance.ytpPassive = false;
             instance.ytpLegacyMode2 = false;
             instance.ytpRokt68 = false;
-            instance.yvpProbe = false;
-            instance.yvpReadoutYalk = false;
             return std::string("status=ok\n");
         }
         if (command == "stats") return statsText(instance.transport->stats());
-        if (command == "read_yvp_raw") {
-            if (!instance.yvpProbe || instance.selectedMode != -6) {
-                throw std::runtime_error("Общий поток ЯВП не запущен");
-            }
-            const unsigned frameCount = plugin::unsignedValue(args, "frame_count", 16);
-            if (!frameCount || frameCount > 1024)
-                throw std::invalid_argument("Число кадров ЯВП должно быть 1..1024");
-            std::uint64_t after = plugin::unsignedValue(args, "after_sequence",
-                static_cast<unsigned>(instance.transport->stats().lastSequence));
-            const auto deadline = std::chrono::steady_clock::now()
-                + std::chrono::milliseconds(timeout(instance, args));
-            std::vector<unsigned> samples;
-            samples.reserve(static_cast<std::size_t>(frameCount) * 128);
-            unsigned framesRead = 0;
-            while (framesRead < frameCount && std::chrono::steady_clock::now() < deadline) {
-                const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
-                    deadline - std::chrono::steady_clock::now());
-                const auto frame = instance.transport->waitFrame(
-                    UlkFrameKind::YvpRokt136, after,
-                    std::max(std::chrono::milliseconds(1), remaining));
-                after = frame.sequence;
-                if (frame.payload.size() != 136 || frame.payload[0] != 0x00
-                    || frame.payload[1] != 0x00 || frame.payload[2] != 0x2B
-                    || frame.payload[3] != 0x08)
-                    continue;
-                for (auto item = frame.payload.begin() + 4;
-                     item != frame.payload.begin() + 132; ++item) {
-                    samples.push_back(static_cast<unsigned>(*item));
-                }
-                ++framesRead;
-            }
-            if (framesRead != frameCount)
-                throw std::runtime_error("Тайм-аут накопления общего потока ЯВП");
-
-            const auto [minimum, maximum] = std::minmax_element(samples.begin(), samples.end());
-            const double mean = std::accumulate(samples.begin(), samples.end(), 0.0)
-                / static_cast<double>(samples.size());
-            const double squareSum = std::accumulate(
-                samples.begin(), samples.end(), 0.0,
-                [mean](double sum, unsigned sample) {
-                    const double centered = static_cast<double>(sample) - mean;
-                    return sum + centered * centered;
-                });
-            const double acRms = std::sqrt(squareSum / static_cast<double>(samples.size()));
-            std::ostringstream out;
-            out << std::setprecision(12)
-                << "status=ready\nprotocol=rokt_yvp_136"
-                << "\nfirst_sequence=" << (after - framesRead + 1)
-                << "\nlast_sequence=" << after
-                << "\nframe_count=" << framesRead
-                << "\nraw_sample_count=" << samples.size()
-                << "\nraw_min=" << *minimum
-                << "\nraw_max=" << *maximum
-                << "\nraw_mean=" << mean
-                << "\nraw_ac_rms=" << acRms << '\n';
-            return out.str();
-        }
-        if (command == "read_yvp_channel_raw") {
-            if (!instance.yvpProbe || instance.selectedMode != -7) {
-                throw std::runtime_error("Поток выбранного канала ЯВП не запущен");
-            }
-            const unsigned channel = plugin::unsignedValue(args, "channel");
-            if (channel < 1 || channel > 8)
-                throw std::invalid_argument("Номер канала ЯВП должен быть 1..8");
-            std::uint64_t after = plugin::unsignedValue(args, "after_sequence",
-                static_cast<unsigned>(instance.transport->stats().lastSequence));
-            const auto deadline = std::chrono::steady_clock::now()
-                + std::chrono::milliseconds(timeout(instance, args));
-            while (std::chrono::steady_clock::now() < deadline) {
-                const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
-                    deadline - std::chrono::steady_clock::now());
-                const auto frame = instance.transport->waitFrame(
-                    UlkFrameKind::YvpChannelRokt132, after,
-                    std::max(std::chrono::milliseconds(1), remaining));
-                after = frame.sequence;
-                if (frame.payload.size() != 132 || frame.payload[0] != 0x03
-                    || frame.payload[1] != 0x00 || frame.payload[2] != 0x2D)
-                    continue;
-                if (frame.payload[3] != channel - 1) continue;
-
-                const auto first = frame.payload.begin() + 4;
-                const auto last = frame.payload.end();
-                const auto [minimum, maximum] = std::minmax_element(first, last);
-                const double mean = std::accumulate(first, last, 0.0)
-                    / static_cast<double>(std::distance(first, last));
-                std::ostringstream out;
-                out << std::setprecision(12)
-                    << "status=ready\nprotocol=rokt_yvp_channel_132"
-                    << "\nsequence=" << frame.sequence
-                    << "\nchannel=" << channel
-                    << "\nwire_channel=" << static_cast<unsigned>(frame.payload[3])
-                    << "\nraw_sample_count=" << std::distance(first, last)
-                    << "\nraw_min=" << static_cast<unsigned>(*minimum)
-                    << "\nraw_max=" << static_cast<unsigned>(*maximum)
-                    << "\nraw_mean=" << mean << "\nraw_samples=";
-                for (auto item = first; item != last; ++item) {
-                    if (item != first) out << ',';
-                    out << static_cast<unsigned>(*item);
-                }
-                out << '\n';
-                return out.str();
-            }
-            throw std::runtime_error("Тайм-аут ожидания кадра выбранного канала ЯВП");
-        }
         if (command == "read_channel" || command == "read") return readChannel(instance, args);
         if (command == "read_ytp_channel") return readYtpChannel(instance, args);
         if (command == "read_ytp_snapshot") {
