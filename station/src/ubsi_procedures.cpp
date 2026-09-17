@@ -10,6 +10,7 @@
 #include <thread>
 
 namespace orbita::stand {
+
 namespace {
 
 std::map<std::string, std::string> responseValues(const std::string& response)
@@ -578,7 +579,7 @@ ProcedureResult yalkAnalog(const ScenarioNode& node, ProcedureContext& context)
         || (!zeroParameter.empty() && !bindingsReady(context, zeroParameter, 1))
         || (!fullParameter.empty() && !bindingsReady(context, fullParameter, 1))) {
         return {RunVerdict::Incomplete,
-            "Адреса УЛК/маршруты ЯЛК не подтверждены; воздействия не выполнялись", {}};
+            "Адреса ЯЛК/маршруты ЯЛК не подтверждены; воздействия не выполнялись", {}};
     }
     double zeroRaw = number(node, "calibration_zero_raw", 0.0);
     double fullRaw = number(node, "calibration_full_raw", 0.0);
@@ -618,7 +619,7 @@ ProcedureResult yalkContacts(const ScenarioNode& node, ProcedureContext& context
     const std::string parameterGroup = argument(node, "parameter_group", "yalk_contacts");
     if (!bindingsReady(context, parameterGroup, count, true)) {
         return {RunVerdict::Incomplete,
-            "Адреса УЛК/маршруты контактных каналов не подтверждены; воздействия не выполнялись", {}};
+            "Адреса ЯЛК/маршруты контактных каналов не подтверждены; воздействия не выполнялись", {}};
     }
     for (unsigned channel = 0; channel < count; ++channel) {
         const auto binding = resolveLogicalBinding(context, parameterGroup, channel);
@@ -644,7 +645,7 @@ ProcedureResult yalkFaults(const ScenarioNode& node, ProcedureContext& context)
 {
     if (argument(node, "diagnostic_mapping_confirmed", "false") != "true") {
         return {RunVerdict::Incomplete,
-            "Адреса УЛК найдены, но алгоритм сравнения сохранённых кодов при ±12 В "
+            "Адреса ЯЛК найдены, но алгоритм сравнения сохранённых кодов при ±12 В "
             "ещё не подтверждён на подключённом УБСИ; опасное воздействие не выполнялось", {}};
     }
     ProcedureResult result{RunVerdict::Ok, "Проверены обрыв и перегрузка входов", {}};
@@ -890,23 +891,10 @@ ProcedureResult yalkCheckInitial(const ScenarioNode& node, ProcedureContext& con
                              {"analog_code", std::to_string(reading.code)},
                              {"yalk_v", std::to_string(volts)},
                              {"signal", reading.signal ? "1" : "0"}};
-        auto signalResult = measurement("ubsi.yalk.initial.signal." + binding.locator,
-            "ЯЛК адрес " + binding.locator + ": исходный сигнал",
-            1, reading.signal ? 1 : 0, 1, 1, "лог.");
-        signalResult.attributes = {{"ulk_address", binding.locator},
-                                   {"signal", reading.signal ? "1" : "0"},
-                                   {"expected_signal", "1"}};
-        const auto channelVerdict = combineVerdicts(analog.verdict, signalResult.verdict);
-        auto eventData = analog.attributes;
-        eventData["channel_index"] = std::to_string(channel + 1);
-        eventData["channel_count"] = std::to_string(count);
-        eventData["expected_signal"] = "1";
-        eventData["analog_ok"] = analog.verdict == RunVerdict::Ok ? "1" : "0";
-        eventData["signal_ok"] = signalResult.verdict == RunVerdict::Ok ? "1" : "0";
-        context.eventSink({std::chrono::system_clock::now(), node.id, "YALK_INITIAL",
-            analog.title, channelVerdict, std::move(eventData)});
         append(result, std::move(analog));
-        append(result, std::move(signalResult));
+        append(result, measurement("ubsi.yalk.initial.signal." + binding.locator,
+            "ЯЛК адрес " + binding.locator + ": исходный сигнал",
+            1, reading.signal ? 1 : 0, 1, 1, "лог."));
     }
     markCommissioning(result, confirmed);
     return result;
@@ -1277,7 +1265,7 @@ ProcedureResult referenceVoltage(const ScenarioNode& node, ProcedureContext& con
             || !bindingsReady(context, zeroGroup, 1)
             || !bindingsReady(context, fullGroup, 1)) {
             result.verdict = combineVerdicts(result.verdict, RunVerdict::Incomplete);
-            result.message = "В7 проверен; адреса УЛК 97/98/99 ещё не подтверждены";
+            result.message = "В7 проверен; адреса ЯЛК 97/98/99 ещё не подтверждены";
             return result;
         }
         const double zeroRaw = readLogicalParameter(context,
@@ -1289,10 +1277,10 @@ ProcedureResult referenceVoltage(const ScenarioNode& node, ProcedureContext& con
         const double raw = readLogicalParameter(context, adapterGroup, 0,
             natural(node, "sample_count", 16));
         if (!(fullRaw > zeroRaw)) throw std::runtime_error(
-            "Некорректные калибровки ЯЛК для адреса УЛК 98");
+            "Некорректные калибровки ЯЛК для адреса ЯЛК 98");
         const double adapterVoltage = (raw - zeroRaw) * nominal / (fullRaw - zeroRaw);
         append(result, measurement("ubsi.reference_6v2.adapter",
-            "Эталон 6,2 В по адресу УЛК 98", v7, adapterVoltage,
+            "Эталон 6,2 В по адресу ЯЛК 98", v7, adapterVoltage,
             v7 - tolerance, v7 + tolerance, "В"));
     }
     return result;
@@ -1625,101 +1613,6 @@ ProcedureResult ytpLegacyStub(const ScenarioNode&, ProcedureContext&)
         "сценарий ЯТП с отдельным декодером и raw-захватом", {}};
 }
 
-ProcedureResult yvp(const ScenarioNode& node, ProcedureContext& context)
-{
-    ProcedureResult result{RunVerdict::Ok, "Проверены каналы ЯВП, АЧХ и усиление", {}};
-    const unsigned channels = natural(node, "channel_count", 8);
-    const auto frequencies = numbers(node, "frequencies_hz");
-    const auto gains = numbers(node, "gains_mv_per_pcl");
-    const std::string parameterGroup = argument(node, "parameter_group", "yvp_yalk");
-    if (frequencies.empty() || gains.empty()) throw std::invalid_argument("Не заданы частоты и коэффициенты ЯВП");
-    if (!bindingsReady(context, parameterGroup, channels, true)) {
-        return {RunVerdict::Incomplete,
-            "Адреса ЯЛК 89–96/маршруты ЯВП-8 не подтверждены; генератор не включался", {}};
-    }
-    for (unsigned channel = 0; channel < channels; ++channel) {
-        const auto binding = resolveLogicalBinding(context, parameterGroup, channel);
-        if (binding.source != "ulk.parameter_source" || binding.locatorType != "ulk_address"
-            || std::stoul(binding.locator) != 89 + channel) {
-            return {RunVerdict::Incomplete,
-                "ЯВП должен читаться через подтверждённые адреса ЯЛК 89–96; генератор не включался", {}};
-        }
-    }
-    const double amplitude = number(node, "amplitude_vpp", 0.3875);
-    const std::string inputRoute = argument(node, "input_route", "yvp_input");
-    const std::string gainRoute = argument(node, "gain_route", "yvp_gain");
-    auto cleanup = [&]() {
-        try { context.equipment.invoke("signal.generator", "output", {{"channel", "1"}, {"enabled", "false"}}); } catch (...) {}
-        for (unsigned channel = 0; channel < channels; ++channel) {
-            try { context.equipment.invoke("stand.switch_matrix", "switch", {{"route", inputRoute}, {"offset", std::to_string(channel)}, {"enabled", "false"}}); } catch (...) {}
-        }
-        for (std::size_t index = 0; index < channels * gains.size(); ++index) {
-            try { context.equipment.invoke("stand.switch_matrix", "switch", {{"route", gainRoute}, {"offset", std::to_string(index)}, {"enabled", "false"}}); } catch (...) {}
-        }
-        try { context.equipment.invoke("stand.switch_matrix", "full_reset", {}); } catch (...) {}
-    };
-    try {
-    for (unsigned channel = 1; channel <= channels; ++channel) {
-        context.equipment.invoke("stand.switch_matrix", "switch", {
-            {"route", inputRoute}, {"offset", std::to_string(channel - 1)}, {"enabled", "true"}});
-        for (const double frequency : frequencies) {
-            context.equipment.invoke("signal.generator", "set_sine", {
-                {"channel", "1"}, {"frequency_hz", std::to_string(frequency)},
-                {"amplitude_vpp", std::to_string(amplitude)}, {"offset_v", "0"}});
-            context.equipment.invoke("signal.generator", "output", {{"channel", "1"}, {"enabled", "true"}});
-            wait(context, natural(node, "settle_ms", 200));
-            const double measuredFrequency = readReferenceFrequency(context);
-            const double measuredRms = readReferenceAcVoltage(context);
-            const double referenceVpp = measuredRms * 2.0 * std::sqrt(2.0);
-            const double orbitaValue = readLogicalParameter(
-                context, parameterGroup, channel - 1, natural(node, "sample_count", 16));
-            const double frequencyTolerance = number(node, "frequency_tolerance_percent", 1.0);
-            append(result, measurement("ubsi.yvp.frequency." + std::to_string(channel),
-                "ЯВП " + std::to_string(channel) + ": частота воздействия",
-                frequency, measuredFrequency, frequency * (1.0 - frequencyTolerance / 100.0),
-                frequency * (1.0 + frequencyTolerance / 100.0), "Гц"));
-            const double stimulusTolerance = number(node, "stimulus_tolerance_percent", 5.0);
-            append(result, measurement("ubsi.yvp.stimulus." + std::to_string(channel),
-                "ЯВП " + std::to_string(channel) + ": воздействие по В7",
-                amplitude, referenceVpp, amplitude * (1.0 - stimulusTolerance / 100.0),
-                amplitude * (1.0 + stimulusTolerance / 100.0), "В пик-пик"));
-            const double percent = std::abs(frequency - 2.0) < 0.001 || std::abs(frequency - 2000.0) < 0.001
-                ? number(node, "edge_tolerance_percent", 10.0) : number(node, "middle_tolerance_percent", 5.0);
-            append(result, measurement("ubsi.yvp." + std::to_string(channel),
-                "ЯВП " + std::to_string(channel) + ", " + std::to_string(frequency) + " Гц",
-                referenceVpp, orbitaValue, referenceVpp * (1.0 - percent / 100.0),
-                referenceVpp * (1.0 + percent / 100.0), "В пик-пик"));
-        }
-        if (argument(node, "gain_conversion_confirmed", "false") == "true") {
-            for (std::size_t gainIndex = 0; gainIndex < gains.size(); ++gainIndex) {
-            // Выбор усиления выполняется внешней кроссировкой ИСД; профиль задаёт
-            // базовый канал и один шаг на значение ряда.
-            context.equipment.invoke("stand.switch_matrix", "switch", {
-                {"route", gainRoute},
-                 {"offset", std::to_string((channel - 1) * gains.size() + gainIndex)}, {"enabled", "true"}});
-            // Формула будет включена только вместе с подтверждённым преобразованием
-            // конкретного адреса Орбиты; до этого ветка недоступна из published YAML.
-            throw std::runtime_error("Для коэффициентов ЯВП не задан подтверждённый пересчёт");
-            context.equipment.invoke("stand.switch_matrix", "switch", {
-                {"route", gainRoute},
-                 {"offset", std::to_string((channel - 1) * gains.size() + gainIndex)}, {"enabled", "false"}});
-            }
-        } else {
-            result.verdict = combineVerdicts(result.verdict, RunVerdict::Incomplete);
-            result.message = "АЧХ измерена; коэффициенты ЯВП не коммутировались: "
-                "пересчёт данных Орбиты по референсу KPA ещё не подтверждён";
-        }
-        context.equipment.invoke("stand.switch_matrix", "switch", {
-            {"route", inputRoute}, {"offset", std::to_string(channel - 1)}, {"enabled", "false"}});
-    }
-    cleanup();
-    } catch (...) {
-        cleanup();
-        throw;
-    }
-    return result;
-}
-
 } // namespace
 
 void registerUbsiProcedures(ScenarioEngine& engine)
@@ -1746,10 +1639,6 @@ void registerUbsiProcedures(ScenarioEngine& engine)
     engine.registerProcedure("ytp.check_channels", ytpCheckChannels);
     engine.registerProcedure("ytp.safe_cleanup", ytpSafeCleanup);
     engine.registerProcedure("ubsi.ytp", ytpLegacyStub);
-    // Keep the historical YVP callback addressable for diagnostics. The
-    // production alias is layered later by the V7+ISD registrar.
-    engine.registerProcedure("yvp.legacy", yvp);
-    engine.registerProcedure("ubsi.yvp", yvp);
 }
 
 } // namespace orbita::stand

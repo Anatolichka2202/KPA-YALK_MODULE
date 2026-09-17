@@ -46,7 +46,7 @@ sockaddr_in endpoint(const std::string& address, std::uint16_t port)
     result.sin_family = AF_INET;
     result.sin_port = htons(port);
     if (inet_pton(AF_INET, address.c_str(), &result.sin_addr) != 1) {
-        throw std::invalid_argument("Некорректный IPv4-адрес адаптера УЛК: " + address);
+        throw std::invalid_argument("Некорректный IPv4-адрес адаптера ЯЛК: " + address);
     }
     return result;
 }
@@ -57,7 +57,7 @@ struct UlkUdpTransport::Impl {
     explicit Impl(KtmaUlkUdpConfig value) : config(std::move(value))
     {
         if (!config.port || !config.queueCapacity) {
-            throw std::invalid_argument("Порт и ёмкость очереди адаптера УЛК должны быть ненулевыми");
+            throw std::invalid_argument("Порт и ёмкость очереди адаптера ЯЛК должны быть ненулевыми");
         }
 #ifdef _WIN32
         WSADATA data{};
@@ -422,7 +422,7 @@ struct UlkUdpTransport::Impl {
         record.close();
         record.clear();
         record.open(path, std::ios::binary | std::ios::trunc);
-        if (!record) throw std::runtime_error("Не удалось открыть raw-файл УЛК: " + path);
+        if (!record) throw std::runtime_error("Не удалось открыть raw-файл ЯЛК: " + path);
         const char magic[4]{'U', 'L', 'K', 'R'};
         const std::uint16_t schema = 1;
         record.write(magic, sizeof(magic));
@@ -547,10 +547,10 @@ struct UlkUdpTransport::Impl {
         if (!condition.wait_for(lock, timeout, [&] {
                 return stopping.load() || findFrame() != queue.end();
             })) {
-            throw std::runtime_error("Тайм-аут ожидания кадра адаптера УЛК");
+            throw std::runtime_error("Тайм-аут ожидания кадра адаптера ЯЛК");
         }
         const auto item = findFrame();
-        if (item == queue.end()) throw std::runtime_error("Приём адаптера УЛК остановлен");
+        if (item == queue.end()) throw std::runtime_error("Приём адаптера ЯЛК остановлен");
         return *item;
     }
 
@@ -668,7 +668,7 @@ std::vector<std::uint8_t> UlkUdpTransport::yvpRoktStartCommand(
     result[1] = 'O';
     result[2] = 'K';
     result[3] = 'T';
-    // KPA_Rokot command УЛКрежимРС: mode ЯВП, option -я<cell>.
+    // KPA_Rokot command ЯЛКрежимРС: mode ЯВП, option -я<cell>.
     result[4] = 0x0A;
     result[5] = 0x01;
     result[7] = cellNumber;

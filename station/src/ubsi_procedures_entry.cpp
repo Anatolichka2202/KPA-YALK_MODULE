@@ -3,17 +3,12 @@
 namespace orbita::stand {
 
 void registerRoktUbsiProcedures(ScenarioEngine& engine);
-void registerPointMajorYalkProcedures(ScenarioEngine& engine);
-void registerPowerLiveUbsiProcedures(ScenarioEngine& engine);
 void registerProductionYvpProcedure(ScenarioEngine& engine);
 
 void registerUbsiProcedures(ScenarioEngine& engine)
 {
-    // Preserve the current new-dis YALK/power overrides, then register the
-    // finalized production YVP backend from master as the only YVP alias.
+    // Register current YALK/YTP delivery procedures, then the only YVP backend.
     registerRoktUbsiProcedures(engine);
-    registerPointMajorYalkProcedures(engine);
-    registerPowerLiveUbsiProcedures(engine);
     registerProductionYvpProcedure(engine);
 }
 

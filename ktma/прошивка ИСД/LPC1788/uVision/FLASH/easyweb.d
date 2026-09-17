@@ -1,0 +1,17 @@
+.\flash\easyweb.o: ..\src\easyweb.c
+.\flash\easyweb.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdlib.h
+.\flash\easyweb.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
+.\flash\easyweb.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
+.\flash\easyweb.o: ..\src\iap.h
+.\flash\easyweb.o: ..\src\Serial.h
+.\flash\easyweb.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
+.\flash\easyweb.o: ..\..\Lib_CMSIS\inc\LPC177x_8x.h
+.\flash\easyweb.o: ..\..\Lib_CMSIS\inc\core_cm3.h
+.\flash\easyweb.o: ..\..\Lib_CMSIS\inc\core_cmInstr.h
+.\flash\easyweb.o: ..\..\Lib_CMSIS\inc\core_cmFunc.h
+.\flash\easyweb.o: ..\..\Lib_CMSIS\inc\system_LPC177x_8x.h
+.\flash\easyweb.o: ..\src\flash.h
+.\flash\easyweb.o: ..\src\easyweb.h
+.\flash\easyweb.o: ..\..\Lib_OemBoard\inc\ethmac.h
+.\flash\easyweb.o: ..\src\tcpip.h
+.\flash\easyweb.o: ..\src\webside.h

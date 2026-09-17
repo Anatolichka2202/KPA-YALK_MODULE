@@ -15,16 +15,13 @@ add_library(orbita_stand_domain STATIC
     src/ubsi_procedures.cpp
     src/ubsi_procedures_current.cpp
     src/ubsi_procedures_rokt.cpp
-    src/ubsi_procedures_yalk_point_major.cpp
-    src/ubsi_procedures_power_live.cpp
     src/ubsi_procedures_yvp_v7.cpp
     src/ubsi_procedures_entry.cpp
     src/telemetry_procedures.cpp
 )
 
-# Keep legacy/current UBSI generations isolated behind their registrars. The
-# entry registrar preserves the new-dis YALK/power overrides and gives the
-# production ubsi.yvp alias only to the finalized YVP backend.
+# Keep the current YALK/YTP delivery overrides while exposing only the final
+# production YVP implementation from the entry registrar.
 set_source_files_properties(src/ubsi_procedures.cpp PROPERTIES
     COMPILE_DEFINITIONS "registerUbsiProcedures=registerLegacyUbsiProcedures")
 set_source_files_properties(src/ubsi_procedures_current.cpp PROPERTIES
@@ -98,12 +95,6 @@ if(BUILD_TESTING)
     )
     target_link_libraries(yalk_analog_procedure_test PRIVATE orbita_stand_domain)
     add_test(NAME stand.yalk_analog_procedure COMMAND yalk_analog_procedure_test)
-
-    add_executable(yalk_point_major_contract_test
-        tests/yalk_point_major_contract_test.cpp
-    )
-    target_link_libraries(yalk_point_major_contract_test PRIVATE orbita_stand_domain)
-    add_test(NAME stand.yalk_point_major_contract COMMAND yalk_point_major_contract_test)
 
     add_executable(equipment_protocol_test
         tests/equipment_protocol_test.cpp
@@ -213,4 +204,12 @@ target_link_libraries(yalk_full_probe PRIVATE orbita_stand_adapters)
 
 if(WIN32)
     add_executable(visa_discover tools/visa_discover.cpp)
+endif()
+
+if(WIN32)
+    add_executable(v7_probe tools/v7_probe.cpp)
+    target_link_libraries(v7_probe PRIVATE orbita_stand_adapters)
+    if(MINGW)
+        target_link_options(v7_probe PRIVATE -static -static-libgcc -static-libstdc++)
+    endif()
 endif()

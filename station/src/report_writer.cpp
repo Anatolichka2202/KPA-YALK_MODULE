@@ -99,7 +99,7 @@ ReportPaths writeHtmlCsvReport(const ScenarioRunResult& run, const std::string& 
     } else if (ytpReport) {
         csvStream << QStringLiteral("Этап;Пункт ТУ;Канал ЯТП;Параметр;Задано, Ом;Эталон, Ом;Raw;Калибровка ноль;Калибровка шкала;ЯТП, Ом;Абсолютная погрешность, Ом;Приведённая погрешность, %;Оператор;Время подтверждения;Итог;Сообщение\n");
     } else {
-        csvStream << QStringLiteral("Этап;Пункт ТУ;Параметр;Адрес УЛК;Код ИСД;Raw;Код ЯЛК;Сигнал;В7, В;ЯЛК, В;Абсолютная погрешность, В;Приведённая погрешность, %;Относительная погрешность, %;Нижний допуск;Верхний допуск;Итог;Сообщение\n");
+        csvStream << QStringLiteral("Этап;Пункт ТУ;Параметр;Адрес ЯЛК;Код ИСД;Raw;Код ЯЛК;Сигнал;В7, В;ЯЛК, В;Абсолютная погрешность, В;Приведённая погрешность, %;Относительная погрешность, %;Нижний допуск;Верхний допуск;Итог;Сообщение\n");
     }
     const auto field = [](QString value) { return QStringLiteral("\"") + value.replace('"', QStringLiteral("\"\"")) + QStringLiteral("\""); };
     for (const auto& [step, value] : measurements) {

@@ -1,0 +1,12 @@
+--cpu Cortex-M3
+".\flash\system_lpc177x_8x.o"
+".\flash\ethmac.o"
+".\flash\startup_lpc177x_8x.o"
+".\flash\easyweb.o"
+".\flash\ew_systick.o"
+".\flash\tcpip.o"
+".\flash\serial.o"
+--strict --scatter ".\FLASH\s_ob_easyweb.sct"
+--summary_stderr --info summarysizes --map --load_addr_map_info --xref --callgraph --symbols
+--info sizes --info totals --info unused --info veneers
+--list ".\FLASH\s_ob_easyweb.map" -o .\FLASH\s_ob_easyweb.axf

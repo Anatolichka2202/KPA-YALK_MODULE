@@ -1,0 +1,61 @@
+Dependencies for Project 'easyweb', Target 'FLASH': (DO NOT MODIFY !)
+CompilerVersion: 5060960::V5.06 update 7 (build 960)::.\ARMCC
+F (..\..\Lib_CMSIS\src\system_LPC177x_8x.c)(0x5139961A)(-c --cpu Cortex-M3 -g -O0 --apcs=interwork -I ..\..\Lib_CMSIS\inc -I ..\..\Lib_MCU\inc -I ..\..\Lib_OemBoard\inc -I ..\..\Lib_LPC\inc -I ..\src -I ..\uVision-IC:\Keil_v5\ARM\RV31\INC-IC:\Keil_v5\ARM\CMSIS\Include-IC:\Keil_v5\ARM\INC\NXP\LPC177x_8x-D__UVISION_VERSION="536"-o .\flash\system_lpc177x_8x.o --omf_browse .\flash\system_lpc177x_8x.crf --depend .\flash\system_lpc177x_8x.d)
+I (C:\Keil_v5\ARM\ARMCC\include\stdint.h)(0x602569CE)
+I (..\..\Lib_CMSIS\inc\LPC177x_8x.h)(0x4ED7885E)
+I (..\..\Lib_CMSIS\inc\core_cm3.h)(0x4ED62946)
+I (..\..\Lib_CMSIS\inc\core_cmInstr.h)(0x4ED62946)
+I (..\..\Lib_CMSIS\inc\core_cmFunc.h)(0x4ED62946)
+I (..\..\Lib_CMSIS\inc\system_LPC177x_8x.h)(0x4ED62946)
+F (..\..\Lib_OemBoard\src\ethmac.c)(0x557A8BC2)(-c --cpu Cortex-M3 -g -O0 --apcs=interwork -I ..\..\Lib_CMSIS\inc -I ..\..\Lib_MCU\inc -I ..\..\Lib_OemBoard\inc -I ..\..\Lib_LPC\inc -I ..\src -I ..\uVision-IC:\Keil_v5\ARM\RV31\INC-IC:\Keil_v5\ARM\CMSIS\Include-IC:\Keil_v5\ARM\INC\NXP\LPC177x_8x-D__UVISION_VERSION="536"-o .\flash\ethmac.o --omf_browse .\flash\ethmac.crf --depend .\flash\ethmac.d)
+I (..\..\Lib_OemBoard\inc\ethmac.h)(0x668B96AE)
+I (..\..\Lib_CMSIS\inc\LPC177x_8x.h)(0x4ED7885E)
+I (..\..\Lib_CMSIS\inc\core_cm3.h)(0x4ED62946)
+I (C:\Keil_v5\ARM\ARMCC\include\stdint.h)(0x602569CE)
+I (..\..\Lib_CMSIS\inc\core_cmInstr.h)(0x4ED62946)
+I (..\..\Lib_CMSIS\inc\core_cmFunc.h)(0x4ED62946)
+I (..\..\Lib_CMSIS\inc\system_LPC177x_8x.h)(0x4ED62946)
+F (..\..\c_keil_uvision\startup_LPC177x_8x.s)(0x69E8AF69)(--cpu Cortex-M3 -g --apcs=interwork -I ..\common\inc-IC:\Keil_v5\ARM\RV31\INC-IC:\Keil_v5\ARM\CMSIS\Include-IC:\Keil_v5\ARM\INC\NXP\LPC177x_8x--pd "__UVISION_VERSION SETA 536" --pd "NO_CRP SETA 1"--list .\flash\startup_lpc177x_8x.lst --xref -o .\flash\startup_lpc177x_8x.o --depend .\flash\startup_lpc177x_8x.d)
+F (..\src\easyweb.c)(0x66461556)(-c --cpu Cortex-M3 -g -O0 --apcs=interwork -I ..\..\Lib_CMSIS\inc -I ..\..\Lib_MCU\inc -I ..\..\Lib_OemBoard\inc -I ..\..\Lib_LPC\inc -I ..\src -I ..\uVision-IC:\Keil_v5\ARM\RV31\INC-IC:\Keil_v5\ARM\CMSIS\Include-IC:\Keil_v5\ARM\INC\NXP\LPC177x_8x-D__UVISION_VERSION="536"-o .\flash\easyweb.o --omf_browse .\flash\easyweb.crf --depend .\flash\easyweb.d)
+I (C:\Keil_v5\ARM\ARMCC\include\stdlib.h)(0x602569C4)
+I (C:\Keil_v5\ARM\ARMCC\include\stdio.h)(0x602569C4)
+I (C:\Keil_v5\ARM\ARMCC\include\string.h)(0x602569CE)
+I (..\src\iap.h)(0x5E287EB8)
+I (..\src\Serial.h)(0x532C4AE2)
+I (C:\Keil_v5\ARM\ARMCC\include\stdint.h)(0x602569CE)
+I (..\..\Lib_CMSIS\inc\LPC177x_8x.h)(0x4ED7885E)
+I (..\..\Lib_CMSIS\inc\core_cm3.h)(0x4ED62946)
+I (..\..\Lib_CMSIS\inc\core_cmInstr.h)(0x4ED62946)
+I (..\..\Lib_CMSIS\inc\core_cmFunc.h)(0x4ED62946)
+I (..\..\Lib_CMSIS\inc\system_LPC177x_8x.h)(0x4ED62946)
+I (..\src\flash.h)(0x5E391FA0)
+I (..\src\easyweb.h)(0x4D1990E2)
+I (..\..\Lib_OemBoard\inc\ethmac.h)(0x668B96AE)
+I (..\src\tcpip.h)(0x6672F006)
+I (..\src\webside.h)(0x4F699BBE)
+F (..\src\ew_systick.c)(0x557A8BC2)(-c --cpu Cortex-M3 -g -O0 --apcs=interwork -I ..\..\Lib_CMSIS\inc -I ..\..\Lib_MCU\inc -I ..\..\Lib_OemBoard\inc -I ..\..\Lib_LPC\inc -I ..\src -I ..\uVision-IC:\Keil_v5\ARM\RV31\INC-IC:\Keil_v5\ARM\CMSIS\Include-IC:\Keil_v5\ARM\INC\NXP\LPC177x_8x-D__UVISION_VERSION="536"-o .\flash\ew_systick.o --omf_browse .\flash\ew_systick.crf --depend .\flash\ew_systick.d)
+I (..\..\Lib_CMSIS\inc\LPC177x_8x.h)(0x4ED7885E)
+I (..\..\Lib_CMSIS\inc\core_cm3.h)(0x4ED62946)
+I (C:\Keil_v5\ARM\ARMCC\include\stdint.h)(0x602569CE)
+I (..\..\Lib_CMSIS\inc\core_cmInstr.h)(0x4ED62946)
+I (..\..\Lib_CMSIS\inc\core_cmFunc.h)(0x4ED62946)
+I (..\..\Lib_CMSIS\inc\system_LPC177x_8x.h)(0x4ED62946)
+F (..\src\tcpip.c)(0x557A8BC2)(-c --cpu Cortex-M3 -g -O0 --apcs=interwork -I ..\..\Lib_CMSIS\inc -I ..\..\Lib_MCU\inc -I ..\..\Lib_OemBoard\inc -I ..\..\Lib_LPC\inc -I ..\src -I ..\uVision-IC:\Keil_v5\ARM\RV31\INC-IC:\Keil_v5\ARM\CMSIS\Include-IC:\Keil_v5\ARM\INC\NXP\LPC177x_8x-D__UVISION_VERSION="536"-o .\flash\tcpip.o --omf_browse .\flash\tcpip.crf --depend .\flash\tcpip.d)
+I (..\src\tcpip.h)(0x6672F006)
+I (..\..\Lib_OemBoard\inc\ethmac.h)(0x668B96AE)
+I (C:\Keil_v5\ARM\ARMCC\include\string.h)(0x602569CE)
+I (..\..\Lib_CMSIS\inc\LPC177x_8x.h)(0x4ED7885E)
+I (..\..\Lib_CMSIS\inc\core_cm3.h)(0x4ED62946)
+I (C:\Keil_v5\ARM\ARMCC\include\stdint.h)(0x602569CE)
+I (..\..\Lib_CMSIS\inc\core_cmInstr.h)(0x4ED62946)
+I (..\..\Lib_CMSIS\inc\core_cmFunc.h)(0x4ED62946)
+I (..\..\Lib_CMSIS\inc\system_LPC177x_8x.h)(0x4ED62946)
+F (..\src\Serial.c)(0x662E13BE)(-c --cpu Cortex-M3 -g -O0 --apcs=interwork -I ..\..\Lib_CMSIS\inc -I ..\..\Lib_MCU\inc -I ..\..\Lib_OemBoard\inc -I ..\..\Lib_LPC\inc -I ..\src -I ..\uVision-IC:\Keil_v5\ARM\RV31\INC-IC:\Keil_v5\ARM\CMSIS\Include-IC:\Keil_v5\ARM\INC\NXP\LPC177x_8x-D__UVISION_VERSION="536"-o .\flash\serial.o --omf_browse .\flash\serial.crf --depend .\flash\serial.d)
+I (..\..\Lib_CMSIS\inc\LPC177x_8x.h)(0x4ED7885E)
+I (..\..\Lib_CMSIS\inc\core_cm3.h)(0x4ED62946)
+I (C:\Keil_v5\ARM\ARMCC\include\stdint.h)(0x602569CE)
+I (..\..\Lib_CMSIS\inc\core_cmInstr.h)(0x4ED62946)
+I (..\..\Lib_CMSIS\inc\core_cmFunc.h)(0x4ED62946)
+I (..\..\Lib_CMSIS\inc\system_LPC177x_8x.h)(0x4ED62946)
+I (..\src\Serial.h)(0x532C4AE2)
+F (..\readme.txt)(0x4F95557A)()
