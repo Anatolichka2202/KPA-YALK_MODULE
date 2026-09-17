@@ -23,7 +23,7 @@ add_executable(MilTechStation
     test_page.h
     ubsi_ui_model.h
     ubsi_measurement_views.h
-    tu_flow_widget.cpp
+    tu_flow_widget_clean.cpp
     tu_flow_widget.h
     plot_widget.cpp
     plot_widget.h
@@ -157,7 +157,7 @@ if(BUILD_TESTING)
         test_page.h
         ubsi_ui_model.h
         ubsi_measurement_views.h
-        tu_flow_widget.cpp
+        tu_flow_widget_clean.cpp
         tu_flow_widget.h
         equipment_control_widget.cpp
         equipment_control_widget.h
@@ -182,7 +182,7 @@ if(BUILD_TESTING)
         test_page.h
         ubsi_ui_model.h
         ubsi_measurement_views.h
-        tu_flow_widget.cpp
+        tu_flow_widget_clean.cpp
         tu_flow_widget.h
         equipment_control_widget.cpp
         equipment_control_widget.h
@@ -207,7 +207,7 @@ if(BUILD_TESTING)
         test_page.h
         ubsi_ui_model.h
         ubsi_measurement_views.h
-        tu_flow_widget.cpp
+        tu_flow_widget_clean.cpp
         tu_flow_widget.h
         equipment_control_widget.cpp
         equipment_control_widget.h
@@ -228,7 +228,7 @@ if(BUILD_TESTING)
 
     add_executable(tu_flow_widget_test
         tests/tu_flow_widget_test.cpp
-        tu_flow_widget.cpp
+        tu_flow_widget_clean.cpp
         tu_flow_widget.h
     )
 
