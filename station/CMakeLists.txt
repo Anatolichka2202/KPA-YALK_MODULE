@@ -69,6 +69,7 @@ target_link_libraries(orbita_stand_runtime PUBLIC
     Qt6::Core Qt6::Sql Qt6::Gui)
 
 add_library(orbita_stand_adapters STATIC
+    src/isd_driver.cpp
     adapters/equipment_adapters.cpp
     adapters/v7_visa_voltmeter.cpp
     adapters/visa_instrument.cpp
@@ -103,6 +104,12 @@ if(BUILD_TESTING)
     target_link_libraries(equipment_protocol_test PRIVATE orbita_stand_adapters)
     add_test(NAME stand.equipment_protocol COMMAND equipment_protocol_test)
 
+    add_executable(isd_driver_test
+        tests/isd_driver_test.cpp
+    )
+    target_link_libraries(isd_driver_test PRIVATE orbita_stand_adapters)
+    add_test(NAME stand.isd_driver COMMAND isd_driver_test)
+
     add_executable(scenario_runtime_test tests/scenario_runtime_test.cpp)
     target_compile_definitions(scenario_runtime_test PRIVATE
         ORBITA_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
@@ -120,6 +127,7 @@ if(BUILD_TESTING)
         set(_orbita_qt_test_path "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
         set_tests_properties(
             stand.equipment_protocol
+            stand.isd_driver
             stand.scenario_runtime
             PROPERTIES ENVIRONMENT_MODIFICATION "${_orbita_qt_test_path}")
     endif()
@@ -160,6 +168,9 @@ target_link_libraries(catalog_import PRIVATE orbita_stand_runtime Qt6::Core)
 
 add_executable(orbita_equipment_probe tools/equipment_probe.cpp)
 target_link_libraries(orbita_equipment_probe PRIVATE orbita_stand_runtime Qt6::Core)
+
+add_executable(orbita_isd_debug_probe tools/isd_debug_probe.cpp)
+target_link_libraries(orbita_isd_debug_probe PRIVATE orbita_stand_runtime Qt6::Core)
 
 add_executable(orbita_telemetry_probe tools/orbita_telemetry_probe.cpp)
 target_link_libraries(orbita_telemetry_probe PRIVATE orbita)
