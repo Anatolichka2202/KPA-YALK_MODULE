@@ -6,6 +6,7 @@
 #include "ktma/ubsi/procedures.h"
 #include "orbita_stand/catalog.h"
 #include "orbita_stand/config.h"
+#include "registrar.h"
 
 #include <QApplication>
 #include <QComboBox>
@@ -133,9 +134,30 @@ KtmaMainWindow::KtmaMainWindow(QWidget* parent)
     loadTuScenarios();
     loadProductionScenarios();
 
+    try {
+        const QDir root(QCoreApplication::applicationDirPath());
+        registrar_ = std::make_unique<ktma::registrar::Registrar>(
+            root.filePath(QStringLiteral("registrar.db")).toStdString());
+        if (auto* registrarPage = integrationRegistrarPage())
+            registrarPage->setRegistrar(registrar_.get());
+    } catch (const std::exception& error) {
+        integrationLog(QStringLiteral("Registrar не готов: %1")
+            .arg(QString::fromUtf8(error.what())));
+    }
+
+    if (auto* tools = integrationToolsMenu()) {
+        auto* registrarAction = tools->addAction(
+            QStringLiteral("Регистратор КТМА: состав и этапы"));
+        registrarAction->setToolTip(QStringLiteral(
+            "Открыть администрирование состава изделия и производственных этапов."));
+        connect(registrarAction, &QAction::triggered, this, [this] {
+            integrationOpenRegistrar();
+        });
+    }
+
     const auto loadRegisteredProducts = [this, page] {
         QStringList serials;
-        if (auto* registrar = integrationRegistrar()) {
+        if (auto* registrar = registrar_.get()) {
             try {
                 for (const auto& product : registrar->listProducts()) {
                     if (product.productType == "UBSI")
@@ -727,7 +749,7 @@ void KtmaMainWindow::runScenario(
 
     try {
         if (integrationProductionWorkflowActive()) {
-            auto* registrar = integrationRegistrar();
+            auto* registrar = registrar_.get();
             if (!registrar || !productionLedger_)
                 throw std::runtime_error("Production backend не инициализирован");
             if (serial.empty())
@@ -749,7 +771,7 @@ void KtmaMainWindow::runScenario(
         } else if (integrationTuWorkflowActive()) {
             if (objectSerial.trimmed().isEmpty())
                 throw std::runtime_error("Введите заводской номер проверяемого УБСИ");
-            if (auto* registrar = integrationRegistrar()) {
+            if (auto* registrar = registrar_.get()) {
                 const auto product = registrar->findProductBySerial(serial);
                 pendingTuProductId_ = product ? product->id : std::string();
                 integrationLog(product
@@ -873,7 +895,7 @@ void KtmaMainWindow::finalizeProductionRun()
         try {
             if (integrationResultSaved()) {
                 const auto result = integrationScenarioWatcher()->result();
-                integrationRegistrar()->attachTuRun(
+                registrar_.get()->attachTuRun(
                     pendingTuProductId_, result.runId, orbita::stand::toString(result.verdict));
             }
         } catch (const std::exception& error) {

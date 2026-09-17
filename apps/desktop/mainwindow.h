@@ -26,7 +26,6 @@
 #include "orbita_stand/run_store.h"
 #include "orbita_stand/report_writer.h"
 #include "miltech/orbita_sample_bridge.h"
-#include "registrar.h"
 
 #include "orbita.h"
 #include "metadata_service.h"
@@ -69,7 +68,7 @@ protected:
     TestPage* integrationTestPage() const { return testPage_; }
     HomePage* integrationHomePage() const { return homePage_; }
     RegistrarPage* integrationRegistrarPage() const { return registrarPage_; }
-    ktma::registrar::Registrar* integrationRegistrar() const { return registrar_.get(); }
+    QMenu* integrationToolsMenu() const { return toolsMenu_; }
     orbita::stand::ScenarioEngine* integrationScenarioEngine() const { return scenarioEngine_.get(); }
     orbita::stand::EquipmentRegistry* integrationEquipmentRegistry() const { return equipmentRegistry_; }
     orbita::stand::StandProfile& integrationStandProfile() { return standProfile_; }
@@ -248,13 +247,10 @@ private:
 
     std::unique_ptr<orbita::stand::ScenarioEngine> scenarioEngine_;
     std::unique_ptr<orbita::stand::RunStore> runStore_;
-    std::unique_ptr<ktma::registrar::Registrar> registrar_;
     QHash<QString, orbita::stand::ScenarioDefinition> scenarios_;
     QHash<QString, QString> scenarioPaths_;
     QFutureWatcher<orbita::stand::ScenarioRunResult>* scenarioWatcher_ = nullptr;
     Workflow activeWorkflow_ = Workflow::None;
-    std::string pendingProductionStageAttemptId_;
-    orbita::stand::ProductionReportMetadata pendingProductionReportMetadata_;
     bool closeAfterScenario_ = false;
     bool standRuntimeReady_ = false;
     QMetaObject::Connection scenarioRunConnection_;

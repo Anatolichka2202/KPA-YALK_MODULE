@@ -11,6 +11,10 @@ namespace ktma::ubsi {
 class ProductionLedger;
 }
 
+namespace ktma::registrar {
+class Registrar;
+}
+
 class KtmaMainWindow final : public MainWindow
 {
     Q_OBJECT
@@ -40,6 +44,7 @@ private:
     QString productionCodeForScope(const QString& scope) const;
     void clearPendingProduction() noexcept;
 
+    std::unique_ptr<ktma::registrar::Registrar> registrar_;
     std::unique_ptr<ktma::ubsi::ProductionLedger> productionLedger_;
     std::string pendingProductionRunId_;
     std::string pendingTuProductId_;

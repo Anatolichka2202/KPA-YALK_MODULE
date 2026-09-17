@@ -593,101 +593,6 @@ void MainWindow::setupToolBar()
         control->show();
     });
 
-    auto* registrarAction = toolsMenu_->addAction(
-        QStringLiteral("Регистратор КТМА: состав и этапы"));
-    registrarAction->setToolTip(QStringLiteral(
-        "Показывает изделия и рассчитанный итог регистратора; измерения остаются в runs.db."));
-    connect(registrarAction, &QAction::triggered, this, [this] {
-        if (!registrar_) {
-            QMessageBox::warning(this, QStringLiteral("Регистратор КТМА"),
-                QStringLiteral("Регистратор не инициализирован. Проверьте каталог поставки."));
-            return;
-        }
-        try {
-            const auto products = registrar_->listProducts();
-            QDialog dialog(this);
-            dialog.setWindowTitle(QStringLiteral("Регистратор КТМА"));
-            dialog.resize(760, 420);
-            auto* layout = new QVBoxLayout(&dialog);
-            auto* label = new QLabel(
-                QStringLiteral("registrar.db · состав изделия и итог по активным ячейкам"),
-                &dialog);
-            label->setStyleSheet(QStringLiteral("color:#9aa7b5;"));
-            layout->addWidget(label);
-            auto* table = new QTableWidget(&dialog);
-            table->setColumnCount(4);
-            table->setHorizontalHeaderLabels({QStringLiteral("Изделие"), QStringLiteral("Тип"),
-                QStringLiteral("Серийный номер"), QStringLiteral("Итог")});
-            table->setRowCount(static_cast<int>(products.size()));
-            table->setEditTriggers(QAbstractItemView::NoEditTriggers);
-            table->setSelectionBehavior(QAbstractItemView::SelectRows);
-            for (int row = 0; row < table->rowCount(); ++row) {
-                const auto& product = products[static_cast<std::size_t>(row)];
-                const auto verdict = registrar_->productVerdict(product.id);
-                table->setItem(row, 0, new QTableWidgetItem(QString::fromStdString(product.id)));
-                table->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(product.productType)));
-                table->setItem(row, 2, new QTableWidgetItem(QString::fromStdString(product.serialNumber)));
-                table->setItem(row, 3, new QTableWidgetItem(
-                    QString::fromUtf8(ktma::registrar::toString(verdict))));
-            }
-            table->resizeColumnsToContents();
-            table->horizontalHeader()->setStretchLastSection(true);
-            layout->addWidget(table);
-            auto* details = new QTextEdit(&dialog);
-            details->setReadOnly(true);
-            details->setMinimumHeight(150);
-            details->setStyleSheet(QStringLiteral(
-                "QTextEdit{background:#0e1115;color:#c8d1db;border:1px solid #2a313b;}"));
-            layout->addWidget(details);
-            auto refreshDetails = [this, products, details](int row) {
-                if (row < 0 || row >= static_cast<int>(products.size())) {
-                    details->clear();
-                    return;
-                }
-                const auto report = registrar_->productReport(
-                    products[static_cast<std::size_t>(row)].id);
-                QString text;
-                text += QStringLiteral("Состав и история замен:\n");
-                for (const auto& component : report.components) {
-                    text += QStringLiteral("• %1 / SN %2 — %3")
-                        .arg(QString::fromStdString(component.componentType),
-                             QString::fromStdString(component.serialNumber),
-                             component.active ? QStringLiteral("установлена")
-                                               : QStringLiteral("снята: ")
-                                                     + QString::fromStdString(component.removalReason));
-                    text += QLatin1Char('\n');
-                }
-                text += QStringLiteral("\nЭтапы:\n");
-                for (const auto& attempt : report.stageAttempts) {
-                    text += QStringLiteral("• %1 / %2 — %3")
-                        .arg(QString::fromStdString(attempt.componentId),
-                             QString::fromUtf8(ktma::registrar::toString(attempt.stage)),
-                             QString::fromUtf8(ktma::registrar::toString(attempt.verdict)));
-                    if (!attempt.runId.empty()) {
-                        text += QStringLiteral(" (run_id=%1)").arg(QString::fromStdString(attempt.runId));
-                    }
-                    text += QLatin1Char('\n');
-                }
-                details->setPlainText(text);
-            };
-            connect(table, &QTableWidget::currentCellChanged, &dialog,
-                [refreshDetails](int currentRow, int, int, int) {
-                    refreshDetails(currentRow);
-                });
-            if (table->rowCount() > 0) {
-                table->setCurrentCell(0, 0);
-                refreshDetails(0);
-            }
-            auto* close = new QPushButton(QStringLiteral("Закрыть"), &dialog);
-            connect(close, &QPushButton::clicked, &dialog, &QDialog::accept);
-            layout->addWidget(close, 0, Qt::AlignRight);
-            dialog.exec();
-        } catch (const std::exception& error) {
-            QMessageBox::warning(this, QStringLiteral("Регистратор КТМА"),
-                QString::fromUtf8(error.what()));
-        }
-    });
-
     scenarioRunConnection_ = connect(testPage_, &TestPage::runRequested,
                                      this, &MainWindow::onRunScenario);
     connect(testPage_, &TestPage::stopRequested,
@@ -789,12 +694,6 @@ void MainWindow::initializeStandRuntime()
 {
     try {
         const QDir root(QCoreApplication::applicationDirPath());
-        // Реестр жизненного цикла намеренно отдельный от parameters.db и
-        // runs.db: UI создаёт его при первом запуске, а подробности прогона
-        // остаются в RunStore.
-        registrar_ = std::make_unique<ktma::registrar::Registrar>(
-            root.filePath(QStringLiteral("registrar.db")).toStdString());
-        registrarPage_->setRegistrar(registrar_.get());
         if (standProfile_.id.empty())
             throw std::runtime_error(
                 "Профиль станции не настроен application composition");
@@ -889,7 +788,7 @@ void MainWindow::initializeStandRuntime()
                     const QString reportDir = root.filePath(
                         "runs/" + QString::fromStdString(result.runId));
                     const auto paths = orbita::stand::writeHtmlCsvReport(
-                        result, reportDir.toStdString(), pendingProductionReportMetadata_);
+                        result, reportDir.toStdString());
                     tuReportPath = QString::fromStdString(paths.tuHtml);
                     productionReportPath = QString::fromStdString(paths.productionHtml);
                     log(QStringLiteral("Краткий протокол ТУ: %1").arg(tuReportPath));
@@ -898,38 +797,6 @@ void MainWindow::initializeStandRuntime()
                 }
             } catch (const std::exception& error) {
                 log(QStringLiteral("Не удалось сохранить результат: %1").arg(QString::fromUtf8(error.what())));
-            }
-            if (!pendingProductionStageAttemptId_.empty()) {
-                try {
-                    if (resultSaved) {
-                        registrar_->attachRun(pendingProductionStageAttemptId_, result.runId);
-                        const auto stageVerdict = [&result] {
-                            using EngineVerdict = orbita::stand::RunVerdict;
-                            using RegistrarVerdict = ktma::registrar::Verdict;
-                            switch (result.verdict) {
-                            case EngineVerdict::Ok: return RegistrarVerdict::Ok;
-                            case EngineVerdict::Fail: return RegistrarVerdict::Fail;
-                            case EngineVerdict::Aborted: return RegistrarVerdict::Cancelled;
-                            case EngineVerdict::NotRun:
-                            case EngineVerdict::Incomplete:
-                            case EngineVerdict::Error: return RegistrarVerdict::Cancelled;
-                            }
-                            return RegistrarVerdict::Cancelled;
-                        }();
-                        registrar_->finishStage(pendingProductionStageAttemptId_, stageVerdict);
-                        log(QStringLiteral("Production run %1 привязан к этапу регистратора")
-                            .arg(QString::fromStdString(result.runId)));
-                    } else {
-                        registrar_->finishStage(pendingProductionStageAttemptId_,
-                                                ktma::registrar::Verdict::Cancelled);
-                        log(QStringLiteral("Production attempt отменён: run не удалось сохранить"));
-                    }
-                } catch (const std::exception& error) {
-                    log(QStringLiteral("Не удалось завершить production stage: %1")
-                        .arg(QString::fromUtf8(error.what())));
-                }
-                pendingProductionStageAttemptId_.clear();
-                pendingProductionReportMetadata_ = {};
             }
             if (!dedicatedProductionFinalizer)
                 testPage_->setRunResult(result, tuReportPath, productionReportPath);
@@ -1028,64 +895,15 @@ void MainWindow::onRunScenario(
         log(QStringLiteral("Сценарий %1 не загружен").arg(scenarioCode));
         return;
     }
+
     const auto scenario = iterator.value();
-    std::string productionSerial;
-    if (activeWorkflow_ == Workflow::Tu) {
-        if (!registrar_ || objectSerial.trimmed().isEmpty()) {
-            testPage_->setRunInProgress(false);
-            QMessageBox::information(this, QStringLiteral("Проверка по ТУ"),
-                QStringLiteral("Введите заводской номер уже зарегистрированного изделия."));
-            return;
-        }
-        try {
-            const auto product = registrar_->findProductBySerial(objectSerial.trimmed().toStdString());
-            if (!product) {
-                testPage_->setRunInProgress(false);
-                QMessageBox::information(this, QStringLiteral("Проверка по ТУ"),
-                    QStringLiteral("Изделие с таким заводским номером не зарегистрировано. Создание из TU-экрана не выполняется."));
-                return;
-            }
-        } catch (const std::exception& error) {
-            testPage_->setRunInProgress(false);
-            QMessageBox::warning(this, QStringLiteral("Проверка по ТУ"), QString::fromUtf8(error.what()));
-            return;
-        }
-    }
-    if (activeWorkflow_ == Workflow::Production) {
-        const auto selection = registrarPage_->selectedProductionSelection();
-        if (!selection) {
-            testPage_->setRunInProgress(false);
-            QMessageBox::information(this, QStringLiteral("Производственный запуск"),
-                QStringLiteral("В администрировании выберите изделие, активную ячейку и этап производства."));
-            log(QStringLiteral("Production run не запущен: не выбраны изделие, ячейка или этап"));
-            return;
-        }
-        try {
-            pendingProductionStageAttemptId_ = registrar_->beginComponentStage(
-                selection->productId.toStdString(), selection->componentId.toStdString(), selection->stage);
-            productionSerial = selection->productSerial.toStdString();
-            pendingProductionReportMetadata_ = {productionSerial,
-                selection->componentType.toStdString(), selection->componentSerial.toStdString(),
-                ktma::registrar::toString(selection->stage)};
-        } catch (const std::exception& error) {
-            testPage_->setRunInProgress(false);
-            QMessageBox::warning(this, QStringLiteral("Производственный запуск"),
-                QString::fromUtf8(error.what()));
-            log(QStringLiteral("Production stage не создан: %1").arg(QString::fromUtf8(error.what())));
-            return;
-        }
-    }
-    if (scenarioCode != QStringLiteral("YALK_FULL_5_6")
-        && scenarioCode != QStringLiteral("YALK_CONTACT_THRESHOLDS")
-        && scenarioCode != QStringLiteral("YTP_FULL_5_6")
-        && scenarioCode != QStringLiteral("YTP_120_CHECK")
-        && scenarioCode != QStringLiteral("ULK_COMBINED_CHECK")
-        && equipmentRegistry_->hasCapability("orbita.parameter_source")
+    if (equipmentRegistry_->hasCapability("orbita.parameter_source")
         && !orbita_->isRunning()) {
         onStart();
     }
+
     scenarioEngine_->resetStop();
-    const std::string serial = productionSerial.empty() ? objectSerial.toStdString() : productionSerial;
+    const std::string serial = objectSerial.trimmed().toUtf8().toStdString();
     const bool partial = allowPartial;
     testPage_->setRunInProgress(true, QStringLiteral("Выполняется: %1")
         .arg(QString::fromStdString(scenario.title)));
