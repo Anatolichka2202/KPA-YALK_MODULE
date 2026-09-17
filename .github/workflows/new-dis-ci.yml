@@ -1,12 +1,14 @@
 name: new-dis CI
-# Also validates the frozen UBSI UI data bindings and completion summaries.
+# Validates the operator UI, TU runtime bindings and the finalized UBSI backend.
 
 on:
   push:
     branches:
       - new-dis
+      - integration/master-yvp-ui
   pull_request:
     branches:
+      - new-dis
       - master
   workflow_dispatch:
 
@@ -74,7 +76,6 @@ jobs:
         run: |
           test -f build-ci/apps/desktop/MilTechStation.exe
           test -f build-ci/apps/desktop/MilTechStationSimulator.exe
-          test -f build-ci/apps/desktop/orbita_yvp_rokt_probe.exe
 
       - name: Assemble portable package
         shell: msys2 {0}
@@ -83,7 +84,6 @@ jobs:
           mkdir -p deploy
           cp build-ci/apps/desktop/MilTechStation.exe deploy/
           cp build-ci/apps/desktop/MilTechStationSimulator.exe deploy/
-          cp build-ci/apps/desktop/orbita_yvp_rokt_probe.exe deploy/
 
           for item in address catalog profiles scenarios plugins parameters.db Lusbapi64.dll; do
             if [ -e "build-ci/apps/desktop/$item" ]; then
@@ -104,14 +104,13 @@ jobs:
             cp "/ucrt64/bin/$dll" deploy/
           done
 
-          printf 'branch=new-dis\ncommit=%s\n' "$GITHUB_SHA" > deploy/BUILD_INFO.txt
+          printf 'branch=%s\ncommit=%s\n' "$GITHUB_REF_NAME" "$GITHUB_SHA" > deploy/BUILD_INFO.txt
 
       - name: Verify portable package
         shell: msys2 {0}
         run: |
           test -f deploy/MilTechStation.exe
           test -f deploy/MilTechStationSimulator.exe
-          test -f deploy/orbita_yvp_rokt_probe.exe
           test -f deploy/Qt6Core.dll
           test -f deploy/Qt6Gui.dll
           test -f deploy/Qt6Widgets.dll
@@ -127,13 +126,13 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: MilTechStation-new-dis-portable-windows-ucrt64
+          name: MilTechStation-${{ github.ref_name }}-portable-windows-ucrt64
           path: deploy/**
           if-no-files-found: error
           retention-days: 7
 
       - name: Build rolling pilot archive
-        if: success() && github.event_name != 'pull_request'
+        if: success() && github.event_name != 'pull_request' && github.ref == 'refs/heads/new-dis'
         shell: pwsh
         run: |
           $short = $env:GITHUB_SHA.Substring(0, 7)
@@ -149,7 +148,7 @@ jobs:
           "PACKAGE_NAME=$packageName" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Publish rolling new-dis pilot
-        if: success() && github.event_name != 'pull_request'
+        if: success() && github.event_name != 'pull_request' && github.ref == 'refs/heads/new-dis'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
