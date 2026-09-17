@@ -3,6 +3,7 @@
 #include <QApplication>
 #include <QComboBox>
 #include <QLabel>
+#include <QPushButton>
 #include <QWidget>
 
 #include <cstdlib>
@@ -16,6 +17,13 @@ void require(bool condition, const char* message)
         std::exit(EXIT_FAILURE);
     }
 }
+
+QPushButton* buttonByText(QWidget& root, const QString& text)
+{
+    for (auto* button : root.findChildren<QPushButton*>())
+        if (button->text() == text) return button;
+    return nullptr;
+}
 }
 
 int main(int argc, char** argv)
@@ -28,12 +36,17 @@ int main(int argc, char** argv)
     auto* test = page.findChild<QComboBox*>(QStringLiteral("testType"));
     auto* overview = page.findChild<QWidget*>(QStringLiteral("yvpEightChannelOverview"));
     auto* context = page.findChild<QLabel*>(QStringLiteral("frozenProcedureContext"));
-    require(scope && test && overview && context, "production YVP controls not found");
+    auto* yvpButton = buttonByText(page, QStringLiteral("ЯВП-8"));
+    require(scope && test && overview && context && yvpButton,
+            "production YVP controls not found");
 
-    const int yvpScope = scope->findData(QStringLiteral("ЯВП-8"));
-    require(yvpScope >= 0, "YVP production scope not found");
-    scope->setCurrentIndex(yvpScope);
+    // Use the real operator control. The hidden testScope bridge mirrors the
+    // selection for orchestration compatibility but is not the production UI.
+    yvpButton->click();
+    QApplication::processEvents();
 
+    require(scope->currentData().toString() == QStringLiteral("ЯВП-8"),
+            "visible YVP scope action must update orchestration scope");
     require(page.currentScenarioCode() == QStringLiteral("PROD_YVP"),
             "YVP scope must resolve to PROD_YVP");
     require(test->currentText().contains(QStringLiteral("V7 / ИСД")),
