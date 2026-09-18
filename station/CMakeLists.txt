@@ -49,6 +49,8 @@ target_link_libraries(orbita_stand_runtime PUBLIC
 # Hardware/protocol adapters are reusable station IO. Product procedures must
 # depend on these adapters when needed, never the other way around.
 add_library(orbita_stand_adapters STATIC
+    src/isd_driver.cpp
+    adapters/isd_http_transport.cpp
     adapters/equipment_adapters.cpp
     adapters/e2010_sample_source.cpp
     adapters/sample_source_registry.cpp
@@ -85,6 +87,15 @@ if(BUILD_TESTING)
     target_link_libraries(equipment_protocol_test PRIVATE orbita_stand_adapters)
     add_test(NAME stand.equipment_protocol COMMAND equipment_protocol_test)
 
+    add_executable(isd_driver_test tests/isd_driver_test.cpp)
+    target_link_libraries(isd_driver_test PRIVATE orbita_stand_adapters)
+    add_test(NAME stand.isd_driver COMMAND isd_driver_test)
+
+    add_executable(isd_http_transport_test tests/isd_http_transport_test.cpp)
+    target_link_libraries(isd_http_transport_test PRIVATE
+        orbita_stand_adapters Qt6::Core Qt6::Network)
+    add_test(NAME stand.isd_http_transport COMMAND isd_http_transport_test)
+
     add_executable(scenario_resource_test tests/scenario_resource_test.cpp)
     target_link_libraries(scenario_resource_test PRIVATE orbita_stand_runtime Qt6::Core)
     add_test(NAME stand.scenario_resource COMMAND scenario_resource_test)
@@ -118,6 +129,8 @@ if(BUILD_TESTING)
         set(_orbita_qt_test_path "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
         set_tests_properties(
             stand.equipment_protocol
+            stand.isd_driver
+            stand.isd_http_transport
             stand.scenario_resource
             stand.component_profile
             stand.component_runtime
