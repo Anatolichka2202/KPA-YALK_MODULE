@@ -3,6 +3,7 @@
 #include <QApplication>
 #include <QComboBox>
 #include <QLabel>
+#include <QLineEdit>
 #include <QPushButton>
 #include <QWidget>
 
@@ -51,25 +52,23 @@ int main(int argc, char** argv)
     page.setScenarioInfo(QStringLiteral("ULK_COMBINED_CHECK"), true, false, {}, QStringLiteral("ready"));
     page.setAvailableProductionProducts({QStringLiteral("345")});
 
-    auto* operatorBox = page.findChild<QComboBox*>(QStringLiteral("tuOperator"));
     auto* serialBox = page.findChild<QComboBox*>(QStringLiteral("tuRegisteredProducts"));
-    require(operatorBox && serialBox, "TU selection controls missing");
-    operatorBox->addItem(QStringLiteral("Иванов И.И."), QStringLiteral("Иванов И.И."));
-    operatorBox->setCurrentIndex(operatorBox->findData(QStringLiteral("Иванов И.И.")));
+    auto* manualSerial = page.findChild<QLineEdit*>(QStringLiteral("tuManualSerial"));
+    require(serialBox && manualSerial, "TU v0.5 serial controls missing");
+    require(page.findChild<QComboBox*>(QStringLiteral("tuOperator")) == nullptr,
+            "TU entry must not ask for operator before the run");
+
     serialBox->setCurrentIndex(serialBox->findData(QStringLiteral("345")));
     QApplication::processEvents();
     saveScene(page, requested, QStringLiteral("TU_ENTRY"), screenshot);
 
-    auto* check = buttonByText(page, QStringLiteral("Проверить готовность"));
-    require(check && check->isEnabled(), "TU readiness action must be enabled for operator+serial");
+    auto* check = buttonByText(page, QStringLiteral("Проверить стенд"));
+    require(check && check->isEnabled(), "TU readiness action must be enabled for selected serial");
     check->click();
     QApplication::processEvents();
     saveScene(page, requested, QStringLiteral("TU_READY"), screenshot);
 
     auto* start = buttonByText(page, QStringLiteral("НАЧАТЬ ПРОВЕРКУ"));
-    // The TestPage is intentionally not shown in this offscreen unit test, so
-    // QWidget::isVisible() would also include top-level visibility. isHidden()
-    // tests the TU flow's own state instead.
     require(start && !start->isHidden() && start->isEnabled(),
             "TU must reach ready state when selected scenario needs no equipment in test");
     start->click();
@@ -169,6 +168,6 @@ int main(int argc, char** argv)
             "TU finish must expose report path and run_id");
     saveScene(page, requested, QStringLiteral("TU_FINISH"), screenshot);
 
-    std::cout << "Dedicated TU runtime rail test passed\n";
+    std::cout << "Dedicated TU v0.5 runtime rail test passed\n";
     return EXIT_SUCCESS;
 }
