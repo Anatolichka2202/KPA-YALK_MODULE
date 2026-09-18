@@ -190,12 +190,7 @@ double yalkCodeToVolts(double code, const ProcedureContext& context)
 
 std::string yalkOwner(const ProcedureContext& context)
 {
-    // Existing YALK calibration/channel procedures in the current master still
-    // call the ISD plugin without an explicit owner.  The plugin maps those
-    // compatibility calls to one process-local owner.  This override releases
-    // that owner explicitly instead of using firmware type=4.
-    (void)context;
-    return "unscoped";
+    return "run:" + context.runId + ":yalk";
 }
 
 ProcedureResult yalkStartStreamSafe(const ScenarioNode& node, ProcedureContext& context)
