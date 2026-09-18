@@ -302,35 +302,6 @@ ProcedureResult yalkSafeCleanupSafe(const ScenarioNode& node, ProcedureContext& 
     return result;
 }
 
-ProcedureResult ytpStartBlocked(const ScenarioNode&, ProcedureContext& context)
-{
-    // The old path depends on ISD type=7 routes 3/9/12/17. The provided
-    // firmware source has an empty case 7, and no replacement command has been
-    // proven on the live stand. Do not invent one and do not send type=4.
-    context.state["ytp.protocol"] = "blocked_unconfirmed_isd_route";
-    context.state["ytp.raw_path"].clear();
-    return {RunVerdict::Incomplete,
-        "ЯТП не запущен: прежняя коммутация ИСД type=7 (3/9/12/17) не подтверждается firmware; активные команды ИСД не отправлялись", {}};
-}
-
-ProcedureResult ytpSafeCleanupNoIsd(const ScenarioNode&, ProcedureContext& context)
-{
-    std::string failures;
-    try { context.equipment.invoke("ulk.parameter_source", "stop_stream", {}); }
-    catch (const std::exception& error) { failures = error.what(); }
-    try { context.equipment.invoke("ulk.parameter_source", "stop_record", {}); }
-    catch (const std::exception& error) {
-        if (!failures.empty()) failures += "; ";
-        failures += error.what();
-    }
-    if (!failures.empty()) {
-        return {RunVerdict::Error,
-            "Не все операции остановки ЯТП выполнены: " + failures, {}};
-    }
-    return {RunVerdict::Ok,
-        "Поток/запись ЯТП остановлены; неподтверждённые команды ИСД не использовались", {}};
-}
-
 } // namespace
 
 void registerIsdSafeUbsiProcedures(ScenarioEngine& engine)
@@ -338,8 +309,6 @@ void registerIsdSafeUbsiProcedures(ScenarioEngine& engine)
     engine.registerProcedure("yalk.start_stream", yalkStartStreamSafe);
     engine.registerProcedure("yalk.check_initial_state", yalkCheckInitialSafe);
     engine.registerProcedure("yalk.safe_cleanup", yalkSafeCleanupSafe);
-    engine.registerProcedure("ytp.start_stream", ytpStartBlocked);
-    engine.registerProcedure("ytp.safe_cleanup", ytpSafeCleanupNoIsd);
 }
 
 } // namespace orbita::stand
