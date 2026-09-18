@@ -171,7 +171,6 @@ int main(int argc, char** argv)
 
     orbita::stand::IsdHttpRouter isd({argv[1], 80, 3000, 2, {}});
     orbita::stand::UlkUdpTransport adapter({argv[2], argv[3], 1113, 800, 8192});
-    bool isdPrepared = false;
     bool outputEnabled = false;
     unsigned activeChannel = 0;
 
@@ -185,11 +184,8 @@ int main(int argc, char** argv)
                   << " output=" << runDirectory.string() << '\n';
 
         adapter.startRecord(rawPath.string());
-        isd.prepareYalk();
-        isdPrepared = true;
         adapter.prepareYalkReference();
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
-        isd.prepareYalk();
         adapter.startPreparedYalkReference();
         std::this_thread::sleep_for(std::chrono::milliseconds(1000));
         const auto calibrationStart = adapter.stats().lastSequence;
@@ -289,8 +285,6 @@ int main(int argc, char** argv)
                       << " result=" << (channelOk ? "OK" : "FAIL") << '\n';
         }
 
-        isd.reset();
-        isdPrepared = false;
         adapter.stopRecord();
         adapter.stop();
         const auto stats = adapter.stats();
@@ -308,15 +302,10 @@ int main(int argc, char** argv)
         if (outputEnabled && activeChannel) {
             try { isd.disableYalkOutput(activeChannel); } catch (...) {}
         }
-        if (isdPrepared) {
-            try { isd.reset(); } catch (...) {}
-        } else {
-            try { isd.reset(); } catch (...) {}
-        }
         adapter.stopRecord();
         adapter.stop();
         std::cerr << "ERROR " << error.what()
-                  << "\nCLEANUP attempted=true"
+                  << "\nCLEANUP targeted_attempted=true"
                   << "\nPARTIAL_CSV " << csvPath.string()
                   << "\nRAW " << rawPath.string() << '\n';
         return 1;
