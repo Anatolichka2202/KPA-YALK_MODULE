@@ -6,6 +6,7 @@
 
 class QComboBox;
 class QLabel;
+class QLineEdit;
 class QPushButton;
 class QStackedWidget;
 
@@ -17,6 +18,8 @@ public:
     explicit TuFlowWidget(QWidget* parent = nullptr);
 
     void setRegisteredSerials(const QStringList& serials);
+    // Compatibility hook. In the v0.5 TU flow the operator is intentionally
+    // entered only after the automatic run, immediately before the report.
     void setOperators(const QStringList& operators);
     void setScenarioAvailable(bool available, const QString& detail = {});
     void beginStandCheck(const QString& serial, const QString& operatorName,
@@ -30,21 +33,27 @@ public:
 
 signals:
     void homeRequested();
+    // operatorName remains in the signal signature for binary/source stability;
+    // TU v0.5 emits an empty value until the post-run report step.
     void readinessRequested(const QString& serial, const QString& operatorName);
     void startRequested(const QString& serial, const QString& operatorName);
     void retryRequested(const QString& serial, const QString& operatorName);
 
 private:
+    QString selectedSerial() const;
     void updateSelectionAvailability();
     void updateReadiness();
     void showReady();
     void showNotReady(const QString& detail);
+    void setSerialMode(bool manual);
 
     QStackedWidget* pages_ = nullptr;
     QWidget* selectionPage_ = nullptr;
     QWidget* readinessPage_ = nullptr;
-    QComboBox* operator_ = nullptr;
     QComboBox* registered_ = nullptr;
+    QLineEdit* manualSerial_ = nullptr;
+    QPushButton* useRegistered_ = nullptr;
+    QPushButton* useManual_ = nullptr;
     QPushButton* check_ = nullptr;
     QLabel* scenarioState_ = nullptr;
     QLabel* serialTitle_ = nullptr;
@@ -55,9 +64,9 @@ private:
     QPushButton* back_ = nullptr;
 
     QString activeSerial_;
-    QString activeOperator_;
     QStringList requiredEquipment_;
     QHash<QString, int> equipmentState_; // -1 checking/unknown, 0 failed, 1 ready
     QHash<QString, QString> equipmentDetail_;
     bool scenarioAvailable_ = true;
+    bool manualMode_ = false;
 };
