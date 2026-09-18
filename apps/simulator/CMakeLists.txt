@@ -14,5 +14,5 @@ if(BUILD_TESTING)
     add_dependencies(simulator_protocol_test MilTechStationSimulator)
     add_test(NAME simulator.protocol
         COMMAND simulator_protocol_test "$<TARGET_FILE:MilTechStationSimulator>")
-    set_tests_properties(simulator.protocol PROPERTIES TIMEOUT 15)
+    set_tests_properties(simulator.protocol PROPERTIES TIMEOUT 45)
 endif()

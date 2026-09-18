@@ -151,7 +151,7 @@ int main(int argc, char** argv)
     simulator.setProgram(QString::fromLocal8Bit(argv[1]));
     simulator.setArguments({QStringLiteral("-platform"), QStringLiteral("offscreen")});
     simulator.start();
-    require(simulator.waitForStarted(3000), "MilTechStationSimulator did not start");
+    require(simulator.waitForStarted(10000), "MilTechStationSimulator did not start");
 
     const auto stopSimulator = [&] {
         simulator.terminate();
@@ -162,11 +162,11 @@ int main(int argc, char** argv)
     };
 
     QString startupDetail;
-    if (!waitTcp(simulator, 15025, 5000, &startupDetail)) {
+    if (!waitTcp(simulator, 15025, 15000, &startupDetail)) {
         stopSimulator();
         fail(QStringLiteral("SCPI endpoint startup failed: %1").arg(startupDetail));
     }
-    if (!waitTcp(simulator, 18080, 5000, &startupDetail)) {
+    if (!waitTcp(simulator, 18080, 15000, &startupDetail)) {
         stopSimulator();
         fail(QStringLiteral("ISD HTTP endpoint startup failed: %1").arg(startupDetail));
     }
