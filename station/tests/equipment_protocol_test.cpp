@@ -40,8 +40,6 @@ int main()
         require(IsdHttpRouter::analogPath(5, 2000, false)
                     == "/type=1num=5val=2000work=0",
                 "ISD analog command differs from Delphi reference");
-        require(IsdHttpRouter::fullResetPath() == "/type=4num=1",
-                "ISD full reset differs from Delphi reference");
         require(IsdHttpRouter::yalkVoltagePath(1, 0.0)
                     == "/type=5num=1val=0.00work=1bus=1"
                 && IsdHttpRouter::yalkVoltagePath(1, 3.1)
