@@ -61,7 +61,6 @@ struct YalkProcedureResult {
 class IIsdRouter {
 public:
     virtual ~IIsdRouter() = default;
-    virtual void reset() = 0;
     virtual void connectChannel(unsigned channel) = 0;
     virtual void disconnectChannel(unsigned channel) = 0;
 };
