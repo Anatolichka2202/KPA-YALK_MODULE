@@ -376,8 +376,8 @@ void configurationAndCatalog(const QString& root)
         require(step.procedure != "ubsi.external_evidence",
             "Canonical TU must not contain excluded external evidence");
     }
-    require(engine.validate(contacts).empty() && contacts.steps.size() == 6,
-            "Optional YALK contact-threshold scenario must validate as six stages");
+    require(engine.validate(contacts).empty() && contacts.steps.size() == 7,
+            "Optional YALK contact-threshold scenario must validate as seven stages including ISD baseline");
     require(profile.id == "ktma-main" && profile.activeOutputsConfirmed,
             "Verified stand profile must allow the captured active commands");
     require(profile.routes.at("yalk_analog.base") == "1"

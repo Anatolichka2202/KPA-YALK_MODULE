@@ -95,7 +95,7 @@ $required = @(
     'MilTechStation.exe', 'MilTechStationSimulator.exe', 'parameters.db', 'profiles\stand_ktma.yaml',
     'scenarios\ubsi_production_full.yaml', 'scenarios\ubsi_production_power.yaml',
     'scenarios\ubsi_production_yalk.yaml', 'scenarios\ubsi_production_ytp.yaml',
-    'scenarios\ubsi_production_yvp.yaml',
+    'scenarios\ubsi_production_yvp.yaml', 'scenarios\ubsi_ulk_combined_check.yaml',
     'plugins\orbita_plugin_akip_1160.dll',
     'plugins\orbita_plugin_isd_http.dll',
     'plugins\orbita_plugin_ktma_adapter_udp.dll',

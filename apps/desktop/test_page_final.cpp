@@ -1853,6 +1853,11 @@ void TestPage::setRunResult(const orbita::stand::ScenarioRunResult& result,
     impl_->finishReport->setText(reports.join(QLatin1Char('\n')));
     impl_->finishReport->setVisible(!reports.isEmpty());
 
+    if (!impl_->productionMode && impl_->tuFlow) {
+        impl_->tuFlow->completeRun(result, tuReportPath);
+        impl_->pages->setCurrentWidget(impl_->tuFlow);
+    }
+
     if (impl_->activeRow >= 0 && impl_->activeRow < impl_->queue->rowCount()
         && impl_->queue->item(impl_->activeRow, 2)) {
         impl_->queue->item(impl_->activeRow, 2)->setText(
