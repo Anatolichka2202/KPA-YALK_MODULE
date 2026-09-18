@@ -231,7 +231,7 @@ void engineSemantics()
 {
     require(combineVerdicts(RunVerdict::Incomplete, RunVerdict::Fail)
                 == RunVerdict::Fail,
-            "FAIL must not be masked by a commissioning INCOMPLETE verdict");
+            "FAIL must not be masked by an unrelated INCOMPLETE verdict");
     require(combineVerdicts(RunVerdict::Fail, RunVerdict::Incomplete)
                 == RunVerdict::Fail,
             "Later INCOMPLETE steps must preserve an earlier FAIL verdict");
@@ -409,7 +409,7 @@ void configurationAndCatalog(const QString& root)
                 && scenarioCapabilities.count("measure.reference_ac_voltage") != 0
                 && scenarioCapabilities.count("measure.reference_frequency") != 0
                 && scenarioCapabilities.count("signal.generator") != 0,
-            "UBSI scenario must expose the authorized Rigol YVP commissioning equipment");
+            "UBSI scenario must expose the authorized Rigol YVP production equipment");
 
     QTemporaryDir temporary;
     require(temporary.isValid(), "Cannot create temporary directory");
@@ -902,7 +902,7 @@ void persistenceAndReport()
     ScenarioRunResult ytpRun = run;
     ytpRun.runId = "ytp-run-1";
     ytpRun.scenarioId = "ubsi.468157.002.ytp.tu5_6";
-    ytpRun.scenarioTitle = "ЯТП commissioning";
+    ytpRun.scenarioTitle = "ЯТП production";
     MeasurementResult ytpValue{
         "ubsi.ytp.1", "ЯТП канал 1", 100.0, 100.2, 98.8, 101.2,
         "Ом", RunVerdict::Ok, {}};
