@@ -22,7 +22,6 @@ public:
     explicit IsdHttpRouter(IsdHttpConfig config);
     ~IsdHttpRouter() override;
     std::string probe();
-    void reset() override;
     void connectChannel(unsigned channel) override;
     void disconnectChannel(unsigned channel) override;
     void setSwitch(unsigned type, unsigned channel, bool enabled);
@@ -32,7 +31,6 @@ public:
     void disableYalkOutput(unsigned channel);
     static std::string switchPath(unsigned type, unsigned channel, bool enabled);
     static std::string analogPath(unsigned channel, unsigned value, bool enabled);
-    static std::string fullResetPath();
     static std::string yalkVoltagePath(unsigned channel, double volts);
     static std::string yalkOutputBusOffPath(unsigned channel);
     static std::string yalkOutputOffPath(unsigned channel);
