@@ -118,6 +118,18 @@ void sourceContract()
     require(contains(transport, "There is deliberately no retry here"),
         "ISD transport lost the one-request/no-retry contract");
 
+    const auto adapterPlugin = readFile("station/plugins/ktma_adapter_udp_plugin.cpp");
+    const auto ulkTransport = readFile("station/adapters/ulk_udp_transport.cpp");
+    const auto ulkHeader = readFile("station/include/orbita_stand/ulk_udp_transport.h");
+    for (const auto& retired : {"start_yvp_probe", "start_yvp_channel_probe",
+                                "read_yvp_raw", "read_yvp_channel_raw",
+                                "YvpRokt136", "YvpChannelRokt132"}) {
+        require(!contains(adapterPlugin, retired)
+                && !contains(ulkTransport, retired)
+                && !contains(ulkHeader, retired),
+            std::string("Retired adapter YVP probe contract returned: ") + retired);
+    }
+
     const auto legacy = readFile("station/src/ubsi_procedures.cpp");
     require(!contains(legacy, "\"full_reset\"")
             && !contains(legacy, "isd_switch_type")
@@ -138,11 +150,19 @@ void scenarioContract()
         "data/scenarios/ubsi_production_ytp.yaml",
         "data/scenarios/ubsi_production_yvp.yaml",
         "data/scenarios/ubsi_ulk_combined_check.yaml",
+        "data/scenarios/ubsi_yalk_contact_thresholds.yaml",
+        "data/scenarios/ubsi_yalk_tu_5_6.yaml",
+        "data/scenarios/ubsi_ytp_120_check.yaml",
+        "data/scenarios/ubsi_ytp_tu_5_6.yaml",
+        "data/scenarios/ubsi_tu_5_6.yaml",
     };
     for (const auto& path : production) {
         const auto yaml = readFile(path);
+        const auto baseline = yaml.find("procedure: ubsi.isd_baseline");
         require(countOccurrences(yaml, "procedure: ubsi.isd_baseline") == 1,
             path + " must contain exactly one initial ISD baseline");
+        require(baseline == yaml.find("procedure:"),
+            path + " must start with the ISD baseline before any other procedure");
         require(!contains(yaml, "isd_switch_type: 7")
                 && !contains(yaml, "isd_route_channels:"),
             path + " retains obsolete YTP ISD routing");
