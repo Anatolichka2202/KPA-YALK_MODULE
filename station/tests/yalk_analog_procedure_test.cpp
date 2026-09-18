@@ -28,7 +28,6 @@ double voltsToCode(double volts, const YalkCalibration& calibration)
 
 class FakeIsd final : public IIsdRouter {
 public:
-    void reset() override { resetCalled = true; }
     void connectChannel(unsigned channel) override { connectedChannel = channel; }
     void disconnectChannel(unsigned channel) override
     {
@@ -36,7 +35,6 @@ public:
         disableCalled = true;
     }
 
-    bool resetCalled = false;
     bool disableCalled = false;
     unsigned connectedChannel = 0;
     unsigned disabledChannel = 0;
