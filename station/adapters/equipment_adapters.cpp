@@ -133,12 +133,6 @@ struct IsdHttpRouter::Impl { explicit Impl(IsdHttpConfig value) : config(std::mo
 IsdHttpRouter::IsdHttpRouter(IsdHttpConfig config) : impl_(std::make_unique<Impl>(std::move(config))) {}
 IsdHttpRouter::~IsdHttpRouter() = default;
 std::string IsdHttpRouter::probe() { return httpGet(impl_->config, QStringLiteral("/")).left(200).toStdString(); }
-void IsdHttpRouter::reset()
-{
-    // Р РµС„РµСЂРµРЅСЃРЅР°СЏ Delphi-РїСЂРѕРіСЂР°РјРјР° Рё KPA РІС‹РїРѕР»РЅСЏСЋС‚ В«СЃР±СЂРѕСЃ РїРѕР»РЅС‹Р№В» РѕРґРЅРѕР№
-    // С€С‚Р°С‚РЅРѕР№ РєРѕРјР°РЅРґРѕР№ type=4. РџРµСЂРµР±РѕСЂ РєР°РЅР°Р»РѕРІ type=2 РЅРµ СЌРєРІРёРІР°Р»РµРЅС‚РµРЅ РµР№.
-    requireIsdSuccess(httpGet(impl_->config, QString::fromStdString(fullResetPath())));
-}
 void IsdHttpRouter::connectChannel(unsigned channel) { setSwitch(impl_->config.switchType, channel, true); }
 void IsdHttpRouter::disconnectChannel(unsigned channel) { setSwitch(impl_->config.switchType, channel, false); }
 void IsdHttpRouter::setSwitch(unsigned type, unsigned channel, bool enabled)
@@ -178,10 +172,6 @@ std::string IsdHttpRouter::analogPath(unsigned channel, unsigned value, bool ena
     if (!channel) throw std::invalid_argument("ISD channel starts at one");
     return "/type=1num=" + std::to_string(channel) + "val=" + std::to_string(value)
         + "work=" + (enabled ? "1" : "0");
-}
-std::string IsdHttpRouter::fullResetPath()
-{
-    return "/type=4num=1";
 }
 std::string IsdHttpRouter::yalkVoltagePath(unsigned channel, double volts)
 {
