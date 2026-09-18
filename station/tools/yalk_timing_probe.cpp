@@ -97,7 +97,7 @@ int main(int argc, char** argv)
     const unsigned isdChannel = number(argv[4], "ISD channel", 100);
     orbita::stand::IsdHttpRouter isd({argv[1], 80, 3000, 2, {}});
     orbita::stand::UlkUdpTransport adapter({argv[2], argv[3], 1113, 800, 4096});
-    bool isdPrepared = false;
+    bool outputEnabled = false;
 
     try {
         orbita::stand::V7VisaVoltmeter meter;
@@ -107,11 +107,8 @@ int main(int argc, char** argv)
                   << " channel=" << isdChannel
                   << " v7=" << meter.resourceName() << '\n';
 
-        isd.prepareYalk();
-        isdPrepared = true;
         adapter.prepareYalkReference();
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
-        isd.prepareYalk();
         adapter.startPreparedYalkReference();
         std::this_thread::sleep_for(std::chrono::milliseconds(1000));
         const auto calibrationAfter = adapter.stats().lastSequence;
@@ -134,6 +131,7 @@ int main(int argc, char** argv)
         for (std::size_t point = 0; point < points.size(); ++point) {
             const double commandVolts = points[point];
             isd.setYalkVoltage(isdChannel, commandVolts);
+            outputEnabled = true;
             std::this_thread::sleep_for(std::chrono::milliseconds(150));
             const auto afterSettling = adapter.stats().lastSequence;
             v7Readings[point] = meter.readVoltage();
@@ -196,22 +194,22 @@ int main(int argc, char** argv)
         const bool verdictOk = selectedResponded
             && std::all_of(pointOk.begin(), pointOk.end(), [](bool value) { return value; });
 
-        isd.disableYalkOutput(isdChannel);
-        isd.reset();
-        isdPrepared = false;
+        if (outputEnabled) {
+            isd.disableYalkOutput(isdChannel);
+            outputEnabled = false;
+        }
         adapter.stop();
         std::cout << "RESULT " << (verdictOk ? "DIAGNOSTIC_OK" : "DIAGNOSTIC_FAIL")
                   << " selected_address=" << isdChannel
                   << " candidates=" << candidates
-                  << " cleanup=complete\n";
+                  << " cleanup=targeted\n";
         return verdictOk ? 0 : 4;
     } catch (const std::exception& error) {
-        if (isdPrepared) {
+        if (outputEnabled) {
             try { isd.disableYalkOutput(isdChannel); } catch (...) {}
         }
-        try { isd.reset(); } catch (...) {}
         adapter.stop();
-        std::cerr << "ERROR " << error.what() << "\nCLEANUP attempted=true\n";
+        std::cerr << "ERROR " << error.what() << "\nCLEANUP targeted_attempted=true\n";
         return 1;
     }
 }
