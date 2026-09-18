@@ -33,7 +33,6 @@ public:
     static std::string switchPath(unsigned type, unsigned channel, bool enabled);
     static std::string analogPath(unsigned channel, unsigned value, bool enabled);
     static std::string fullResetPath();
-    static std::string yalkPreparePath();
     static std::string yalkVoltagePath(unsigned channel, double volts);
     static std::string yalkOutputBusOffPath(unsigned channel);
     static std::string yalkOutputOffPath(unsigned channel);
