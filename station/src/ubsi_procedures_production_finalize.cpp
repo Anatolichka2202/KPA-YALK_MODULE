@@ -83,7 +83,7 @@ ProcedureResult isdBaseline(const ScenarioNode& node, ProcedureContext& context)
 
     MeasurementResult baseline;
     baseline.parameterKey = "stand.isd.baseline";
-    baseline.title = "Исходное all-off состояние ИСД";
+    baseline.title = "Команда стартового all-off baseline ИСД";
     baseline.reference = 0.0;
     baseline.measured = 0.0;
     baseline.lowerLimit = 0.0;
@@ -97,11 +97,11 @@ ProcedureResult isdBaseline(const ScenarioNode& node, ProcedureContext& context)
         {"global_hardware_state", "not_readable"}};
 
     context.eventSink({std::chrono::system_clock::now(), node.id, "ISD_BASELINE",
-        "ИСД подтвердил стартовый all-off baseline", RunVerdict::Ok,
+        "Firmware подтвердил выполнение стартовой команды all-off baseline", RunVerdict::Ok,
         baseline.attributes});
 
     ProcedureResult result{RunVerdict::Ok,
-        "ИСД приведён к стартовому all-off baseline; глобальное состояние аппаратно не читается",
+        "Стартовая команда all-off baseline подтверждена; глобальное состояние аппаратно не читается",
         {}};
     result.measurements.push_back(std::move(baseline));
     return result;
