@@ -1,7 +1,7 @@
 schema: 1
 id: ubsi.468157.002.tu5_6.normal
 title: УБСИ ЛВРМ.468157.002 — legacy trace сценарий 5.6
-version: 1.6.4
+version: 1.6.5
 catalog_version: 2026.08.29-yalk-1
 object_type: UBSI_468157_002
 # Trace-only draft. Текущий published full run — ubsi_ulk_combined_check.yaml.
@@ -57,7 +57,7 @@ steps:
         procedure: yalk.start_stream
         requires:
           - ulk.parameter_source
-            args:
+        args:
           configure_settle_ms: 500
           timeout_ms: 3000
       - id: yalk_calibration
