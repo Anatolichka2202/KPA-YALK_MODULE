@@ -26,6 +26,8 @@ add_library(ktma_ubsi_procedures STATIC
     src/procedures/ubsi_procedures.cpp
     src/procedures/ubsi_procedures_current.cpp
     src/procedures/ubsi_procedures_rokt.cpp
+    src/procedures/ubsi_procedures_isd_safe.cpp
+    src/procedures/ubsi_procedures_production_finalize.cpp
     src/procedures/ubsi_procedures_v7.cpp
 )
 

@@ -42,6 +42,12 @@ public:
         if (capability == "stand.switch_matrix" && operation == "switch") {
             switchArguments.push_back(arguments);
         }
+        if (capability == "stand.switch_matrix" && operation == "state") {
+            return "session_state=operational\nowned_count=0\n";
+        }
+        if (capability == "stand.switch_matrix" && operation == "service_full_reset") {
+            return "status=ok\noperation=service_full_reset\n";
+        }
         if (capability == "orbita.parameter_source" && operation == "health") {
             return "status=ready\nframes_processed=12\nphrase_error_percent=0\n"
                    "group_error_percent=0\nchannel_count=8\n";
@@ -514,8 +520,11 @@ void configurationAndCatalog(const QString& root)
                 "operator.manual_input:confirm_value") == 3,
             "YTP must request all three manual R4831 points");
     require(std::count(ytpEquipment.operations.begin(), ytpEquipment.operations.end(),
-                "stand.switch_matrix:switch") == 8,
-            "YTP must enable and disable the four captured ISD type-7 routes");
+                "stand.switch_matrix:switch") == 0,
+            "YTP must not use the retired ISD type-7 routing");
+    require(std::count(ytpEquipment.operations.begin(), ytpEquipment.operations.end(),
+                "stand.switch_matrix:service_full_reset") == 1,
+            "YTP scenario must establish one explicit ISD baseline before the run");
     require(!ytpEquipment.supplyOutputEnabled,
             "YTP scenario must switch the AKIP output off after the test");
     const auto repeatedYtpRun = engine.run(
@@ -535,8 +544,9 @@ void configurationAndCatalog(const QString& root)
             "YTP power operations must be routed through power.dut");
     require(routedVia("dut.parameter_source:ulk.parameter_source:"),
             "YTP adapter operations must be routed through dut.parameter_source");
-    require(routedVia("switch_matrix.primary:stand.switch_matrix:"),
-            "YTP ISD operations must be routed through switch_matrix.primary");
+    require(routedVia("switch_matrix.primary:stand.switch_matrix:service_full_reset")
+                && routedVia("switch_matrix.primary:stand.switch_matrix:state"),
+            "YTP must route only the explicit startup ISD baseline through switch_matrix.primary");
 
     FakeEquipment ytp120Equipment;
     ytp120Equipment.capabilities = {
@@ -678,8 +688,10 @@ void yalkOverloadSequenceRegression()
                 && measurement.attributes.at("upper_delta_code") == "2",
             "Overload report must retain the per-observed-channel ±2-code evidence");
     require(std::count(equipment.operations.begin(), equipment.operations.end(),
-                "stand.switch_matrix:full_reset") >= 6,
-            "Overload must return ISD to its safe state before and after every impact");
+                "stand.switch_matrix:full_reset") == 0
+                && std::count(equipment.operations.begin(), equipment.operations.end(),
+                    "stand.switch_matrix:release_owner") >= 6,
+            "Overload must release only owner-scoped ISD mutations before and after every impact");
 }
 
 void yvpUnconfirmedBindingRegression()

@@ -744,12 +744,18 @@ std::string scaledSamples(const std::string& samples, double zero, double full,
     return output.str();
 }
 
+std::string yalkRunOwner(const ProcedureContext& context)
+{
+    return "run:" + context.runId + ":yalk";
+}
+
 void setYalkVoltage(ProcedureContext& context, const LogicalBinding& binding,
                     double volts, bool enabled)
 {
     const std::map<std::string, std::string> arguments{
         {"route", binding.stimulusRoute},
-        {"ulk_address", binding.locator}};
+        {"ulk_address", binding.locator},
+        {"owner", yalkRunOwner(context)}};
     if (enabled) {
         auto voltageArguments = arguments;
         voltageArguments["volts"] = std::to_string(volts);

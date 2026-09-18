@@ -1,12 +1,22 @@
 schema: 1
 id: ktma.ubsi.production.ytp
 title: Производство УБСИ · ЯТП
-version: 1.1.0
+version: 1.1.1
 catalog_version: 2026.08.29-yalk-1
 object_type: UBSI_468157_002
 state: published
 
 steps:
+  - id: isd_baseline
+    title: Исходное состояние ИСД перед новым прогоном
+    tu: 5.6 / ИСД · исходное состояние
+    procedure: ubsi.isd_baseline
+    requires:
+      - stand.switch_matrix
+    resources:
+      - resource: switch_matrix.primary
+        capability: stand.switch_matrix
+
   - id: supply_status
     title: Включение и контроль питания перед проверкой ЯТП
     tu: PRODUCTION / YTP / POWER
@@ -29,13 +39,9 @@ steps:
     resources:
       - resource: dut.parameter_source
         capability: ulk.parameter_source
-      - resource: switch_matrix.primary
-        capability: stand.switch_matrix
     args:
       protocol: rokt_ytp68
       ytp_endpoint: 1
-      isd_switch_type: 7
-      isd_route_channels: 3,9,12,17
       stream_settle_ms: 1000
       timeout_ms: 3000
 
@@ -82,11 +88,6 @@ steps:
     resources:
       - resource: dut.parameter_source
         capability: ulk.parameter_source
-      - resource: switch_matrix.primary
-        capability: stand.switch_matrix
-    args:
-      isd_switch_type: 7
-      isd_route_channels: 3,9,12,17
 
   - id: power_off
     title: Отключение питания
