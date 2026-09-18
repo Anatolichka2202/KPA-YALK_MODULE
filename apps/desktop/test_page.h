@@ -1,6 +1,8 @@
 #pragma once
 
+#include <QAbstractButton>
 #include <QStringList>
+#include <QStyle>
 #include <QWidget>
 
 #include <functional>
@@ -11,6 +13,7 @@
 #include "orbita_stand/scenario.h"
 
 class QEvent;
+class TuFlowWidget;
 
 class TestPage final : public QWidget
 {
@@ -72,5 +75,6 @@ private slots:
 private:
     struct Impl;
     std::unique_ptr<Impl> impl_;
+    TuFlowWidget* tuFlow_ = nullptr;
     QString lastScenarioCode_;
 };

@@ -93,7 +93,11 @@ int main(int argc, char** argv)
                 "legacy failed stage must not define a new production verdict");
 
         registrar.removeComponent(product, yalkOld, "контактный дефект");
-        require(!registrar.listInstalledComponents(product).front().active,
+        const auto afterRemoval = registrar.listInstalledComponents(product);
+        require(std::any_of(afterRemoval.begin(), afterRemoval.end(),
+                    [&yalkOld](const ComponentBinding& binding) {
+                        return binding.componentId == yalkOld && !binding.active;
+                    }),
                 "removed cell must remain in history");
         registrar.installComponent(product, yalkNew);
         require(registrar.productVerdict(product) == Verdict::Incomplete,

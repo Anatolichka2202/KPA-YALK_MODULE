@@ -565,12 +565,12 @@ void MainWindow::setupToolBar()
     connect(catalogAction, &QAction::triggered, this, &MainWindow::onOpenCatalog);
     auto* profileAction = toolsMenu_->addAction("Профиль стенда и маршруты");
     connect(profileAction, &QAction::triggered, this, &MainWindow::onOpenStandProfile);
-    auto* adapterMonitorAction = toolsMenu_->addAction("ЯЛК / ЯЛК: живой поток адаптера");
+    auto* adapterMonitorAction = toolsMenu_->addAction("ЯЛК / УЛК: живой поток адаптера");
     adapterMonitorAction->setToolTip(QStringLiteral(
         "Пассивно показывает UDP-кадры адаптера. Никаких команд в стенд не отправляет."));
     connect(adapterMonitorAction, &QAction::triggered, this, [this] {
         if (!equipmentRegistry_ || !equipmentRegistry_->hasCapability("ulk.parameter_source")) {
-            QMessageBox::information(this, QStringLiteral("Адаптер ЯЛК / ЯЛК"),
+            QMessageBox::information(this, QStringLiteral("Адаптер ЯЛК / УЛК"),
                 QStringLiteral("Сначала нажмите «Проверить оборудование» на странице испытаний.\n"
                                "Это загрузит плагин адаптера и выполнит безопасную проверку потока."));
             return;
@@ -1215,7 +1215,7 @@ void MainWindow::onCheckTestEquipment()
     // 3. После включения питания адаптеру требуется время на загрузку.
     testPage_->setEquipmentChecking("RS485",
         QStringLiteral("Питание включено; ожидание запуска адаптера 3 с…"));
-    log(QStringLiteral("АКИП включён; выдержка 3 с перед проверкой адаптера ЯЛК"));
+    log(QStringLiteral("АКИП включён; выдержка 3 с перед проверкой адаптера УЛК"));
     QEventLoop startupDelay;
     QTimer::singleShot(3000, &startupDelay, &QEventLoop::quit);
     startupDelay.exec(QEventLoop::ExcludeUserInputEvents);

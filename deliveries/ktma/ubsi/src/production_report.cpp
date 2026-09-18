@@ -79,7 +79,7 @@ QString csvField(QString value)
 
 QString stageText(registrar::Stage stage)
 {
-    return QString::fromUtf8(registrar::toString(stage));
+    return q(productionStageDisplayName(stage));
 }
 
 struct Row
@@ -257,7 +257,7 @@ ProductionReportPaths writeProductionReport(
     csv.write("\xEF\xBB\xBF");
     QTextStream csvOut(&csv);
     csvOut.setEncoding(QStringConverter::Utf8);
-    csvOut << QStringLiteral("Изделие;Этап;Пакет;Тест;Канал/адрес;Точка;Задано;Измерено;Ед.;Ошибка;Нижний допуск;Верхний допуск;Итог;Попытка;Ошибка стенда;run_id\n");
+    csvOut << QStringLiteral("Изделие;Этап;Комментарий этапа;Пакет;Тест;Канал/адрес;Точка;Задано;Измерено;Ед.;Ошибка;Нижний допуск;Верхний допуск;Итог;Попытка;Ошибка стенда;run_id\n");
     for (const auto& row : measurements) {
         const auto& m = *row.measurement;
         const QString attempt = field(m, {"attempt", "attempt_index", "retry_index"});
@@ -265,6 +265,7 @@ ProductionReportPaths writeProductionReport(
             ? q(m.message) : QString();
         csvOut << csvField(q(context.productSerial)) << ';'
                << csvField(stageText(context.stage)) << ';'
+               << csvField(q(context.stageComment)) << ';'
                << csvField(packageText(context.package)) << ';'
                << csvField(q(row.step->title)) << ';'
                << csvField(channel(m)) << ';'
@@ -293,8 +294,12 @@ ProductionReportPaths writeProductionReport(
         << QStringLiteral("<h1>Производственный отчёт УБСИ</h1><p class=\"muted\">run_id: ")
         << runId.toHtmlEscaped() << QStringLiteral("</p><table class=\"meta\"><tbody>")
         << QStringLiteral("<tr><th>Изделие</th><td>") << html(context.productSerial) << QStringLiteral("</td></tr>")
-        << QStringLiteral("<tr><th>Этап</th><td>") << stageText(context.stage).toHtmlEscaped() << QStringLiteral("</td></tr>")
-        << QStringLiteral("<tr><th>Пакет</th><td>") << packageText(context.package).toHtmlEscaped() << QStringLiteral("</td></tr>")
+        << QStringLiteral("<tr><th>Этап</th><td>") << stageText(context.stage).toHtmlEscaped() << QStringLiteral("</td></tr>");
+    if (!context.stageComment.empty()) {
+        out << QStringLiteral("<tr><th>Комментарий этапа</th><td>")
+            << html(context.stageComment) << QStringLiteral("</td></tr>");
+    }
+    out << QStringLiteral("<tr><th>Пакет</th><td>") << packageText(context.package).toHtmlEscaped() << QStringLiteral("</td></tr>")
         << QStringLiteral("<tr><th>Сценарий</th><td>") << html(run.scenarioId) << QStringLiteral(" · ") << html(run.scenarioVersion) << QStringLiteral("</td></tr>")
         << QStringLiteral("<tr><th>Начало</th><td>") << iso(run.startedAt) << QStringLiteral("</td></tr>")
         << QStringLiteral("<tr><th>Окончание</th><td>") << iso(run.finishedAt) << QStringLiteral("</td></tr>")

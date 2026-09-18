@@ -1,0 +1,220 @@
+#include <QCoreApplication>
+#include <QElapsedTimer>
+#include <QHostAddress>
+#include <QNetworkDatagram>
+#include <QProcess>
+#include <QTcpSocket>
+#include <QThread>
+#include <QUdpSocket>
+
+#include <cstdlib>
+#include <iostream>
+
+namespace {
+
+[[noreturn]] void fail(const char* message)
+{
+    std::cerr << message << '\n';
+    std::exit(EXIT_FAILURE);
+}
+
+[[noreturn]] void fail(const QString& message)
+{
+    std::cerr << message.toStdString() << '\n';
+    std::exit(EXIT_FAILURE);
+}
+
+void require(bool condition, const char* message)
+{
+    if (!condition) fail(message);
+}
+
+QString processDiagnostics(QProcess& process)
+{
+    const QByteArray output = process.readAll();
+    return QStringLiteral("state=%1 error=%2 exitCode=%3 output=%4")
+        .arg(static_cast<int>(process.state()))
+        .arg(process.errorString())
+        .arg(process.exitCode())
+        .arg(QString::fromLocal8Bit(output).trimmed());
+}
+
+bool waitTcp(QProcess& process, quint16 port, int timeoutMs, QString* detail)
+{
+    QElapsedTimer timer;
+    timer.start();
+    QString lastSocketError;
+    while (timer.elapsed() < timeoutMs) {
+        if (process.state() == QProcess::NotRunning) {
+            if (detail) {
+                *detail = QStringLiteral("process stopped while waiting for TCP %1; %2")
+                    .arg(port)
+                    .arg(processDiagnostics(process));
+            }
+            return false;
+        }
+        QTcpSocket socket;
+        socket.connectToHost(QHostAddress(QStringLiteral("127.0.0.1")), port);
+        if (socket.waitForConnected(200)) return true;
+        lastSocketError = socket.errorString();
+        QCoreApplication::processEvents();
+        QThread::msleep(30);
+    }
+    if (detail) {
+        *detail = QStringLiteral("TCP %1 was not listening after %2 ms; socket=%3; %4")
+            .arg(port)
+            .arg(timeoutMs)
+            .arg(lastSocketError)
+            .arg(processDiagnostics(process));
+    }
+    return false;
+}
+
+QByteArray fragmentedExchange(quint16 port,
+                              const QByteArray& first,
+                              const QByteArray& second,
+                              int timeoutMs = 1500)
+{
+    QTcpSocket socket;
+    socket.connectToHost(QHostAddress(QStringLiteral("127.0.0.1")), port);
+    require(socket.waitForConnected(timeoutMs), "TCP test connection failed");
+    socket.write(first);
+    require(socket.waitForBytesWritten(timeoutMs), "first TCP fragment was not written");
+    QThread::msleep(30);
+    require(socket.bytesAvailable() == 0,
+            "simulator answered before the complete protocol request arrived");
+    socket.write(second);
+    require(socket.waitForBytesWritten(timeoutMs), "second TCP fragment was not written");
+    require(socket.waitForReadyRead(timeoutMs), "simulator did not answer complete request");
+    QByteArray response = socket.readAll();
+    while (socket.waitForReadyRead(25)) response += socket.readAll();
+    return response;
+}
+
+QByteArray roktCommand(quint8 mode, quint8 channel = 0)
+{
+    QByteArray command(128, 0);
+    command[0] = 'R';
+    command[1] = 'O';
+    command[2] = 'K';
+    command[3] = 'T';
+    command[4] = char(0x0A);
+    command[5] = char(mode);
+    command[6] = char(channel);
+    return command;
+}
+
+QByteArray requestFrame(QUdpSocket& udp, const QByteArray& command, int expectedSize)
+{
+    while (udp.hasPendingDatagrams()) udp.receiveDatagram();
+    require(udp.writeDatagram(command, QHostAddress(QStringLiteral("127.0.0.2")), 1113)
+                == command.size(),
+            "cannot send adapter command to simulator");
+
+    QElapsedTimer timer;
+    timer.start();
+    while (timer.elapsed() < 1500) {
+        if (!udp.hasPendingDatagrams()) {
+            udp.waitForReadyRead(100);
+            QCoreApplication::processEvents();
+            continue;
+        }
+        const QByteArray frame = udp.receiveDatagram().data();
+        if (frame.size() == expectedSize) return frame;
+    }
+    fail("simulator did not emit the expected adapter frame size");
+}
+
+quint16 yalkWord(const QByteArray& frame, int wordIndex)
+{
+    require(frame.size() == 204, "YALK frame size is invalid while decoding a word");
+    require(wordIndex >= 0 && wordIndex < 100, "YALK word index is outside the frame");
+    const int offset = 4 + 2 * wordIndex;
+    return quint16(quint8(frame[offset]))
+        | (quint16(quint8(frame[offset + 1])) << 8);
+}
+
+} // namespace
+
+int main(int argc, char** argv)
+{
+    QCoreApplication app(argc, argv);
+    require(argc >= 2, "simulator executable path is required");
+
+    QUdpSocket udp;
+    require(udp.bind(QHostAddress(QStringLiteral("127.0.0.1")), 1113,
+                     QUdpSocket::ShareAddress | QUdpSocket::ReuseAddressHint),
+            "cannot bind test adapter receive socket 127.0.0.1:1113");
+
+    QProcess simulator;
+    simulator.setProcessChannelMode(QProcess::MergedChannels);
+    simulator.setProgram(QString::fromLocal8Bit(argv[1]));
+    simulator.setArguments({QStringLiteral("-platform"), QStringLiteral("offscreen")});
+    simulator.start();
+    require(simulator.waitForStarted(3000), "MilTechStationSimulator did not start");
+
+    const auto stopSimulator = [&] {
+        simulator.terminate();
+        if (!simulator.waitForFinished(1200)) {
+            simulator.kill();
+            simulator.waitForFinished(1200);
+        }
+    };
+
+    QString startupDetail;
+    if (!waitTcp(simulator, 15025, 5000, &startupDetail)) {
+        stopSimulator();
+        fail(QStringLiteral("SCPI endpoint startup failed: %1").arg(startupDetail));
+    }
+    if (!waitTcp(simulator, 18080, 5000, &startupDetail)) {
+        stopSimulator();
+        fail(QStringLiteral("ISD HTTP endpoint startup failed: %1").arg(startupDetail));
+    }
+
+    const QByteArray scpi = fragmentedExchange(15025, "*ID", "N?\n");
+    require(scpi.contains("MILTECH,PROTOCOL-SIMULATOR,LOCAL,1.0"),
+            "fragmented SCPI request returned an unexpected response");
+
+    const QByteArray http = fragmentedExchange(
+        18080,
+        "GET /?type=4 HTTP/1.1\r\nHost: localhost\r\n",
+        "\r\n");
+    require(http.startsWith("HTTP/1.1 200 OK"),
+            "fragmented ISD HTTP request returned an unexpected response");
+
+    const QByteArray yalk = requestFrame(udp, roktCommand(0x00), 204);
+    require(yalk.size() == 204, "YALK frame must contain 204 bytes");
+
+    // In the safe/open state the current method requires every YALK input to
+    // decode below 0 V after 97/99 calibration and to keep the discrete bit at 1.
+    // The simulator therefore has to put a normal channel below the zero
+    // calibration code (address 97) while setting bit 0x0400.
+    const quint16 openWord = yalkWord(yalk, 0);
+    const quint16 zeroCalibrationWord = yalkWord(yalk, 96);
+    require((openWord & 0x0400u) != 0,
+            "YALK open-circuit simulator state must keep the discrete signal at 1");
+    require((openWord & 0x03ffu) < (zeroCalibrationWord & 0x03ffu),
+            "YALK open-circuit simulator code must decode below 0 V after calibration");
+
+    const QByteArray ytp = requestFrame(udp, roktCommand(0x02), 68);
+    require(ytp.size() == 68 && quint8(ytp[0]) == 0x01 && quint8(ytp[2]) == 0x34,
+            "YTP ROKT frame header/size is invalid");
+
+    const QByteArray yvp = requestFrame(udp, roktCommand(0x01), 136);
+    require(yvp.size() == 136 && quint8(yvp[0]) == 0x00 && quint8(yvp[1]) == 0x00
+                && quint8(yvp[2]) == 0x2B && quint8(yvp[3]) == 0x08,
+            "YVP ROKT 136-byte frame header/size is invalid");
+
+    const QByteArray yvpChannel = requestFrame(udp, roktCommand(0x03, 2), 132);
+    require(yvpChannel.size() == 132 && quint8(yvpChannel[0]) == 0x03
+                && quint8(yvpChannel[1]) == 0x00 && quint8(yvpChannel[2]) == 0x2D
+                && quint8(yvpChannel[3]) == 2,
+            "YVP channel 132-byte frame header/channel is invalid");
+
+    require(simulator.state() == QProcess::Running,
+            "simulator exited unexpectedly during protocol test");
+    stopSimulator();
+
+    std::cout << "Simulator protocol/framing test passed\n";
+    return EXIT_SUCCESS;
+}

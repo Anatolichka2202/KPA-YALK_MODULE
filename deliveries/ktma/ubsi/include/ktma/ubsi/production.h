@@ -39,6 +39,7 @@ struct ProductionRunContext
     std::string productId;
     std::string productSerial;
     registrar::Stage stage = registrar::Stage::Primary;
+    std::string stageComment;
     ProductionPackage package = ProductionPackage::FullUbsi;
     std::string scenarioCode;
     std::vector<ProductionComponentSnapshot> composition;
@@ -46,14 +47,12 @@ struct ProductionRunContext
 
 const char* toString(ProductionPackage package) noexcept;
 const char* toString(ProductionRunStatus status) noexcept;
-ProductionPackage productionPackageFromCode(const std::string& code);
 ProductionRunStatus productionRunStatusFromString(const std::string& value);
+ProductionPackage productionPackageFromCode(const std::string& code);
 std::string scenarioCodeForPackage(ProductionPackage package);
 std::vector<std::string> affectedComponentTypes(ProductionPackage package);
+std::string productionStageDisplayName(registrar::Stage stage);
 
-// Production always starts from an UBSI product, not from a selected cell.
-// The four-cell composition is mandatory before any production run. The
-// package only defines which cells are affected by this particular run.
 ProductionRunContext buildProductionRunContext(
     const registrar::ProductReport& report,
     registrar::Stage stage,

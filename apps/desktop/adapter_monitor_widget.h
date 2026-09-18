@@ -11,7 +11,7 @@ class QComboBox;
 class QTableWidget;
 class QCustomPlot;
 
-// Инженерский монитор живого потока адаптера ЯЛК/УБСИ. Его единственная
+// Инженерский монитор живого потока адаптера ЯЛК/УЛК. Его единственная
 // команда к плагину — read_frame, то есть чтение уже поступающего UDP-кадра.
 class AdapterMonitorWidget final : public QWidget
 {

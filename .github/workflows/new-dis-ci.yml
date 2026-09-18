@@ -1,9 +1,10 @@
-name: new-dis CI
+name: MilTechStation CI
+# Validates the operator UI/TU bindings and keeps the station backend identical to master.
 
 on:
   push:
     branches:
-      - new-dis
+      - master
   pull_request:
     branches:
       - master
@@ -27,6 +28,26 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
+          fetch-depth: 1
+
+      - name: Enforce backend / frontend boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # station is backend. It may expose contracts consumed by any frontend,
+          # but must never depend on the desktop presentation layer.
+          if git grep -nE '#include[[:space:]]*[<"][^">]*(test_page|ubsi_ui_model|ubsi_measurement_views|apps/desktop)' -- station; then
+            echo 'ERROR: station backend depends on desktop UI/model' >&2
+            exit 1
+          fi
+          if git grep -n 'Qt6::Widgets' -- station/CMakeLists.txt; then
+            echo 'ERROR: station backend links Qt Widgets' >&2
+            exit 1
+          fi
+
+          # Dependency direction is the invariant: backend never imports the
+          # desktop presentation layer. Backend and UI now ship together on master.
 
       - name: Set up MSYS2 UCRT64
         uses: msys2/setup-msys2@v2
@@ -67,6 +88,36 @@ jobs:
           path: build-ci/Testing/Temporary/LastTest.log
           if-no-files-found: warn
           retention-days: 3
+
+      - name: Capture frozen UI states
+        if: success()
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          rm -rf ui-captures
+          mkdir -p ui-captures
+          for scene in SESSION PREPARATION POWER YALK_INITIAL YALK YALK_CONTACT YALK_OVERLOAD YTP YVP FINISH; do
+            QT_QPA_PLATFORM=offscreen \
+            MILTECH_UI_SCENE="$scene" \
+            ORBITA_UI_SCREENSHOT="$PWD/ui-captures/$scene" \
+              ./build-ci/apps/desktop/test_page_smoke_test.exe -platform offscreen
+          done
+          for scene in TU_ENTRY TU_READY TU_RUNTIME TU_FINISH; do
+            QT_QPA_PLATFORM=offscreen \
+            MILTECH_UI_SCENE="$scene" \
+            ORBITA_UI_SCREENSHOT="$PWD/ui-captures/$scene" \
+              ./build-ci/apps/desktop/test_page_tu_runtime_test.exe -platform offscreen
+          done
+          test "$(find ui-captures -type f -name '*.png' | wc -l)" -eq 28
+
+      - name: Upload frozen UI states
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: MilTechStation-${{ github.run_id }}-ui-captures
+          path: ui-captures/*.png
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Verify expected executables
         shell: msys2 {0}
@@ -123,13 +174,15 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: MilTechStation-new-dis-portable-windows-ucrt64
+          # github.ref_name is "7/merge" for pull-request merge refs, and '/'
+          # is forbidden in artifact names. run_id is stable and filesystem-safe.
+          name: MilTechStation-${{ github.run_id }}-portable-windows-ucrt64
           path: deploy/**
           if-no-files-found: error
           retention-days: 7
 
       - name: Build rolling pilot archive
-        if: success() && github.event_name != 'pull_request'
+        if: success() && github.event_name != 'pull_request' && github.ref == 'refs/heads/new-dis'
         shell: pwsh
         run: |
           $short = $env:GITHUB_SHA.Substring(0, 7)
@@ -145,7 +198,7 @@ jobs:
           "PACKAGE_NAME=$packageName" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Publish rolling new-dis pilot
-        if: success() && github.event_name != 'pull_request'
+        if: success() && github.event_name != 'pull_request' && github.ref == 'refs/heads/new-dis'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}

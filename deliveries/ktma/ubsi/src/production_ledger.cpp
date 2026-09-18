@@ -52,9 +52,11 @@ struct ProductionLedger::Impl
         check(query.exec(QStringLiteral(
             "CREATE TABLE IF NOT EXISTS ubsi_production_runs ("
             "id TEXT PRIMARY KEY, product_id TEXT NOT NULL, product_serial TEXT NOT NULL, "
-            "stage TEXT NOT NULL, package_code TEXT NOT NULL, scenario_code TEXT NOT NULL, "
+            "stage TEXT NOT NULL, stage_comment TEXT NOT NULL DEFAULT '', "
+            "package_code TEXT NOT NULL, scenario_code TEXT NOT NULL, "
             "status TEXT NOT NULL, run_id TEXT UNIQUE, opened_at TEXT NOT NULL, finished_at TEXT)")),
             query, "create ubsi_production_runs");
+        ensureColumn("ubsi_production_runs", "stage_comment", "TEXT NOT NULL DEFAULT ''");
         check(query.exec(QStringLiteral(
             "CREATE INDEX IF NOT EXISTS idx_ubsi_production_product "
             "ON ubsi_production_runs(product_id, opened_at)")), query, "create product index");
@@ -75,6 +77,20 @@ struct ProductionLedger::Impl
         QSqlDatabase::removeDatabase(name);
     }
 
+    void ensureColumn(const char* table, const char* column, const char* definition)
+    {
+        QSqlQuery query(database);
+        check(query.exec(QStringLiteral("PRAGMA table_info(%1)").arg(QString::fromUtf8(table))),
+              query, "inspect production schema");
+        while (query.next()) {
+            if (query.value(1).toString() == QString::fromUtf8(column)) return;
+        }
+        check(query.exec(QStringLiteral("ALTER TABLE %1 ADD COLUMN %2 %3")
+                             .arg(QString::fromUtf8(table), QString::fromUtf8(column),
+                                  QString::fromUtf8(definition))),
+              query, "migrate production schema");
+    }
+
     ProductionRunRecord readRecord(QSqlQuery& query) const
     {
         ProductionRunRecord record;
@@ -82,12 +98,13 @@ struct ProductionLedger::Impl
         record.context.productId = query.value(1).toString().toStdString();
         record.context.productSerial = query.value(2).toString().toStdString();
         record.context.stage = registrar::stageFromString(query.value(3).toString().toStdString());
-        record.context.package = productionPackageFromCode(query.value(4).toString().toStdString());
-        record.context.scenarioCode = query.value(5).toString().toStdString();
-        record.status = productionRunStatusFromString(query.value(6).toString().toStdString());
-        record.runId = query.value(7).toString().toStdString();
-        record.openedAt = query.value(8).toString().toStdString();
-        record.finishedAt = query.value(9).toString().toStdString();
+        record.context.stageComment = query.value(4).toString().toStdString();
+        record.context.package = productionPackageFromCode(query.value(5).toString().toStdString());
+        record.context.scenarioCode = query.value(6).toString().toStdString();
+        record.status = productionRunStatusFromString(query.value(7).toString().toStdString());
+        record.runId = query.value(8).toString().toStdString();
+        record.openedAt = query.value(9).toString().toStdString();
+        record.finishedAt = query.value(10).toString().toStdString();
 
         QSqlQuery components(database);
         components.prepare(QStringLiteral(
@@ -130,12 +147,13 @@ std::string ProductionLedger::begin(const ProductionRunContext& context)
         QSqlQuery run(impl_->database);
         run.prepare(QStringLiteral(
             "INSERT INTO ubsi_production_runs "
-            "(id, product_id, product_serial, stage, package_code, scenario_code, status, opened_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)"));
+            "(id, product_id, product_serial, stage, stage_comment, package_code, scenario_code, status, opened_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"));
         run.addBindValue(QString::fromStdString(id));
         run.addBindValue(QString::fromStdString(context.productId));
         run.addBindValue(QString::fromStdString(context.productSerial));
         run.addBindValue(QString::fromUtf8(registrar::toString(context.stage)));
+        run.addBindValue(QString::fromStdString(context.stageComment));
         run.addBindValue(QString::fromUtf8(toString(context.package)));
         run.addBindValue(QString::fromStdString(context.scenarioCode));
         run.addBindValue(QString::fromUtf8(toString(ProductionRunStatus::InProgress)));
@@ -202,9 +220,9 @@ ProductionRunRecord ProductionLedger::get(const std::string& productionRunId) co
 {
     QSqlQuery query(impl_->database);
     query.prepare(QStringLiteral(
-        "SELECT id, product_id, product_serial, stage, package_code, scenario_code, "
-        "status, COALESCE(run_id,''), opened_at, COALESCE(finished_at,'') "
-        "FROM ubsi_production_runs WHERE id=?"));
+        "SELECT id, product_id, product_serial, stage, COALESCE(stage_comment,''), "
+        "package_code, scenario_code, status, COALESCE(run_id,''), opened_at, "
+        "COALESCE(finished_at,'') FROM ubsi_production_runs WHERE id=?"));
     query.addBindValue(QString::fromStdString(productionRunId));
     check(query.exec(), query, "read production run");
     if (!query.next()) throw std::out_of_range("production run not found: " + productionRunId);
@@ -215,9 +233,10 @@ std::vector<ProductionRunRecord> ProductionLedger::listForProduct(const std::str
 {
     QSqlQuery query(impl_->database);
     query.prepare(QStringLiteral(
-        "SELECT id, product_id, product_serial, stage, package_code, scenario_code, "
-        "status, COALESCE(run_id,''), opened_at, COALESCE(finished_at,'') "
-        "FROM ubsi_production_runs WHERE product_id=? ORDER BY opened_at DESC"));
+        "SELECT id, product_id, product_serial, stage, COALESCE(stage_comment,''), "
+        "package_code, scenario_code, status, COALESCE(run_id,''), opened_at, "
+        "COALESCE(finished_at,'') FROM ubsi_production_runs "
+        "WHERE product_id=? ORDER BY opened_at DESC"));
     query.addBindValue(QString::fromStdString(productId));
     check(query.exec(), query, "list production runs");
     std::vector<ProductionRunRecord> result;

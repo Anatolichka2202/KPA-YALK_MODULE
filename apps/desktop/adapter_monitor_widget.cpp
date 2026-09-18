@@ -29,7 +29,7 @@ QString valueFor(const std::string& response, const char* key)
 AdapterMonitorWidget::AdapterMonitorWidget(ReadFrame readFrame, QWidget* parent)
     : QWidget(parent), readFrame_(std::move(readFrame))
 {
-    setWindowTitle(QStringLiteral("ЯЛК / УБСИ — живой поток адаптера"));
+    setWindowTitle(QStringLiteral("ЯЛК / УЛК — живой поток адаптера"));
     setAttribute(Qt::WA_DeleteOnClose);
     resize(1000, 690);
     setStyleSheet("QWidget{background:#14171c;color:#dfe6ee;}"

@@ -7,6 +7,7 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Widgets PrintSupport Sql Svg SerialPort Concurrent)
+add_compile_options("-include${CMAKE_CURRENT_SOURCE_DIR}/qt_size_compat.h")
 
 add_executable(MilTechStation
     main.cpp
@@ -16,11 +17,16 @@ add_executable(MilTechStation
     ktma_mainwindow.h
     home_page.cpp
     home_page.h
-    registrar_page.cpp
+    registrar_page_clean.cpp
     registrar_page_production.cpp
     registrar_page.h
-    test_page.cpp
+    test_page_final.cpp
     test_page.h
+    ubsi_ui_model.h
+    ubsi_measurement_views.h
+    ubsi_view_controls.cpp
+    tu_flow_widget_clean.cpp
+    tu_flow_widget.h
     plot_widget.cpp
     plot_widget.h
     qcustomplot.cpp
@@ -31,8 +37,8 @@ add_executable(MilTechStation
     metadata_service.h
     tolerance_resolver.h
     tolerance_resolver.cpp
-    watch_set_widget.cpp
     watch_set_widget.h
+    watch_set_widget.cpp
     parameter_browser.cpp
     parameter_browser.h
     encoding_utils.cpp
@@ -141,34 +147,105 @@ add_dependencies(OrbitaRuntimeResources MilTechStation orbita_equipment_plugins
     visa_discover)
 
 if(BUILD_TESTING)
-    add_executable(test_page_smoke_test
-        tests/test_page_smoke_test.cpp
-        test_page.cpp
+    set(UBSI_UI_TEST_SOURCES
+        test_page_final.cpp
         test_page.h
+        ubsi_ui_model.h
+        ubsi_measurement_views.h
+        ubsi_view_controls.cpp
+        tu_flow_widget_clean.cpp
+        tu_flow_widget.h
         equipment_control_widget.cpp
         equipment_control_widget.h
     )
 
+    add_executable(ubsi_ui_model_background_test
+        tests/ubsi_ui_model_background_test.cpp
+        ubsi_ui_model.h
+    )
+    target_include_directories(ubsi_ui_model_background_test PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_SOURCE_DIR}/station/include
+    )
+    target_link_libraries(ubsi_ui_model_background_test PRIVATE Qt6::Core)
+    add_test(NAME desktop.ubsi_ui_model_background COMMAND ubsi_ui_model_background_test)
+
+    add_executable(test_page_smoke_test
+        tests/test_page_prototype_acceptance.cpp
+        ${UBSI_UI_TEST_SOURCES}
+    )
     target_include_directories(test_page_smoke_test PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_SOURCE_DIR}/orbita/include
     )
-
     target_link_libraries(test_page_smoke_test PRIVATE
-        orbita_stand_domain
-        Qt6::Core
-        Qt6::Widgets
-    )
-
+        orbita_stand_domain Qt6::Core Qt6::Widgets)
     add_test(NAME desktop.test_page_smoke COMMAND test_page_smoke_test -platform offscreen)
 
+    add_executable(test_page_yvp_event_test
+        tests/test_page_yvp_event_test.cpp
+        ${UBSI_UI_TEST_SOURCES}
+    )
+    target_include_directories(test_page_yvp_event_test PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_SOURCE_DIR}/orbita/include
+    )
+    target_link_libraries(test_page_yvp_event_test PRIVATE
+        orbita_stand_domain Qt6::Core Qt6::Widgets)
+    add_test(NAME desktop.test_page_yvp_event COMMAND test_page_yvp_event_test -platform offscreen)
+
+    add_executable(test_page_power_yalk_event_test
+        tests/test_page_power_yalk_event_test.cpp
+        ${UBSI_UI_TEST_SOURCES}
+    )
+    target_include_directories(test_page_power_yalk_event_test PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_SOURCE_DIR}/orbita/include
+    )
+    target_link_libraries(test_page_power_yalk_event_test PRIVATE
+        orbita_stand_domain Qt6::Core Qt6::Widgets)
+    add_test(NAME desktop.test_page_power_yalk_event COMMAND test_page_power_yalk_event_test -platform offscreen)
+
+    add_executable(test_page_tu_runtime_test
+        tests/test_page_tu_runtime_test.cpp
+        ${UBSI_UI_TEST_SOURCES}
+    )
+    target_include_directories(test_page_tu_runtime_test PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_SOURCE_DIR}/orbita/include
+    )
+    target_link_libraries(test_page_tu_runtime_test PRIVATE
+        orbita_stand_domain Qt6::Core Qt6::Widgets)
+    add_test(NAME desktop.test_page_tu_runtime COMMAND test_page_tu_runtime_test -platform offscreen)
+
+    add_executable(tu_flow_widget_test
+        tests/tu_flow_widget_test.cpp
+        tu_flow_widget_clean.cpp
+        tu_flow_widget.h
+    )
+    target_include_directories(tu_flow_widget_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(tu_flow_widget_test PRIVATE Qt6::Core Qt6::Widgets)
+    add_test(NAME desktop.tu_flow_widget COMMAND tu_flow_widget_test -platform offscreen)
+
     get_filename_component(QT_TEST_PLUGIN_DIR "${Qt6_DIR}/../../../plugins" ABSOLUTE)
-    set_tests_properties(desktop.test_page_smoke PROPERTIES
-        ENVIRONMENT "QT_PLUGIN_PATH=${QT_TEST_PLUGIN_DIR}"
+    set_tests_properties(
+        desktop.ubsi_ui_model_background
+        desktop.test_page_smoke
+        desktop.test_page_yvp_event
+        desktop.test_page_power_yalk_event
+        desktop.test_page_tu_runtime
+        desktop.tu_flow_widget
+        PROPERTIES ENVIRONMENT "QT_PLUGIN_PATH=${QT_TEST_PLUGIN_DIR}"
     )
     if(WIN32)
-        set_tests_properties(desktop.test_page_smoke PROPERTIES
-            ENVIRONMENT_MODIFICATION
+        set_tests_properties(
+            desktop.ubsi_ui_model_background
+            desktop.test_page_smoke
+            desktop.test_page_yvp_event
+            desktop.test_page_power_yalk_event
+            desktop.test_page_tu_runtime
+            desktop.tu_flow_widget
+            PROPERTIES ENVIRONMENT_MODIFICATION
                 "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
         )
     endif()
