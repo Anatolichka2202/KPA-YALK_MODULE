@@ -61,19 +61,20 @@ jobs:
         run: |
           set -euo pipefail
           rm -rf ui-captures
-          mkdir -p ui-captures
+          mkdir -p ui-captures/generated ui-captures/reference
           for scene in SESSION PREPARATION POWER YALK_INITIAL YALK YALK_CONTACT YALK_OVERLOAD YTP YVP FINISH; do
             QT_QPA_PLATFORM=offscreen \
             MILTECH_UI_SCENE="$scene" \
-            ORBITA_UI_SCREENSHOT="$PWD/ui-captures/$scene" \
+            ORBITA_UI_SCREENSHOT="$PWD/ui-captures/generated/$scene" \
               ./build-ui/apps/desktop/test_page_smoke_test.exe -platform offscreen
           done
-          test "$(find ui-captures -type f -name '*.png' | wc -l)" -eq 20
+          test "$(find ui-captures/generated -type f -name '*.png' | wc -l)" -eq 20
+          cp "веб прото/ubsi-ui-prototype-v0.5 alternative/screenshots/"*.png ui-captures/reference/
 
       - name: Upload production UI states
         uses: actions/upload-artifact@v4
         with:
           name: production-ui-${{ github.run_id }}
-          path: ui-captures/*.png
+          path: ui-captures/**/*.png
           if-no-files-found: error
           retention-days: 7
