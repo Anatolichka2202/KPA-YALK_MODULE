@@ -77,8 +77,8 @@ HomePage::HomePage(QWidget* parent)
         "QPushButton:pressed{background:#0e241f;}"));
 
     auto* tu = modeButton(
-        QStringLiteral("ТУ"),
-        QStringLiteral("Приёмо-сдаточная проверка зарегистрированного УБСИ"), card);
+        QStringLiteral("ПРИЁМО-СДАТОЧНАЯ ПРОВЕРКА ПО ТУ"),
+        QStringLiteral("Один маршрут ТУ: готовность стенда, автоматическая проверка, ФИО перед отчётом"), card);
     tu->setObjectName(QStringLiteral("homeTu"));
 
     auto* administration = modeButton(
@@ -107,6 +107,13 @@ HomePage::HomePage(QWidget* parent)
     outer->addStretch(1);
 
     connect(production, &QPushButton::clicked, this, &HomePage::productionRequested);
-    connect(tu, &QPushButton::clicked, this, &HomePage::tuRequested);
+    connect(tu, &QPushButton::clicked, this, [this] {
+        // KtmaMainWindow already refreshes the common registrar list on the
+        // production-entry signal. Emit it first, then immediately switch to TU.
+        // Both workflow changes are synchronous; queued Ktma refresh runs after
+        // the final TU selection and only supplies the shared serial list.
+        emit productionRequested();
+        emit tuRequested();
+    });
     connect(administration, &QPushButton::clicked, this, &HomePage::administrationRequested);
 }
