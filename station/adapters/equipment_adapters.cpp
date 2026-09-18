@@ -151,9 +151,8 @@ void IsdHttpRouter::setAnalog(unsigned channel, unsigned value, bool enabled)
 }
 void IsdHttpRouter::prepareYalk()
 {
-    // YALK preparation no longer requires automatic reset (type=4) or type=7.
-    // Р Р°Р±РѕС‡Р°СЏ KPA РІС‹РґРµСЂР¶РёРІР°РµС‚ РѕРєРѕР»Рѕ 400 РјСЃ РјРµР¶РґСѓ type=4 Рё type=7.
-    // РРЎР” РЅРµ РІСЃРµРіРґР° РїСЂРёРЅРёРјР°РµС‚ СЃР»РµРґСѓСЋС‰СѓСЋ HTTP-РєРѕРјР°РЅРґСѓ Р±РµР· СЌС‚РѕР№ РїР°СѓР·С‹.
+    // Compatibility no-op. Production YALK preparation is adapter-only here;
+    // service reset is explicit and no type7 command is part of the route.
 }
 void IsdHttpRouter::setYalkVoltage(unsigned channel, double volts)
 {
@@ -183,10 +182,6 @@ std::string IsdHttpRouter::analogPath(unsigned channel, unsigned value, bool ena
 std::string IsdHttpRouter::fullResetPath()
 {
     return "/type=4num=1";
-}
-std::string IsdHttpRouter::yalkPreparePath()
-{
-    return "/type=7num=1";
 }
 std::string IsdHttpRouter::yalkVoltagePath(unsigned channel, double volts)
 {
