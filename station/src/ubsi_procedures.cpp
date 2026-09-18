@@ -745,12 +745,18 @@ std::string scaledSamples(const std::string& samples, double zero, double full,
     return output.str();
 }
 
+std::string yalkRunOwner(const ProcedureContext& context)
+{
+    return "run:" + context.runId + ":yalk";
+}
+
 void setYalkVoltage(ProcedureContext& context, const LogicalBinding& binding,
                     double volts, bool enabled)
 {
     const std::map<std::string, std::string> arguments{
         {"route", binding.stimulusRoute},
-        {"ulk_address", binding.locator}};
+        {"ulk_address", binding.locator},
+        {"owner", yalkRunOwner(context)}};
     if (enabled) {
         auto voltageArguments = arguments;
         voltageArguments["volts"] = std::to_string(volts);
@@ -864,7 +870,8 @@ ProcedureResult yalkCheckInitial(const ScenarioNode& node, ProcedureContext& con
         return {RunVerdict::Incomplete, "Адреса ЯЛК не подтверждены", {}};
     }
     ProcedureResult result{RunVerdict::Ok, "Проверено исходное отключённое состояние ЯЛК", {}};
-    context.equipment.invoke("stand.switch_matrix", "full_reset", {});
+    context.equipment.invoke("stand.switch_matrix", "release_owner", {
+        {"owner", yalkRunOwner(context)}});
     unsigned sequence = ulkLastSequence(context);
     const double fullScale = number(node, "full_scale_v", 6.2);
     for (unsigned channel = 0; channel < count; ++channel) {
@@ -1062,178 +1069,51 @@ std::vector<YalkSnapshotValue> readFreshYalkSnapshot(
     return result;
 }
 
-ProcedureResult yalkCheckOverload(const ScenarioNode& node, ProcedureContext& context)
+ProcedureResult yalkCheckOverload(const ScenarioNode&, ProcedureContext&)
 {
-    if (argument(node, "mapping_confirmed", "false") != "true") {
-        return {RunVerdict::Incomplete,
-            "Маршруты обрыва и ±12 В ещё не подтверждены на УБСИ; опасное воздействие не выполнялось", {}};
-    }
-
-    // Точно восстановлено из 10_ЯЛК_перегрузки.scn KPA: пилообразный фон на
-    // физических каналах ИСД 1..88. Это не калибровочная лесенка ЯЛК и не
-    // может заменяться произвольными точками 0/3.1/6.2 В.
-    const unsigned physicalCount = natural(node, "physical_channel_count", 88);
-    const unsigned observedCount = natural(node, "observed_address_count", 88);
-    const unsigned samples = natural(node, "sample_count", 4);
-    const unsigned overloadSettle = natural(node, "overload_settle_ms", 10000);
-    const unsigned cleanupSettle = natural(node, "cleanup_settle_ms", 300);
-    const unsigned maximumCodeDelta = natural(node, "maximum_code_delta", 2);
-    const std::string positiveRoute = argument(
-        node, "positive_overload_route", "yalk_overload_positive");
-    const std::string negativeRoute = argument(
-        node, "negative_overload_route", "yalk_overload_negative");
-
-    auto analogCode = [](unsigned channel) {
-        return channel <= 10 ? 780u + (channel - 1) * 30u
-                             : 1800u + (channel - 11) * 20u;
-    };
-    auto setAnalog = [&context](unsigned channel, unsigned code, bool enabled) {
-        context.equipment.invoke("stand.switch_matrix", "analog", {
-            {"channel", std::to_string(channel)}, {"code", std::to_string(code)},
-            {"enabled", enabled ? "true" : "false"}});
-    };
-    auto setSwitch = [&context](std::map<std::string, std::string> args) {
-        // KPA 'ИСД ш' uses type=3 for both source and channel switches.
-        args["type"] = "3";
-        context.equipment.invoke("stand.switch_matrix", "switch", args);
-    };
-    auto sourceOff = [&]() {
-        for (const auto& route : {positiveRoute, negativeRoute}) {
-            try { setSwitch({{"route", route}, {"enabled", "false"}}); } catch (...) {}
-        }
-    };
-    auto dacOff = [&]() {
-        for (unsigned channel = 1; channel <= physicalCount; ++channel) {
-            try { setAnalog(channel, 0, false); } catch (...) {}
-        }
-    };
-    auto makeSafe = [&]() {
-        sourceOff();
-        context.equipment.invoke("stand.switch_matrix", "full_reset", {});
-        dacOff();
-        wait(context, cleanupSettle);
-        // `full_reset` is the confirmed ISD safe-state command (type=4).
-        // A failed acknowledgement is a station error and must stop the run,
-        // rather than become a product nonconformity.
-    };
-    auto applyReferenceStaircase = [&]() {
-        for (unsigned channel = 1; channel <= physicalCount; ++channel) {
-            setAnalog(channel, analogCode(channel), true);
-        }
-    };
-
-    ProcedureResult result{RunVerdict::Ok,
-        "Проверена устойчивость остальных каналов ЯЛК при перегрузке ±12 В", {}};
-    try {
-        makeSafe();
-        applyReferenceStaircase();
-        wait(context, natural(node, "baseline_settle_ms", 1000));
-        const auto baseline = readFreshYalkSnapshot(context, samples);
-
-        // The baseline must be immediately followed by reset, DAC-off and a
-        // pause before the first +12 V impact.
-        makeSafe();
-
-        for (const auto& polarity : std::vector<std::pair<std::string, std::string>>{
-                 {positiveRoute, "+12 В"}, {negativeRoute, "-12 В"}}) {
-            for (unsigned target = 1; target <= physicalCount; ++target) {
-                bool targetConnected = false;
-                try {
-                    // The preceding iteration ended in the confirmed type=4
-                    // safe state. Restore the recovered background only now.
-                    applyReferenceStaircase();
-                    setSwitch({{"route", polarity.first}, {"enabled", "true"}});
-                    setAnalog(target, 0, false);
-                    setSwitch({{"channel", std::to_string(target)}, {"enabled", "true"}});
-                    targetConnected = true;
-                    wait(context, overloadSettle);
-                    const auto current = readFreshYalkSnapshot(context, samples);
-
-                    for (unsigned address = 1;
-                         address <= std::min<unsigned>(observedCount, current.size()); ++address) {
-                        if (address == target) continue;
-                        const double baselineCode = baseline[address - 1].code;
-                        const double currentCode = current[address - 1].code;
-                        const double delta = currentCode - baselineCode;
-                        auto value = measurement(
-                            "ubsi.yalk.overload." + polarity.first + "."
-                                + std::to_string(target) + "." + std::to_string(address),
-                            "ЯЛК: " + polarity.second + " на " + std::to_string(target)
-                                + ", наблюдаемый канал " + std::to_string(address),
-                            baselineCode, currentCode,
-                            baselineCode - maximumCodeDelta, baselineCode + maximumCodeDelta, "код");
-                        value.attributes = {{"polarity", polarity.second},
-                            {"stressed_channel", std::to_string(target)},
-                            {"observed_channel", std::to_string(address)},
-                            {"baseline_code", std::to_string(baseline[address - 1].code)},
-                            {"current_code", std::to_string(current[address - 1].code)},
-                            {"delta_code", std::to_string(delta)},
-                            {"lower_delta_code", std::to_string(-static_cast<int>(maximumCodeDelta))},
-                            {"upper_delta_code", std::to_string(maximumCodeDelta)}};
-                        context.eventSink({std::chrono::system_clock::now(), node.id,
-                            "MEASUREMENT", value.title, value.verdict, value.attributes});
-                        append(result, std::move(value));
-                    }
-                    targetConnected = false;
-                    makeSafe();
-                } catch (...) {
-                    if (targetConnected) {
-                        try { setSwitch({{"channel", std::to_string(target)}, {"enabled", "false"}}); }
-                        catch (...) {}
-                    }
-                    try { makeSafe(); } catch (...) {}
-                    throw;
-                }
-            }
-        }
-        makeSafe();
-    } catch (...) {
-        try { makeSafe(); } catch (...) {}
-        throw;
-    }
-    return result;
+    // Retired fallback. Production registers yalkOverloadWithProgress from
+    // ubsi_procedures_rokt.cpp, which owns every ISD mutation and releases it
+    // with release_owner. Keeping the legacy implementation active here would
+    // reintroduce the obsolete global-reset lifecycle.
+    return {RunVerdict::Incomplete,
+        "Legacy YALK overload implementation retired; production override was not registered", {}};
 }
 
 ProcedureResult yalkSafeCleanup(const ScenarioNode& node, ProcedureContext& context)
 {
-    for (const auto& route : {std::string("yalk_overload_positive"),
-                              std::string("yalk_overload_negative")}) {
-        try {
-            context.equipment.invoke("stand.switch_matrix", "switch", {
-                {"route", route}, {"enabled", "false"}});
-        } catch (...) {}
+    std::string failures;
+    try {
+        context.equipment.invoke("stand.switch_matrix", "release_owner", {
+            {"owner", yalkRunOwner(context)}});
+    } catch (const std::exception& error) {
+        failures = error.what();
     }
-    context.equipment.invoke("stand.switch_matrix", "full_reset", {});
-    wait(context, natural(node, "settle_ms", 300));
-    double residual = readReferenceVoltage(context);
-    const double maximum = number(node, "maximum_residual_voltage_v", 0.2);
+    try { context.equipment.invoke("ulk.parameter_source", "stop_stream", {}); }
+    catch (const std::exception& error) {
+        if (!failures.empty()) failures += "; ";
+        failures += error.what();
+    }
+    try { context.equipment.invoke("ulk.parameter_source", "stop_record", {}); }
+    catch (const std::exception& error) {
+        if (!failures.empty()) failures += "; ";
+        failures += error.what();
+    }
+    if (!failures.empty()) {
+        return {RunVerdict::Error,
+            "Не все targeted cleanup операции ЯЛК выполнены: " + failures, {}};
+    }
 
-    // Some ISD firmware revisions acknowledge type=4 while retaining the last
-    // type=5 output.  Only if the voltmeter proves that this happened, repeat
-    // the exact two-command output-off sequence for every mapped YALK input.
-    if (!std::isfinite(residual) || std::abs(residual) > maximum) {
-        const unsigned count = natural(node, "channel_count", 80);
-        for (unsigned channel = 0; channel < count; ++channel) {
-            try {
-                const auto binding = resolveLogicalBinding(context, "yalk_voltage", channel);
-                setYalkVoltage(context, binding, 0.0, false);
-            } catch (...) {
-                // Continue clearing the remaining routes.  The final V7
-                // measurement is the authoritative cleanup result.
-            }
-        }
-        context.equipment.invoke("stand.switch_matrix", "full_reset", {});
-        wait(context, natural(node, "retry_settle_ms", 500));
-        residual = readReferenceVoltage(context);
-    }
-    context.equipment.invoke("ulk.parameter_source", "stop_stream", {});
-    context.equipment.invoke("ulk.parameter_source", "stop_record", {});
+    wait(context, natural(node, "settle_ms", 300));
+    const double residual = readReferenceVoltage(context);
+    const double maximum = number(node, "maximum_residual_voltage_v", 0.2);
     ProcedureResult result{RunVerdict::Ok,
-        "ИСД сброшен, остаточное напряжение проверено, поток адаптера остановлен", {}};
-    auto value = measurement("ubsi.yalk.cleanup_voltage", "Остаточное напряжение после сброса ЯЛК",
+        "Owned маршруты ЯЛК адресно выключены; поток адаптера остановлен", {}};
+    auto value = measurement("ubsi.yalk.cleanup_voltage",
+        "Остаточное напряжение после targeted cleanup ЯЛК",
         0.0, residual, -maximum, maximum, "В");
     value.attributes = {{"v7_v", std::to_string(residual)},
-                        {"cleanup_voltage_v", std::to_string(residual)}};
+                        {"cleanup_voltage_v", std::to_string(residual)},
+                        {"global_isd_reset", "not_used"}};
     append(result, std::move(value));
     return result;
 }
@@ -1325,89 +1205,14 @@ YtpRawValue readYtpRaw(ProcedureContext& context, const std::string& parameterGr
         values.count("raw_samples") ? values.at("raw_samples") : std::string()};
 }
 
-std::vector<unsigned> ytpIsdRouteChannels(const ScenarioNode& node)
+ProcedureResult ytpStartStream(const ScenarioNode&, ProcedureContext&)
 {
-    const auto configured = numbers(node, "isd_route_channels");
-    if (configured.empty()) return {3, 9, 12, 17};
-    std::vector<unsigned> channels;
-    channels.reserve(configured.size());
-    for (const double value : configured) {
-        const auto channel = static_cast<unsigned>(std::llround(value));
-        if (channel == 0 || std::abs(value - channel) > 1e-9) {
-            throw std::invalid_argument("Каналы коммутации ЯТП должны быть натуральными числами");
-        }
-        channels.push_back(channel);
-    }
-    return channels;
-}
-
-void setYtpIsdRoutes(const ScenarioNode& node, ProcedureContext& context, bool enabled)
-{
-    const auto type = natural(node, "isd_switch_type", 7);
-    for (const auto channel : ytpIsdRouteChannels(node)) {
-        context.equipment.invoke("stand.switch_matrix", "switch", {
-            {"type", std::to_string(type)}, {"channel", std::to_string(channel)},
-            {"enabled", enabled ? "true" : "false"}});
-    }
-}
-
-ProcedureResult ytpStartStream(const ScenarioNode& node, ProcedureContext& context)
-{
-    const auto record = responseValues(context.equipment.invoke(
-        "ulk.parameter_source", "start_record", {{"run_id", context.runId}}));
-    bool routesEnabled = false;
-    try {
-        // Exact order recovered from a successful KPA_Rokot run on 02.09.2026:
-        // ISD reset -> ROKT addressing -> 500 ms -> ISD reset -> ROKT 0A mode 2
-        // -> 1 s -> ISD type-7 routes 3/9/12/17 -> wait for a fresh 68-byte frame.
-        context.equipment.invoke("stand.switch_matrix", "full_reset", {});
-        context.equipment.invoke("ulk.parameter_source", "prepare_ytp_rokt", {});
-        wait(context, 500);
-        context.equipment.invoke("stand.switch_matrix", "full_reset", {});
-        context.equipment.invoke("ulk.parameter_source", "start_prepared_ytp_rokt", {
-            {"ytp_endpoint", argument(node, "ytp_endpoint", "1")}});
-        wait(context, natural(node, "stream_settle_ms", 1000));
-        setYtpIsdRoutes(node, context, true);
-        routesEnabled = true;
-        const auto response = responseValues(context.equipment.invoke(
-            "ulk.parameter_source", "await_ytp_rokt", {
-                {"ytp_endpoint", argument(node, "ytp_endpoint", "1")},
-                {"stream_settle_ms", "0"},
-                {"timeout_ms", std::to_string(natural(node, "timeout_ms", 3000))}}));
-        context.state["ytp.protocol"] = response.count("protocol")
-            ? response.at("protocol") : std::string("unknown");
-        context.state["ytp.raw_path"] = record.count("path")
-            ? record.at("path") : std::string();
-        context.state["ytp.valid_word_count"] = response.count("valid_word_count")
-            ? response.at("valid_word_count") : std::string("unknown");
-        if (context.state.at("ytp.protocol") == "rokt_ytp68") {
-            return {RunVerdict::Ok,
-                "Запущен активный ЯТП: ROKT 0A 02 00 01 00, принимаются кадры 68 байт; "
-                "валидных слов в первом кадре " + context.state.at("ytp.valid_word_count")
-                + "/32, raw сохраняется в " + context.state.at("ytp.raw_path"), {}};
-        }
-        if (context.state.at("ytp.protocol") == "legacy_mode2_65") {
-            return {RunVerdict::Ok,
-                "Запущен подтверждённый для выбранного устройства legacy-поток ЯТП mode 2", {}};
-        }
-        return {RunVerdict::Incomplete,
-            "Запущен пассивный захват ЯТП без управляющей команды; формат текущего ROKT-потока "
-            "не подтверждён, raw сохраняется в " + context.state.at("ytp.raw_path"), {}};
-    } catch (...) {
-        if (routesEnabled) {
-            try { setYtpIsdRoutes(node, context, false); } catch (...) {}
-        }
-        try {
-            context.equipment.invoke("ulk.parameter_source", "stop_stream", {});
-        } catch (...) {}
-        try {
-            context.equipment.invoke("ulk.parameter_source", "stop_record", {});
-        } catch (...) {
-            // Исходная ошибка запуска важнее ошибки аварийного закрытия файла;
-            // ScenarioEngine дополнительно вызовет safeStopAll.
-        }
-        throw;
-    }
+    // Retired fallback. The final production implementation is registered from
+    // ubsi_procedures_production_finalize.cpp and is adapter/ROKT-only. If the
+    // override is ever lost, fail safe instead of reviving the obsolete ISD
+    // wrapper.
+    return {RunVerdict::Incomplete,
+        "Legacy YTP startup retired; adapter-only production override was not registered", {}};
 }
 
 ProcedureResult ytpReadCalibration(const ScenarioNode& node, ProcedureContext& context)
@@ -1577,14 +1382,9 @@ ProcedureResult ytpCheckChannels(const ScenarioNode& node, ProcedureContext& con
     return result;
 }
 
-ProcedureResult ytpSafeCleanup(const ScenarioNode& node, ProcedureContext& context)
+ProcedureResult ytpSafeCleanup(const ScenarioNode&, ProcedureContext& context)
 {
     std::string failures;
-    try {
-        setYtpIsdRoutes(node, context, false);
-    } catch (const std::exception& error) {
-        failures = error.what();
-    }
     try {
         context.equipment.invoke("ulk.parameter_source", "stop_stream", {});
     } catch (const std::exception& error) {
