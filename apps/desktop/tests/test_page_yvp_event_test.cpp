@@ -93,7 +93,7 @@ int main(int argc, char** argv)
         {"capacitance_pf", "1000"},
         {"charge_pc_from_commanded_vpp", "4000"},
         {"calculated_gain_mv_per_pc", "0.48"},
-        {"acceptance", "not_applied"}
+        {"acceptance", "evaluated_after_gain_sweep"}
     };
     page.setRunEvent(point);
     QApplication::processEvents();
@@ -101,20 +101,20 @@ int main(int argc, char** argv)
     bool channelShown = false;
     bool gainShown = false;
     bool calculatedShown = false;
-    bool noAcceptanceShown = false;
+    bool acceptanceShown = false;
     for (auto* label : page.findChildren<QLabel*>()) {
         const QString text = label->text();
         channelShown = channelShown || text == QStringLiteral("3 / 8");
         gainShown = gainShown || text.contains(QStringLiteral("0.5 мВ/пКл"));
         calculatedShown = calculatedShown || text.contains(QStringLiteral("0.48 мВ/пКл"));
-        noAcceptanceShown = noAcceptanceShown
-            || text.contains(QStringLiteral("критерий приёмки не применён"));
+        acceptanceShown = acceptanceShown
+            || text.contains(QStringLiteral("приёмка: Kу @ 500 Гц · АЧХ · 4000 Гц"));
     }
 
     require(channelShown, "YVP channel from YVP_V7_POINT was not rendered");
     require(gainShown, "YVP requested gain from YVP_V7_POINT was not rendered");
     require(calculatedShown, "YVP calculated gain from YVP_V7_POINT was not rendered");
-    require(noAcceptanceShown, "YVP no-acceptance state must be shown explicitly");
+    require(acceptanceShown, "YVP production acceptance state must be shown explicitly");
     require(context->text().contains(QStringLiteral("Канал 3 / 8 · Kу 0.5 · 500 Гц")),
             "YVP contextual left side did not advance from V7/ISD event");
     require(overview->property("yvpRenderedChannelCount").toInt() == 1,
