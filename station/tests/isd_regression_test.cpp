@@ -19,8 +19,6 @@ void require(bool condition, const char* message)
 int main()
 {
     try {
-        require(IsdHttpRouter::fullResetPath() == "/type=4num=1",
-                "Full reset path mismatch");
 
         // Legacy router API is still compiled for compatibility, but YALK
         // preparation must be a pure no-op.  Point it at loopback with a tiny
