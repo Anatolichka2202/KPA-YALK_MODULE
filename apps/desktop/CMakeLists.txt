@@ -22,6 +22,7 @@ add_executable(MilTechStation
     registrar_page.h
     test_page_final.cpp
     test_page.h
+    production_prototype_port.cpp
     ubsi_ui_model.h
     ubsi_measurement_views.h
     ubsi_view_controls.cpp
@@ -150,6 +151,7 @@ if(BUILD_TESTING)
     set(UBSI_UI_TEST_SOURCES
         test_page_final.cpp
         test_page.h
+        production_prototype_port.cpp
         ubsi_ui_model.h
         ubsi_measurement_views.h
         ubsi_view_controls.cpp
