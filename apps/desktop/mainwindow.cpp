@@ -150,14 +150,29 @@ void MainWindow::setupUi()
     setWindowTitle(QString("MilTechStation — КТМА · %1").arg(MILTECHSTATION_VERSION));
     resize(1280, 800);
 
-    // Центральный стек
+    // Центральный стек для глобальных режимов (Дом, Админ, Рабочая область)
     centralStack_ = new QStackedWidget;
     setCentralWidget(centralStack_);
 
-    // --- Создаём страницы ---
+    // --- 1. Домашняя страница ---
     homePage_ = new HomePage;
     centralStack_->addWidget(homePage_);
 
+    // --- 2. Страница Администрирования ---
+    registrarPage_ = new RegistrarPage;
+    centralStack_->addWidget(registrarPage_);
+
+    // --- 3. Производственная рама (Production Frame) ---
+    productionFrame_ = new ProductionFrame;
+    centralStack_->addWidget(productionFrame_);
+
+    // Внутри ProductionFrame создаём стек для рабочих страниц (Measurement Views)
+    workspaceStack_ = new QStackedWidget(productionFrame_->getWorkspace());
+    auto* wsLayout = new QVBoxLayout(productionFrame_->getWorkspace());
+    wsLayout->setContentsMargins(0, 0, 0, 0);
+    wsLayout->addWidget(workspaceStack_);
+
+    // --- Страницы внутри ProductionFrame ---
     testPage_ = new TestPage;
     testPage_->setEquipmentInvoker([this](
         const std::string& capability, const std::string& operation,
@@ -167,36 +182,29 @@ void MainWindow::setupUi()
             }
             return equipmentRegistry_->invoke(capability, operation, arguments);
         });
-    centralStack_->addWidget(testPage_);
+    workspaceStack_->addWidget(testPage_);
 
-    // Страница "Сбор"
     mainPage_ = new MainPage;
-    centralStack_->addWidget(mainPage_);
+    workspaceStack_->addWidget(mainPage_);
 
-    // Страница "Детальный просмотр"
     detailView_ = new DetailView;
-    centralStack_->addWidget(detailView_);
+    workspaceStack_->addWidget(detailView_);
 
-    // Страница "Конфигуратор" (пока временная, будет заменена после открытия БД)
+    // Страница "Конфигуратор"
     QWidget* configPlaceholder = new QWidget;
     configPlaceholder->setStyleSheet("background: #14171c;");
     QVBoxLayout* cfgLayout = new QVBoxLayout(configPlaceholder);
     cfgLayout->addWidget(new QLabel("Загрузка конфигуратора..."));
     cfgLayout->setAlignment(Qt::AlignCenter);
-    centralStack_->addWidget(configPlaceholder);
+    workspaceStack_->addWidget(configPlaceholder);
 
-    // Страница "База параметров" (временная)
+    // Страница "База параметров"
     QWidget* dbPlaceholder = new QWidget;
     dbPlaceholder->setStyleSheet("background: #14171c;");
     QVBoxLayout* dbLayout = new QVBoxLayout(dbPlaceholder);
     dbLayout->addWidget(new QLabel("Загрузка базы параметров..."));
     dbLayout->setAlignment(Qt::AlignCenter);
-    centralStack_->addWidget(dbPlaceholder);
-
-    registrarPage_ = new RegistrarPage;
-    centralStack_->addWidget(registrarPage_);
-    // Начальный режим выставляется в конце конструктора — после setupToolBar()/setupDockWidgets(),
-    // т.к. setMode() обращается к actMain_ и докам, которых здесь ещё нет.
+    workspaceStack_->addWidget(dbPlaceholder);
 
     // --- Лог (нижняя панель) ---
     logEdit_ = new QTextEdit;
@@ -204,6 +212,11 @@ void MainWindow::setupUi()
     logEdit_->setReadOnly(true);
     logEdit_->setFont(QFont("Courier New", 9));
     logEdit_->setStyleSheet("QTextEdit { background: #0e1115; color: #aab4c0; border: 1px solid #2a313b; }");
+
+    // Настройка колбэка остановки в раме
+    productionFrame_->setStopCallback([this]() {
+        onStopScenario();
+    });
 
     connect(homePage_, &HomePage::productionRequested, this, [this] {
         activeWorkflow_ = Workflow::Production;
@@ -1412,7 +1425,25 @@ void MainWindow::setMode(int mode)
     if (!centralStack_)
         return;
 
-    centralStack_->setCurrentIndex(mode);
+    // Глобальное переключение между Домом, Админом и Производственной областью
+    if (mode == ModeHome) {
+        centralStack_->setCurrentIndex(0);
+    } else if (mode == ModeAdmin) {
+        centralStack_->setCurrentIndex(1);
+    } else {
+        // Любой рабочий режим (Tests, Main, Detail, Config, Db) находится внутри ProductionFrame
+        centralStack_->setCurrentIndex(2);
+        if (workspaceStack_) {
+            switch (mode) {
+                case ModeTests:   workspaceStack_->setCurrentIndex(0); break;
+                case ModeMain:    workspaceStack_->setCurrentIndex(1); break;
+                case ModeDetail: workspaceStack_->setCurrentIndex(2); break;
+                case ModeConfig:  workspaceStack_->setCurrentIndex(3); break;
+                case ModeDb:      workspaceStack_->setCurrentIndex(4); break;
+                default: break;
+            }
+        }
+    }
 
     // Обновляем состояние кнопок на панели (с проверками на nullptr)
     if (actMain_)
@@ -1438,8 +1469,6 @@ void MainWindow::setMode(int mode)
     statusLabel_->setVisible(telemetryControlsVisible);
     errPhraseLabel_->setVisible(telemetryControlsVisible);
     errGroupLabel_->setVisible(telemetryControlsVisible);
-
-    // Доки пользователь сам показывает/прячет через меню «Вид» — не навязываем по режиму.
 
     // Если перешли в детальный режим и есть выбранный канал – обновляем DetailView
     if (mode == ModeDetail && selectedChannelIndex_ >= 0) {

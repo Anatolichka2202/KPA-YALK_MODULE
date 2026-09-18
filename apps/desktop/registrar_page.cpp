@@ -19,6 +19,8 @@
 #include <QTableWidgetItem>
 #include <QUrl>
 #include <QVBoxLayout>
+#include <QFrame>
+#include <QFont>
 
 #include <array>
 
@@ -26,6 +28,31 @@
 #include "ktma/ubsi/production_ledger.h"
 
 namespace {
+
+QLabel* heading(const QString& text, int pointSize, QWidget* parent)
+{
+    auto* label = new QLabel(text, parent);
+    QFont font = label->font();
+    font.setPointSize(pointSize);
+    font.setBold(true);
+    label->setFont(font);
+    return label;
+}
+
+QLabel* muted(const QString& text, QWidget* parent)
+{
+    auto* label = new QLabel(text, parent);
+    label->setProperty("muted", true);
+    label->setWordWrap(true);
+    return label;
+}
+
+QFrame* panel(QWidget* parent)
+{
+    auto* frame = new QFrame(parent);
+    frame->setProperty("panel", true);
+    return frame;
+}
 
 QString verdictText(ktma::registrar::Verdict verdict)
 {
@@ -93,55 +120,28 @@ RegistrarPage::RegistrarPage(QWidget* parent)
         " border:1px solid #2e3945; }"
         "QHeaderView::section { background:#1a222c; color:#9fb2c5; border:0; padding:7px; font-weight:700; }"));
 
-    auto* layout = new QVBoxLayout(this);
-    layout->setContentsMargins(42, 36, 42, 36);
-    layout->setSpacing(14);
+    auto* rootLayout = new QHBoxLayout(this);
+    rootLayout->setContentsMargins(36, 36, 36, 36);
+    rootLayout->setSpacing(36);
 
-    auto* headerRow = new QHBoxLayout;
-    auto* title = new QLabel(QStringLiteral("УБСИ · ИЗДЕЛИЕ И СОСТАВ"), this);
-    title->setStyleSheet(QStringLiteral("font-size:26px; font-weight:700; color:#f2f6fa;"));
-    auto* homeButton = new QPushButton(QStringLiteral("НА ГЛАВНУЮ"), this);
-    auto* historyButton = new QPushButton(QStringLiteral("ИСТОРИЯ ПРОГОНОВ"), this);
-    headerRow->addWidget(title);
-    headerRow->addStretch();
-    auto* productionButton=new QPushButton(QStringLiteral("ВЫБРАТЬ ПРОВЕРКУ"),this);
-    headerRow->addWidget(productionButton);
-    connect(productionButton,&QPushButton::clicked,this,[this]{
-        if(!selectedProductionProduct()) {statusLabel_->setText(QStringLiteral("Выберите изделие и этап."));return;}
-        emit productionRequested();
-    });
-    headerRow->addWidget(historyButton);
-    headerRow->addWidget(homeButton);
-    layout->addLayout(headerRow);
+    // --- LEFT PANEL: Product List ---
+    auto* leftPanel = new QWidget(this);
+    leftPanel->setFixedWidth(480);
+    auto* leftLayout = new QVBoxLayout(leftPanel);
+    leftLayout->setContentsMargins(0, 0, 0, 0);
+    leftLayout->setSpacing(14);
 
-    auto* subtitle = new QLabel(
-        QStringLiteral("Поиск и регистрация изделий УБСИ. Данные сохраняются в registrar.db."), this);
-    subtitle->setStyleSheet(QStringLiteral("font-size:14px; color:#9aa7b5;"));
-    layout->addWidget(subtitle);
-
-    auto* stageRow = new QHBoxLayout;
-    auto* stageLabel = new QLabel(QStringLiteral("Этап производства"), this);
-    stageLabel->setStyleSheet(QStringLiteral("font-weight:700; color:#c5d3e0;"));
-    stageCombo_ = new QComboBox(this);
-    for (const auto& stage : {QStringLiteral("Primary"), QStringLiteral("ClimateNormal"),
-                              QStringLiteral("ClimatePlus"), QStringLiteral("ClimateMinus"),
-                              QStringLiteral("PottingClimateNormal"), QStringLiteral("PottingClimatePlus"),
-                              QStringLiteral("PottingClimateMinus")}) {
-        stageCombo_->addItem(stageText(stage), stage);
-    }
-    stageCombo_->setToolTip(QStringLiteral(
-        "Этап — metadata production-run; он не является шагом измерительной процедуры."));
-    stageRow->addWidget(stageLabel);
-    stageRow->addWidget(stageCombo_, 1);
-    layout->addLayout(stageRow);
+    auto* title = new QLabel(QStringLiteral("УБСИ · РЕГИСТРАЦИЯ"), this);
+    title->setStyleSheet(QStringLiteral("font-size:22px; font-weight:700; color:#f2f6fa;"));
+    leftLayout->addWidget(title);
 
     auto* searchRow = new QHBoxLayout;
     searchEdit_ = new QLineEdit(this);
-    searchEdit_->setPlaceholderText(QStringLiteral("Номер изделия"));
+    searchEdit_->setPlaceholderText(QStringLiteral("Поиск номера изделия..."));
     auto* refreshButton = new QPushButton(QStringLiteral("НАЙТИ"), this);
     searchRow->addWidget(searchEdit_, 1);
     searchRow->addWidget(refreshButton);
-    layout->addLayout(searchRow);
+    leftLayout->addLayout(searchRow);
 
     productsTable_ = new QTableWidget(this);
     productsTable_->setColumnCount(3);
@@ -152,11 +152,40 @@ RegistrarPage::RegistrarPage(QWidget* parent)
     productsTable_->setSelectionMode(QAbstractItemView::SingleSelection);
     productsTable_->verticalHeader()->setVisible(false);
     productsTable_->horizontalHeader()->setStretchLastSection(true);
-    layout->addWidget(productsTable_);
+    leftLayout->addWidget(productsTable_);
+
+    statusLabel_ = new QLabel(this);
+    statusLabel_->setStyleSheet(QStringLiteral("color:#9aa7b5; font-size:13px;"));
+    leftLayout->addWidget(statusLabel_);
+
+    auto* leftFooter = new QHBoxLayout;
+    auto* homeButton = new QPushButton(QStringLiteral("НА ГЛАВНУЮ"), this);
+    auto* historyButton = new QPushButton(QStringLiteral("ИСТОРИЯ"), this);
+    leftFooter->addWidget(homeButton);
+    leftFooter->addWidget(historyButton);
+    leftLayout->addLayout(leftFooter);
+
+    // --- RIGHT PANEL: Details Card ---
+    auto* rightPanel = new QWidget(this);
+    rightPanel->setObjectName(QStringLiteral("detailsCard"));
+    rightPanel->setStyleSheet(QStringLiteral("#detailsCard { background:#141a21; border:1px solid #2e3945; border-radius:12px; }"));
+    auto* rightLayout = new QVBoxLayout(rightPanel);
+    rightLayout->setContentsMargins(32, 32, 32, 32);
+    rightLayout->setSpacing(20);
+
+    auto* rightHeader = new QHBoxLayout;
+    auto* detailTitle = new QLabel(QStringLiteral("ДЕТАЛИ ИЗДЕЛИЯ"), this);
+    detailTitle->setStyleSheet(QStringLiteral("font-size:20px; font-weight:700; color:#f2f6fa;"));
+    auto* productionButton = new QPushButton(QStringLiteral("ВЫБРАТЬ ДЛЯ ПРОВЕРКИ"), this);
+    productionButton->setObjectName(QStringLiteral("primary"));
+    rightHeader->addWidget(detailTitle);
+    rightHeader->addStretch();
+    rightHeader->addWidget(productionButton);
+    rightLayout->addLayout(rightHeader);
 
     compositionLabel_ = new QLabel(QStringLiteral("СОСТАВ · выберите изделие"), this);
     compositionLabel_->setStyleSheet(QStringLiteral("font-weight:700; color:#c5d3e0;"));
-    layout->addWidget(compositionLabel_);
+    rightLayout->addWidget(compositionLabel_);
 
     compositionTable_ = new QTableWidget(this);
     compositionTable_->setColumnCount(4);
@@ -166,53 +195,77 @@ RegistrarPage::RegistrarPage(QWidget* parent)
     compositionTable_->setEditTriggers(QAbstractItemView::NoEditTriggers);
     compositionTable_->verticalHeader()->setVisible(false);
     compositionTable_->horizontalHeader()->setStretchLastSection(true);
-    compositionTable_->setMaximumHeight(170);
-    layout->addWidget(compositionTable_);
+    compositionTable_->setMaximumHeight(200);
+    rightLayout->addWidget(compositionTable_);
 
-    auto* componentRow = new QHBoxLayout;
-    componentTypeCombo_ = new QComboBox(this);
+    auto* componentGroup = new QFrame(rightPanel);
+    componentGroup->setStyleSheet(QStringLiteral("QFrame { background:#1a222c; border-radius:8px; padding:12px; }"));
+    auto* componentLayout = new QVBoxLayout(componentGroup);
+    componentLayout->setContentsMargins(16, 16, 16, 16);
+    componentLayout->setSpacing(10);
+
+    auto* compLabel = new QLabel(QStringLiteral("Добавить ячейку"), componentGroup);
+    compLabel->setStyleSheet(QStringLiteral("font-weight:700; color:#c5d3e0;"));
+    componentLayout->addWidget(compLabel);
+
+    auto* compRow = new QHBoxLayout;
+    componentTypeCombo_ = new QComboBox(componentGroup);
     componentTypeCombo_->addItem(QStringLiteral("ЯЛК"), QStringLiteral("YALK-96"));
     componentTypeCombo_->addItem(QStringLiteral("ЯТП"), QStringLiteral("YTP"));
     componentTypeCombo_->addItem(QStringLiteral("ЯВП"), QStringLiteral("YVP"));
     componentTypeCombo_->addItem(QStringLiteral("ЯП-П"), QStringLiteral("YP-P"));
-    componentSerialEdit_ = new QLineEdit(this);
+    componentSerialEdit_ = new QLineEdit(componentGroup);
     componentSerialEdit_->setPlaceholderText(QStringLiteral("SN ячейки"));
-    auto* addComponentButton = new QPushButton(QStringLiteral("ДОБАВИТЬ ЯЧЕЙКУ"), this);
-    componentRow->addWidget(componentTypeCombo_);
-    componentRow->addWidget(componentSerialEdit_, 1);
-    componentRow->addWidget(addComponentButton);
-    layout->addLayout(componentRow);
+    auto* addComponentButton = new QPushButton(QStringLiteral("ДОБАВИТЬ"), componentGroup);
+    compRow->addWidget(componentTypeCombo_);
+    compRow->addWidget(componentSerialEdit_, 1);
+    compRow->addWidget(addComponentButton);
+    componentLayout->addLayout(compRow);
+    rightLayout->addWidget(componentGroup);
 
-    auto* replacementCaption = new QLabel(
-        QStringLiteral("Заменить выбранную активную ячейку"), this);
-    replacementCaption->setStyleSheet(QStringLiteral("font-weight:700; color:#c5d3e0;"));
-    layout->addWidget(replacementCaption);
-    auto* replacementRow = new QHBoxLayout;
-    replacementSerialEdit_ = new QLineEdit(this);
+    auto* replacementGroup = new QFrame(rightPanel);
+    replacementGroup->setStyleSheet(QStringLiteral("QFrame { background:#1a222c; border-radius:8px; padding:12px; }"));
+    auto* replacementLayout = new QVBoxLayout(replacementGroup);
+    replacementLayout->setContentsMargins(16, 16, 16, 16);
+    replacementLayout->setSpacing(10);
+
+    auto* replLabel = new QLabel(QStringLiteral("Заменить активную ячейку"), replacementGroup);
+    replLabel->setStyleSheet(QStringLiteral("font-weight:700; color:#c5d3e0;"));
+    replacementLayout->addWidget(replLabel);
+
+    auto* replRow = new QHBoxLayout;
+    replacementSerialEdit_ = new QLineEdit(replacementGroup);
     replacementSerialEdit_->setPlaceholderText(QStringLiteral("Новый SN"));
-    replacementReasonEdit_ = new QLineEdit(this);
+    replacementReasonEdit_ = new QLineEdit(replacementGroup);
     replacementReasonEdit_->setPlaceholderText(QStringLiteral("Причина замены"));
-    auto* replaceButton = new QPushButton(QStringLiteral("ЗАМЕНИТЬ ЯЧЕЙКУ"), this);
-    replacementRow->addWidget(replacementSerialEdit_);
-    replacementRow->addWidget(replacementReasonEdit_, 1);
-    replacementRow->addWidget(replaceButton);
-    layout->addLayout(replacementRow);
+    auto* replaceButton = new QPushButton(QStringLiteral("ЗАМЕНИТЬ"), replacementGroup);
+    replRow->addWidget(replacementSerialEdit_);
+    replRow->addWidget(replacementReasonEdit_, 1);
+    replRow->addWidget(replaceButton);
+    replacementLayout->addLayout(replRow);
+    rightLayout->addWidget(replacementGroup);
 
-    auto* createCaption = new QLabel(QStringLiteral("Зарегистрировать УБСИ и установленный состав"), this);
-    createCaption->setStyleSheet(QStringLiteral("font-weight:700; color:#c5d3e0;"));
-    layout->addWidget(createCaption);
+    auto* createGroup = new QFrame(rightPanel);
+    createGroup->setStyleSheet(QStringLiteral("QFrame { background:#1a222c; border-radius:8px; padding:12px; }"));
+    auto* createLayout = new QVBoxLayout(createGroup);
+    createLayout->setContentsMargins(16, 16, 16, 16);
+    createLayout->setSpacing(10);
+
+    auto* createLabel = new QLabel(QStringLiteral("Регистрация нового УБСИ"), createGroup);
+    createLabel->setStyleSheet(QStringLiteral("font-weight:700; color:#c5d3e0;"));
+    createLayout->addWidget(createLabel);
 
     auto* createRow = new QHBoxLayout;
-    serialEdit_ = new QLineEdit(this);
+    serialEdit_ = new QLineEdit(createGroup);
     serialEdit_->setPlaceholderText(QStringLiteral("Блок / УБСИ №"));
-    auto* createButton = new QPushButton(QStringLiteral("ЗАРЕГИСТРИРОВАТЬ"), this);
+    auto* createButton = new QPushButton(QStringLiteral("ЗАРЕГИСТРИРОВАТЬ"), createGroup);
     createRow->addWidget(serialEdit_, 1);
     createRow->addWidget(createButton);
-    layout->addLayout(createRow);
+    createLayout->addLayout(createRow);
+    rightLayout->addWidget(createGroup);
 
-    statusLabel_ = new QLabel(this);
-    statusLabel_->setStyleSheet(QStringLiteral("color:#9aa7b5;"));
-    layout->addWidget(statusLabel_);
+    rootLayout->addWidget(leftPanel);
+    rootLayout->addWidget(rightPanel, 1);
 
     connect(refreshButton, &QPushButton::clicked, this, &RegistrarPage::refreshProducts);
     connect(searchEdit_, &QLineEdit::textChanged, this, &RegistrarPage::refreshProducts);
@@ -225,6 +278,10 @@ RegistrarPage::RegistrarPage(QWidget* parent)
     connect(componentSerialEdit_, &QLineEdit::returnPressed, this, &RegistrarPage::addComponent);
     connect(replaceButton, &QPushButton::clicked, this, &RegistrarPage::replaceComponent);
     connect(historyButton, &QPushButton::clicked, this, &RegistrarPage::showStageHistory);
+    connect(productionButton, &QPushButton::clicked, this, [this]{
+        if(!selectedProductionProduct()) {statusLabel_->setText(QStringLiteral("Выберите изделие и этап."));return;}
+        emit productionRequested();
+    });
 }
 
 void RegistrarPage::setRegistrar(ktma::registrar::Registrar* registrar)

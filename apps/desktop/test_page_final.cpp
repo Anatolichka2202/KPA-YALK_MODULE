@@ -1296,8 +1296,44 @@ struct TestPage::Impl
         }
     }
 
+    void renderFinish()
+    {
+        finishVerdict->setText(verificationText(adapter.run.productVerdict));
+        finishVerdict->setStyleSheet(adapter.run.productVerdict == VerificationState::Norma
+            ? QStringLiteral("color:#35cf79;")
+            : adapter.run.productVerdict == VerificationState::NeNorma
+                ? QStringLiteral("color:#ef5a5a;")
+                : QStringLiteral("color:#58a5ff;"));
+
+        finishMeta->setText(QStringLiteral("УБСИ %1 · %2 · %3 · %4")
+            .arg(adapter.run.productSerial)
+            .arg(adapter.run.productionStage)
+            .arg(adapter.run.scope)
+            .arg(adapter.run.operatorName));
+
+        for (int i = 0; i < 4; ++i) {
+            finishSummary[i]->setText(verificationText(adapter.summaries[i].verdict));
+            finishSummary[i]->setStyleSheet(adapter.summaries[i].verdict == VerificationState::Norma
+                ? QStringLiteral("color:#35cf79;")
+                : adapter.summaries[i].verdict == VerificationState::NeNorma
+                    ? QStringLiteral("color:#ef5a5a;")
+                    : QStringLiteral("color:#8ea6b7;"));
+        }
+
+        if (!adapter.run.runId.isEmpty()) {
+            finishReport->setText(QStringLiteral("Отчёт: run_%1").arg(adapter.run.runId));
+            finishReport->show();
+        } else {
+            finishReport->hide();
+        }
+    }
+
     void renderModel(const QString& node = {})
     {
+        if (adapter.run.currentProcedure == Procedure::Finish) {
+            renderFinish();
+            return;
+        }
         showProcedure(adapter.run.currentProcedure, node);
         progressText->setText(adapter.run.progressText.isEmpty()
             ? adapter.run.procedureContext : adapter.run.progressText);
@@ -1336,11 +1372,13 @@ struct TestPage::Impl
             .arg(adapter.yalkContact.expectedLogic));
 
         overloadPlane->setFrame(adapter.yalkOverload);
-        overloadContext->setText(QStringLiteral("ЯЛК-96 · %1 · канал %2 · воздействие %3 / %4")
+        overloadContext->setText(QStringLiteral("ЯЛК-96 · %1 · канал %2 · воздействие %3 / %4 · выдержка %5 / %6 с")
             .arg(adapter.yalkOverload.polarity)
             .arg(adapter.yalkOverload.stressedChannel)
             .arg(adapter.yalkOverload.impactIndex)
-            .arg(adapter.yalkOverload.impactCount));
+            .arg(adapter.yalkOverload.impactCount)
+            .arg(adapter.yalkOverload.holdElapsedMs / 1000)
+            .arg(adapter.yalkOverload.holdDurationMs / 1000));
 
         ytpPlane->setYtpFrame(adapter.ytp);
         ytpContext->setText(QStringLiteral("ЯТП · точка %1 Ом · канал %2 / 30 · Р4831 %3 Ом")

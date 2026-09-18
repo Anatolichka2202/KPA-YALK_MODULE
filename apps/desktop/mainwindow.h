@@ -36,6 +36,7 @@
 #include "test_page.h"
 #include "home_page.h"
 #include "registrar_page.h"
+#include "production_frame.h"
 
 class QMenu;
 class QCloseEvent;
@@ -158,6 +159,9 @@ private:
 
     // Центральный стек
     QStackedWidget* centralStack_;
+    ProductionFrame* productionFrame_ = nullptr;
+    QStackedWidget* workspaceStack_ = nullptr;
+
 
     // Страницы
     HomePage* homePage_ = nullptr;

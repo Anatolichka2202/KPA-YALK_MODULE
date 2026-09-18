@@ -46,8 +46,8 @@ TuFlowWidget::TuFlowWidget(QWidget* parent)
         "QLabel[muted='true']{color:#8ea6b7;}"
         "QPushButton{background:#132a3d;color:#eaf4fb;border:1px solid #264257;border-radius:7px;padding:10px 16px;}"
         "QPushButton:hover{border-color:#58a5ff;background:#17334a;}"
-        "QPushButton#primary{background:#2e7de9;border-color:#58a5ff;font-weight:700;}"
-        "QPushButton:disabled{color:#61788a;background:#0e1e2c;border-color:#1a3346;}"
+        "QPushButton#primary{background:qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2d7fe9, stop:1 #2266c4); border-color:#4e98f0; font-weight:700;}"
+        "QPushButton:disabled{color:#61788a;background:#0e1e2c;border-color:#1a3346; opacity: 0.45;}"
         "QLineEdit{background:#0e1e2c;color:#eaf4fb;border:1px solid #264257;border-radius:6px;padding:10px;min-height:26px;}"));
 
     auto* root = new QVBoxLayout(this);

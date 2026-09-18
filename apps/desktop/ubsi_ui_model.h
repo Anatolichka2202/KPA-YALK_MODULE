@@ -126,6 +126,7 @@ struct RunUiState {
     QString operatorComment;
     QString procedureContext;
     QString progressText;
+    QString runId;
 };
 
 struct CurrentTelemetry {
@@ -319,6 +320,7 @@ public:
         run.runtimeState = result.verdict == orbita::stand::RunVerdict::Aborted
             ? RuntimeState::Stopped : RuntimeState::Finished;
         run.currentProcedure = Procedure::Finish;
+        run.runId = QString::fromStdString(result.runId);
         summaries.fill({});
         for (const auto& step : result.steps) collectResult(step);
     }
@@ -524,6 +526,7 @@ private:
         yalkOverload.impactIndex = eventInt(event, "impact_index", yalkOverload.impactIndex);
         yalkOverload.impactCount = eventInt(event, "impact_count", yalkOverload.impactCount);
         yalkOverload.holdDurationMs = eventInt(event, "settle_ms", static_cast<int>(yalkOverload.holdDurationMs));
+        yalkOverload.holdElapsedMs = qRound64(eventDouble(event, "elapsed_s", 0.0) * 1000.0);
         if (QString::fromStdString(event.stage) == QStringLiteral("MEASUREMENT")) {
             const int observed = eventInt(event, "observed_channel");
             if (observed >= 1 && observed <= yalkOverload.channels.size()) {
