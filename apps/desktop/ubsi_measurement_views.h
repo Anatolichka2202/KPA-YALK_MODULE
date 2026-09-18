@@ -330,7 +330,7 @@ public:
         passive_ = values;
         setProperty("fresh", fresh);
         setEnabled(fresh);
-        setProperty("renderedChannelCount", std::min(80, values.size()));
+        setProperty("renderedChannelCount", std::min<qsizetype>(80, values.size()));
         update();
     }
 
@@ -545,7 +545,7 @@ protected:
                        QString::number(value, 'f', unit == QStringLiteral("Ом") ? 1 : 3));
         }
 
-        const double cell = area.width() / std::max(1, values.size());
+        const double cell = area.width() / std::max<qsizetype>(1, values.size());
         int rendered = 0;
         for (int i = 0; i < values.size(); ++i) {
             const auto& value = values[i];
@@ -776,7 +776,7 @@ protected:
             p.drawLine(QPointF(analog.left(), y), QPointF(analog.right(), y));
         }
 
-        const double cell = analog.width() / std::max(1, frame_.channels.size());
+        const double cell = analog.width() / std::max<qsizetype>(1, frame_.channels.size());
         for (int i = 0; i < frame_.channels.size(); ++i) {
             const auto& channel = frame_.channels[i];
             const double x = analog.left() + i * cell;
