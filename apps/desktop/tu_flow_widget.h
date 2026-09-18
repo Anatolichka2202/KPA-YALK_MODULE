@@ -46,10 +46,16 @@ private:
     void showReady();
     void showNotReady(const QString& detail);
     void setSerialMode(bool manual);
+    void hookRuntimeFinish();
+    void showOperatorEntry();
+    void showReport();
+    void applyOperatorToTuProtocol(const QString& operatorName);
 
     QStackedWidget* pages_ = nullptr;
     QWidget* selectionPage_ = nullptr;
     QWidget* readinessPage_ = nullptr;
+    QWidget* operatorPage_ = nullptr;
+    QWidget* reportPage_ = nullptr;
     QComboBox* registered_ = nullptr;
     QLineEdit* manualSerial_ = nullptr;
     QPushButton* useRegistered_ = nullptr;
@@ -62,11 +68,22 @@ private:
     QPushButton* start_ = nullptr;
     QPushButton* retry_ = nullptr;
     QPushButton* back_ = nullptr;
+    QLineEdit* completionOperator_ = nullptr;
+    QPushButton* buildReport_ = nullptr;
+    QLabel* reportSerial_ = nullptr;
+    QLabel* reportOperator_ = nullptr;
+    QLabel* reportVerdict_ = nullptr;
+    QLabel* reportPaths_ = nullptr;
 
     QString activeSerial_;
+    QString activeOperator_;
+    QString finalVerdict_;
+    QString finalReportPaths_;
     QStringList requiredEquipment_;
     QHash<QString, int> equipmentState_; // -1 checking/unknown, 0 failed, 1 ready
     QHash<QString, QString> equipmentDetail_;
     bool scenarioAvailable_ = true;
     bool manualMode_ = false;
+    bool runStarted_ = false;
+    bool completionShown_ = false;
 };
