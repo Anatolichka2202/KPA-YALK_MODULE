@@ -42,7 +42,6 @@ int main()
                 "ISD analog command differs from Delphi reference");
         require(IsdHttpRouter::fullResetPath() == "/type=4num=1",
                 "ISD full reset differs from Delphi reference");
-                "ISD YALK prepare command differs from captured KPA traffic");
         require(IsdHttpRouter::yalkVoltagePath(1, 0.0)
                     == "/type=5num=1val=0.00work=1bus=1"
                 && IsdHttpRouter::yalkVoltagePath(1, 3.1)
