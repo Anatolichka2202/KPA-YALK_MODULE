@@ -57,8 +57,7 @@ steps:
         procedure: yalk.start_stream
         requires:
           - ulk.parameter_source
-          - stand.switch_matrix
-        args:
+            args:
           configure_settle_ms: 500
           timeout_ms: 3000
       - id: yalk_calibration
