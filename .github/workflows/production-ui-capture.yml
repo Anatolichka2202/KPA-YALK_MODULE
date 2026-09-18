@@ -1,0 +1,79 @@
+name: Production UI Capture
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'apps/desktop/**'
+      - 'веб прото/ubsi-ui-prototype-v0.5 alternative/**'
+      - 'docs/task/ubsi/ui-freeze.md'
+      - '.github/workflows/production-ui-capture.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-ui-capture-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  capture:
+    name: Qt production reference captures
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Set up MSYS2 UCRT64
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            git
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-qt6-base
+            mingw-w64-ucrt-x86_64-qt6-svg
+            mingw-w64-ucrt-x86_64-qt6-serialport
+
+      - name: Configure
+        shell: msys2 {0}
+        run: >-
+          cmake -S . -B build-ui -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DBUILD_TESTING=ON
+
+      - name: Build production UI capture target
+        shell: msys2 {0}
+        run: cmake --build build-ui --target test_page_smoke_test --parallel 4
+
+      - name: Capture production states
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          rm -rf ui-captures
+          mkdir -p ui-captures
+          for scene in SESSION PREPARATION POWER YALK_INITIAL YALK YALK_CONTACT YALK_OVERLOAD YTP YVP FINISH; do
+            QT_QPA_PLATFORM=offscreen \
+            MILTECH_UI_SCENE="$scene" \
+            ORBITA_UI_SCREENSHOT="$PWD/ui-captures/$scene" \
+              ./build-ui/apps/desktop/test_page_smoke_test.exe -platform offscreen
+          done
+          test "$(find ui-captures -type f -name '*.png' | wc -l)" -eq 20
+
+      - name: Upload production UI states
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-ui-${{ github.run_id }}
+          path: ui-captures/*.png
+          if-no-files-found: error
+          retention-days: 7
