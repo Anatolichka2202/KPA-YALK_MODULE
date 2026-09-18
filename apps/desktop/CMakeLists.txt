@@ -226,7 +226,8 @@ if(BUILD_TESTING)
         tu_flow_widget.h
     )
     target_include_directories(tu_flow_widget_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-    target_link_libraries(tu_flow_widget_test PRIVATE Qt6::Core Qt6::Widgets)
+    target_link_libraries(tu_flow_widget_test PRIVATE
+        orbita_stand_domain Qt6::Core Qt6::Widgets)
     add_test(NAME desktop.tu_flow_widget COMMAND tu_flow_widget_test -platform offscreen)
 
     get_filename_component(QT_TEST_PLUGIN_DIR "${Qt6_DIR}/../../../plugins" ABSOLUTE)

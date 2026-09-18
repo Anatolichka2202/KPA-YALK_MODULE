@@ -9,6 +9,11 @@ class QLabel;
 class QLineEdit;
 class QPushButton;
 class QStackedWidget;
+class QTableWidget;
+
+namespace orbita::stand {
+struct ScenarioRunResult;
+}
 
 class TuFlowWidget final : public QWidget
 {
@@ -26,6 +31,8 @@ public:
                          const QStringList& requiredEquipment);
     void setEquipmentChecking(const QString& code);
     void setEquipmentStatus(const QString& code, bool ready, const QString& detail = {});
+    void completeRun(const orbita::stand::ScenarioRunResult& result,
+                     const QString& tuReportPath);
     void resetToSelection();
 
     QString activeSerial() const;
@@ -46,9 +53,9 @@ private:
     void showReady();
     void showNotReady(const QString& detail);
     void setSerialMode(bool manual);
-    void hookRuntimeFinish();
     void showOperatorEntry();
     void showReport();
+    void populateReportRows(const orbita::stand::ScenarioRunResult& result);
     void applyOperatorToTuProtocol(const QString& operatorName);
 
     QStackedWidget* pages_ = nullptr;
@@ -72,13 +79,17 @@ private:
     QPushButton* buildReport_ = nullptr;
     QLabel* reportSerial_ = nullptr;
     QLabel* reportOperator_ = nullptr;
+    QLabel* reportDate_ = nullptr;
     QLabel* reportVerdict_ = nullptr;
     QLabel* reportPaths_ = nullptr;
+    QTableWidget* reportTable_ = nullptr;
+    QPushButton* openReport_ = nullptr;
 
     QString activeSerial_;
     QString activeOperator_;
     QString finalVerdict_;
     QString finalReportPaths_;
+    QString reportPath_;
     QStringList requiredEquipment_;
     QHash<QString, int> equipmentState_; // -1 checking/unknown, 0 failed, 1 ready
     QHash<QString, QString> equipmentDetail_;
@@ -86,4 +97,6 @@ private:
     bool manualMode_ = false;
     bool runStarted_ = false;
     bool completionShown_ = false;
+    bool isReady_ = false;
+    bool isNotReady_ = false;
 };

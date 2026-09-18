@@ -1,9 +1,13 @@
 #include "tu_flow_widget.h"
 
+#include "orbita_stand/scenario.h"
+
 #include <QComboBox>
 #include <QDateTime>
+#include <QDesktopServices>
 #include <QFile>
 #include <QFrame>
+#include <QHeaderView>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
@@ -12,9 +16,14 @@
 #include <QSet>
 #include <QStackedWidget>
 #include <QStyle>
+#include <QTableWidget>
+#include <QTableWidgetItem>
 #include <QTextStream>
-#include <QTimer>
+#include <QUrl>
 #include <QVBoxLayout>
+
+#include <functional>
+#include <vector>
 
 namespace {
 QFrame* panel(QWidget* parent)
@@ -41,6 +50,28 @@ QLabel* muted(const QString& text, QWidget* parent)
     l->setWordWrap(true);
     return l;
 }
+
+QString verdictText(orbita::stand::RunVerdict verdict)
+{
+    using orbita::stand::RunVerdict;
+    switch (verdict) {
+    case RunVerdict::Ok: return QStringLiteral("НОРМА");
+    case RunVerdict::Fail: return QStringLiteral("НЕ НОРМА");
+    case RunVerdict::Incomplete: return QStringLiteral("НЕПОЛНАЯ");
+    case RunVerdict::Error: return QStringLiteral("ОШИБКА СТЕНДА");
+    case RunVerdict::Aborted: return QStringLiteral("ОСТАНОВЛЕНО");
+    case RunVerdict::NotRun: return QStringLiteral("НЕ ВЫПОЛНЕНО");
+    }
+    return QStringLiteral("НЕ ВЫПОЛНЕНО");
+}
+
+QColor verdictColor(orbita::stand::RunVerdict verdict)
+{
+    using orbita::stand::RunVerdict;
+    if (verdict == RunVerdict::Ok) return QColor(QStringLiteral("#158a48"));
+    if (verdict == RunVerdict::Fail) return QColor(QStringLiteral("#c53939"));
+    return QColor(QStringLiteral("#9a6a12"));
+}
 }
 
 TuFlowWidget::TuFlowWidget(QWidget* parent) : QWidget(parent)
@@ -62,68 +93,81 @@ TuFlowWidget::TuFlowWidget(QWidget* parent) : QWidget(parent)
     pages_ = new QStackedWidget(this);
     root->addWidget(pages_);
 
+    auto topBar = [](const QString& crumb, QWidget* parent) {
+        auto* bar = new QHBoxLayout;
+        bar->setContentsMargins(0, 0, 0, 0);
+        bar->setSpacing(18);
+        auto* heading = new QLabel(QStringLiteral("ПРОВЕРКА ПО ТУ"), parent);
+        QFont headingFont = heading->font();
+        headingFont.setBold(true);
+        heading->setFont(headingFont);
+        auto* context = muted(crumb, parent);
+        auto* clock = muted(QDateTime::currentDateTime().toString(QStringLiteral("dd.MM.yyyy HH:mm:ss")), parent);
+        bar->addWidget(heading);
+        bar->addWidget(context);
+        bar->addStretch();
+        bar->addWidget(clock);
+        return bar;
+    };
+
     // TU v0.5 ENTRY: product identity first, no operator.
     selectionPage_ = new QWidget(pages_);
     auto* selection = new QVBoxLayout(selectionPage_);
-    selection->setContentsMargins(62, 38, 62, 34);
-    selection->setSpacing(18);
+    selection->setContentsMargins(18, 14, 18, 18);
+    selection->setSpacing(14);
+    selection->addLayout(topBar(QStringLiteral("один утверждённый маршрут"), selectionPage_));
 
-    auto* top = new QHBoxLayout;
-    auto* home = new QPushButton(QStringLiteral("← Главная"), selectionPage_);
-    home->setObjectName(QStringLiteral("tuHomeButton"));
-    top->addWidget(home);
-    top->addStretch();
-    selection->addLayout(top);
-
-    selection->addWidget(title(QStringLiteral("ПРОВЕРКА ПО ТУ"), 23, selectionPage_));
+    selection->addWidget(title(QStringLiteral("Выбор изделия"), 18, selectionPage_));
     selection->addWidget(muted(
-        QStringLiteral("Один утверждённый маршрут. Выберите зарегистрированное УБСИ или введите заводской номер вручную."),
+        QStringLiteral("Выберите зарегистрированное УБСИ или введите SN вручную."),
         selectionPage_));
 
     auto* choices = new QHBoxLayout;
-    choices->setSpacing(16);
+    choices->setSpacing(14);
 
     auto* registryCard = panel(selectionPage_);
     registryCard->setObjectName(QStringLiteral("tuRegistryChoice"));
     auto* registryLayout = new QVBoxLayout(registryCard);
-    registryLayout->setContentsMargins(22, 20, 22, 20);
+    registryLayout->setContentsMargins(16, 16, 16, 16);
     registryLayout->setSpacing(12);
-    registryLayout->addWidget(title(QStringLiteral("Зарегистрированное УБСИ"), 16, registryCard));
-    registryLayout->addWidget(muted(
-        QStringLiteral("Используется существующая запись регистратора. Производственная сессия не создаётся."),
-        registryCard));
+    registryLayout->addWidget(title(QStringLiteral("Зарегистрированное УБСИ"), 14, registryCard));
     registered_ = new QComboBox(registryCard);
     registered_->setObjectName(QStringLiteral("tuRegisteredProducts"));
     registered_->addItem(QStringLiteral("Выберите УБСИ"), QString());
     registryLayout->addWidget(registered_);
+    registryLayout->addWidget(muted(
+        QStringLiteral("Используется запись из регистратора. Отдельная производственная сессия не создаётся."),
+        registryCard));
     useRegistered_ = new QPushButton(QStringLiteral("Использовать выбранное"), registryCard);
     useRegistered_->setObjectName(QStringLiteral("tuUseRegistered"));
-    registryLayout->addWidget(useRegistered_);
-    registryLayout->addStretch();
+    registryLayout->addWidget(useRegistered_, 0, Qt::AlignLeft);
     choices->addWidget(registryCard, 1);
 
     auto* manualCard = panel(selectionPage_);
     manualCard->setObjectName(QStringLiteral("tuManualChoice"));
     auto* manualLayout = new QVBoxLayout(manualCard);
-    manualLayout->setContentsMargins(22, 20, 22, 20);
+    manualLayout->setContentsMargins(16, 16, 16, 16);
     manualLayout->setSpacing(12);
-    manualLayout->addWidget(title(QStringLiteral("SN вручную"), 16, manualCard));
-    manualLayout->addWidget(muted(
-        QStringLiteral("Для приёмо-сдаточной проверки заводской номер можно ввести без предварительной регистрации изделия."),
-        manualCard));
+    manualLayout->addWidget(title(QStringLiteral("SN вручную"), 14, manualCard));
     manualSerial_ = new QLineEdit(manualCard);
     manualSerial_->setObjectName(QStringLiteral("tuManualSerial"));
     manualSerial_->setPlaceholderText(QStringLiteral("Введите SN…"));
     manualSerial_->setClearButtonEnabled(true);
     manualLayout->addWidget(manualSerial_);
+    manualLayout->addWidget(muted(
+        QStringLiteral("Для проверки изделия, которое не требуется заранее добавлять в production registry."),
+        manualCard));
     useManual_ = new QPushButton(QStringLiteral("Использовать введённый SN"), manualCard);
     useManual_->setObjectName(QStringLiteral("tuUseManual"));
-    manualLayout->addWidget(useManual_);
-    manualLayout->addStretch();
+    manualLayout->addWidget(useManual_, 0, Qt::AlignLeft);
     choices->addWidget(manualCard, 1);
-    selection->addLayout(choices, 1);
+    selection->addLayout(choices);
+    selection->addStretch();
 
     auto* footer = new QHBoxLayout;
+    auto* home = new QPushButton(QStringLiteral("← Главная"), selectionPage_);
+    home->setObjectName(QStringLiteral("tuHomeButton"));
+    footer->addWidget(home);
     scenarioState_ = muted(QString(), selectionPage_);
     scenarioState_->setObjectName(QStringLiteral("tuScenarioState"));
     footer->addWidget(scenarioState_, 1);
@@ -138,17 +182,14 @@ TuFlowWidget::TuFlowWidget(QWidget* parent) : QWidget(parent)
     // TU v0.5 READY: just the serial, stand state and start action.
     readinessPage_ = new QWidget(pages_);
     auto* readiness = new QVBoxLayout(readinessPage_);
-    readiness->setContentsMargins(62, 38, 62, 38);
-    readiness->setSpacing(18);
-    auto* readyTop = new QHBoxLayout;
-    auto* readyHome = new QPushButton(QStringLiteral("← Главная"), readinessPage_);
-    readyTop->addWidget(readyHome);
-    readyTop->addStretch();
-    readiness->addLayout(readyTop);
+    readiness->setContentsMargins(18, 14, 18, 30);
+    readiness->setSpacing(14);
+    readiness->addLayout(topBar(QStringLiteral("УБСИ"), readinessPage_));
     readiness->addStretch();
 
     auto* readyCard = panel(readinessPage_);
-    readyCard->setMaximumWidth(820);
+    readyCard->setMinimumHeight(320);
+    readyCard->setMaximumWidth(760);
     auto* readyLayout = new QVBoxLayout(readyCard);
     readyLayout->setContentsMargins(30, 28, 30, 28);
     readyLayout->setSpacing(15);
@@ -183,10 +224,12 @@ TuFlowWidget::TuFlowWidget(QWidget* parent) : QWidget(parent)
     // TU v0.5 OPERATOR: shown only after the automatic route has completed.
     operatorPage_ = new QWidget(pages_);
     auto* operatorOuter = new QVBoxLayout(operatorPage_);
-    operatorOuter->setContentsMargins(62, 38, 62, 38);
+    operatorOuter->setContentsMargins(18, 14, 18, 30);
+    operatorOuter->setSpacing(14);
+    operatorOuter->addLayout(topBar(QStringLiteral("УБСИ · завершено"), operatorPage_));
     operatorOuter->addStretch();
     auto* operatorCard = panel(operatorPage_);
-    operatorCard->setMaximumWidth(700);
+    operatorCard->setMaximumWidth(720);
     auto* operatorLayout = new QVBoxLayout(operatorCard);
     operatorLayout->setContentsMargins(30, 28, 30, 28);
     operatorLayout->setSpacing(14);
@@ -199,6 +242,7 @@ TuFlowWidget::TuFlowWidget(QWidget* parent) : QWidget(parent)
     completionOperator_ = new QLineEdit(operatorCard);
     completionOperator_->setObjectName(QStringLiteral("tuCompletionOperator"));
     completionOperator_->setPlaceholderText(QStringLiteral("ФИО"));
+    completionOperator_->hide();
     operatorLayout->addWidget(completionOperator_);
     buildReport_ = new QPushButton(QStringLiteral("СФОРМИРОВАТЬ ОТЧЁТ"), operatorCard);
     buildReport_->setObjectName(QStringLiteral("primary"));
@@ -218,47 +262,86 @@ TuFlowWidget::TuFlowWidget(QWidget* parent) : QWidget(parent)
     reportPage_->setObjectName(QStringLiteral("tuReportPage"));
     reportPage_->setStyleSheet(QStringLiteral(
         "#tuReportPage{background:#e9edf1;color:#17212a;}"
-        "#tuReportCard{background:white;border:1px solid #c7d0d8;border-radius:8px;}"
-        "#tuReportCard QLabel{color:#17212a;}"));
+        "#tuReportCard{background:white;border:1px solid #c7d0d8;border-radius:2px;}"
+        "#tuReportCard QLabel{color:#17212a;}"
+        "#tuVerdictCard{background:#f2fff6;border:1px solid #96d9ad;border-radius:8px;}"
+        "#tuReportTable{background:white;color:#17212a;border:1px solid #c5cbd0;gridline-color:#c5cbd0;}"
+        "#tuReportTable::item{padding:8px;}"));
     auto* reportOuter = new QVBoxLayout(reportPage_);
-    reportOuter->setContentsMargins(70, 44, 70, 44);
+    reportOuter->setContentsMargins(28, 28, 28, 28);
     auto* reportCard = new QFrame(reportPage_);
     reportCard->setObjectName(QStringLiteral("tuReportCard"));
+    reportCard->setMinimumWidth(980);
+    reportCard->setMaximumWidth(980);
     auto* reportLayout = new QVBoxLayout(reportCard);
-    reportLayout->setContentsMargins(34, 30, 34, 30);
+    reportLayout->setContentsMargins(50, 42, 50, 42);
     reportLayout->setSpacing(12);
-    reportLayout->addWidget(title(QStringLiteral("ОТЧЁТ"), 25, reportCard));
-    auto* date = new QLabel(QDateTime::currentDateTime().toString(QStringLiteral("dd.MM.yyyy HH:mm")), reportCard);
-    date->setStyleSheet(QStringLiteral("color:#5c6974;"));
-    reportLayout->addWidget(date);
+    auto* reportHeading = title(QStringLiteral("ОТЧЁТ"), 36, reportCard);
+    reportHeading->setAlignment(Qt::AlignCenter);
+    reportLayout->addWidget(reportHeading);
+    reportDate_ = new QLabel(reportCard);
+    reportDate_->setAlignment(Qt::AlignRight);
+    reportDate_->setStyleSheet(QStringLiteral("color:#5c6974;"));
+    reportLayout->addWidget(reportDate_);
     reportSerial_ = new QLabel(reportCard);
+    reportSerial_->setAlignment(Qt::AlignRight);
     reportOperator_ = new QLabel(reportCard);
+    reportOperator_->setAlignment(Qt::AlignRight);
     reportLayout->addWidget(reportSerial_);
     reportLayout->addWidget(reportOperator_);
-    reportVerdict_ = title(QStringLiteral("—"), 28, reportCard);
+
+    auto* verdictCard = new QFrame(reportCard);
+    verdictCard->setObjectName(QStringLiteral("tuVerdictCard"));
+    auto* verdictLayout = new QVBoxLayout(verdictCard);
+    verdictLayout->setContentsMargins(28, 20, 28, 20);
+    auto* verdictUnit = title(QStringLiteral("УБСИ"), 22, verdictCard);
+    verdictUnit->setAlignment(Qt::AlignCenter);
+    verdictLayout->addWidget(verdictUnit);
+    reportVerdict_ = title(QStringLiteral("—"), 34, verdictCard);
     reportVerdict_->setAlignment(Qt::AlignCenter);
-    reportLayout->addSpacing(12);
-    reportLayout->addWidget(reportVerdict_);
+    verdictLayout->addWidget(reportVerdict_);
+    reportLayout->addWidget(verdictCard);
+
+    reportTable_ = new QTableWidget(0, 2, reportCard);
+    reportTable_->setObjectName(QStringLiteral("tuReportTable"));
+    reportTable_->horizontalHeader()->hide();
+    reportTable_->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
+    reportTable_->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Fixed);
+    reportTable_->setColumnWidth(1, 155);
+    reportTable_->verticalHeader()->hide();
+    reportTable_->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    reportTable_->setSelectionMode(QAbstractItemView::NoSelection);
+    reportTable_->setFocusPolicy(Qt::NoFocus);
+    reportTable_->setMinimumHeight(300);
+    reportLayout->addWidget(reportTable_, 1);
+
     reportPaths_ = new QLabel(reportCard);
     reportPaths_->setWordWrap(true);
     reportPaths_->setStyleSheet(QStringLiteral("color:#5c6974;"));
     reportLayout->addWidget(reportPaths_);
     auto* reportActions = new QHBoxLayout;
+    openReport_ = new QPushButton(QStringLiteral("Печать"), reportCard);
     auto* newCheck = new QPushButton(QStringLiteral("Новая проверка"), reportCard);
-    auto* reportHome = new QPushButton(QStringLiteral("Главная"), reportCard);
+    auto* reportHome = new QPushButton(QStringLiteral("Вернуться"), reportCard);
+    openReport_->setStyleSheet(QStringLiteral("color:#17212a;background:#eef2f5;border:1px solid #b9c4cd;"));
     newCheck->setStyleSheet(QStringLiteral("color:#17212a;background:#eef2f5;border:1px solid #b9c4cd;"));
     reportHome->setStyleSheet(QStringLiteral("color:#17212a;background:#eef2f5;border:1px solid #b9c4cd;"));
     reportActions->addStretch();
+    reportActions->addWidget(openReport_);
     reportActions->addWidget(newCheck);
     reportActions->addWidget(reportHome);
+    reportActions->addStretch();
     reportLayout->addLayout(reportActions);
-    reportOuter->addWidget(reportCard, 1);
+    reportOuter->addWidget(reportCard, 1, Qt::AlignHCenter);
     pages_->addWidget(reportPage_);
 
     connect(home, &QPushButton::clicked, this, &TuFlowWidget::homeRequested);
-    connect(readyHome, &QPushButton::clicked, this, &TuFlowWidget::homeRequested);
     connect(reportHome, &QPushButton::clicked, this, &TuFlowWidget::homeRequested);
     connect(newCheck, &QPushButton::clicked, this, &TuFlowWidget::resetToSelection);
+    connect(openReport_, &QPushButton::clicked, this, [this] {
+        if (!reportPath_.isEmpty())
+            QDesktopServices::openUrl(QUrl::fromLocalFile(reportPath_));
+    });
     connect(registered_, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             [this](int) {
                 if (!registered_->currentData().toString().trimmed().isEmpty()) setSerialMode(false);
@@ -291,6 +374,8 @@ TuFlowWidget::TuFlowWidget(QWidget* parent) : QWidget(parent)
         if (activeSerial_.isEmpty()) return;
         equipmentState_.clear();
         equipmentDetail_.clear();
+        isReady_ = false;
+        isNotReady_ = false;
         readinessState_->setText(QStringLiteral("ПРОВЕРКА СТЕНДА…"));
         readinessState_->setStyleSheet(QStringLiteral("color:#58a5ff;"));
         failureDetail_->hide();
@@ -312,7 +397,6 @@ TuFlowWidget::TuFlowWidget(QWidget* parent) : QWidget(parent)
 
     setSerialMode(false);
     resetToSelection();
-    hookRuntimeFinish();
 }
 
 void TuFlowWidget::setRegisteredSerials(const QStringList& serials)
@@ -369,6 +453,8 @@ void TuFlowWidget::beginStandCheck(const QString& serial, const QString& operato
     }
     equipmentState_.clear();
     equipmentDetail_.clear();
+    isReady_ = false;
+    isNotReady_ = false;
     for (const auto& code : requiredEquipment_) equipmentState_[code] = -1;
 
     serialTitle_->setText(QStringLiteral("УБСИ SN %1").arg(activeSerial_));
@@ -404,12 +490,15 @@ void TuFlowWidget::resetToSelection()
     activeOperator_.clear();
     finalVerdict_.clear();
     finalReportPaths_.clear();
+    reportPath_.clear();
     requiredEquipment_.clear();
     equipmentState_.clear();
     equipmentDetail_.clear();
     runStarted_ = false;
     completionShown_ = false;
     completionOperator_->clear();
+    completionOperator_->hide();
+    reportTable_->setRowCount(0);
     pages_->setCurrentWidget(selectionPage_);
     updateSelectionAvailability();
 }
@@ -467,6 +556,9 @@ void TuFlowWidget::updateReadiness()
 
 void TuFlowWidget::showReady()
 {
+    if (isReady_) return;
+    isReady_ = true;
+    isNotReady_ = false;
     readinessState_->setText(QStringLiteral("СТЕНД ГОТОВ"));
     readinessState_->setStyleSheet(QStringLiteral("color:#35cf79;"));
     failureDetail_->hide();
@@ -477,6 +569,11 @@ void TuFlowWidget::showReady()
 
 void TuFlowWidget::showNotReady(const QString& detail)
 {
+    if (isNotReady_) {
+        if (failureDetail_->text() == detail) return;
+    }
+    isNotReady_ = true;
+    isReady_ = false;
     readinessState_->setText(QStringLiteral("СТЕНД НЕ ГОТОВ"));
     readinessState_->setStyleSheet(QStringLiteral("color:#ef5a5a;"));
     failureDetail_->setText(detail);
@@ -486,52 +583,28 @@ void TuFlowWidget::showNotReady(const QString& detail)
     back_->show();
 }
 
-void TuFlowWidget::hookRuntimeFinish()
+void TuFlowWidget::completeRun(const orbita::stand::ScenarioRunResult& result,
+                               const QString& tuReportPath)
 {
-    auto* outer = qobject_cast<QStackedWidget*>(parentWidget());
-    auto* host = outer ? outer->parentWidget() : nullptr;
-    if (!outer || !host) return;
-
-    QStackedWidget* stages = nullptr;
-    for (auto* stack : host->findChildren<QStackedWidget*>()) {
-        if (stack != outer && stack != pages_ && stack->count() >= 9) {
-            stages = stack;
-            break;
-        }
+    completionShown_ = true;
+    reportPath_ = tuReportPath.trimmed();
+    finalVerdict_ = verdictText(result.verdict);
+    finalReportPaths_.clear();
+    if (!reportPath_.isEmpty())
+        finalReportPaths_ = QStringLiteral("Протокол ТУ: %1").arg(reportPath_);
+    if (!result.runId.empty()) {
+        if (!finalReportPaths_.isEmpty()) finalReportPaths_ += QLatin1Char('\n');
+        finalReportPaths_ += QStringLiteral("run_id: %1").arg(QString::fromStdString(result.runId));
     }
-    if (!stages) return;
-
-    connect(stages, &QStackedWidget::currentChanged, this, [this, outer, stages](int index) {
-        if (index != stages->count() - 1 || !runStarted_ || completionShown_ || activeSerial_.isEmpty()) return;
-        completionShown_ = true;
-        QTimer::singleShot(0, this, [this, outer] {
-            showOperatorEntry();
-            outer->setCurrentWidget(this);
-        });
-    });
+    populateReportRows(result);
+    showOperatorEntry();
 }
 
 void TuFlowWidget::showOperatorEntry()
 {
-    auto* host = parentWidget() ? parentWidget()->parentWidget() : nullptr;
-    finalReportPaths_.clear();
-    finalVerdict_.clear();
-    if (host) {
-        if (auto* paths = host->findChild<QLabel*>(QStringLiteral("finishReportPaths")))
-            finalReportPaths_ = paths->text();
-        static const QStringList verdicts = {
-            QStringLiteral("НОРМА"), QStringLiteral("НЕ НОРМА"),
-            QStringLiteral("ОШИБКА СТЕНДА"), QStringLiteral("ОШИБКА"),
-            QStringLiteral("НЕПОЛНАЯ"), QStringLiteral("ОСТАНОВЛЕНО")};
-        for (auto* label : host->findChildren<QLabel*>()) {
-            if (verdicts.contains(label->text().trimmed())) {
-                finalVerdict_ = label->text().trimmed();
-                break;
-            }
-        }
-    }
     if (finalVerdict_.isEmpty()) finalVerdict_ = QStringLiteral("РЕЗУЛЬТАТ ГОТОВ");
     completionOperator_->clear();
+    completionOperator_->show();
     buildReport_->setEnabled(false);
     pages_->setCurrentWidget(operatorPage_);
     completionOperator_->setFocus();
@@ -539,29 +612,83 @@ void TuFlowWidget::showOperatorEntry()
 
 void TuFlowWidget::showReport()
 {
+    reportDate_->setText(QDateTime::currentDateTime().toString(QStringLiteral("dd.MM.yyyy HH:mm")));
     reportSerial_->setText(QStringLiteral("УБСИ: SN %1").arg(activeSerial_));
     reportOperator_->setText(QStringLiteral("Оператор: %1").arg(activeOperator_));
     reportVerdict_->setText(finalVerdict_);
-    if (finalVerdict_ == QStringLiteral("НОРМА"))
+    auto* verdictCard = reportVerdict_->parentWidget();
+    if (finalVerdict_ == QStringLiteral("НОРМА")) {
         reportVerdict_->setStyleSheet(QStringLiteral("color:#158a48;font-weight:800;"));
-    else if (finalVerdict_ == QStringLiteral("НЕ НОРМА"))
+        verdictCard->setStyleSheet(QStringLiteral("background:#f2fff6;border:1px solid #96d9ad;border-radius:8px;"));
+    } else if (finalVerdict_ == QStringLiteral("НЕ НОРМА")) {
         reportVerdict_->setStyleSheet(QStringLiteral("color:#c53939;font-weight:800;"));
-    else
+        verdictCard->setStyleSheet(QStringLiteral("background:#fff4f2;border:1px solid #e0a49b;border-radius:8px;"));
+    } else {
         reportVerdict_->setStyleSheet(QStringLiteral("color:#9a6a12;font-weight:800;"));
+        verdictCard->setStyleSheet(QStringLiteral("background:#fff9e8;border:1px solid #e3c77c;border-radius:8px;"));
+    }
     reportPaths_->setText(finalReportPaths_);
+    openReport_->setEnabled(!reportPath_.isEmpty() && QFile::exists(reportPath_));
     pages_->setCurrentWidget(reportPage_);
+}
+
+void TuFlowWidget::populateReportRows(const orbita::stand::ScenarioRunResult& result)
+{
+    reportTable_->setRowCount(0);
+
+    std::function<const orbita::stand::StepRunResult*(
+        const std::vector<orbita::stand::StepRunResult>&, const char*)> findStep;
+    findStep = [&findStep](const std::vector<orbita::stand::StepRunResult>& steps,
+                           const char* nodeId) -> const orbita::stand::StepRunResult* {
+        for (const auto& step : steps) {
+            if (step.nodeId == nodeId) return &step;
+            if (const auto* child = findStep(step.children, nodeId)) return child;
+        }
+        return nullptr;
+    };
+
+    struct ReportRow {
+        const char* nodeId;
+        const char* requirement;
+        const char* title;
+    };
+    static const ReportRow rows[] = {
+        {"readiness", "1.1.4.13", "Готовность после подачи питания"},
+        {"supply_range", "1.1.4.3", "Диапазон и устойчивость питания"},
+        {"supply_range", "1.1.4.5", "Ток потребления"},
+        {"yalk_channels", "1.1.4.1", "Аналоговые сигналы ЯЛК"},
+        {"yalk_channels", "1.1.4.14", "Погрешность измерения"},
+        {"yalk_contact_thresholds", "1.1.4.1", "Контактные сигналы"},
+        {"yalk_initial", "1.1.4.10", "Исходное состояние / обрыв"},
+        {"yalk_overload", "1.1.4.11", "Перегрузка +/-12 В"},
+        {"yalk_reference_voltage", "1.1.4.9", "Эталон 6,2 В"},
+        {"ytp_channels", "1.1.4.1", "Температурные каналы ЯТП"},
+        {"yvp_channels", "1.1.4.7", "ЯВП - АЧХ"},
+        {"yvp_channels", "1.1.4.8", "ЯВП - коэффициент усиления"},
+    };
+
+    for (const ReportRow& spec : rows) {
+        const auto* step = findStep(result.steps, spec.nodeId);
+        const auto verdict = step ? step->verdict : orbita::stand::RunVerdict::NotRun;
+        const int row = reportTable_->rowCount();
+        reportTable_->insertRow(row);
+        auto* requirement = new QTableWidgetItem(QStringLiteral("ТУ %1 — %2")
+            .arg(QString::fromLatin1(spec.requirement), QString::fromUtf8(spec.title)));
+        auto* status = new QTableWidgetItem(verdictText(verdict));
+        status->setTextAlignment(Qt::AlignCenter);
+        status->setForeground(verdictColor(verdict));
+        QFont statusFont = status->font();
+        statusFont.setBold(true);
+        status->setFont(statusFont);
+        reportTable_->setItem(row, 0, requirement);
+        reportTable_->setItem(row, 1, status);
+        reportTable_->setRowHeight(row, 42);
+    }
 }
 
 void TuFlowWidget::applyOperatorToTuProtocol(const QString& operatorName)
 {
-    const QString prefix = QStringLiteral("Протокол ТУ: ");
-    QString path;
-    for (const auto& line : finalReportPaths_.split(QLatin1Char('\n'))) {
-        if (line.startsWith(prefix)) {
-            path = line.mid(prefix.size()).trimmed();
-            break;
-        }
-    }
+    const QString path = reportPath_;
     if (path.isEmpty()) return;
 
     QFile file(path);
