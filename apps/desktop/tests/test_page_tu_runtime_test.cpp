@@ -1,4 +1,5 @@
 #include "test_page.h"
+#include "tu_flow_widget.h"
 
 #include <QApplication>
 #include <QComboBox>
@@ -24,6 +25,13 @@ QPushButton* buttonByText(QWidget& root, const QString& text)
     for (auto* button : root.findChildren<QPushButton*>())
         if (button->text() == text) return button;
     return nullptr;
+}
+
+bool hasLabelText(QWidget& root, const QString& text)
+{
+    for (auto* label : root.findChildren<QLabel*>())
+        if (label->text() == text) return true;
+    return false;
 }
 
 void saveScene(TestPage& page, const QString& requested,
@@ -57,6 +65,8 @@ int main(int argc, char** argv)
     require(serialBox && manualSerial, "TU v0.5 serial controls missing");
     require(page.findChild<QComboBox*>(QStringLiteral("tuOperator")) == nullptr,
             "TU entry must not ask for operator before the run");
+    require(page.findChild<QLineEdit*>(QStringLiteral("tuCompletionOperator"))->isHidden(),
+            "post-run operator must be hidden before the run");
 
     serialBox->setCurrentIndex(serialBox->findData(QStringLiteral("345")));
     QApplication::processEvents();
@@ -162,12 +172,28 @@ int main(int argc, char** argv)
     require(gainStatus && gainStatus->text() == QStringLiteral("НЕ НОРМА"),
             "TU result must preserve YVP gain failure");
 
-    auto* report = page.findChild<QLabel*>(QStringLiteral("finishReportPaths"));
-    require(report && report->text().contains(QStringLiteral("tu.html"))
-                && report->text().contains(QStringLiteral("tu-ui-test")),
-            "TU finish must expose report path and run_id");
+    auto* reportPath = page.findChild<QLabel*>(QStringLiteral("finishReportPaths"));
+    require(reportPath && reportPath->text().contains(QStringLiteral("tu.html"))
+                && reportPath->text().contains(QStringLiteral("tu-ui-test")),
+            "TU finish must expose report path and run_id internally");
+
+    auto* completionOperator = page.findChild<QLineEdit*>(QStringLiteral("tuCompletionOperator"));
+    auto* tuFlow = page.findChild<TuFlowWidget*>(QStringLiteral("tuFlowWidget"));
+    require(completionOperator && tuFlow && !completionOperator->isHidden(),
+            "TU v0.5 must request operator only after the automatic run finishes");
+    completionOperator->setText(QStringLiteral("Иванов И.И."));
+    auto* makeReport = buttonByText(page, QStringLiteral("СФОРМИРОВАТЬ ОТЧЁТ"));
+    require(makeReport && makeReport->isEnabled(),
+            "post-run operator must enable report generation");
+    makeReport->click();
+    QApplication::processEvents();
+    require(tuFlow->activeOperator() == QStringLiteral("Иванов И.И."),
+            "TU operator must be captured at report time");
+    require(hasLabelText(page, QStringLiteral("УБСИ: SN 345"))
+                && hasLabelText(page, QStringLiteral("Оператор: Иванов И.И.")),
+            "TU report page must show serial and post-run operator");
     saveScene(page, requested, QStringLiteral("TU_FINISH"), screenshot);
 
-    std::cout << "Dedicated TU v0.5 runtime rail test passed\n";
+    std::cout << "Dedicated TU v0.5 serial-first/post-run-operator flow passed\n";
     return EXIT_SUCCESS;
 }
