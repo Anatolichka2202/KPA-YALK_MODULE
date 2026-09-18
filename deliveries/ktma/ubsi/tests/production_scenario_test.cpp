@@ -45,6 +45,30 @@ void verifyNode(const ScenarioNode& node)
     for (const auto& child : node.children) verifyNode(child);
 }
 
+void verifySharedAkIpOrder(const ScenarioDefinition& scenario, const std::string& relative)
+{
+    bool powerEstablished = false;
+    for (std::size_t index = 0; index < scenario.steps.size(); ++index) {
+        const auto& node = scenario.steps[index];
+        const bool usesPower = node.requiredCapabilities.count("power.dc_supply") != 0;
+        const bool usesAdapter = node.requiredCapabilities.count("ulk.parameter_source") != 0;
+        const bool powersOff = node.procedure == "ubsi.power_safe_off";
+
+        if (powersOff) {
+            require(index + 1 == scenario.steps.size(),
+                "AKIP power-off must be the final production step: " + relative);
+            continue;
+        }
+
+        if (usesPower) powerEstablished = true;
+        if (usesAdapter) {
+            require(powerEstablished,
+                "Adapter-dependent production step appears before AKIP-powered UBSI state: "
+                    + relative + " / " + node.id);
+        }
+    }
+}
+
 } // namespace
 
 int main()
@@ -79,6 +103,7 @@ int main()
                 throw std::runtime_error(message);
             }
             for (const auto& node : scenario.steps) verifyNode(node);
+            verifySharedAkIpOrder(scenario, relative);
         }
 
         std::cout << "KTMA UBSI production scenarios OK\n";
