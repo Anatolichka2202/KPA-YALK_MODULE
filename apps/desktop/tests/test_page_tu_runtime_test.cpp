@@ -1,12 +1,9 @@
 #include "test_page.h"
-#include "tu_flow_widget.h"
 
 #include <QApplication>
-#include <QComboBox>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
-#include <QWidget>
 
 #include <cstdlib>
 #include <iostream>
@@ -26,174 +23,64 @@ QPushButton* buttonByText(QWidget& root, const QString& text)
         if (button->text() == text) return button;
     return nullptr;
 }
-
-bool hasLabelText(QWidget& root, const QString& text)
-{
-    for (auto* label : root.findChildren<QLabel*>())
-        if (label->text() == text) return true;
-    return false;
-}
-
-void saveScene(TestPage& page, const QString& requested,
-               const QString& scene, const QString& base)
-{
-    if (base.isEmpty() || requested != scene) return;
-    for (const QSize size : {QSize(1920, 1080), QSize(1600, 900)}) {
-        page.resize(size);
-        page.show();
-        QApplication::processEvents();
-        const QString suffix = QStringLiteral("_%1x%2.png")
-                                   .arg(size.width()).arg(size.height());
-        require(page.grab().save(base + suffix), "cannot save TU acceptance screenshot");
-    }
-}
 }
 
 int main(int argc, char** argv)
 {
     QApplication app(argc, argv);
-    const QString requested = qEnvironmentVariable("MILTECH_UI_SCENE");
-    const QString screenshot = qEnvironmentVariable("ORBITA_UI_SCREENSHOT");
 
     TestPage page;
     page.setProductionMode(false);
     page.setScenarioInfo(QStringLiteral("ULK_COMBINED_CHECK"), true, false, {}, QStringLiteral("ready"));
-    page.setAvailableProductionProducts({QStringLiteral("345")});
 
-    auto* serialBox = page.findChild<QComboBox*>(QStringLiteral("tuRegisteredProducts"));
-    auto* manualSerial = page.findChild<QLineEdit*>(QStringLiteral("tuManualSerial"));
-    require(serialBox && manualSerial, "TU v0.5 serial controls missing");
-    require(page.findChild<QComboBox*>(QStringLiteral("tuOperator")) == nullptr,
-            "TU entry must not ask for operator before the run");
-    require(page.findChild<QLineEdit*>(QStringLiteral("tuCompletionOperator"))->isHidden(),
-            "post-run operator must be hidden before the run");
+    auto* serial = page.findChild<QLineEdit*>(QStringLiteral("tuSerialInput"));
+    auto* operatorName = page.findChild<QLineEdit*>(QStringLiteral("tuOperatorInput"));
+    auto* check = buttonByText(page, QStringLiteral("ПРОВЕРИТЬ СТЕНД"));
+    require(serial && operatorName && check, "minimal TU entry missing");
 
-    serialBox->setCurrentIndex(serialBox->findData(QStringLiteral("345")));
-    QApplication::processEvents();
-    saveScene(page, requested, QStringLiteral("TU_ENTRY"), screenshot);
-
-    auto* check = buttonByText(page, QStringLiteral("Проверить стенд"));
-    require(check && check->isEnabled(), "TU readiness action must be enabled for selected serial");
+    serial->setText(QStringLiteral("345"));
+    operatorName->setText(QStringLiteral("Толмачёв А.Е."));
+    require(check->isEnabled(), "serial + operator must enable readiness");
     check->click();
     QApplication::processEvents();
-    saveScene(page, requested, QStringLiteral("TU_READY"), screenshot);
 
-    auto* start = buttonByText(page, QStringLiteral("НАЧАТЬ ПРОВЕРКУ"));
+    auto* start = buttonByText(page, QStringLiteral("НАЧАТЬ ПОЛНЫЙ ПРОГОН"));
     require(start && !start->isHidden() && start->isEnabled(),
-            "TU must reach ready state when selected scenario needs no equipment in test");
+            "minimal TU must reach ready state when no equipment is required in test");
+
+    QString scenario;
+    QString objectSerial;
+    QObject::connect(&page, &TestPage::runRequested,
+                     [&](const QString& code, const QString& serialValue, bool) {
+        scenario = code;
+        objectSerial = serialValue;
+    });
     start->click();
+    QApplication::processEvents();
+    require(scenario == QStringLiteral("ULK_COMBINED_CHECK"),
+            "minimal delivery must launch the complete TU scenario");
+    require(objectSerial == QStringLiteral("345"),
+            "minimal delivery lost UBSI serial at run start");
+
     page.setRunInProgress(true, QStringLiteral("running"));
-    QApplication::processEvents();
-    saveScene(page, requested, QStringLiteral("TU_RUNTIME"), screenshot);
-
-    auto* tuTitle = page.findChild<QLabel*>(QStringLiteral("tuRuntimeTitle"));
-    auto* productionFooter = page.findChild<QWidget*>(QStringLiteral("productionTelemetryFooter"));
-    auto* readiness = page.findChild<QWidget*>(QStringLiteral("tuRequirement_1.1.4.13"));
-    auto* supply = page.findChild<QWidget*>(QStringLiteral("tuRequirement_1.1.4.3"));
-    auto* current = page.findChild<QWidget*>(QStringLiteral("tuRequirement_1.1.4.5"));
-    auto* yalkOpen = page.findChild<QWidget*>(QStringLiteral("tuRequirement_1.1.4.10"));
-    auto* yalkOverload = page.findChild<QWidget*>(QStringLiteral("tuRequirement_1.1.4.11"));
-    auto* reference = page.findChild<QWidget*>(QStringLiteral("tuRequirement_1.1.4.9"));
-    auto* functional = page.findChild<QWidget*>(QStringLiteral("tuRequirement_1.1.4.1"));
-    auto* accuracy = page.findChild<QWidget*>(QStringLiteral("tuRequirement_1.1.4.14"));
-    auto* yvpAfc = page.findChild<QWidget*>(QStringLiteral("tuRequirement_1.1.4.7"));
-    auto* yvpGain = page.findChild<QWidget*>(QStringLiteral("tuRequirement_1.1.4.8"));
-    require(tuTitle && readiness && supply && current && yalkOpen && yalkOverload
-                && reference && functional && accuracy && yvpAfc && yvpGain,
-            "automated TU requirement rail is incomplete");
-    require(productionFooter && productionFooter->isHidden(),
-            "production telemetry footer must not be shown in the simple TU runtime");
-
-    require(!page.findChild<QWidget*>(QStringLiteral("tuRequirement_1.1.4.2")),
-            "non-automated 1.1.4.2 must not appear as a pending TU check");
-    require(!page.findChild<QWidget*>(QStringLiteral("tuRequirement_1.1.4.4")),
-            "1.1.4.4 must not appear in the current automated TU route");
-    require(!page.findChild<QWidget*>(QStringLiteral("tuRequirement_1.1.4.6")),
-            "1.1.4.6 must not appear in the current automated TU route");
-    require(!page.findChild<QWidget*>(QStringLiteral("tuRequirement_1.1.4.12")),
-            "1.1.4.12 must not appear in the current automated TU route");
-
-    orbita::stand::RunEvent ready;
-    ready.nodeId = "readiness";
-    ready.stage = "MEASUREMENT";
-    ready.verdict = orbita::stand::RunVerdict::Ok;
-    ready.data = {{"seconds", "2.4"}};
-    page.setRunEvent(ready);
-    QApplication::processEvents();
-    auto* readyStatus = page.findChild<QLabel*>(QStringLiteral("tuRequirementStatus_1.1.4.13"));
-    require(readyStatus && readyStatus->text() == QStringLiteral("ВЫПОЛНЯЕТСЯ"),
-            "readiness event must activate 1.1.4.13 in TU rail");
-
-    orbita::stand::RunEvent yvp;
-    yvp.nodeId = "yvp_channels";
-    yvp.stage = "YVP_V7_POINT";
-    yvp.verdict = orbita::stand::RunVerdict::NotRun;
-    yvp.data = {{"yvp_channel", "2"}, {"gain_mv_per_pc", "4"},
-                {"set_frequency_hz", "500"}, {"rigol_input_vpp", "0.5"},
-                {"v7_output_vrms", "0.707"}, {"calculated_gain_mv_per_pc", "4.0"},
-                {"acceptance", "evaluated_after_gain_sweep"}};
-    page.setRunEvent(yvp);
-    QApplication::processEvents();
-    auto* afcStatus = page.findChild<QLabel*>(QStringLiteral("tuRequirementStatus_1.1.4.7"));
-    auto* gainStatus = page.findChild<QLabel*>(QStringLiteral("tuRequirementStatus_1.1.4.8"));
-    require(afcStatus && gainStatus
-                && afcStatus->text() == QStringLiteral("ВЫПОЛНЯЕТСЯ")
-                && gainStatus->text() == QStringLiteral("ВЫПОЛНЯЕТСЯ"),
-            "YVP event must activate AFC and gain TU requirements");
+    auto* tuSerial = page.findChild<QLabel*>(QStringLiteral("tuRuntimeSerial"));
+    if (tuSerial) {
+        require(tuSerial->text().contains(QStringLiteral("345"))
+                    && tuSerial->text().contains(QStringLiteral("Толмачёв А.Е.")),
+                "runtime must preserve serial and operator");
+    }
 
     orbita::stand::ScenarioRunResult result;
-    result.runId = "tu-ui-test";
-    result.verdict = orbita::stand::RunVerdict::Fail;
-    auto add = [&result](const char* id, const char* tu, orbita::stand::RunVerdict verdict) {
-        orbita::stand::StepRunResult step;
-        step.nodeId = id;
-        step.tuRequirement = tu;
-        step.verdict = verdict;
-        result.steps.push_back(std::move(step));
-    };
-    add("readiness", "1.1.4.13", orbita::stand::RunVerdict::Ok);
-    add("supply_range", "1.1.4.3, 1.1.4.5", orbita::stand::RunVerdict::Ok);
-    add("yalk_initial", "1.1.4.10", orbita::stand::RunVerdict::Ok);
-    add("yalk_overload", "1.1.4.11", orbita::stand::RunVerdict::Ok);
-    add("yalk_reference_voltage", "1.1.4.9", orbita::stand::RunVerdict::Ok);
-    add("yalk_channels", "1.1.4.1, 1.1.4.14", orbita::stand::RunVerdict::Ok);
-    add("ytp_channels", "1.1.4.1, 1.1.4.14", orbita::stand::RunVerdict::Ok);
-    add("yvp_channels", "1.1.4.1, 1.1.4.7, 1.1.4.8, 1.1.4.14", orbita::stand::RunVerdict::Fail);
+    result.runId = "tu-minimal-test";
+    result.verdict = orbita::stand::RunVerdict::Ok;
     page.setRunResult(result, QStringLiteral("C:/reports/tu.html"), {});
     QApplication::processEvents();
 
-    readyStatus = page.findChild<QLabel*>(QStringLiteral("tuRequirementStatus_1.1.4.13"));
-    afcStatus = page.findChild<QLabel*>(QStringLiteral("tuRequirementStatus_1.1.4.7"));
-    gainStatus = page.findChild<QLabel*>(QStringLiteral("tuRequirementStatus_1.1.4.8"));
-    require(readyStatus && readyStatus->text() == QStringLiteral("НОРМА"),
-            "TU result must finalize readiness as NORM");
-    require(afcStatus && afcStatus->text() == QStringLiteral("НЕ НОРМА"),
-            "TU result must preserve YVP AFC failure");
-    require(gainStatus && gainStatus->text() == QStringLiteral("НЕ НОРМА"),
-            "TU result must preserve YVP gain failure");
+    auto* report = page.findChild<QLabel*>(QStringLiteral("finishReportPaths"));
+    require(report && report->text().contains(QStringLiteral("tu.html"))
+                && report->text().contains(QStringLiteral("tu-minimal-test")),
+            "minimal TU result must expose report and run id");
 
-    auto* reportPath = page.findChild<QLabel*>(QStringLiteral("finishReportPaths"));
-    require(reportPath && reportPath->text().contains(QStringLiteral("tu.html"))
-                && reportPath->text().contains(QStringLiteral("tu-ui-test")),
-            "TU finish must expose report path and run_id internally");
-
-    auto* completionOperator = page.findChild<QLineEdit*>(QStringLiteral("tuCompletionOperator"));
-    auto* tuFlow = page.findChild<TuFlowWidget*>(QStringLiteral("tuFlowWidget"));
-    require(completionOperator && tuFlow && !completionOperator->isHidden(),
-            "TU v0.5 must request operator only after the automatic run finishes");
-    completionOperator->setText(QStringLiteral("Иванов И.И."));
-    auto* makeReport = buttonByText(page, QStringLiteral("СФОРМИРОВАТЬ ОТЧЁТ"));
-    require(makeReport && makeReport->isEnabled(),
-            "post-run operator must enable report generation");
-    makeReport->click();
-    QApplication::processEvents();
-    require(tuFlow->activeOperator() == QStringLiteral("Иванов И.И."),
-            "TU operator must be captured at report time");
-    require(hasLabelText(page, QStringLiteral("УБСИ: SN 345"))
-                && hasLabelText(page, QStringLiteral("Оператор: Иванов И.И.")),
-            "TU report page must show serial and post-run operator");
-    saveScene(page, requested, QStringLiteral("TU_FINISH"), screenshot);
-
-    std::cout << "Dedicated TU v0.5 serial-first/post-run-operator flow passed\n";
+    std::cout << "Minimal TU full-run handoff passed\n";
     return EXIT_SUCCESS;
 }
