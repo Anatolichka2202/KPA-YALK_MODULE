@@ -127,7 +127,7 @@ int main(int argc, char** argv)
     addStep("supply_status", orbita::stand::RunVerdict::Ok);
     addStep("yalk_initial", orbita::stand::RunVerdict::Fail);
     addStep("ytp_channels", orbita::stand::RunVerdict::Ok);
-    addStep("yvp_v7_isd", orbita::stand::RunVerdict::Incomplete);
+    addStep("yvp_measurement", orbita::stand::RunVerdict::Ok);
     page.setRunResult(result, {}, {});
     auto* powerSummary = page.findChild<QLabel*>(QStringLiteral("finishPowerSummary"));
     auto* yalkSummary = page.findChild<QLabel*>(QStringLiteral("finishYalkSummary"));
@@ -141,8 +141,8 @@ int main(int argc, char** argv)
             "final YALK summary must preserve a failed step");
     require(ytpSummary->text().contains(QStringLiteral("НОРМА")),
             "final YTP summary must come from ScenarioRunResult");
-    require(yvpSummary->text().contains(QStringLiteral("НЕПОЛНАЯ")),
-            "final YVP summary must preserve incomplete acceptance");
+    require(yvpSummary->text().contains(QStringLiteral("НОРМА")),
+            "final YVP summary must come from production acceptance");
 
     std::cout << "Power, YALK initial and final summary event test passed\n";
     return EXIT_SUCCESS;
