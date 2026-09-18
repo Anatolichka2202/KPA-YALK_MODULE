@@ -41,6 +41,18 @@ bool contains(const std::string& text, const std::string& value)
     return text.find(value) != std::string::npos;
 }
 
+bool tuReferences(const std::string& yaml, const std::string& requirement)
+{
+    std::istringstream lines(yaml);
+    std::string line;
+    while (std::getline(lines, line)) {
+        const auto tag = line.find("tu:");
+        if (tag != std::string::npos && line.find(requirement, tag) != std::string::npos)
+            return true;
+    }
+    return false;
+}
+
 std::size_t countOccurrences(const std::string& text, const std::string& value)
 {
     std::size_t count = 0;
@@ -105,6 +117,16 @@ void sourceContract()
     const auto transport = readFile("station/adapters/isd_http_transport.cpp");
     require(contains(transport, "There is deliberately no retry here"),
         "ISD transport lost the one-request/no-retry contract");
+
+    const auto legacy = readFile("station/src/ubsi_procedures.cpp");
+    require(!contains(legacy, "\"full_reset\"")
+            && !contains(legacy, "isd_switch_type")
+            && !contains(legacy, "isd_route_channels"),
+        "Retired UBSI source still contains obsolete global-reset/type7 lifecycle");
+    const auto safeYalk = readFile("station/src/ubsi_procedures_isd_safe.cpp");
+    require(contains(safeYalk, "\"run:\" + context.runId + \":yalk\"")
+            && !contains(safeYalk, "return \"unscoped\""),
+        "Production YALK ownership is not scoped to the active run");
 }
 
 void scenarioContract()
@@ -162,6 +184,78 @@ void scenarioContract()
             && contains(combined, "maximum_total_current_a: 0.4")
             && contains(combined, "supply_current_limit_a: 0.6"),
         "Current TU backend reintroduced excluded/incorrect checks");
+    require(!tuReferences(combined, "1.1.4.6")
+            && !tuReferences(combined, "1.1.4.4"),
+        "Current TU backend reintroduced checks excluded from the automated run");
+
+    const auto legacyTu = readFile("data/scenarios/ubsi_tu_5_6.yaml");
+    require(!tuReferences(legacyTu, "1.1.4.6")
+            && !contains(legacyTu, "procedure: ubsi.sensor_supply"),
+        "Legacy TU scenario reintroduced excluded 50 m or sensor-current automation");
+
+    const auto traceability = readFile("data/scenarios/ubsi_tu_5_6_traceability.csv");
+    require(contains(traceability, "1.1.4.6;5.6;нет;50-метровая линия"),
+        "Traceability must explicitly record 1.1.4.6 as not checked");
+}
+
+void yvpScenarioRegressionContract()
+{
+    const auto standalone = readFile("data/scenarios/ubsi_production_yvp.yaml");
+    const std::vector<std::string> measurementMap{
+        "measurement_1_contacts: 44",
+        "measurement_2_contacts: 29",
+        "measurement_3_contacts: 30",
+        "measurement_4_contacts: 31",
+        "measurement_5_contacts: 71",
+        "measurement_6_contacts: 72",
+        "measurement_7_contacts: 88",
+        "measurement_8_contacts: 73",
+    };
+    require(contains(standalone, "procedure: ubsi.yvp")
+            && !contains(standalone, "procedure: yvp.enter_mode")
+            && !contains(standalone, "ulk.parameter_source")
+            && !contains(standalone, "catalog.parameter_resolver"),
+        "Standalone YVP is not the direct V7+ISD production path");
+    require(contains(standalone, "measure.reference_ac_voltage")
+            && contains(standalone, "measure.reference_frequency")
+            && contains(standalone, "stand.switch_matrix")
+            && contains(standalone, "signal.generator"),
+        "Standalone YVP is missing Rigol/ISD/V7 capabilities");
+    require(!contains(standalone, "mapping_confirmed")
+            && !contains(standalone, "active_outputs_confirmed"),
+        "Confirmed YVP production map retained commissioning gates");
+    require(contains(standalone, "input_1_contacts: 33")
+            && contains(standalone, "channel_8_gain_contacts: 29,30,31,32")
+            && contains(standalone, "settle_ms: 2000"),
+        "YVP production input/KU map or settle contract changed");
+    for (const auto& entry : measurementMap)
+        require(contains(standalone, entry), "Standalone YVP map is incomplete: " + entry);
+
+    for (const auto& scenario : {
+            "data/scenarios/ubsi_production_full.yaml",
+            "data/scenarios/ubsi_tu_5_6.yaml",
+            "data/scenarios/ubsi_ulk_combined_check.yaml"}) {
+        const auto yaml = readFile(scenario);
+        for (const auto& entry : measurementMap)
+            require(contains(yaml, entry), std::string(scenario) + " YVP map differs: " + entry);
+        require(contains(yaml, "frequencies_hz: 2,6,20,500,1800,2000,4000")
+                && contains(yaml, "reference_frequency_hz: 500")
+                && contains(yaml, "gain_tolerance_percent: 7")
+                && contains(yaml, "attenuation_min_db: 20.0")
+                && !contains(yaml, "procedure: yvp."),
+            std::string(scenario) + " does not use the canonical YVP production method");
+    }
+
+    const auto cmake = readFile("station/CMakeLists.txt");
+    const auto desktopCmake = readFile("apps/desktop/CMakeLists.txt");
+    const auto registrar = readFile("station/src/ubsi_procedures_yvp_v7.cpp");
+    require(!contains(cmake, "orbita_yvp_rokt_probe")
+            && !contains(cmake, "orbita_yvp_v7_probe")
+            && !contains(desktopCmake, "orbita_yvp_"),
+        "Legacy YVP probe targets returned to the production build");
+    require(!contains(registrar, "registerProcedure(\"yvp.")
+            && contains(registrar, "registerProcedure(\"ubsi.yvp\""),
+        "Production registrar must expose only ubsi.yvp");
 }
 
 class FakeEquipment final : public ICapabilityProvider {
@@ -197,6 +291,52 @@ public:
     unsigned fullResetCount = 0;
     bool failReset = false;
     bool safeStopCalled = false;
+};
+
+
+class YvpContractEquipment final : public ICapabilityProvider {
+public:
+    bool hasCapability(const std::string&) const override { return true; }
+
+    std::string invoke(const std::string& capability, const std::string& operation,
+                       const std::map<std::string, std::string>& arguments) override
+    {
+        operations.push_back(capability + ":" + operation);
+        requests.push_back({capability + ":" + operation, arguments});
+        if (capability == "stand.switch_matrix" && operation == "probe") {
+            if (failIsdProbe) throw std::runtime_error("ISD unavailable");
+            return "status=ready\nalive=1\n";
+        }
+        if (capability == "signal.generator" && operation == "set_sine") {
+            currentFrequency = std::stod(arguments.at("frequency_hz"));
+            return "status=ok\n";
+        }
+        if (capability == "measure.reference_ac_voltage"
+            && operation == "read_ac_voltage") {
+            ++acVoltageReads;
+            const double attenuation = std::abs(currentFrequency - 4000.0) < 0.01
+                ? 0.09 : 1.0;
+            return "status=ready\nvolts="
+                + std::to_string(0.7071067811865476 * attenuation * acScale) + "\n";
+        }
+        if (capability == "measure.reference_frequency"
+            && operation == "read_frequency") {
+            ++frequencyReads;
+            return "status=ready\nhertz=20\n";
+        }
+        return "status=ready\n";
+    }
+
+    void safeStopAll() noexcept override { stopped = true; }
+
+    std::vector<std::string> operations;
+    std::vector<std::pair<std::string, std::map<std::string, std::string>>> requests;
+    bool stopped = false;
+    unsigned acVoltageReads = 0;
+    unsigned frequencyReads = 0;
+    double currentFrequency = 0.0;
+    double acScale = 1.0;
+    bool failIsdProbe = false;
 };
 
 ScenarioDefinition oneStep(const std::string& procedure,
@@ -284,17 +424,109 @@ void runtimeContract()
     }
 }
 
+
+std::map<std::string, std::string> yvpArguments()
+{
+    std::map<std::string, std::string> args{
+        {"channel_count", "8"}, {"gains_mv_per_pcl", "0.25,0.5,1,2,4,8,32"},
+        {"frequencies_hz", "2,6,20,500,1800,2000,4000"},
+        {"coupling_capacitance_pf", "1000"}, {"reference_frequency_hz", "500"},
+        {"gain_tolerance_percent", "7"}, {"attenuation_min_db", "20"},
+        {"settle_ms", "0"}, {"input_switch_type", "2"},
+        {"gain_switch_type", "2"}, {"measurement_switch_type", "3"},
+        {"measurement_analog_type", "1"},
+        {"gain_0_25_bits", "none"}, {"gain_0_5_bits", "1"},
+        {"gain_1_bits", "2"}, {"gain_2_bits", "3"},
+        {"gain_4_bits", "1,3"}, {"gain_8_bits", "4"}, {"gain_32_bits", "2,4"}
+    };
+    const unsigned measurements[] = {44,29,30,31,71,72,88,73};
+    for (unsigned channel = 1; channel <= 8; ++channel) {
+        args["input_" + std::to_string(channel) + "_contacts"] = std::to_string(32 + channel);
+        args["measurement_" + std::to_string(channel) + "_contacts"] =
+            std::to_string(measurements[channel - 1]);
+        const unsigned first = (channel - 1) * 4 + 1;
+        args["channel_" + std::to_string(channel) + "_gain_contacts"] =
+            std::to_string(first) + "," + std::to_string(first + 1) + ","
+            + std::to_string(first + 2) + "," + std::to_string(first + 3);
+    }
+    return args;
+}
+
+void yvpRuntimeRegressionContract()
+{
+    ScenarioEngine engine;
+    registerUbsiProcedures(engine);
+
+    YvpContractEquipment okEquipment;
+    const auto okRun = engine.run(oneStep("ubsi.yvp", yvpArguments()),
+                                  okEquipment, "p", "", false);
+    require(okRun.verdict == RunVerdict::Ok,
+        "Production YVP must return OK for measurements inside all limits");
+    require(!okEquipment.operations.empty()
+            && okEquipment.operations.front() == "stand.switch_matrix:probe",
+        "ISD HTTP probe must run before active YVP operations");
+    require(std::none_of(okEquipment.operations.begin(), okEquipment.operations.end(),
+        [](const std::string& operation) {
+            return operation.find("ulk.parameter_source") != std::string::npos
+                || operation == "stand.switch_matrix:full_reset"
+                || operation == "stand.switch_matrix:service_full_reset";
+        }), "Production YVP must use neither adapter/ROKT nor global ISD reset");
+    require(okEquipment.acVoltageReads == 8u * 7u * 7u,
+        "Production YVP must measure the complete 8x7x7 matrix");
+    require(okEquipment.frequencyReads == 8u * 7u * 5u,
+        "V7 frequency must be diagnostic only and skipped below 10 Hz");
+
+    YvpContractEquipment failEquipment;
+    failEquipment.acScale = 1.08;
+    const auto failRun = engine.run(oneStep("ubsi.yvp", yvpArguments()),
+                                    failEquipment, "p", "", false);
+    require(failRun.verdict == RunVerdict::Fail,
+        "Production YVP must return FAIL when 500 Hz gain exceeds ±7%");
+
+    YvpContractEquipment probeFailure;
+    probeFailure.failIsdProbe = true;
+    const auto errorRun = engine.run(oneStep("ubsi.yvp", yvpArguments()),
+                                     probeFailure, "p", "", false);
+    require(errorRun.verdict == RunVerdict::Error
+            && std::count(probeFailure.operations.begin(), probeFailure.operations.end(),
+                          "signal.generator:set_sine") == 0,
+        "ISD preflight failure must be a technical ERROR before active stimulus");
+
+    for (const auto& legacy : {"yvp.v7_isd", "yvp.enter_mode", "yvp.safe_cleanup",
+                               "yvp.rokt", "yvp.rokt.enter_mode",
+                               "yvp.rokt.channels", "yvp.rokt.safe_cleanup"}) {
+        require(!engine.validate(oneStep(legacy)).empty(),
+            std::string("Legacy YVP procedure remains registered: ") + legacy);
+    }
+}
+
 void yvpMathContract()
 {
     const double q = yvpChargePc(1000.0, 2.0);
     require(std::abs(q - 2000.0) < 1e-9, "Q=C*U calculation changed");
-    require(std::abs(yvpGainMvPerPc(2.0, q) - 1.0) < 1e-9,
-        "YVP gain calculation changed");
+    const double gain = yvpGainMvPerPc(2.0, q);
+    require(std::abs(gain - 1.0) < 1e-9, "YVP gain calculation changed");
+    require(std::abs(yvpRelativeErrorPercent(gain, 1.0)) < 1e-9,
+        "YVP gain relative error calculation changed");
     require(std::abs(yvpAfcPercent(1.05, 1.0) - 5.0) < 1e-9,
         "YVP AFC calculation changed");
+    require(std::abs(yvpRelativeErrorPercent(1.07, 1.0)) <= 7.0 + 1e-9
+            && std::abs(yvpRelativeErrorPercent(1.071, 1.0)) > 7.0,
+        "Gain ±7% boundary changed");
+    require(std::abs(yvpAfcPercent(1.10, 1.0)) <= 10.0 + 1e-9
+            && std::abs(yvpAfcPercent(1.101, 1.0)) > 10.0,
+        "AFC ±10% edge band changed");
+    require(std::abs(yvpAfcPercent(1.05, 1.0)) <= 5.0 + 1e-9
+            && std::abs(yvpAfcPercent(1.051, 1.0)) > 5.0,
+        "AFC ±5% middle band changed");
     require(std::abs(yvpAttenuationDb(1.0, 0.1) - 20.0) < 1e-9,
         "YVP attenuation calculation changed");
     require(yvpStimulusVppForGain(0.25) == 8.0
+            && yvpStimulusVppForGain(0.5) == 4.0
+            && yvpStimulusVppForGain(1.0) == 2.0
+            && yvpStimulusVppForGain(2.0) == 1.0
+            && yvpStimulusVppForGain(4.0) == 0.5
+            && yvpStimulusVppForGain(8.0) == 0.25
             && yvpStimulusVppForGain(32.0) == 0.0625,
         "YVP production stimulus table changed");
 }
@@ -306,7 +538,9 @@ int main()
     try {
         sourceContract();
         scenarioContract();
+        yvpScenarioRegressionContract();
         runtimeContract();
+        yvpRuntimeRegressionContract();
         yvpMathContract();
         std::cout << "UBSI backend contract tests passed\n";
         return 0;
