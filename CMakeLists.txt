@@ -16,10 +16,10 @@ include(CTest)
 add_subdirectory(third_party/yaml-cpp)
 
 # The pinned yaml-cpp revision relies on fixed-width integer typedefs being
-# pulled in transitively. GCC 16 no longer guarantees that, so make the missing
-# standard header explicit at compile time without modifying the submodule.
-if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU"
-   AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 16)
+# pulled in transitively. Current GCC toolchains do not guarantee that, so make
+# the missing standard header explicit at compile time without modifying the
+# submodule. This is harmless on GCC versions that still include it indirectly.
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     target_compile_options(yaml-cpp PRIVATE -include cstdint)
 endif()
 
