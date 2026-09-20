@@ -73,6 +73,8 @@ StandConfig loadStandConfig(const std::filesystem::path& path)
     config.isd.host = required<std::string>(isd, "host");
     config.isd.port = static_cast<std::uint16_t>(optional<unsigned>(isd, "port", 80));
     config.isd.timeoutMilliseconds = optional<unsigned>(isd, "timeout_ms", 1500);
+    config.isd.serviceTimeoutMilliseconds = optional<unsigned>(
+        isd, "service_timeout_ms", 10000);
 
     config.v7.resourceExpressions = resources(v7);
     config.v7.timeoutMilliseconds = optional<unsigned>(v7, "timeout_ms", 5000);
@@ -91,7 +93,8 @@ StandConfig loadStandConfig(const std::filesystem::path& path)
         throw std::runtime_error("Некорректный предел OVP АКИП в профиле стенда");
     if (config.yalk.remoteHost.empty() || config.yalk.localHost.empty() || !config.yalk.port)
         throw std::runtime_error("Некорректная UDP-конфигурация адаптера УБСИ");
-    if (config.isd.host.empty() || !config.isd.port || !config.isd.timeoutMilliseconds)
+    if (config.isd.host.empty() || !config.isd.port || !config.isd.timeoutMilliseconds
+        || !config.isd.serviceTimeoutMilliseconds)
         throw std::runtime_error("Некорректная конфигурация ИСД");
 
     return config;
