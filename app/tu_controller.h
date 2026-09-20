@@ -7,6 +7,7 @@
 
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <string>
 
 class QThread;
@@ -44,4 +45,15 @@ private:
     bool proceduresReady_ = false;
     QString scenarioError_;
     QString hardwareError_;
+
+    // Scenario lifecycle and reference204 telemetry are intentionally separate.
+    // The receiver thread publishes live YALK frames, while these values only
+    // provide the current TU node and the validated 97/99 calibration needed to
+    // convert raw codes to volts for HMI display.
+    std::mutex liveStateMutex_;
+    std::string liveNode_;
+    double yalkZeroCode_ = 0.0;
+    double yalkFullCode_ = 0.0;
+    double yalkFullVoltage_ = 6.2;
+    bool yalkCalibrationValid_ = false;
 };
