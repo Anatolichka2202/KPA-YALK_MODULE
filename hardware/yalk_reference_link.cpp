@@ -13,12 +13,16 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
-#include <cmath>
+#include <condition_variable>
 #include <cstdint>
+#include <deque>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 namespace tu::hardware {
@@ -68,10 +72,31 @@ std::array<std::uint8_t, 128> command(std::uint8_t code)
     return value;
 }
 
+std::vector<YalkChannelReading> decodeYalkFrame(const std::vector<std::uint8_t>& frame)
+{
+    if (frame.size() != 204)
+        throw std::invalid_argument("reference204 имеет неверный размер");
+    std::vector<YalkChannelReading> result(100);
+    for (std::size_t index = 0; index < 100; ++index) {
+        const std::size_t offset = 4 + index * 2;
+        const std::uint16_t word = static_cast<std::uint16_t>(frame[offset])
+            | (static_cast<std::uint16_t>(frame[offset + 1]) << 8);
+        result[index].rawMean = word;
+        result[index].codeMean = word & 0x03FFu;
+        result[index].contact = (word & 0x0400u) != 0;
+    }
+    return result;
+}
+
 } // namespace
 
 struct YalkReferenceLink::Impl
 {
+    struct QueuedFrame {
+        std::uint64_t sequence = 0;
+        std::vector<std::uint8_t> bytes;
+    };
+
     explicit Impl(YalkUdpConfig value) : config(std::move(value))
     {
         if (!config.port) throw std::invalid_argument("UDP-порт адаптера УБСИ равен нулю");
@@ -93,8 +118,15 @@ struct YalkReferenceLink::Impl
 #endif
     }
 
+    void setLiveSink(LiveYalkSink sink)
+    {
+        std::lock_guard<std::mutex> lock(frameMutex);
+        liveSink = std::move(sink);
+    }
+
     void stop() noexcept
     {
+        stopping.store(true);
         const Socket value = receiver;
         receiver = InvalidSocket;
         if (value != InvalidSocket) {
@@ -105,23 +137,98 @@ struct YalkReferenceLink::Impl
 #endif
             closeSocket(value);
         }
+        frameCv.notify_all();
+        if (receiverThread.joinable()
+            && receiverThread.get_id() != std::this_thread::get_id()) {
+            receiverThread.join();
+        }
+        {
+            std::lock_guard<std::mutex> lock(frameMutex);
+            frames.clear();
+            sequence = 0;
+            lastLivePublish = {};
+        }
+    }
+
+    void receiveLoop(Socket socket) noexcept
+    {
+        while (!stopping.load()) {
+#ifdef _WIN32
+            WSAPOLLFD descriptor{socket, POLLRDNORM, 0};
+            const int ready = WSAPoll(&descriptor, 1, 100);
+#else
+            pollfd descriptor{socket, POLLIN, 0};
+            const int ready = poll(&descriptor, 1, 100);
+#endif
+            if (ready <= 0) continue;
+
+            std::array<std::uint8_t, 2048> bytes{};
+            sockaddr_in sender{};
+#ifdef _WIN32
+            int senderSize = sizeof(sender);
+#else
+            socklen_t senderSize = sizeof(sender);
+#endif
+            const int count = recvfrom(socket, reinterpret_cast<char*>(bytes.data()),
+                static_cast<int>(bytes.size()), 0,
+                reinterpret_cast<sockaddr*>(&sender), &senderSize);
+            if (count <= 0) continue;
+            if (sender.sin_addr.s_addr != remote.sin_addr.s_addr
+                || sender.sin_port != remote.sin_port) continue;
+            if (count != 204 && count != 68) continue;
+
+            QueuedFrame queued;
+            queued.bytes.assign(bytes.begin(), bytes.begin() + count);
+            LiveYalkSink sink;
+            bool publishLive = false;
+            {
+                std::lock_guard<std::mutex> lock(frameMutex);
+                queued.sequence = ++sequence;
+                frames.push_back(queued);
+                while (frames.size() > 1024) frames.pop_front();
+
+                const auto now = std::chrono::steady_clock::now();
+                if (count == 204 && liveSink
+                    && (lastLivePublish.time_since_epoch().count() == 0
+                        || now - lastLivePublish >= std::chrono::milliseconds(50))) {
+                    sink = liveSink;
+                    lastLivePublish = now;
+                    publishLive = true;
+                }
+            }
+            frameCv.notify_all();
+
+            if (publishLive) {
+                try { sink(decodeYalkFrame(queued.bytes), queued.sequence); }
+                catch (...) {}
+            }
+        }
     }
 
     void openReceiver()
     {
         stop();
-        receiver = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-        if (receiver == InvalidSocket)
+        Socket value = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+        if (value == InvalidSocket)
             throw std::runtime_error("Не удалось открыть UDP-сокет адаптера УБСИ");
         int reuse = 1;
-        setsockopt(receiver, SOL_SOCKET, SO_REUSEADDR,
+        setsockopt(value, SOL_SOCKET, SO_REUSEADDR,
                    reinterpret_cast<const char*>(&reuse), sizeof(reuse));
-        if (::bind(receiver, reinterpret_cast<const sockaddr*>(&local), sizeof(local)) != 0) {
-            closeSocket(receiver);
-            receiver = InvalidSocket;
+        if (::bind(value, reinterpret_cast<const sockaddr*>(&local), sizeof(local)) != 0) {
+            closeSocket(value);
             throw std::runtime_error("Не удалось привязать UDP-сокет адаптера к "
                 + config.localHost + ':' + std::to_string(config.port));
         }
+
+        {
+            std::lock_guard<std::mutex> lock(frameMutex);
+            frames.clear();
+            sequence = 0;
+            lastLivePublish = {};
+        }
+        receiver = value;
+        stopping.store(false);
+        receiverThread = std::thread([this, value] { receiveLoop(value); });
     }
 
     Socket openSender()
@@ -200,43 +307,50 @@ struct YalkReferenceLink::Impl
         }
     }
 
-    std::vector<std::uint8_t> waitPayload(std::size_t requiredSize,
+    std::uint64_t currentSequence()
+    {
+        std::lock_guard<std::mutex> lock(frameMutex);
+        return sequence;
+    }
+
+    QueuedFrame waitPayloadAfter(std::size_t requiredSize, std::uint64_t afterSequence,
         std::chrono::milliseconds timeout, const Checkpoint& checkpoint)
     {
         if (receiver == InvalidSocket)
             throw std::runtime_error("Поток адаптера УБСИ не запущен");
+
         const auto deadline = std::chrono::steady_clock::now() + timeout;
-        while (std::chrono::steady_clock::now() < deadline) {
+        for (;;) {
             if (checkpoint) checkpoint();
-            const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
-                deadline - std::chrono::steady_clock::now());
-            const int pollMs = static_cast<int>(std::max<std::int64_t>(
-                1, std::min<std::int64_t>(100, remaining.count())));
-#ifdef _WIN32
-            WSAPOLLFD descriptor{receiver, POLLRDNORM, 0};
-            const int ready = WSAPoll(&descriptor, 1, pollMs);
-#else
-            pollfd descriptor{receiver, POLLIN, 0};
-            const int ready = poll(&descriptor, 1, pollMs);
-#endif
-            if (ready <= 0) continue;
-            std::array<std::uint8_t, 2048> bytes{};
-            sockaddr_in sender{};
-#ifdef _WIN32
-            int senderSize = sizeof(sender);
-#else
-            socklen_t senderSize = sizeof(sender);
-#endif
-            const int count = recvfrom(receiver, reinterpret_cast<char*>(bytes.data()),
-                static_cast<int>(bytes.size()), 0,
-                reinterpret_cast<sockaddr*>(&sender), &senderSize);
-            if (count <= 0) continue;
-            if (sender.sin_addr.s_addr != remote.sin_addr.s_addr
-                || sender.sin_port != remote.sin_port) continue;
-            if (static_cast<std::size_t>(count) != requiredSize) continue;
-            return {bytes.begin(), bytes.begin() + count};
+
+            std::unique_lock<std::mutex> lock(frameMutex);
+            const auto found = std::find_if(frames.begin(), frames.end(),
+                [requiredSize, afterSequence](const QueuedFrame& frame) {
+                    return frame.sequence > afterSequence && frame.bytes.size() == requiredSize;
+                });
+            if (found != frames.end()) {
+                QueuedFrame result = *found;
+                frames.erase(frames.begin(), std::next(found));
+                return result;
+            }
+            if (stopping.load() || receiver == InvalidSocket)
+                throw std::runtime_error("Поток адаптера УБСИ остановлен");
+
+            const auto now = std::chrono::steady_clock::now();
+            if (now >= deadline) break;
+            const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now);
+            frameCv.wait_for(lock, std::min(remaining, std::chrono::milliseconds(50)));
         }
         throw FrameTimeout{};
+    }
+
+    QueuedFrame waitPayload(std::size_t requiredSize,
+        std::chrono::milliseconds timeout, const Checkpoint& checkpoint)
+    {
+        // Freshness barrier: frames already queued before the measurement call
+        // are explicitly excluded. The receiver thread keeps draining UDP during
+        // settle delays, so a measurement can no longer consume pre-switch data.
+        return waitPayloadAfter(requiredSize, currentSequence(), timeout, checkpoint);
     }
 
     std::vector<YalkChannelReading> yalkSnapshot(unsigned samples,
@@ -245,8 +359,11 @@ struct YalkReferenceLink::Impl
         samples = std::max(1u, samples);
         std::vector<double> raw(100, 0.0), code(100, 0.0);
         std::vector<unsigned> contacts(100, 0);
+        std::uint64_t after = currentSequence();
         for (unsigned sample = 0; sample < samples; ++sample) {
-            const auto frame = waitPayload(204, timeout, checkpoint);
+            const auto queued = waitPayloadAfter(204, after, timeout, checkpoint);
+            after = queued.sequence;
+            const auto& frame = queued.bytes;
             for (std::size_t index = 0; index < 100; ++index) {
                 const std::size_t offset = 4 + index * 2;
                 const std::uint16_t word = static_cast<std::uint16_t>(frame[offset])
@@ -272,8 +389,11 @@ struct YalkReferenceLink::Impl
         YtpSnapshot result;
         std::array<unsigned, 30> counts{};
         unsigned count31 = 0, count32 = 0;
+        std::uint64_t after = currentSequence();
         for (unsigned sample = 0; sample < samples; ++sample) {
-            const auto frame = waitPayload(68, timeout, checkpoint);
+            const auto queued = waitPayloadAfter(68, after, timeout, checkpoint);
+            after = queued.sequence;
+            const auto& frame = queued.bytes;
             constexpr std::array<std::uint8_t, 4> header{0x01,0x00,0x34,0x00};
             if (!std::equal(header.begin(), header.end(), frame.begin()))
                 throw std::runtime_error("Кадр ЯТП ROKT имеет неверный заголовок");
@@ -308,6 +428,14 @@ struct YalkReferenceLink::Impl
     sockaddr_in remote{};
     sockaddr_in local{};
     Socket receiver = InvalidSocket;
+    std::atomic<bool> stopping{true};
+    std::thread receiverThread;
+    std::mutex frameMutex;
+    std::condition_variable frameCv;
+    std::deque<QueuedFrame> frames;
+    std::uint64_t sequence = 0;
+    LiveYalkSink liveSink;
+    std::chrono::steady_clock::time_point lastLivePublish{};
 #ifdef _WIN32
     bool winsockStarted = false;
 #endif
@@ -384,6 +512,11 @@ YtpSnapshot YalkReferenceLink::readYtpSnapshot(
     unsigned sampleCount, std::chrono::milliseconds timeout, const Checkpoint& checkpoint)
 {
     return impl_->ytpSnapshot(sampleCount, timeout, checkpoint);
+}
+
+void YalkReferenceLink::setLiveYalkSink(LiveYalkSink sink)
+{
+    impl_->setLiveSink(std::move(sink));
 }
 
 void YalkReferenceLink::stop() noexcept { impl_->stop(); }
