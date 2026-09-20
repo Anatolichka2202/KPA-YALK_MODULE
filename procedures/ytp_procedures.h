@@ -4,17 +4,20 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 
 namespace tu::hardware { class StandHardware; }
 
 namespace tu::procedures {
 
-using OperatorConfirm = std::function<bool(const std::string& title,
-                                           const std::string& prompt)>;
+using OperatorResistanceInput = std::function<std::optional<double>(
+    const std::string& title,
+    const std::string& prompt,
+    double targetOhms)>;
 
 void registerYtpProcedures(ScenarioEngine& engine,
                            std::shared_ptr<hardware::StandHardware> hardware,
-                           OperatorConfirm operatorConfirm);
+                           OperatorResistanceInput operatorInput);
 
 } // namespace tu::procedures
