@@ -45,16 +45,12 @@ void RunJournalOverlay::finishRun()
 void RunJournalOverlay::appendRunEvent(const tu::RunEvent& event)
 {
     const QString stage = QString::fromStdString(event.stage);
-    const bool operational = stage == QStringLiteral("JOURNAL")
-        || stage == QStringLiteral("START")
-        || stage == QStringLiteral("FINISH")
-        || stage == QStringLiteral("OVERLOAD")
-        || stage == QStringLiteral("YALK_POINT")
-        || stage == QStringLiteral("OPERATOR")
-        || stage == QStringLiteral("SKIPPED")
-        || stage == QStringLiteral("POWER")
-        || stage == QStringLiteral("YVP_V7_POINT");
-    if (!operational) return;
+    // Поток reference204 идёт в графики отдельно. В журнал не сыпем 80
+    // измерительных строк на каждый кадр: здесь остаются именно действия ПО,
+    // коммутация, выдержки, операторские шаги, START/FINISH и ошибки.
+    if (stage == QStringLiteral("MEASUREMENT")
+        || stage == QStringLiteral("BACKGROUND")
+        || stage == QStringLiteral("YALK_INITIAL")) return;
 
     const auto millis = std::chrono::duration_cast<std::chrono::milliseconds>(
         event.timestamp.time_since_epoch()).count();
