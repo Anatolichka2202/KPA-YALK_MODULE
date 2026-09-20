@@ -192,8 +192,8 @@ ProcedureResult calibration(const ScenarioStep& step, ProcedureContext& context,
             samples, std::chrono::milliseconds(3000), [&context] { context.checkpoint(); });
         stand->isd().disableYalkOutput(first);
 
-        const double zero = frame.at(96).codeMean; // адрес 97
-        const double full = frame.at(98).codeMean; // адрес 99
+        const double zero = frame.at(96).codeMean;
+        const double full = frame.at(98).codeMean;
         if (!(full > zero) || reference < 5.5 || reference > 6.8)
             throw std::runtime_error("Недостоверная калибровка ЯЛК 97/99 или напряжение В7");
 
@@ -209,12 +209,14 @@ ProcedureResult calibration(const ScenarioStep& step, ProcedureContext& context,
                             {"zero_code",std::to_string(zero)},
                             {"full_code",std::to_string(full)},
                             {"scale_voltage_v",std::to_string(fullVoltage)},
-                            {"v7_v",std::to_string(reference)}};
+                            {"v7_v",std::to_string(reference)},
+                            {"stimulus_command_v",std::to_string(fullVoltage)}};
         publishMeasurement(context, step, value);
         append(result, std::move(value));
         return result;
     } catch (...) {
         try { stand->isd().disableYalkOutput(first); } catch (...) {}
+        stand->isd().safeStop();
         throw;
     }
 }
@@ -368,6 +370,7 @@ ProcedureResult channelSweep(const ScenarioStep& step, ProcedureContext& context
                 waitChecked(context, offSettle);
             } catch (...) {
                 try { stand->isd().disableYalkOutput(address); } catch (...) {}
+                stand->isd().safeStop();
                 throw;
             }
         }
@@ -471,43 +474,47 @@ ProcedureResult overload(const ScenarioStep& step, ProcedureContext& context,
                 cleanup(polarity.first, target);
             } catch (...) {
                 try { cleanup(polarity.first, target); } catch (...) {}
+                stand->isd().safeStop();
                 throw;
             }
         }
     }
     staircaseOff();
+    stand->isd().safeStop();
     return result;
 }
 
 ProcedureResult reference(const ScenarioStep& step, ProcedureContext& context,
                           const std::shared_ptr<hardware::StandHardware>& stand)
 {
-    const auto addresses = yalkAddresses(step);
-    const unsigned first = addresses.front();
+    context.checkpoint();
     const double nominal = number(step, "nominal_v", 6.2);
     const double tolerance = number(step, "tolerance_v", 0.03);
-    try {
-        stand->isd().setYalkVoltage(first, nominal);
-        waitChecked(context, natural(step, "settle_ms", 150));
-        const double volts = stand->v7().readDcVoltage();
-        stand->isd().disableYalkOutput(first);
-        ProcedureResult result{RunVerdict::Ok, "Проверено эталонное напряжение 6,2 В", {}};
-        auto value = measurement("ubsi.reference_6v2", "Эталонное напряжение по В7",
-            nominal, volts, nominal - tolerance, nominal + tolerance, "В");
-        value.attributes = {{"v7_v",std::to_string(volts)},
-                            {"nominal_v",std::to_string(nominal)}};
-        publishMeasurement(context, step, value);
-        append(result, std::move(value));
-        return result;
-    } catch (...) {
-        try { stand->isd().disableYalkOutput(first); } catch (...) {}
-        throw;
-    }
+
+    // Финальная production-процедура не формировала новое воздействие в этом
+    // шаге: п.1.1.4.9 проверяется прямым измерением существующего эталона В7.
+    // Адрес 98 в адаптере остаётся лишь неподтверждённым кандидатом и потому
+    // сознательно не используется как доказательство соответствия.
+    const double volts = stand->v7().readDcVoltage();
+    ProcedureResult result{RunVerdict::Ok, "Проверено эталонное напряжение по В7", {}};
+    auto value = measurement("ubsi.reference_6v2", "Эталонное напряжение по В7",
+        nominal, volts, nominal - tolerance, nominal + tolerance, "В");
+    value.attributes = {{"v7_v",std::to_string(volts)},
+                        {"nominal_v",std::to_string(nominal)},
+                        {"source","v7_reference"},
+                        {"adapter_address_98","not_used_unconfirmed"}};
+    publishMeasurement(context, step, value);
+    append(result, std::move(value));
+    return result;
 }
 
 ProcedureResult finish(const ScenarioStep& step, ProcedureContext& context,
                        const std::shared_ptr<hardware::StandHardware>& stand)
 {
+    // Сначала адресно снимаем всё, что мог включить текущий процесс, и только
+    // потом проверяем остаток. Это также закрывает неопределённый ACK ИСД после
+    // сервисного skip/error в предыдущем шаге.
+    stand->isd().safeStop();
     stand->yalk().stop();
     waitChecked(context, natural(step, "settle_ms", 300));
     const double residual = stand->v7().readDcVoltage();
