@@ -8,6 +8,7 @@
 #include "procedures/yalk_verified_procedures.h"
 #include "procedures/ytp_procedures.h"
 #include "procedures/yvp_procedures.h"
+#include "ui/run_journal_overlay.h"
 #include "ui/test_page.h"
 
 #include <QCoreApplication>
@@ -62,6 +63,7 @@ TuController::TuController(TestPage* page, QObject* parent)
     : QObject(parent), page_(page)
 {
     if (!page_) throw std::invalid_argument("TestPage is required");
+    journal_ = new RunJournalOverlay(page_);
 
     page_->setProductionMode(false);
     page_->registerEquipmentRow(kBackendEquipmentCode,
@@ -287,21 +289,27 @@ void TuController::startRun(const QString& scenarioCode,
     if (serial.empty()) return;
 
     page_->setRunInProgress(true, QStringLiteral("Запуск полной проверки УБСИ"));
+    if (journal_) journal_->beginRun();
+
     runThread_ = QThread::create([this, serial] {
         auto result = engine_.run(
             scenario_, serial,
-            [page = QPointer<TestPage>(page_)](const tu::RunEvent& event) {
+            [page = QPointer<TestPage>(page_),
+             journal = QPointer<RunJournalOverlay>(journal_)](const tu::RunEvent& event) {
                 if (!page) return;
-                QMetaObject::invokeMethod(page, [page, event] {
+                QMetaObject::invokeMethod(page, [page, journal, event] {
                     if (page) page->setRunEvent(event);
+                    if (journal) journal->appendRunEvent(event);
                 }, Qt::QueuedConnection);
             });
 
         if (hardware_) hardware_->safeStop();
 
         QPointer<TestPage> page(page_);
-        QMetaObject::invokeMethod(page_, [page, result = std::move(result)]() mutable {
+        QPointer<RunJournalOverlay> journal(journal_);
+        QMetaObject::invokeMethod(page_, [page, journal, result = std::move(result)]() mutable {
             if (!page) return;
+            if (journal) journal->finishRun();
             page->setRunInProgress(false);
             page->setRunResult(result);
         }, Qt::QueuedConnection);
