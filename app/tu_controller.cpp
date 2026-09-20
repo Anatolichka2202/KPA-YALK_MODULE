@@ -12,13 +12,14 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
-#include <QMessageBox>
+#include <QInputDialog>
 #include <QMetaObject>
 #include <QPointer>
 #include <QThread>
 
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <utility>
 
@@ -157,19 +158,22 @@ void TuController::registerBuiltInProcedures()
     tu::procedures::registerPowerProcedures(engine_, hardware_);
     tu::procedures::registerYalkProcedures(engine_, hardware_);
 
-    tu::procedures::OperatorConfirm confirm = [this](const std::string& title,
-                                                     const std::string& prompt) {
-        bool accepted = false;
-        const auto ask = [this, &accepted, title, prompt] {
-            accepted = QMessageBox::question(
+    tu::procedures::OperatorResistanceInput operatorInput =
+        [this](const std::string& title, const std::string& prompt, double targetOhms)
+            -> std::optional<double> {
+        std::optional<double> result;
+        const auto ask = [this, &result, title, prompt, targetOhms] {
+            bool accepted = false;
+            const double value = QInputDialog::getDouble(
                 page_, QString::fromUtf8(title.c_str()), QString::fromUtf8(prompt.c_str()),
-                QMessageBox::Ok | QMessageBox::Cancel, QMessageBox::Ok) == QMessageBox::Ok;
+                targetOhms, 0.0, 10000.0, 3, &accepted, Qt::WindowFlags{}, 0.001);
+            if (accepted) result = value;
         };
         if (QThread::currentThread() == page_->thread()) ask();
         else QMetaObject::invokeMethod(page_, ask, Qt::BlockingQueuedConnection);
-        return accepted;
+        return result;
     };
-    tu::procedures::registerYtpProcedures(engine_, hardware_, std::move(confirm));
+    tu::procedures::registerYtpProcedures(engine_, hardware_, std::move(operatorInput));
     tu::procedures::registerYvpProcedures(engine_, hardware_);
 }
 
@@ -291,7 +295,6 @@ void TuController::startRun(const QString& scenarioCode,
                 }, Qt::QueuedConnection);
             });
 
-        // Независимый safety net: Rigol OFF, ROKT stop, AKIP OFF даже при ERROR/ABORTED.
         if (hardware_) hardware_->safeStop();
 
         QPointer<TestPage> page(page_);
