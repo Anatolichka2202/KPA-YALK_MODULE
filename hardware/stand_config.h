@@ -32,6 +32,7 @@ struct IsdConfig {
     std::string host;
     std::uint16_t port = 80;
     unsigned timeoutMilliseconds = 1500;
+    unsigned serviceTimeoutMilliseconds = 10000;
 };
 
 struct V7Config {
