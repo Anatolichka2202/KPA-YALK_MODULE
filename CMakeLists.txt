@@ -32,9 +32,29 @@ add_library(tu_backend STATIC
 target_include_directories(tu_backend PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(tu_backend PUBLIC yaml-cpp)
 
-# The approved TU drawing/model is imported under ui/ and model/ verbatim first.
-# It is deliberately not linked to the clean executable until its old type names
-# are mechanically detached. No legacy Orbita target is pulled as a shortcut.
+# Keep the approved/current drawing code as its own layer. The UI consumes only
+# model/run_types.h + tu_backend; no Orbita target or legacy compatibility layer
+# is linked into this clean branch.
+find_package(Qt6 REQUIRED COMPONENTS Widgets)
+
+add_library(tu_ui STATIC
+    ui/test_page.cpp
+    ui/test_page.h
+    ui/tu_flow_widget.cpp
+    ui/tu_flow_widget.h
+    ui/ubsi_measurement_views.h
+    ui/ubsi_view_controls.cpp
+    model/ubsi_ui_model.h
+)
+target_include_directories(tu_ui PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/ui
+    ${CMAKE_CURRENT_SOURCE_DIR}/model
+)
+target_link_libraries(tu_ui PUBLIC
+    Qt6::Widgets
+    tu_backend
+)
 
 if(BUILD_TESTING)
     add_executable(scenario_engine_test tests/scenario_engine_test.cpp)
