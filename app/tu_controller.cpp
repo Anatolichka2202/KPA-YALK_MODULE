@@ -5,6 +5,7 @@
 #include "hardware/stand_hardware.h"
 #include "procedures/power_procedures.h"
 #include "procedures/yalk_procedures.h"
+#include "procedures/yalk_verified_procedures.h"
 #include "procedures/ytp_procedures.h"
 #include "procedures/yvp_procedures.h"
 #include "ui/test_page.h"
@@ -157,6 +158,7 @@ void TuController::registerBuiltInProcedures()
     if (!hardware_) return;
     tu::procedures::registerPowerProcedures(engine_, hardware_);
     tu::procedures::registerYalkProcedures(engine_, hardware_);
+    tu::procedures::registerVerifiedYalkProcedures(engine_, hardware_);
 
     tu::procedures::OperatorResistanceInput operatorInput =
         [this](const std::string& title, const std::string& prompt, double targetOhms)
