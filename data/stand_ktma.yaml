@@ -1,9 +1,8 @@
 schema: 1
 id: ktma-main-clean
-version: 2026.09.20-power-slice-1
+version: 2026.09.20-full-tract-1
 
-# Параметры ниже перенесены из подтверждённого профиля delivery/tu-minimal.
-# Этот файл содержит только оборудование, уже нужное чистому маршруту ТУ.
+# Только подтверждённые параметры рабочего стенда из отлаженной поставки.
 power_supply:
   model: AKIP-1160/6
   port: COM15
@@ -24,3 +23,23 @@ yalk_adapter:
   data_port: 1113
   timeout_ms: 800
   protocol: rokt_yalk
+
+isd:
+  host: 192.168.0.101
+  port: 80
+  timeout_ms: 1500
+  # type=4 — длинный startup all-off sweep. Только одна попытка.
+  service_timeout_ms: 10000
+
+v7:
+  resource: USB[0-9]*::0x164E::0x0DAD::?*INSTR
+  fallback_resource: USB[0-9]*::5710::3501::?*INSTR
+  timeout_ms: 5000
+  voltage_command: MEAS:VOLT:DC?
+  ac_voltage_command: MEAS:VOLT:AC?
+  frequency_command: MEAS:FREQ?
+
+generator:
+  # Физически: Rigol DG-1022Z CH1 → вывод З кабеля ЯВП 8-2.
+  resource: USB0::0x1AB1::0x0642::DG1ZA252402338::INSTR
+  timeout_ms: 2000
