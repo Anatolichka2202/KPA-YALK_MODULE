@@ -56,6 +56,12 @@ target_link_libraries(tu_ui PUBLIC
     tu_backend
 )
 
+# Link-only smoke executable: built by the normal build so stale UI/backend
+# boundaries are caught immediately. It is intentionally not a CTest test,
+# because CI/headless machines do not need to launch a Qt platform plugin.
+add_executable(tu_ui_smoke tests/ui_smoke.cpp)
+target_link_libraries(tu_ui_smoke PRIVATE tu_ui)
+
 if(BUILD_TESTING)
     add_executable(scenario_engine_test tests/scenario_engine_test.cpp)
     target_link_libraries(scenario_engine_test PRIVATE tu_backend)
