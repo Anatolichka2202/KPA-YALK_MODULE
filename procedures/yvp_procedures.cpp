@@ -49,19 +49,27 @@ std::vector<double> numbers(const ScenarioStep& step, const std::string& key)
     std::vector<double> result;
     std::stringstream stream(argument(step, key));
     std::string item;
-    while (std::getline(stream, item, ',')) if (!item.empty()) result.push_back(std::stod(item));
+    while (std::getline(stream, item, ',')) {
+        if (!item.empty()) result.push_back(std::stod(item));
+    }
     return result;
 }
 
 std::vector<unsigned> unsigneds(const std::string& text, bool allowNone = false)
 {
-    if (allowNone && (text.empty() || text == "none")) return {};
+    if (allowNone && (text.empty() || text == "none" || text == "-")) return {};
     std::vector<unsigned> result;
     std::stringstream stream(text);
     std::string item;
     while (std::getline(stream, item, ',')) {
-        if (!item.empty()) result.push_back(static_cast<unsigned>(std::stoul(item)));
+        if (item.empty()) continue;
+        std::size_t parsed = 0;
+        const auto value = std::stoul(item, &parsed, 0);
+        if (parsed != item.size() || value == 0)
+            throw std::invalid_argument("ЯВП: некорректный номер контакта");
+        result.push_back(static_cast<unsigned>(value));
     }
+    if (!allowNone && result.empty()) throw std::invalid_argument("ЯВП: пустая карта контактов");
     return result;
 }
 
@@ -129,16 +137,28 @@ ProcedureResult run(const ScenarioStep& step, ProcedureContext& context,
     if (!(capacitancePf > 0.0) || !inputType || !gainType || !measurementType)
         throw std::invalid_argument("Некорректная карта ЯВП");
 
-    auto inputContacts = unsigneds(argument(step, "input_contacts"));
-    auto measurementContacts = unsigneds(argument(step, "measurement_contacts"));
-    if (inputContacts.size() != channelCount || measurementContacts.size() != channelCount)
-        throw std::invalid_argument("ЯВП: input_contacts/measurement_contacts должны содержать 8 каналов");
-
-    std::vector<std::vector<unsigned>> ku(channelCount);
+    std::vector<std::vector<unsigned>> inputMap(channelCount);
+    std::vector<std::vector<unsigned>> measurementMap(channelCount);
+    const auto aggregateInputs = unsigneds(argument(step, "input_contacts", ""), true);
+    const auto aggregateMeasurements = unsigneds(argument(step, "measurement_contacts", ""), true);
     for (unsigned channel = 0; channel < channelCount; ++channel) {
-        ku[channel] = unsigneds(argument(step,
+        const std::string inputKey = "input_" + std::to_string(channel + 1) + "_contacts";
+        const std::string measurementKey = "measurement_" + std::to_string(channel + 1) + "_contacts";
+        if (!argument(step, inputKey).empty()) inputMap[channel] = unsigneds(argument(step, inputKey));
+        else if (aggregateInputs.size() == channelCount) inputMap[channel] = {aggregateInputs[channel]};
+        else throw std::invalid_argument("ЯВП: отсутствует карта " + inputKey);
+        if (!argument(step, measurementKey).empty())
+            measurementMap[channel] = unsigneds(argument(step, measurementKey));
+        else if (aggregateMeasurements.size() == channelCount)
+            measurementMap[channel] = {aggregateMeasurements[channel]};
+        else throw std::invalid_argument("ЯВП: отсутствует карта " + measurementKey);
+    }
+
+    std::vector<std::vector<unsigned>> channelGainContacts(channelCount);
+    for (unsigned channel = 0; channel < channelCount; ++channel) {
+        channelGainContacts[channel] = unsigneds(argument(step,
             "channel_" + std::to_string(channel + 1) + "_gain_contacts"));
-        if (ku[channel].size() != 4)
+        if (channelGainContacts[channel].size() != 4)
             throw std::invalid_argument("ЯВП: для каждого канала нужны KU1..KU4");
     }
 
@@ -156,63 +176,65 @@ ProcedureResult run(const ScenarioStep& step, ProcedureContext& context,
     auto& isd = stand->isd();
     auto& generator = stand->generator();
     auto& v7 = stand->v7();
-    std::vector<unsigned> activeGain;
-    unsigned activeInput = 0;
-    unsigned activeMeasurement = 0;
+    std::vector<unsigned> activeInputContacts;
+    std::vector<unsigned> activeMeasurementContacts;
+    std::vector<unsigned> activeGainContacts;
 
     auto generatorOff = [&] { generator.output(1, false); };
-    auto clearGain = [&] {
-        for (auto it = activeGain.rbegin(); it != activeGain.rend(); ++it) {
-            try { isd.setSwitch(gainType, *it, false); } catch (...) {}
+    auto disableContacts = [&](unsigned type, std::vector<unsigned>& active) {
+        for (auto it = active.rbegin(); it != active.rend(); ++it) {
+            try { isd.setSwitch(type, *it, false); } catch (...) {}
         }
-        activeGain.clear();
+        active.clear();
     };
-    auto clearMeasurement = [&] {
-        if (!activeMeasurement) return;
-        try { isd.setSwitch(measurementType, activeMeasurement, false); } catch (...) {}
-        if (measurementAnalogType) {
-            try { isd.setAnalog(activeMeasurement, 0, false); } catch (...) {}
+    auto disableMeasurementContacts = [&] {
+        for (auto it = activeMeasurementContacts.rbegin();
+             it != activeMeasurementContacts.rend(); ++it) {
+            try { isd.setSwitch(measurementType, *it, false); } catch (...) {}
+            if (measurementAnalogType) {
+                try { isd.setAnalog(*it, 0, false); } catch (...) {}
+            }
         }
-        activeMeasurement = 0;
-    };
-    auto clearInput = [&] {
-        if (!activeInput) return;
-        try { isd.setSwitch(inputType, activeInput, false); } catch (...) {}
-        activeInput = 0;
+        activeMeasurementContacts.clear();
     };
     auto safeReset = [&] {
         try { generatorOff(); } catch (...) {}
-        clearGain();
-        clearMeasurement();
-        clearInput();
+        disableContacts(gainType, activeGainContacts);
+        disableMeasurementContacts();
+        disableContacts(inputType, activeInputContacts);
     };
 
     ProcedureResult result{RunVerdict::Ok, "ЯВП-8 соответствует проверенной методике V7/ИСД", {}};
     try {
-        // Перед любым активным воздействием подтверждаем доступность ИСД.
         isd.probe();
         safeReset();
 
+        const std::size_t totalPoints = channelCount * gains.size() * frequencies.size();
+        std::size_t completedPoints = 0;
         for (unsigned channel = 0; channel < channelCount; ++channel) {
             context.checkpoint();
-            isd.setSwitch(inputType, inputContacts[channel], true);
-            activeInput = inputContacts[channel];
-            if (measurementAnalogType)
-                isd.setAnalog(measurementContacts[channel], 0, false);
-            isd.setSwitch(measurementType, measurementContacts[channel], true);
-            activeMeasurement = measurementContacts[channel];
+            for (const unsigned contact : inputMap[channel]) {
+                // Записываем контакт до HTTP ON: если ACK потеряется после фактической
+                // коммутации, cleanup всё равно пошлёт адресный OFF.
+                activeInputContacts.push_back(contact);
+                isd.setSwitch(inputType, contact, true);
+            }
+            for (const unsigned contact : measurementMap[channel]) {
+                activeMeasurementContacts.push_back(contact);
+                if (measurementAnalogType) isd.setAnalog(contact, 0, false);
+                isd.setSwitch(measurementType, contact, true);
+            }
 
             for (const double gain : gains) {
                 context.checkpoint();
                 generatorOff();
-                clearGain();
+                disableContacts(gainType, activeGainContacts);
                 for (const auto bit : gainBits.at(gain)) {
-                    const unsigned contact = ku[channel].at(bit - 1);
+                    const unsigned contact = channelGainContacts[channel].at(bit - 1);
+                    activeGainContacts.push_back(contact);
                     isd.setSwitch(gainType, contact, true);
-                    activeGain.push_back(contact);
                 }
 
-                // Точно как в отлаженной процедуре: Uвх,pp = 2/K.
                 const double inputVpp = 2.0 / gain;
                 const double chargePc = capacitancePf * inputVpp;
                 std::map<double,double> measuredGain;
@@ -235,6 +257,7 @@ ProcedureResult run(const ScenarioStep& step, ProcedureContext& context,
                     const double outputVpp = measuredRms * 2.0 * std::sqrt(2.0);
                     const double calculatedGain = 1000.0 * outputVpp / chargePc;
                     measuredGain[frequency] = calculatedGain;
+                    ++completedPoints;
 
                     MeasurementResult raw;
                     raw.parameterKey = "ubsi.yvp.raw." + std::to_string(channel + 1);
@@ -245,7 +268,7 @@ ProcedureResult run(const ScenarioStep& step, ProcedureContext& context,
                     raw.measured = calculatedGain;
                     raw.unit = "мВ/пКл";
                     raw.verdict = RunVerdict::NotRun;
-                    raw.message = "Диагностическая точка; итог формируют K/АЧХ";
+                    raw.message = "Диагностическое измерение В7; verdict формируется критериями K/АЧХ";
                     raw.attributes = {{"section","YVP"},
                         {"backend","production_isd_v7"},
                         {"yvp_channel",std::to_string(channel + 1)},
@@ -258,7 +281,10 @@ ProcedureResult run(const ScenarioStep& step, ProcedureContext& context,
                         {"v7_output_vpp",std::to_string(outputVpp)},
                         {"capacitance_pf",std::to_string(capacitancePf)},
                         {"charge_pc_from_commanded_vpp",std::to_string(chargePc)},
-                        {"calculated_gain_mv_per_pc",std::to_string(calculatedGain)}};
+                        {"calculated_gain_mv_per_pc",std::to_string(calculatedGain)},
+                        {"acceptance","evaluated_after_gain_sweep"},
+                        {"point_index",std::to_string(completedPoints)},
+                        {"point_count",std::to_string(totalPoints)}};
                     if (context.eventSink) context.eventSink({
                         std::chrono::system_clock::now(), step.id, "YVP_V7_POINT",
                         raw.title, RunVerdict::NotRun, raw.attributes});
@@ -268,7 +294,7 @@ ProcedureResult run(const ScenarioStep& step, ProcedureContext& context,
 
                 const auto ref = measuredGain.find(referenceFrequency);
                 if (ref == measuredGain.end())
-                    throw std::invalid_argument("ЯВП: отсутствует опорная частота 500 Гц");
+                    throw std::invalid_argument("ЯВП: reference_frequency_hz отсутствует в frequencies_hz");
 
                 MeasurementResult gainResult;
                 gainResult.parameterKey = "ubsi.yvp.gain." + std::to_string(channel + 1)
@@ -308,7 +334,7 @@ ProcedureResult run(const ScenarioStep& step, ProcedureContext& context,
 
                 const auto high = measuredGain.find(4000.0);
                 if (high == measuredGain.end())
-                    throw std::invalid_argument("ЯВП: отсутствует точка затухания 4000 Гц");
+                    throw std::invalid_argument("ЯВП: отсутствует обязательная точка 4000 Гц");
                 const double attenuation = attenuationDb(ref->second, high->second);
                 MeasurementResult attenuationResult;
                 attenuationResult.parameterKey = "ubsi.yvp.attenuation."
