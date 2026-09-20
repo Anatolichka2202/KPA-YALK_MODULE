@@ -32,11 +32,42 @@ add_library(tu_backend STATIC
 target_include_directories(tu_backend PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(tu_backend PUBLIC yaml-cpp)
 
-# Keep the approved/current drawing code as its own layer. The UI consumes only
-# model/run_types.h + tu_backend; no Orbita target or legacy compatibility layer
-# is linked into this clean branch.
-find_package(Qt6 REQUIRED COMPONENTS Widgets)
+find_package(Qt6 REQUIRED COMPONENTS Widgets SerialPort)
 
+# Clean stand I/O. Only the pieces already verified on the KTMA stand are
+# present here: AKIP-1160/6 USB/COM control and the confirmed ROKT YALK
+# reference204 readiness sequence. No legacy Orbita runtime/plugin ABI is linked.
+add_library(tu_hardware STATIC
+    hardware/stand_config.cpp
+    hardware/stand_config.h
+    hardware/akip1160.cpp
+    hardware/akip1160.h
+    hardware/yalk_reference_link.cpp
+    hardware/yalk_reference_link.h
+    hardware/stand_hardware.cpp
+    hardware/stand_hardware.h
+)
+target_include_directories(tu_hardware PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(tu_hardware PUBLIC
+    Qt6::SerialPort
+    yaml-cpp
+)
+if(WIN32)
+    target_link_libraries(tu_hardware PUBLIC ws2_32)
+endif()
+
+add_library(tu_procedures STATIC
+    procedures/power_procedures.cpp
+    procedures/power_procedures.h
+)
+target_include_directories(tu_procedures PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(tu_procedures PUBLIC
+    tu_backend
+    tu_hardware
+)
+
+# Keep the approved/current drawing code as its own layer. The UI consumes only
+# clean tu::* run types; no Orbita target or compatibility layer is linked.
 add_library(tu_ui STATIC
     ui/test_page.cpp
     ui/test_page.h
@@ -62,17 +93,17 @@ target_link_libraries(tu_ui PUBLIC
 add_executable(tu_ui_smoke tests/ui_smoke.cpp)
 target_link_libraries(tu_ui_smoke PRIVATE tu_ui)
 
-# Minimal desktop shell. It owns no equipment logic: the controller only wires
-# TestPage to ScenarioEngine and exposes procedure registration for the next
-# integration step. Until real procedures are installed, the HMI explicitly
-# reports that the backend is not ready and does not permit a TU run.
+# Minimal desktop shell plus the first real hardware vertical slice.
 add_executable(tu_app
     app/main.cpp
     app/tu_controller.cpp
     app/tu_controller.h
 )
 target_include_directories(tu_app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(tu_app PRIVATE tu_ui)
+target_link_libraries(tu_app PRIVATE
+    tu_ui
+    tu_procedures
+)
 target_compile_definitions(tu_app PRIVATE
     TU_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 
@@ -82,6 +113,9 @@ add_custom_command(TARGET tu_app POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${CMAKE_CURRENT_SOURCE_DIR}/data/ubsi_tu.yaml"
             "$<TARGET_FILE_DIR:tu_app>/data/ubsi_tu.yaml"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_CURRENT_SOURCE_DIR}/data/stand_ktma.yaml"
+            "$<TARGET_FILE_DIR:tu_app>/data/stand_ktma.yaml"
     VERBATIM
 )
 
