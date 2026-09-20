@@ -68,7 +68,8 @@ std::vector<unsigned> addressList(const std::string& text)
         }
         const unsigned first = static_cast<unsigned>(std::stoul(item.substr(0, dash)));
         const unsigned last = static_cast<unsigned>(std::stoul(item.substr(dash + 1)));
-        if (!first || last < first) throw std::invalid_argument("Некорректный диапазон адресов: " + item);
+        if (!first || last < first)
+            throw std::invalid_argument("Некорректный диапазон адресов: " + item);
         for (unsigned value = first; value <= last; ++value) result.push_back(value);
     }
     return result;
@@ -131,6 +132,13 @@ void publish(ProcedureContext& context, const ScenarioStep& step,
         std::chrono::system_clock::now(), step.id, stage, message, verdict, std::move(data)});
 }
 
+void publishMeasurement(ProcedureContext& context, const ScenarioStep& step,
+                        const MeasurementResult& value,
+                        const std::string& stage = "MEASUREMENT")
+{
+    publish(context, step, stage, value.title, value.verdict, value.attributes);
+}
+
 double stateNumber(const ProcedureContext& context, const std::string& key)
 {
     const auto found = context.state.find(key);
@@ -180,20 +188,17 @@ ProcedureResult calibration(const ScenarioStep& step, ProcedureContext& context,
         stand->isd().setYalkVoltage(first, fullVoltage);
         waitChecked(context, settle);
         const double reference = stand->v7().readDcVoltage();
-        const auto zeroFrame = stand->yalk().readYalkSnapshot(
-            samples, std::chrono::milliseconds(3000), [&context] { context.checkpoint(); });
-        const auto fullFrame = stand->yalk().readYalkSnapshot(
+        const auto frame = stand->yalk().readYalkSnapshot(
             samples, std::chrono::milliseconds(3000), [&context] { context.checkpoint(); });
         stand->isd().disableYalkOutput(first);
 
-        const double zero = zeroFrame.at(96).codeMean; // адрес 97
-        const double full = fullFrame.at(98).codeMean; // адрес 99
+        const double zero = frame.at(96).codeMean; // адрес 97
+        const double full = frame.at(98).codeMean; // адрес 99
         if (!(full > zero) || reference < 5.5 || reference > 6.8)
             throw std::runtime_error("Недостоверная калибровка ЯЛК 97/99 или напряжение В7");
 
         context.state["yalk.zero_code"] = std::to_string(zero);
         context.state["yalk.full_code"] = std::to_string(full);
-        // В рабочей версии шкала всегда 0..6.2 В; фактическое В7 не сжимает её.
         context.state["yalk.full_voltage"] = std::to_string(fullVoltage);
         context.state["yalk.calibration_reference_v"] = std::to_string(reference);
 
@@ -205,6 +210,7 @@ ProcedureResult calibration(const ScenarioStep& step, ProcedureContext& context,
                             {"full_code",std::to_string(full)},
                             {"scale_voltage_v",std::to_string(fullVoltage)},
                             {"v7_v",std::to_string(reference)}};
+        publishMeasurement(context, step, value);
         append(result, std::move(value));
         return result;
     } catch (...) {
@@ -221,10 +227,13 @@ ProcedureResult initial(const ScenarioStep& step, ProcedureContext& context,
         natural(step, "sample_count", 4), std::chrono::milliseconds(3000),
         [&context] { context.checkpoint(); });
     ProcedureResult result{RunVerdict::Ok, "Проверено отключённое состояние 80 входов ЯЛК", {}};
-    for (const unsigned address : addresses) {
+
+    for (std::size_t channelIndex = 0; channelIndex < addresses.size(); ++channelIndex) {
         context.checkpoint();
+        const unsigned address = addresses[channelIndex];
         const auto& reading = frame.at(address - 1);
         const double volts = yalkVolts(reading.codeMean, context);
+
         auto analog = measurement("ubsi.yalk.initial." + std::to_string(address),
             "ЯЛК адрес " + std::to_string(address) + ": обрыв", 0.0, volts,
             -number(step,"full_scale_v",6.2), -1e-12, "В");
@@ -235,11 +244,24 @@ ProcedureResult initial(const ScenarioStep& step, ProcedureContext& context,
         analog.attributes = {{"ulk_address",std::to_string(address)},
                              {"raw",std::to_string(reading.rawMean)},
                              {"analog_code",std::to_string(reading.codeMean)},
+                             {"yalk_v",std::to_string(volts)},
                              {"signal",reading.contact?"1":"0"}};
-        append(result, std::move(analog));
-        append(result, measurement("ubsi.yalk.initial.signal." + std::to_string(address),
+
+        auto signal = measurement("ubsi.yalk.initial.signal." + std::to_string(address),
             "ЯЛК адрес " + std::to_string(address) + ": исходный сигнал",
-            1.0, reading.contact ? 1.0 : 0.0, 1.0, 1.0, "лог."));
+            1.0, reading.contact ? 1.0 : 0.0, 1.0, 1.0, "лог.");
+
+        const RunVerdict channelVerdict = combineVerdicts(analog.verdict, signal.verdict);
+        auto eventData = analog.attributes;
+        eventData["channel_index"] = std::to_string(channelIndex + 1);
+        eventData["channel_count"] = std::to_string(addresses.size());
+        eventData["expected_signal"] = "1";
+        eventData["analog_ok"] = analog.verdict == RunVerdict::Ok ? "1" : "0";
+        eventData["signal_ok"] = signal.verdict == RunVerdict::Ok ? "1" : "0";
+        publish(context, step, "YALK_INITIAL", analog.title, channelVerdict, std::move(eventData));
+
+        append(result, std::move(analog));
+        append(result, std::move(signal));
     }
     return result;
 }
@@ -257,7 +279,8 @@ ProcedureResult channelSweep(const ScenarioStep& step, ProcedureContext& context
     const unsigned samples = natural(step, "sample_count", 16);
     const unsigned settle = natural(step, "settle_ms", 150);
     const unsigned offSettle = natural(step, "channel_off_settle_ms", 1000);
-    const double tolerance = number(step, "full_scale_v", 6.2)
+    const double fullScale = number(step, "full_scale_v", 6.2);
+    const double tolerance = fullScale
         * number(step, "tolerance_percent_fs", 0.5) / 100.0;
     ProcedureResult result{RunVerdict::Ok,
         thresholds ? "Проверены контактные пороги 80 адресов ЯЛК"
@@ -268,7 +291,7 @@ ProcedureResult channelSweep(const ScenarioStep& step, ProcedureContext& context
             std::string(thresholds ? "Контактная точка " : "Аналоговая точка ")
                 + std::to_string(points[pointIndex]) + " В",
             RunVerdict::NotRun,
-            {{"point_index",std::to_string(pointIndex)},
+            {{"point_index",std::to_string(pointIndex + 1)},
              {"point_count",std::to_string(points.size())},
              {"command_v",std::to_string(points[pointIndex])}});
 
@@ -284,33 +307,63 @@ ProcedureResult channelSweep(const ScenarioStep& step, ProcedureContext& context
                     [&context] { context.checkpoint(); });
                 const auto& reading = frame.at(address - 1);
                 const double volts = yalkVolts(reading.codeMean, context);
+                const double absolute = std::abs(volts - reference);
+                const double reduced = absolute / fullScale * 100.0;
 
-                auto analog = measurement("ubsi.yalk.channel." + std::to_string(address)
-                        + "." + std::to_string(pointIndex),
-                    "ЯЛК адрес " + std::to_string(address) + " · "
-                        + std::to_string(points[pointIndex]) + " В",
-                    reference, volts, reference - tolerance, reference + tolerance, "В");
-                analog.attributes = {{"section","YALK"},
-                    {"channel",std::to_string(channelIndex + 1)},
-                    {"ulk_address",std::to_string(address)},
-                    {"command_v",std::to_string(points[pointIndex])},
-                    {"v7_v",std::to_string(reference)},
-                    {"yalk_v",std::to_string(volts)},
-                    {"raw",std::to_string(reading.rawMean)},
-                    {"analog_code",std::to_string(reading.codeMean)},
-                    {"signal",reading.contact?"1":"0"}};
-                if (!thresholds) append(result, std::move(analog));
-
-                if (thresholds) {
+                if (!thresholds) {
+                    auto analog = measurement("ubsi.yalk.channel." + std::to_string(address)
+                            + "." + std::to_string(pointIndex),
+                        "ЯЛК адрес " + std::to_string(address) + " · "
+                            + std::to_string(points[pointIndex]) + " В",
+                        reference, volts, reference - tolerance, reference + tolerance, "В");
+                    analog.attributes = {{"section","YALK"},
+                        {"channel",std::to_string(channelIndex + 1)},
+                        {"channel_index",std::to_string(channelIndex + 1)},
+                        {"channel_count",std::to_string(addresses.size())},
+                        {"ulk_address",std::to_string(address)},
+                        {"command_v",std::to_string(points[pointIndex])},
+                        {"point_index",std::to_string(pointIndex + 1)},
+                        {"point_count",std::to_string(points.size())},
+                        {"scan_order","point_major"},
+                        {"v7_v",std::to_string(reference)},
+                        {"yalk_v",std::to_string(volts)},
+                        {"raw",std::to_string(reading.rawMean)},
+                        {"analog_code",std::to_string(reading.codeMean)},
+                        {"absolute_error_v",std::to_string(absolute)},
+                        {"lower_limit_v",std::to_string(analog.lowerLimit)},
+                        {"upper_limit_v",std::to_string(analog.upperLimit)},
+                        {"reduced_error_percent",std::to_string(reduced)}};
+                    publishMeasurement(context, step, analog);
+                    append(result, std::move(analog));
+                } else {
+                    const bool expectedSignal = expected[pointIndex] >= 0.5;
                     auto signal = measurement("ubsi.yalk.signal." + std::to_string(address)
                             + "." + std::to_string(pointIndex),
                         "ЯЛК адрес " + std::to_string(address) + ": контакт при "
                             + std::to_string(points[pointIndex]) + " В",
-                        expected[pointIndex], reading.contact ? 1.0 : 0.0,
-                        expected[pointIndex], expected[pointIndex], "лог.");
-                    signal.attributes = analog.attributes;
+                        expectedSignal ? 1.0 : 0.0,
+                        reading.contact ? 1.0 : 0.0,
+                        expectedSignal ? 1.0 : 0.0,
+                        expectedSignal ? 1.0 : 0.0, "лог.");
+                    signal.attributes = {{"section","YALK"},
+                        {"channel",std::to_string(channelIndex + 1)},
+                        {"channel_index",std::to_string(channelIndex + 1)},
+                        {"channel_count",std::to_string(addresses.size())},
+                        {"ulk_address",std::to_string(address)},
+                        {"command_v",std::to_string(points[pointIndex])},
+                        {"point_index",std::to_string(pointIndex + 1)},
+                        {"point_count",std::to_string(points.size())},
+                        {"scan_order","point_major"},
+                        {"v7_v",std::to_string(reference)},
+                        {"yalk_v",std::to_string(volts)},
+                        {"raw",std::to_string(reading.rawMean)},
+                        {"analog_code",std::to_string(reading.codeMean)},
+                        {"signal",reading.contact?"1":"0"},
+                        {"expected_signal",expectedSignal?"1":"0"}};
+                    publishMeasurement(context, step, signal);
                     append(result, std::move(signal));
                 }
+
                 stand->isd().disableYalkOutput(address);
                 waitChecked(context, offSettle);
             } catch (...) {
@@ -329,7 +382,8 @@ ProcedureResult overload(const ScenarioStep& step, ProcedureContext& context,
         "1-28,32-43,45-70,74-87"));
     const auto observed = addressList(argument(step, "observed_addresses",
         "1-28,32-43,45-70,74-87"));
-    if (physical.empty() || observed.empty()) throw std::invalid_argument("Не задана карта перегрузки ЯЛК");
+    if (physical.empty() || observed.empty())
+        throw std::invalid_argument("Не задана карта перегрузки ЯЛК");
 
     const unsigned samples = natural(step, "sample_count", 4);
     const unsigned baselineSettle = natural(step, "baseline_settle_ms", 1000);
@@ -344,7 +398,8 @@ ProcedureResult overload(const ScenarioStep& step, ProcedureContext& context,
                              : 1800u + (channel - 11) * 20u;
     };
     auto staircaseOn = [&] {
-        for (const auto channel : physical) stand->isd().setAnalog(channel, analogCode(channel), true);
+        for (const auto channel : physical)
+            stand->isd().setAnalog(channel, analogCode(channel), true);
     };
     auto staircaseOff = [&] {
         for (auto item = physical.rbegin(); item != physical.rend(); ++item) {
@@ -355,7 +410,7 @@ ProcedureResult overload(const ScenarioStep& step, ProcedureContext& context,
         try { if (target) stand->isd().setSwitch(3, target, false); } catch (...) {}
         try { if (common) stand->isd().setSwitch(3, common, false); } catch (...) {}
         staircaseOff();
-        try { waitChecked(context, cleanupSettle); } catch (...) { throw; }
+        waitChecked(context, cleanupSettle);
     };
 
     ProcedureResult result{RunVerdict::Ok,
@@ -379,8 +434,10 @@ ProcedureResult overload(const ScenarioStep& step, ProcedureContext& context,
                 "ЯЛК: перегрузка " + polarity.second + ", канал " + std::to_string(target),
                 RunVerdict::NotRun,
                 {{"polarity",polarity.second},{"stressed_channel",std::to_string(target)},
+                 {"target_count",std::to_string(physical.size())},
                  {"impact_index",std::to_string(impactIndex)},
-                 {"impact_count",std::to_string(impactCount)}});
+                 {"impact_count",std::to_string(impactCount)},
+                 {"settle_ms",std::to_string(overloadSettle)}});
             try {
                 staircaseOn();
                 stand->isd().setSwitch(3, polarity.first, true);
@@ -403,7 +460,12 @@ ProcedureResult overload(const ScenarioStep& step, ProcedureContext& context,
                         {"observed_channel",std::to_string(address)},
                         {"baseline_code",std::to_string(base)},
                         {"current_code",std::to_string(now)},
-                        {"delta_code",std::to_string(now-base)}};
+                        {"delta_code",std::to_string(now-base)},
+                        {"lower_delta_code",std::to_string(-maxDelta)},
+                        {"upper_delta_code",std::to_string(maxDelta)},
+                        {"impact_index",std::to_string(impactIndex)},
+                        {"impact_count",std::to_string(impactCount)}};
+                    publishMeasurement(context, step, value);
                     append(result, std::move(value));
                 }
                 cleanup(polarity.first, target);
@@ -430,8 +492,12 @@ ProcedureResult reference(const ScenarioStep& step, ProcedureContext& context,
         const double volts = stand->v7().readDcVoltage();
         stand->isd().disableYalkOutput(first);
         ProcedureResult result{RunVerdict::Ok, "Проверено эталонное напряжение 6,2 В", {}};
-        append(result, measurement("ubsi.reference_6v2", "Эталонное напряжение по В7",
-            nominal, volts, nominal - tolerance, nominal + tolerance, "В"));
+        auto value = measurement("ubsi.reference_6v2", "Эталонное напряжение по В7",
+            nominal, volts, nominal - tolerance, nominal + tolerance, "В");
+        value.attributes = {{"v7_v",std::to_string(volts)},
+                            {"nominal_v",std::to_string(nominal)}};
+        publishMeasurement(context, step, value);
+        append(result, std::move(value));
         return result;
     } catch (...) {
         try { stand->isd().disableYalkOutput(first); } catch (...) {}
@@ -447,8 +513,12 @@ ProcedureResult finish(const ScenarioStep& step, ProcedureContext& context,
     const double residual = stand->v7().readDcVoltage();
     const double maximum = number(step, "maximum_residual_voltage_v", 0.2);
     ProcedureResult result{RunVerdict::Ok, "Поток ЯЛК остановлен; воздействие снято", {}};
-    append(result, measurement("ubsi.yalk.cleanup_voltage",
-        "Остаточное напряжение после ЯЛК", 0.0, residual, -maximum, maximum, "В"));
+    auto value = measurement("ubsi.yalk.cleanup_voltage",
+        "Остаточное напряжение после ЯЛК", 0.0, residual, -maximum, maximum, "В");
+    value.attributes = {{"v7_v",std::to_string(residual)},
+                        {"cleanup_voltage_v",std::to_string(residual)}};
+    publishMeasurement(context, step, value);
+    append(result, std::move(value));
     return result;
 }
 
