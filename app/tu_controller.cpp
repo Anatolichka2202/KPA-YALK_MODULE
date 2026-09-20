@@ -19,9 +19,13 @@
 #include <QPointer>
 #include <QThread>
 
+#include <cmath>
 #include <filesystem>
+#include <iomanip>
 #include <memory>
+#include <mutex>
 #include <optional>
+#include <sstream>
 #include <stdexcept>
 #include <utility>
 
@@ -55,6 +59,20 @@ QString joinedErrors(const std::vector<std::string>& errors)
     QStringList lines;
     for (const auto& error : errors) lines << QString::fromStdString(error);
     return lines.join(QLatin1Char('\n'));
+}
+
+std::optional<double> eventNumber(const tu::RunEvent& event, const char* key)
+{
+    const auto found = event.data.find(key);
+    if (found == event.data.end()) return std::nullopt;
+    try {
+        std::size_t parsed = 0;
+        const double value = std::stod(found->second, &parsed);
+        if (parsed != found->second.size() || !std::isfinite(value)) return std::nullopt;
+        return value;
+    } catch (...) {
+        return std::nullopt;
+    }
 }
 
 } // namespace
@@ -102,6 +120,7 @@ TuController::TuController(TestPage* page, QObject* parent)
 TuController::~TuController()
 {
     engine_.requestStop();
+    if (hardware_) hardware_->yalk().setLiveYalkSink({});
     if (runThread_) {
         runThread_->wait();
         runThread_ = nullptr;
@@ -146,6 +165,48 @@ void TuController::loadHardware()
         page_->setEquipmentConnection(kGeneratorEquipmentCode,
             QString::fromStdString(config.generator.resourceExpressions.front()));
         hardware_ = std::make_shared<tu::hardware::StandHardware>(config);
+
+        // reference204 is received continuously by YalkReferenceLink. The HMI
+        // gets a throttled 20 Hz copy, while procedure snapshots use their own
+        // freshness barriers and therefore cannot consume stale pre-switch UDP.
+        const QPointer<TestPage> livePage(page_);
+        hardware_->yalk().setLiveYalkSink(
+            [this, livePage](const std::vector<tu::hardware::YalkChannelReading>& frame,
+                             std::uint64_t sequence) {
+                if (!livePage || frame.size() < 100) return;
+
+                std::string node;
+                double zero = 0.0, full = 0.0, fullVoltage = 0.0;
+                {
+                    std::lock_guard<std::mutex> lock(liveStateMutex_);
+                    if (!yalkCalibrationValid_ || liveNode_.empty()) return;
+                    node = liveNode_;
+                    zero = yalkZeroCode_;
+                    full = yalkFullCode_;
+                    fullVoltage = yalkFullVoltage_;
+                }
+                if (!(full > zero) || !(fullVoltage > 0.0)) return;
+
+                std::ostringstream values;
+                values << std::setprecision(10);
+                for (std::size_t index = 0; index < 100; ++index) {
+                    if (index) values << ',';
+                    values << (frame[index].codeMean - zero) * fullVoltage / (full - zero);
+                }
+
+                tu::RunEvent liveEvent{
+                    std::chrono::system_clock::now(), node, "BACKGROUND",
+                    "Живая телеметрия ЯЛК reference204", tu::RunVerdict::NotRun,
+                    {{"section", "YALK"},
+                     {"background_mean", values.str()},
+                     {"fresh", "true"},
+                     {"frame_sequence", std::to_string(sequence)}}};
+
+                QMetaObject::invokeMethod(livePage, [livePage, liveEvent = std::move(liveEvent)] {
+                    if (livePage) livePage->setRunEvent(liveEvent);
+                }, Qt::QueuedConnection);
+            });
+
         hardwareLoaded_ = true;
         hardwareError_.clear();
     } catch (const std::exception& error) {
@@ -288,14 +349,40 @@ void TuController::startRun(const QString& scenarioCode,
     const std::string serial = objectSerial.trimmed().toStdString();
     if (serial.empty()) return;
 
+    {
+        std::lock_guard<std::mutex> lock(liveStateMutex_);
+        liveNode_.clear();
+        yalkZeroCode_ = 0.0;
+        yalkFullCode_ = 0.0;
+        yalkFullVoltage_ = 6.2;
+        yalkCalibrationValid_ = false;
+    }
+
     page_->setRunInProgress(true, QStringLiteral("Запуск полной проверки УБСИ"));
     if (journal_) journal_->beginRun();
 
     runThread_ = QThread::create([this, serial] {
         auto result = engine_.run(
             scenario_, serial,
-            [page = QPointer<TestPage>(page_),
+            [this, page = QPointer<TestPage>(page_),
              journal = QPointer<RunJournalOverlay>(journal_)](const tu::RunEvent& event) {
+                {
+                    std::lock_guard<std::mutex> lock(liveStateMutex_);
+                    if (event.stage == "START") liveNode_ = event.nodeId;
+
+                    if (event.nodeId == "yalk_calibration" && event.stage == "MEASUREMENT") {
+                        const auto zero = eventNumber(event, "zero_code");
+                        const auto full = eventNumber(event, "full_code");
+                        const auto scale = eventNumber(event, "scale_voltage_v");
+                        if (zero && full && scale && *full > *zero && *scale > 0.0) {
+                            yalkZeroCode_ = *zero;
+                            yalkFullCode_ = *full;
+                            yalkFullVoltage_ = *scale;
+                            yalkCalibrationValid_ = true;
+                        }
+                    }
+                }
+
                 if (!page) return;
                 QMetaObject::invokeMethod(page, [page, journal, event] {
                     if (page) page->setRunEvent(event);
@@ -304,6 +391,11 @@ void TuController::startRun(const QString& scenarioCode,
             });
 
         if (hardware_) hardware_->safeStop();
+        {
+            std::lock_guard<std::mutex> lock(liveStateMutex_);
+            liveNode_.clear();
+            yalkCalibrationValid_ = false;
+        }
 
         QPointer<TestPage> page(page_);
         QPointer<RunJournalOverlay> journal(journal_);
