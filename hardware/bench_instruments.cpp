@@ -7,6 +7,7 @@
 #include <locale>
 #include <sstream>
 #include <stdexcept>
+#include <utility>
 
 namespace tu::hardware {
 namespace {
