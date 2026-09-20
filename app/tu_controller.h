@@ -3,6 +3,7 @@
 #include "backend/scenario_engine.h"
 
 #include <QObject>
+#include <QString>
 
 #include <functional>
 #include <string>
