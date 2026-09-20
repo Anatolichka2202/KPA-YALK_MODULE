@@ -27,6 +27,8 @@ struct YtpSnapshot {
 class YalkReferenceLink final {
 public:
     using Checkpoint = std::function<void()>;
+    using LiveYalkSink = std::function<void(
+        const std::vector<YalkChannelReading>&, std::uint64_t)>;
 
     explicit YalkReferenceLink(YalkUdpConfig config);
     ~YalkReferenceLink();
@@ -54,6 +56,11 @@ public:
     YtpSnapshot readYtpSnapshot(unsigned sampleCount,
                                 std::chrono::milliseconds timeout,
                                 const Checkpoint& checkpoint);
+
+    // The UDP receiver has a single owner thread. The live sink receives a
+    // throttled copy of fresh reference204 frames while procedure sampling
+    // independently waits for frames newer than its own freshness barrier.
+    void setLiveYalkSink(LiveYalkSink sink);
 
     void stop() noexcept;
 
