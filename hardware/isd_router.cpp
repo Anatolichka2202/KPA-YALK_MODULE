@@ -8,6 +8,7 @@
 #include <QTimer>
 #include <QUrl>
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <iomanip>
