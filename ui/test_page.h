@@ -10,7 +10,7 @@
 #include <memory>
 #include <string>
 
-#include "orbita_stand/scenario.h"
+#include "model/run_types.h"
 
 class QEvent;
 class TuFlowWidget;
@@ -41,8 +41,8 @@ public:
     void setAvailableProductionProducts(const QStringList& serials);
     QStringList currentRequiredEquipment() const;
     void setRunInProgress(bool running, const QString& stage = {});
-    void setRunEvent(const orbita::stand::RunEvent& event);
-    void setRunResult(const orbita::stand::ScenarioRunResult& result,
+    void setRunEvent(const tu::RunEvent& event);
+    void setRunResult(const tu::ScenarioRunResult& result,
                       const QString& tuReportPath = {},
                       const QString& productionReportPath = {});
     QString currentScenarioCode() const;
