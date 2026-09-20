@@ -43,7 +43,7 @@ int main()
     try {
         auto scenario = tu::loadScenarioYaml(TU_SOURCE_DIR "/data/ubsi_tu.yaml");
         require(scenario.id == "ubsi.tu.normal", "wrong scenario id");
-        require(scenario.version == "1.1.2", "unexpected TU scenario version");
+        require(scenario.version == "1.1.3", "unexpected TU scenario version");
 
         const std::vector<std::string> expectedSteps{
             "isd_baseline",
@@ -82,9 +82,9 @@ int main()
                 "YALK contact truth table changed");
 
         const auto& overload = stepById(scenario, "yalk_overload");
-        require(argument(overload, "physical_channels") == "1-28,32-43,45-70,74-87",
+        require(argument(overload, "physical_channels") == "1-88",
                 "YALK overload physical map changed");
-        require(argument(overload, "observed_addresses") == "1-28,32-43,45-70,74-87",
+        require(argument(overload, "observed_addresses") == "1-88",
                 "YALK overload observed map changed");
         require(argument(overload, "positive_overload_contact") == "96",
                 "YALK +12 route changed");
