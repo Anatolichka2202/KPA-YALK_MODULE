@@ -84,6 +84,8 @@ add_library(tu_ui STATIC
     ui/tu_flow_widget.h
     ui/ubsi_measurement_views.h
     ui/ubsi_view_controls.cpp
+    ui/run_journal_overlay.cpp
+    ui/run_journal_overlay.h
     model/ubsi_ui_model.h
 )
 target_include_directories(tu_ui PUBLIC
@@ -111,14 +113,6 @@ target_link_libraries(tu_app PRIVATE
 )
 target_compile_definitions(tu_app PRIVATE
     TU_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
-
-# Commissioning-only diagnostic. It never uses type=3, type=4/type=7 or ±12 V:
-# only 3.1 V through the already confirmed type=5 YALK stimulus path. Its job is
-# to prove the physical ISD channel -> logical reference204 address permutation
-# before the acceptance route is allowed to rely on that mapping.
-add_executable(yalk_map_probe tools/yalk_map_probe.cpp)
-target_include_directories(yalk_map_probe PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(yalk_map_probe PRIVATE tu_hardware Qt6::Core)
 
 add_custom_command(TARGET tu_app POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory
