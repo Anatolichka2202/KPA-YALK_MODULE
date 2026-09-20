@@ -8,7 +8,6 @@
 #include <QTimer>
 #include <QUrl>
 
-#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <iomanip>
@@ -49,13 +48,16 @@ struct IsdRouter::Impl
     explicit Impl(IsdConfig value) : config(std::move(value))
     {
         if (config.host.empty()) throw std::invalid_argument("ИСД host пуст");
-        if (!config.port || !config.timeoutMilliseconds)
+        if (!config.port || !config.timeoutMilliseconds || !config.serviceTimeoutMilliseconds)
             throw std::invalid_argument("Некорректная конфигурация ИСД");
     }
 
-    QByteArray get(const QString& path, bool requireAck)
+    QByteArray get(const QString& path, bool requireAck,
+                   unsigned timeoutMilliseconds = 0, unsigned attempts = 3)
     {
-        constexpr unsigned attempts = 3;
+        const unsigned timeout = timeoutMilliseconds ? timeoutMilliseconds
+                                                     : config.timeoutMilliseconds;
+        attempts = std::max(1u, attempts);
         for (unsigned attempt = 1; attempt <= attempts; ++attempt) {
             QUrl url;
             url.setScheme(QStringLiteral("http"));
@@ -70,7 +72,7 @@ struct IsdRouter::Impl
             QEventLoop loop;
             QObject::connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
             QObject::connect(&timer, &QTimer::timeout, reply, &QNetworkReply::abort);
-            timer.start(static_cast<int>(config.timeoutMilliseconds));
+            timer.start(static_cast<int>(timeout));
             loop.exec();
 
             const auto error = reply->error();
@@ -108,20 +110,27 @@ std::string IsdRouter::probe()
     return impl_->get(QStringLiteral("/"), false).left(200).toStdString();
 }
 
+void IsdRouter::serviceFullReset()
+{
+    // Единственное штатное глобальное воздействие: подтверждённый startup
+    // baseline type=4. Как в отлаженной поставке — одна попытка и отдельный
+    // длинный timeout, без автоматического повторения опасной команды.
+    impl_->get(QStringLiteral("/type=4num=1"), false,
+               impl_->config.serviceTimeoutMilliseconds, 1);
+}
+
 void IsdRouter::setSwitch(unsigned type, unsigned channel, bool enabled)
 {
     if (!type || !channel) throw std::invalid_argument("ИСД type/channel начинаются с 1");
-    const QString path = QStringLiteral("/type=%1num=%2val=%3")
-        .arg(type).arg(channel).arg(enabled ? 1 : 0);
-    impl_->get(path, true);
+    impl_->get(QStringLiteral("/type=%1num=%2val=%3")
+        .arg(type).arg(channel).arg(enabled ? 1 : 0), true);
 }
 
 void IsdRouter::setAnalog(unsigned channel, unsigned value, bool enabled)
 {
     if (!channel) throw std::invalid_argument("Канал ИСД начинается с 1");
-    const QString path = QStringLiteral("/type=1num=%1val=%2work=%3")
-        .arg(channel).arg(value).arg(enabled ? 1 : 0);
-    impl_->get(path, true);
+    impl_->get(QStringLiteral("/type=1num=%1val=%2work=%3")
+        .arg(channel).arg(value).arg(enabled ? 1 : 0), true);
 }
 
 void IsdRouter::setYalkVoltage(unsigned channel, double volts)
@@ -129,9 +138,8 @@ void IsdRouter::setYalkVoltage(unsigned channel, double volts)
     if (!channel) throw std::invalid_argument("Канал ЯЛК начинается с 1");
     if (!std::isfinite(volts) || volts < 0.0 || volts > 6.2)
         throw std::invalid_argument("Напряжение ЯЛК должно быть 0.00..6.20 В");
-    const std::string path = "/type=5num=" + std::to_string(channel)
-        + "val=" + fixed2(volts) + "work=1bus=1";
-    impl_->get(QString::fromStdString(path), true);
+    impl_->get(QString::fromStdString("/type=5num=" + std::to_string(channel)
+        + "val=" + fixed2(volts) + "work=1bus=1"), true);
 }
 
 void IsdRouter::disableYalkOutput(unsigned channel)
