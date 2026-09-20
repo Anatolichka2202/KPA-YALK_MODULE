@@ -11,6 +11,7 @@
 
 class QThread;
 class TestPage;
+class RunJournalOverlay;
 
 namespace tu::hardware { class StandHardware; }
 
@@ -32,6 +33,7 @@ private:
                   bool allowPartial);
 
     TestPage* page_ = nullptr;
+    RunJournalOverlay* journal_ = nullptr;
     tu::ScenarioEngine engine_;
     tu::ScenarioDefinition scenario_;
     std::shared_ptr<tu::hardware::StandHardware> hardware_;
