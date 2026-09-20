@@ -43,7 +43,7 @@ int main()
     try {
         auto scenario = tu::loadScenarioYaml(TU_SOURCE_DIR "/data/ubsi_tu.yaml");
         require(scenario.id == "ubsi.tu.normal", "wrong scenario id");
-        require(scenario.version == "1.2.1", "unexpected TU scenario version");
+        require(scenario.version == "1.2.2", "unexpected TU scenario version");
 
         const std::vector<std::string> expectedSteps{
             "readiness",
@@ -52,7 +52,7 @@ int main()
             "yalk_calibration",
             "yalk_initial",
             "yalk_channels",
-            "yalk_signal_thresholds",
+            "yalk_contact_thresholds",
             "yalk_overload",
             "yalk_reference_voltage",
             "yalk_cleanup",
@@ -82,7 +82,7 @@ int main()
         require(argument(yalk, "point_volts") == "0,3.1,6.2",
                 "YALK analog points changed");
 
-        const auto& contacts = stepById(scenario, "yalk_signal_thresholds");
+        const auto& contacts = stepById(scenario, "yalk_contact_thresholds");
         require(contacts.procedure == "yalk.contacts",
                 "YALK signal field must use the confirmed contact-threshold procedure");
         require(argument(contacts, "addresses") == "1-28,32-43,45-70,74-87",
