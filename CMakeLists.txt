@@ -64,6 +64,8 @@ add_library(tu_procedures STATIC
     procedures/power_procedures.h
     procedures/yalk_procedures.cpp
     procedures/yalk_procedures.h
+    procedures/yalk_verified_procedures.cpp
+    procedures/yalk_verified_procedures.h
     procedures/ytp_procedures.cpp
     procedures/ytp_procedures.h
     procedures/yvp_procedures.cpp
