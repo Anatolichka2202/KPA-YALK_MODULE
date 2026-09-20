@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <map>
 #include <sstream>
 #include <stdexcept>
 #include <thread>
@@ -47,7 +48,9 @@ std::vector<double> numbers(const ScenarioStep& step, const std::string& key)
     std::vector<double> result;
     std::stringstream stream(argument(step, key));
     std::string item;
-    while (std::getline(stream, item, ',')) if (!item.empty()) result.push_back(std::stod(item));
+    while (std::getline(stream, item, ',')) {
+        if (!item.empty()) result.push_back(std::stod(item));
+    }
     return result;
 }
 
@@ -90,6 +93,15 @@ void append(ProcedureResult& result, MeasurementResult value)
     result.measurements.push_back(std::move(value));
 }
 
+void publish(ProcedureContext& context, const ScenarioStep& step,
+             const std::string& stage, const std::string& message,
+             RunVerdict verdict = RunVerdict::NotRun,
+             std::map<std::string, std::string> data = {})
+{
+    if (context.eventSink) context.eventSink({
+        std::chrono::system_clock::now(), step.id, stage, message, verdict, std::move(data)});
+}
+
 ProcedureResult start(const ScenarioStep& step, ProcedureContext& context,
                       const std::shared_ptr<hardware::StandHardware>& stand)
 {
@@ -127,6 +139,7 @@ ProcedureResult calibration(const ScenarioStep& step, ProcedureContext& context,
                         {"zero_raw",std::to_string(zero)},
                         {"full_raw",std::to_string(full)},
                         {"valid_word_count",std::to_string(snapshot.validWordCount)}};
+    publish(context, step, "MEASUREMENT", value.title, value.verdict, value.attributes);
     append(result, std::move(value));
     return result;
 }
@@ -136,7 +149,8 @@ ProcedureResult channels(const ScenarioStep& step, ProcedureContext& context,
                          const OperatorConfirm& confirm)
 {
     const unsigned channelCount = natural(step, "channel_count", 30);
-    if (channelCount != 30) throw std::invalid_argument("ЯТП содержит 30 измерительных каналов");
+    if (channelCount != 30)
+        throw std::invalid_argument("ЯТП содержит 30 измерительных каналов");
     const auto points = numbers(step, "resistance_points_ohm");
     if (points.empty()) throw std::invalid_argument("Не заданы точки сопротивления ЯТП");
     const double fullScale = number(step, "full_scale_ohm", 240.0);
@@ -148,31 +162,40 @@ ProcedureResult channels(const ScenarioStep& step, ProcedureContext& context,
     const auto f = context.state.find("ytp.calibration_full_raw");
     if (z == context.state.end() || f == context.state.end())
         throw std::runtime_error("Нет калибровки ЯТП");
-    const double zero = std::stod(z->second), full = std::stod(f->second);
+    const double zero = std::stod(z->second);
+    const double full = std::stod(f->second);
     if (!(full > zero)) throw std::runtime_error("Неверная калибровка ЯТП");
 
     ProcedureResult result{RunVerdict::Ok,
         "Проверены 30 каналов ЯТП при 0 / 120 / 240 Ом", {}};
+
     for (std::size_t pointIndex = 0; pointIndex < points.size(); ++pointIndex) {
         context.checkpoint();
         const std::string title = "ЯТП · магазин сопротивлений";
         const std::string prompt = "Установите Р4831 = " + std::to_string(points[pointIndex])
             + " Ом и подтвердите продолжение";
+
+        publish(context, step, "OPERATOR", prompt, RunVerdict::NotRun,
+            {{"target_resistance_ohm",std::to_string(points[pointIndex])},
+             {"point_index",std::to_string(pointIndex + 1)},
+             {"point_count",std::to_string(points.size())}});
+
         if (!confirm || !confirm(title, prompt)) {
             return {RunVerdict::Incomplete,
                 "Оператор не подтвердил установку Р4831; оставшиеся точки ЯТП не выполнялись", {}};
         }
+        // Ctrl+Shift+Q, нажатый во время модального подтверждения, должен
+        // завершить именно текущую проверку, а не начать измерять после закрытия окна.
+        context.checkpoint();
+        publish(context, step, "OPERATOR_CONFIRMED",
+            "Р4831 подтверждён оператором", RunVerdict::NotRun,
+            {{"target_resistance_ohm",std::to_string(points[pointIndex])},
+             {"point_index",std::to_string(pointIndex + 1)},
+             {"point_count",std::to_string(points.size())}});
+
         waitChecked(context, settle);
         const auto snapshot = stand->yalk().readYtpSnapshot(
             samples, std::chrono::milliseconds(3000), [&context] { context.checkpoint(); });
-
-        if (context.eventSink) context.eventSink({
-            std::chrono::system_clock::now(), step.id, "YTP_POINT",
-            "ЯТП: " + std::to_string(points[pointIndex]) + " Ом",
-            RunVerdict::NotRun,
-            {{"point_index",std::to_string(pointIndex)},
-             {"point_count",std::to_string(points.size())},
-             {"resistance_ohm",std::to_string(points[pointIndex])}}});
 
         for (unsigned channel = 0; channel < channelCount; ++channel) {
             context.checkpoint();
@@ -185,12 +208,17 @@ ProcedureResult channels(const ScenarioStep& step, ProcedureContext& context,
                 points[pointIndex], ohms,
                 points[pointIndex] - tolerance, points[pointIndex] + tolerance, "Ом");
             value.attributes = {{"section","YTP"},
-                {"channel",std::to_string(channel + 1)},
-                {"reference_ohm",std::to_string(points[pointIndex])},
-                {"measured_ohm",std::to_string(ohms)},
+                {"ytp_channel",std::to_string(channel + 1)},
+                {"channel_index",std::to_string(channel + 1)},
+                {"channel_count",std::to_string(channelCount)},
+                {"target_resistance_ohm",std::to_string(points[pointIndex])},
+                {"measured_resistance_ohm",std::to_string(ohms)},
+                {"point_index",std::to_string(pointIndex + 1)},
+                {"point_count",std::to_string(points.size())},
                 {"raw",std::to_string(raw)},
                 {"zero_raw",std::to_string(zero)},
                 {"full_raw",std::to_string(full)}};
+            publish(context, step, "MEASUREMENT", value.title, value.verdict, value.attributes);
             append(result, std::move(value));
         }
     }
