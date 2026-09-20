@@ -16,6 +16,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <thread>
+#include <utility>
 #include <vector>
 
 namespace tu::hardware {
@@ -69,50 +70,44 @@ struct IsdRouter::Impl
     }
 
     QByteArray get(const QString& path, bool requireAck,
-                   unsigned timeoutMilliseconds = 0, unsigned attempts = 3)
+                   unsigned timeoutMilliseconds = 0)
     {
         const unsigned timeout = timeoutMilliseconds ? timeoutMilliseconds
                                                      : config.timeoutMilliseconds;
-        attempts = std::max(1u, attempts);
-        for (unsigned attempt = 1; attempt <= attempts; ++attempt) {
-            QUrl url;
-            url.setScheme(QStringLiteral("http"));
-            url.setHost(QString::fromStdString(config.host));
-            url.setPort(config.port);
-            url.setPath(path);
+        QUrl url;
+        url.setScheme(QStringLiteral("http"));
+        url.setHost(QString::fromStdString(config.host));
+        url.setPort(config.port);
+        url.setPath(path);
 
-            QNetworkAccessManager manager;
-            QNetworkReply* reply = manager.get(QNetworkRequest(url));
-            QTimer timer;
-            timer.setSingleShot(true);
-            QEventLoop loop;
-            QObject::connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
-            QObject::connect(&timer, &QTimer::timeout, reply, &QNetworkReply::abort);
-            timer.start(static_cast<int>(timeout));
-            loop.exec();
+        QNetworkAccessManager manager;
+        QNetworkReply* reply = manager.get(QNetworkRequest(url));
+        QTimer timer;
+        timer.setSingleShot(true);
+        QEventLoop loop;
+        QObject::connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
+        QObject::connect(&timer, &QTimer::timeout, reply, &QNetworkReply::abort);
+        timer.start(static_cast<int>(timeout));
+        loop.exec();
+        timer.stop();
 
-            const auto error = reply->error();
-            const QString errorText = reply->errorString();
-            const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-            const QByteArray body = reply->readAll();
-            reply->deleteLater();
+        const auto error = reply->error();
+        const QString errorText = reply->errorString();
+        const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        const QByteArray body = reply->readAll();
+        reply->deleteLater();
 
-            if (error == QNetworkReply::NoError) {
-                if (status < 200 || status >= 300)
-                    throw std::runtime_error("ИСД HTTP status " + std::to_string(status));
-                if (requireAck) requireSuccess(body);
-                return body;
-            }
-
-            const bool transient = error == QNetworkReply::OperationCanceledError
-                || error == QNetworkReply::TimeoutError
-                || error == QNetworkReply::TemporaryNetworkFailureError
-                || error == QNetworkReply::RemoteHostClosedError;
-            if (!transient || attempt == attempts)
-                throw std::runtime_error("ИСД HTTP: " + errorText.toUtf8().toStdString());
-            std::this_thread::sleep_for(std::chrono::milliseconds(250));
-        }
-        throw std::runtime_error("ИСД HTTP request failed");
+        // Активные команды ИСД принципиально НЕ повторяем: timeout/обрыв ACK
+        // не доказывает, что физическая коммутация не произошла. Pessimistic
+        // active-log затем снимет потенциально выполненное воздействие адресно.
+        if (error != QNetworkReply::NoError)
+            throw std::runtime_error("ИСД HTTP " + path.toStdString() + ": "
+                + errorText.toUtf8().toStdString());
+        if (status < 200 || status >= 300)
+            throw std::runtime_error("ИСД HTTP status " + std::to_string(status)
+                + " для " + path.toStdString());
+        if (requireAck) requireSuccess(body);
+        return body;
     }
 
     void remember(ActiveAction action)
@@ -157,9 +152,6 @@ struct IsdRouter::Impl
 
     void safeStop() noexcept
     {
-        // Тот же принцип, что у финального stateful ISD driver: никакого
-        // глобального type=4 в lifecycle cleanup. Снимаем только воздействия,
-        // которые этот процесс сам мог включить, в обратном порядке.
         const auto snapshot = active;
         for (auto it = snapshot.rbegin(); it != snapshot.rend(); ++it) {
             try {
@@ -176,8 +168,8 @@ struct IsdRouter::Impl
                 }
                 forget(*it);
             } catch (...) {
-                // Оставляем действие в active: повторный safeStop сможет
-                // предпринять ещё одну адресную попытку, не переходя к type=4.
+                // Оставляем запись: повторный внешний safeStop может ещё раз
+                // адресно попытаться снять неопределённое воздействие.
             }
         }
     }
@@ -196,8 +188,10 @@ std::string IsdRouter::probe()
 
 void IsdRouter::serviceFullReset()
 {
-    impl_->get(QStringLiteral("/type=4num=1"), false,
-               impl_->config.serviceTimeoutMilliseconds, 1);
+    // Startup baseline — единственное штатное глобальное type=4. Как и в
+    // финальном транспорте: одна попытка, длинный timeout и обязательный ACK.
+    impl_->get(QStringLiteral("/type=4num=1"), true,
+               impl_->config.serviceTimeoutMilliseconds);
     impl_->active.clear();
 }
 
