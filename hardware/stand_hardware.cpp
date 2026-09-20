@@ -56,7 +56,10 @@ std::string StandHardware::probeGenerator()
 
 void StandHardware::safeStop() noexcept
 {
+    // Сначала снимаем внешнее возбуждение, затем только адресно освобождаем
+    // маршруты ИСД. Глобальный type=4 здесь намеренно не используется.
     if (generator_) generator_->safeOff();
+    isd_.safeStop();
     yalk_.stop();
     supply_.safeOff();
 }
