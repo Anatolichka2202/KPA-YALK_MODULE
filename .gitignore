@@ -1,0 +1,46 @@
+# Claude Code worktrees / local agent artifacts
+.claude/
+
+# Build output
+/build/
+/build_new/
+build*/
+*-build-*/
+cmake-build-*/
+/out/
+
+# Qt Creator / CMake user files
+*.user
+*.user.*
+CMakeLists.txt.user*
+*.autosave
+CMakeCache.txt
+CMakeFiles/
+
+# Visual Studio
+.vs/
+*.ipch
+*.VC.db
+*.suo
+*.sln.docstates
+
+# Compiled objects (vendored SDK .dll/.a/.exe are kept intentionally)
+*.o
+*.obj
+*.pdb
+
+# OS junk
+Thumbs.db
+.DS_Store
+*.pcapng
+# Локальный архив исходных документов и референсных программ.
+# В Git храним только производные требования и нормализованные данные.
+/docs/по ктма/
+
+# Personal Obsidian workspace state
+docs/.obsidian/workspace.json
+docs/.obsidian/workspace-mobile.json
+
+# Personal Obsidian workspace state
+docs/.obsidian/workspace.json
+docs/.obsidian/workspace-mobile.json
