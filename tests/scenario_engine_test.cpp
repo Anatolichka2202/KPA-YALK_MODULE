@@ -43,7 +43,7 @@ int main()
     try {
         auto scenario = tu::loadScenarioYaml(TU_SOURCE_DIR "/data/ubsi_tu.yaml");
         require(scenario.id == "ubsi.tu.normal", "wrong scenario id");
-        require(scenario.version == "1.1.1", "unexpected TU scenario version");
+        require(scenario.version == "1.1.2", "unexpected TU scenario version");
 
         const std::vector<std::string> expectedSteps{
             "isd_baseline",
@@ -95,6 +95,10 @@ int main()
         require(argument(overload, "maximum_code_delta") == "2",
                 "YALK overload delta criterion changed");
 
+        const auto& reference = stepById(scenario, "yalk_reference_voltage");
+        require(argument(reference, "nominal_v") == "6.2", "YALK reference nominal changed");
+        require(argument(reference, "tolerance_v") == "0.03", "YALK reference tolerance changed");
+
         const auto& ytp = stepById(scenario, "ytp_channels");
         require(argument(ytp, "resistance_points_ohm") == "0,120,240",
                 "YTP R4831 points changed");
@@ -114,10 +118,17 @@ int main()
                 "YVP gain tolerance changed");
         require(argument(yvp, "attenuation_min_db") == "20.0",
                 "YVP attenuation criterion changed");
-        require(argument(yvp, "input_contacts") == "33,34,35,36,37,38,39,40",
-                "YVP input map changed");
-        require(argument(yvp, "measurement_contacts") == "44,29,30,31,71,72,88,73",
-                "YVP measurement map changed");
+
+        const std::vector<std::string> expectedInputs{"33","34","35","36","37","38","39","40"};
+        const std::vector<std::string> expectedMeasurements{"44","29","30","31","71","72","88","73"};
+        for (std::size_t index = 0; index < 8; ++index) {
+            const std::string number = std::to_string(index + 1);
+            require(argument(yvp, "input_" + number + "_contacts") == expectedInputs[index],
+                    "YVP input channel map changed");
+            require(argument(yvp, "measurement_" + number + "_contacts") == expectedMeasurements[index],
+                    "YVP measurement channel map changed");
+        }
+
         require(argument(yvp, "gain_0_25_bits") == "none", "YVP K0.25 map changed");
         require(argument(yvp, "gain_0_5_bits") == "1", "YVP K0.5 map changed");
         require(argument(yvp, "gain_1_bits") == "2", "YVP K1 map changed");
