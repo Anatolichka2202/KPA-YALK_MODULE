@@ -4,16 +4,14 @@
 #include <QStringList>
 #include <QWidget>
 
+#include "model/run_types.h"
+
 class QComboBox;
 class QLabel;
 class QLineEdit;
 class QPushButton;
 class QStackedWidget;
 class QTableWidget;
-
-namespace orbita::stand {
-struct ScenarioRunResult;
-}
 
 class TuFlowWidget final : public QWidget
 {
@@ -31,7 +29,7 @@ public:
                          const QStringList& requiredEquipment);
     void setEquipmentChecking(const QString& code);
     void setEquipmentStatus(const QString& code, bool ready, const QString& detail = {});
-    void completeRun(const orbita::stand::ScenarioRunResult& result,
+    void completeRun(const tu::ScenarioRunResult& result,
                      const QString& tuReportPath);
     void setYvpBypassActive(bool active);
     void resetToSelection();
@@ -57,7 +55,7 @@ private:
     void setSerialMode(bool manual);
     void showOperatorEntry();
     void showReport();
-    void populateReportRows(const orbita::stand::ScenarioRunResult& result);
+    void populateReportRows(const tu::ScenarioRunResult& result);
     void applyOperatorToTuProtocol(const QString& operatorName);
 
     QStackedWidget* pages_ = nullptr;
