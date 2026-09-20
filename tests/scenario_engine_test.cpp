@@ -43,10 +43,9 @@ int main()
     try {
         auto scenario = tu::loadScenarioYaml(TU_SOURCE_DIR "/data/ubsi_tu.yaml");
         require(scenario.id == "ubsi.tu.normal", "wrong scenario id");
-        require(scenario.version == "1.2.0", "unexpected TU scenario version");
+        require(scenario.version == "1.2.1", "unexpected TU scenario version");
 
         const std::vector<std::string> expectedSteps{
-            "isd_baseline",
             "readiness",
             "supply_range",
             "yalk_stream",
@@ -67,6 +66,8 @@ int main()
         require(scenario.steps.size() == expectedSteps.size(), "TU route step count changed");
         for (std::size_t index = 0; index < expectedSteps.size(); ++index)
             require(scenario.steps[index].id == expectedSteps[index], "TU route order changed");
+        require(scenario.steps.front().procedure == "power.readiness",
+                "TU run must start with UБСИ power readiness, not an active ISD command");
 
         const auto& initial = stepById(scenario, "yalk_initial");
         require(initial.procedure == "yalk.initial",
@@ -147,8 +148,6 @@ int main()
         require(argument(yvp, "gain_8_bits") == "4", "YVP K8 map changed");
         require(argument(yvp, "gain_32_bits") == "2,4", "YVP K32 map changed");
 
-        // Parser/schema integrity: every procedure ID in the final route is expected
-        // to be a real registered production procedure in the desktop application.
         tu::ScenarioEngine validationEngine;
         for (const auto& step : scenario.steps)
             validationEngine.registerProcedure(step.procedure, ok);
