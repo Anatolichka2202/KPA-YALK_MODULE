@@ -22,6 +22,7 @@ public:
     void setAnalog(unsigned channel, unsigned value, bool enabled);
     void setYalkVoltage(unsigned channel, double volts);
     void disableYalkOutput(unsigned channel);
+    void safeStop() noexcept;
 
 private:
     struct Impl;
