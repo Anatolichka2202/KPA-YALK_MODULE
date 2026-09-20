@@ -11,6 +11,7 @@
 #include "ui/run_journal_overlay.h"
 #include "ui/test_page.h"
 
+#include <QBoxLayout>
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
@@ -18,6 +19,7 @@
 #include <QMetaObject>
 #include <QPointer>
 #include <QThread>
+#include <QWidget>
 
 #include <cmath>
 #include <filesystem>
@@ -75,6 +77,85 @@ std::optional<double> eventNumber(const tu::RunEvent& event, const char* key)
     }
 }
 
+// Keep the canonical scenario node IDs in reports/journal, but adapt the few
+// runtime-only support nodes to the current HMI contract. In particular the
+// route now calls the contact step yalk_signal_thresholds, while the UI model
+// still recognizes the older yalk_contact* family.
+std::string runtimeUiNodeId(const std::string& node)
+{
+    if (node == "yalk_signal_thresholds") return "yalk_contact_thresholds";
+
+    // These are service steps, not acceptance rows. If they are passed through
+    // as yalk_* the old sidebar fallback lights the analog row, producing the
+    // visible analog -> initial -> analog jump. Keep their progress text, but
+    // do not let them masquerade as an acceptance requirement.
+    if (node == "yalk_stream") return "support.yalk_stream";
+    if (node == "yalk_calibration") return "support.yalk_calibration";
+    if (node == "yalk_cleanup") return "support.yalk_cleanup";
+    return node;
+}
+
+void normalizeContactResultForUi(tu::StepRunResult& step)
+{
+    if (step.nodeId == "yalk_signal_thresholds")
+        step.nodeId = "yalk_contact_thresholds";
+    for (auto& child : step.children) normalizeContactResultForUi(child);
+}
+
+void normalizeContactResultForUi(tu::ScenarioRunResult& result)
+{
+    for (auto& step : result.steps) normalizeContactResultForUi(step);
+}
+
+// The runtime rail historically listed initial/open-circuit after analog and
+// contact even though the scenario executes it first. Reorder the existing
+// widgets once; this deliberately does not alter the accepted TU scope.
+void reorderTuRequirementRail(TestPage* page)
+{
+    if (!page) return;
+    const QStringList keys{
+        QStringLiteral("readiness"),
+        QStringLiteral("supply"),
+        QStringLiteral("current"),
+        QStringLiteral("yalk_initial"),
+        QStringLiteral("yalk_analog"),
+        QStringLiteral("yalk_accuracy"),
+        QStringLiteral("yalk_contact"),
+        QStringLiteral("yalk_overload"),
+        QStringLiteral("yalk_reference"),
+        QStringLiteral("ytp"),
+        QStringLiteral("yvp_afc"),
+        QStringLiteral("yvp_gain")
+    };
+
+    QVector<QWidget*> rows;
+    rows.reserve(keys.size());
+    for (const auto& key : keys) {
+        auto* row = page->findChild<QWidget*>(QStringLiteral("tuRequirement_%1").arg(key));
+        if (!row) return;
+        rows.push_back(row);
+    }
+
+    QWidget* sidebar = rows.front()->parentWidget();
+    if (!sidebar || !sidebar->layout()) return;
+
+    QBoxLayout* rail = nullptr;
+    auto* outer = sidebar->layout();
+    for (int index = 0; index < outer->count(); ++index) {
+        auto* item = outer->itemAt(index);
+        auto* box = item && item->layout() ? dynamic_cast<QBoxLayout*>(item->layout()) : nullptr;
+        if (box && box->indexOf(rows.front()) >= 0) {
+            rail = box;
+            break;
+        }
+    }
+    if (!rail) return;
+
+    for (auto* row : rows) rail->removeWidget(row);
+    for (int index = 0; index < rows.size(); ++index)
+        rail->insertWidget(index, rows[index]);
+}
+
 } // namespace
 
 TuController::TuController(TestPage* page, QObject* parent)
@@ -84,6 +165,7 @@ TuController::TuController(TestPage* page, QObject* parent)
     journal_ = new RunJournalOverlay(page_);
 
     page_->setProductionMode(false);
+    reorderTuRequirementRail(page_);
     page_->registerEquipmentRow(kBackendEquipmentCode,
         QStringLiteral("Маршрут и процедуры ТУ"), QStringLiteral("локально"),
         QStringLiteral("Проверка регистрации процедур"));
@@ -366,9 +448,10 @@ void TuController::startRun(const QString& scenarioCode,
             scenario_, serial,
             [this, page = QPointer<TestPage>(page_),
              journal = QPointer<RunJournalOverlay>(journal_)](const tu::RunEvent& event) {
+                const std::string uiNode = runtimeUiNodeId(event.nodeId);
                 {
                     std::lock_guard<std::mutex> lock(liveStateMutex_);
-                    if (event.stage == "START") liveNode_ = event.nodeId;
+                    if (event.stage == "START") liveNode_ = uiNode;
 
                     if (event.nodeId == "yalk_calibration" && event.stage == "MEASUREMENT") {
                         const auto zero = eventNumber(event, "zero_code");
@@ -384,8 +467,10 @@ void TuController::startRun(const QString& scenarioCode,
                 }
 
                 if (!page) return;
-                QMetaObject::invokeMethod(page, [page, journal, event] {
-                    if (page) page->setRunEvent(event);
+                tu::RunEvent uiEvent = event;
+                uiEvent.nodeId = uiNode;
+                QMetaObject::invokeMethod(page, [page, journal, uiEvent = std::move(uiEvent), event] {
+                    if (page) page->setRunEvent(uiEvent);
                     if (journal) journal->appendRunEvent(event);
                 }, Qt::QueuedConnection);
             });
@@ -397,9 +482,14 @@ void TuController::startRun(const QString& scenarioCode,
             yalkCalibrationValid_ = false;
         }
 
+        // The scenario/report keeps canonical node IDs. Only the UI result copy
+        // maps the renamed contact step to the existing contact requirement.
+        auto uiResult = result;
+        normalizeContactResultForUi(uiResult);
+
         QPointer<TestPage> page(page_);
         QPointer<RunJournalOverlay> journal(journal_);
-        QMetaObject::invokeMethod(page_, [page, journal, result = std::move(result)]() mutable {
+        QMetaObject::invokeMethod(page_, [page, journal, result = std::move(uiResult)]() mutable {
             if (!page) return;
             if (journal) journal->finishRun();
             page->setRunInProgress(false);
