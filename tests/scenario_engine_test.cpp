@@ -36,11 +36,6 @@ std::string argument(const tu::ScenarioStep& step, const std::string& key)
     return found->second;
 }
 
-bool hasArgument(const tu::ScenarioStep& step, const std::string& key)
-{
-    return step.arguments.find(key) != step.arguments.end();
-}
-
 } // namespace
 
 int main()
@@ -48,7 +43,7 @@ int main()
     try {
         auto scenario = tu::loadScenarioYaml(TU_SOURCE_DIR "/data/ubsi_tu.yaml");
         require(scenario.id == "ubsi.tu.normal", "wrong scenario id");
-        require(scenario.version == "1.1.5", "unexpected TU scenario version");
+        require(scenario.version == "1.2.0", "unexpected TU scenario version");
 
         const std::vector<std::string> expectedSteps{
             "isd_baseline",
@@ -58,7 +53,7 @@ int main()
             "yalk_calibration",
             "yalk_initial",
             "yalk_channels",
-            "contact_channels",
+            "yalk_signal_thresholds",
             "yalk_overload",
             "yalk_reference_voltage",
             "yalk_cleanup",
@@ -73,11 +68,11 @@ int main()
         for (std::size_t index = 0; index < expectedSteps.size(); ++index)
             require(scenario.steps[index].id == expectedSteps[index], "TU route order changed");
 
-        const auto& openCircuit = stepById(scenario, "yalk_initial");
-        require(openCircuit.procedure == "yalk.open_circuit",
-                "YALK open-circuit must not use combined analog/contact procedure");
-        require(argument(openCircuit, "addresses") == "1-28,32-43,45-70,74-87",
-                "YALK open-circuit map changed");
+        const auto& initial = stepById(scenario, "yalk_initial");
+        require(initial.procedure == "yalk.initial",
+                "YALK initial state must use the production analog+signal procedure");
+        require(argument(initial, "addresses") == "1-28,32-43,45-70,74-87",
+                "YALK initial address map changed");
 
         const auto& yalk = stepById(scenario, "yalk_channels");
         require(yalk.procedure == "yalk.channels", "YALK analog procedure changed");
@@ -86,41 +81,29 @@ int main()
         require(argument(yalk, "point_volts") == "0,3.1,6.2",
                 "YALK analog points changed");
 
-        const auto& contacts = stepById(scenario, "contact_channels");
-        require(contacts.procedure == "contacts.channels",
-                "contact signals must use a dedicated procedure");
-        require(argument(contacts, "required_channel_count") == "30",
-                "TU requires at least 30 contact channels");
-        require(argument(contacts, "state_one_min_resistance_ohm") == "100000",
-                "contact state 1 resistance criterion changed");
-        require(argument(contacts, "state_zero_max_resistance_ohm") == "5000",
-                "contact state 0 resistance criterion changed");
-        require(argument(contacts, "mapping_status") == "pending_kd_trace",
-                "unverified contact routing must stay visibly blocked");
-        require(!hasArgument(contacts, "addresses"),
-                "contact signals must not reuse the 80 analog YALK address map");
-        require(!hasArgument(contacts, "contact_points_v"),
-                "old 0/0.9/2.5 V contact sweep must not return without KD evidence");
-        require(!hasArgument(contacts, "signal_expectations"),
-                "old analog/contact truth table must not return without KD evidence");
+        const auto& contacts = stepById(scenario, "yalk_signal_thresholds");
+        require(contacts.procedure == "yalk.contacts",
+                "YALK signal field must use the confirmed contact-threshold procedure");
+        require(argument(contacts, "addresses") == "1-28,32-43,45-70,74-87",
+                "YALK signal address map changed");
+        require(argument(contacts, "contact_points_v") == "0,0.9,2.5",
+                "YALK contact threshold points changed");
+        require(argument(contacts, "signal_expectations") == "0,0,1",
+                "YALK signal truth table changed");
 
         const auto& overload = stepById(scenario, "yalk_overload");
-        require(overload.procedure == "yalk.overload.physical_map_required",
-                "active overload procedure must stay blocked until physical KD map is proven");
-        require(argument(overload, "analog_addresses") == "1-28,32-43,45-70,74-87",
-                "YALK overload scope must be the 80 analog inputs only");
-        require(argument(overload, "analog_channel_count") == "80",
-                "YALK overload analog channel count changed");
-        require(argument(overload, "polarities_v") == "12,-12",
-                "YALK overload polarities changed");
-        require(argument(overload, "mapping_status") == "pending_kd_trace",
-                "unverified overload routing must stay visibly blocked");
-        require(!hasArgument(overload, "physical_channels"),
-                "logical YALK addresses must not masquerade as physical ISD channels");
-        require(!hasArgument(overload, "positive_overload_contact"),
-                "old +12 physical contact must not be trusted without KD trace");
-        require(!hasArgument(overload, "negative_overload_contact"),
-                "old -12 physical contact must not be trusted without KD trace");
+        require(overload.procedure == "yalk.overload",
+                "YALK overload must use the production special procedure");
+        require(argument(overload, "physical_channels") == "1-28,32-43,45-70,74-87",
+                "YALK overload physical channel map changed");
+        require(argument(overload, "observed_addresses") == "1-28,32-43,45-70,74-87",
+                "YALK overload observed address map changed");
+        require(argument(overload, "positive_overload_contact") == "96",
+                "YALK +12 V common route changed");
+        require(argument(overload, "negative_overload_contact") == "95",
+                "YALK -12 V common route changed");
+        require(argument(overload, "maximum_code_delta") == "2",
+                "YALK overload delta criterion changed");
 
         const auto& reference = stepById(scenario, "yalk_reference_voltage");
         require(argument(reference, "nominal_v") == "6.2", "YALK reference nominal changed");
@@ -164,10 +147,8 @@ int main()
         require(argument(yvp, "gain_8_bits") == "4", "YVP K8 map changed");
         require(argument(yvp, "gain_32_bits") == "2,4", "YVP K32 map changed");
 
-        // Parser/schema integrity: fake-register every procedure ID so the YAML itself
-        // remains internally valid. The desktop app deliberately does NOT register
-        // contacts.channels or yalk.overload.physical_map_required until KD mapping
-        // is proven, therefore its real readiness check stays red and prevents run.
+        // Parser/schema integrity: every procedure ID in the final route is expected
+        // to be a real registered production procedure in the desktop application.
         tu::ScenarioEngine validationEngine;
         for (const auto& step : scenario.steps)
             validationEngine.registerProcedure(step.procedure, ok);
