@@ -2,7 +2,7 @@ schema: 1
 id: ubsi.tu.normal
 # Единственный маршрут поставки: проверка функционирования УБСИ по 5.6.
 title: УБСИ · полная проверка по ТУ
-version: 1.1.1
+version: 1.1.2
 
 # Не включены 1.1.4.4/1.1.4.12 (изоляция, метод 5.5), 1.1.4.6 (линия 50 м)
 # и неподтверждённая автоматизация поканального тока 1.1.4.2.
@@ -111,10 +111,8 @@ steps:
     tu: 1.1.4.9
     procedure: yalk.reference
     args:
-      addresses: 1-28,32-43,45-70,74-87
       nominal_v: 6.2
       tolerance_v: 0.03
-      settle_ms: 150
 
   - id: yalk_cleanup
     title: Снять воздействия ЯЛК и остановить поток
@@ -175,8 +173,22 @@ steps:
       gain_switch_type: 2
       measurement_analog_type: 1
       measurement_switch_type: 3
-      input_contacts: 33,34,35,36,37,38,39,40
-      measurement_contacts: 44,29,30,31,71,72,88,73
+      input_1_contacts: 33
+      input_2_contacts: 34
+      input_3_contacts: 35
+      input_4_contacts: 36
+      input_5_contacts: 37
+      input_6_contacts: 38
+      input_7_contacts: 39
+      input_8_contacts: 40
+      measurement_1_contacts: 44
+      measurement_2_contacts: 29
+      measurement_3_contacts: 30
+      measurement_4_contacts: 31
+      measurement_5_contacts: 71
+      measurement_6_contacts: 72
+      measurement_7_contacts: 88
+      measurement_8_contacts: 73
       channel_1_gain_contacts: 1,2,3,4
       channel_2_gain_contacts: 5,6,7,8
       channel_3_gain_contacts: 9,10,11,12
