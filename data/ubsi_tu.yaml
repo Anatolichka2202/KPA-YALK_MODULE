@@ -2,20 +2,19 @@ schema: 1
 id: ubsi.tu.normal
 # Единственный маршрут поставки: проверка функционирования УБСИ по 5.6.
 title: УБСИ · полная проверка по ТУ
-version: 1.1.5
+version: 1.2.0
 
 # Не включены 1.1.4.4/1.1.4.12 (изоляция, метод 5.5), 1.1.4.6 (линия 50 м)
 # и неподтверждённая автоматизация поканального тока 1.1.4.2.
 #
-# ВАЖНО ПО КОММУТАЦИИ:
-# - 80 аналоговых входов ЯЛК и контактные входы — разные группы требований;
-# - старый combined-flow, где contact-bit проверялся на всех 80 аналоговых
-#   адресах при 0/0.9/2.5 В, нормативно не подтверждён и из маршрута удалён;
-# - contacts.channels намеренно НЕ регистрируется до восстановления точной
-#   карты КД: контактный вход УБСИ -> реле/цепь ИСД -> поле выходного кадра;
-# - перегрузка ±12 В также заблокирована до подтверждения именно физической
-#   карты 80 аналоговых входов. Логический адрес ЯЛК нельзя считать номером
-#   реле ИСД без доказательства по кросс-плате.
+# ПОДТВЕРЖДЁННАЯ КОММУТАЦИЯ ИСД / ЯЛК:
+# - рабочие адреса ЯЛК: 1-28, 32-43, 45-70, 74-87 — ровно 80 каналов;
+# - для этого тракта номер аналогового канала ИСД совпадает с адресом ЯЛК;
+# - аналоговый код и сигнальный признак читаются из одного слова reference204:
+#   код = 0x03FF, сигнальный признак = 0x0400;
+# - перегрузка выполняется специальным методом: общий +12 В = канал 96 type=3,
+#   общий -12 В = канал 95 type=3, затем проверяемый канал подключается type=3;
+# - при перегрузке сравниваются все остальные рабочие адреса с baseline.
 steps:
   - id: isd_baseline
     title: Исходное безопасное состояние ИСД
@@ -66,13 +65,12 @@ steps:
       full_voltage: 6.2
 
   - id: yalk_initial
-    title: Обрыв 80 функциональных аналоговых входов ЯЛК
+    title: Обрыв 80 входов ЯЛК и исходный сигнальный признак
     tu: 1.1.4.10
-    procedure: yalk.open_circuit
+    procedure: yalk.initial
     args:
       addresses: 1-28,32-43,45-70,74-87
       sample_count: 4
-      timeout_ms: 3000
       full_scale_v: 6.2
 
   - id: yalk_channels
@@ -88,30 +86,36 @@ steps:
       full_scale_v: 6.2
       tolerance_percent_fs: 0.5
 
-  - id: contact_channels
-    title: Контактные сигналы УБСИ · отдельный тракт
+  - id: yalk_signal_thresholds
+    title: Сигнальный признак ЯЛК · 0 / 0,9 / 2,5 В
     tu: 1.1.4.1
-    procedure: contacts.channels
+    procedure: yalk.contacts
     args:
-      # ТУ: не менее 30 каналов.
-      # Состояние 1: 2.4..7.0 В ИЛИ R >= 100 кОм.
-      # Состояние 0: U <= 1.0 В ИЛИ R <= 5 кОм.
-      # Конкретную карту реле/разъёмов/выходных параметров не угадывать.
-      required_channel_count: 30
-      state_one_min_resistance_ohm: 100000
-      state_zero_max_resistance_ohm: 5000
-      mapping_status: pending_kd_trace
+      # Это поле 0x0400 тех же 80 слов reference204, а не выдуманный
+      # отдельный маршрут ИСД. Метод сохранён из стендовой поставки.
+      addresses: 1-28,32-43,45-70,74-87
+      contact_points_v: 0,0.9,2.5
+      signal_expectations: 0,0,1
+      sample_count: 16
+      settle_ms: 150
+      channel_off_settle_ms: 1000
+      full_scale_v: 6.2
+      tolerance_percent_fs: 0.5
 
   - id: yalk_overload
-    title: Перегрузка ±12 В только функциональных аналоговых входов ЯЛК
+    title: Перегрузка ±12 В функциональных входов ЯЛК с контролем остальных каналов
     tu: 1.1.4.11
-    procedure: yalk.overload.physical_map_required
+    procedure: yalk.overload
     args:
-      analog_addresses: 1-28,32-43,45-70,74-87
-      analog_channel_count: 80
-      polarities_v: 12,-12
+      physical_channels: 1-28,32-43,45-70,74-87
+      observed_addresses: 1-28,32-43,45-70,74-87
+      positive_overload_contact: 96
+      negative_overload_contact: 95
+      sample_count: 4
+      baseline_settle_ms: 1000
+      overload_settle_ms: 10000
+      cleanup_settle_ms: 300
       maximum_code_delta: 2
-      mapping_status: pending_kd_trace
 
   - id: yalk_reference_voltage
     title: Эталонное напряжение 6,2 ±0,03 В
