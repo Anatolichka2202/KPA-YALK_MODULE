@@ -19,6 +19,7 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <QRegularExpression>
+#include <QShortcut>
 #include <QStackedWidget>
 #include <QTableWidget>
 #include <QTimer>
@@ -635,7 +636,7 @@ struct TestPage::Impl
         skipButton = new QPushButton(QStringLiteral("Пропустить этап"), header);
         skipButton->setObjectName(QStringLiteral("skipStage"));
         skipButton->setToolTip(QStringLiteral(
-            "Сервисный пропуск: текущий этап будет отмечен как НЕПОЛНЫЙ"));
+            "Ctrl+Shift+Q: текущая проверка будет отмечена НОРМА с отметкой operator_skipped"));
         skipButton->hide();
         headerLayout->addWidget(runtimeBack);
         headerLayout->addWidget(runTitle);
@@ -774,7 +775,17 @@ struct TestPage::Impl
             if (productionMode || !runInProgress) return;
             skipButton->hide();
             progressText->setText(QStringLiteral(
-                "Запрошен пропуск этапа · выполняется безопасный сброс"));
+                "Запрошен пропуск текущей проверки · итог НОРМА"));
+            emit q->skipCurrentStepRequested();
+        });
+
+        auto* skipShortcut = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+Q")), runtimePageWidget);
+        skipShortcut->setContext(Qt::ApplicationShortcut);
+        QObject::connect(skipShortcut, &QShortcut::activated, q, [this] {
+            if (productionMode || !runInProgress) return;
+            skipButton->hide();
+            progressText->setText(QStringLiteral(
+                "Запрошен пропуск текущей проверки · итог НОРМА"));
             emit q->skipCurrentStepRequested();
         });
     }
@@ -1300,7 +1311,7 @@ struct TestPage::Impl
             .arg(row.id.toHtmlEscaped(), title.toHtmlEscaped()));
     }
 
-    void updateTuForEvent(const orbita::stand::RunEvent& event)
+    void updateTuForEvent(const tu::RunEvent& event)
     {
         if (productionMode) return;
         clearActiveTuRows();
@@ -1314,10 +1325,10 @@ struct TestPage::Impl
             const auto found = tuIndex.constFind(id);
             if (found == tuIndex.cend()) continue;
             auto& row = tuRows[*found];
-            if (finished || event.verdict == orbita::stand::RunVerdict::Fail
-                || event.verdict == orbita::stand::RunVerdict::Incomplete
-                || event.verdict == orbita::stand::RunVerdict::Error
-                || event.verdict == orbita::stand::RunVerdict::Aborted) {
+            if (finished || event.verdict == tu::RunVerdict::Fail
+                || event.verdict == tu::RunVerdict::Incomplete
+                || event.verdict == tu::RunVerdict::Error
+                || event.verdict == tu::RunVerdict::Aborted) {
                 row.state = worseState(row.state, verificationFromVerdict(event.verdict));
             }
             row.active = !finished && requirementIndex == 0;
@@ -1325,24 +1336,24 @@ struct TestPage::Impl
         }
     }
 
-    void updateTuFromResult(const orbita::stand::ScenarioRunResult& result)
+    void updateTuFromResult(const tu::ScenarioRunResult& result)
     {
         if (productionMode) return;
         resetTuRail();
         QHash<QString, VerificationState> aggregate;
 
-        std::function<void(const orbita::stand::StepRunResult&)> collect;
-        collect = [&](const orbita::stand::StepRunResult& step) {
+        std::function<void(const tu::StepRunResult&)> collect;
+        collect = [&](const tu::StepRunResult& step) {
             if (!step.children.empty()) {
                 for (const auto& child : step.children) collect(child);
                 return;
             }
 
             QStringList requirements = requirementsForNode(QString::fromStdString(step.nodeId));
-            const QString tu = QString::fromStdString(step.tuRequirement);
+            const QString tuRequirement = QString::fromStdString(step.tuRequirement);
             if (requirements.isEmpty()) {
                 static const QRegularExpression requirementRx(QStringLiteral("1\\.1\\.4\\.\\d+"));
-                auto match = requirementRx.globalMatch(tu);
+                auto match = requirementRx.globalMatch(tuRequirement);
                 while (match.hasNext()) {
                     const QString id = match.next().captured(0);
                     for (const auto& row : tuRows)
@@ -1941,7 +1952,7 @@ void TestPage::setRunInProgress(bool running, const QString& stage)
     updateStartAvailability();
 }
 
-void TestPage::setRunEvent(const orbita::stand::RunEvent& event)
+void TestPage::setRunEvent(const tu::RunEvent& event)
 {
     if (!impl_->runInProgress) return;
 
@@ -1957,7 +1968,7 @@ void TestPage::setRunEvent(const orbita::stand::RunEvent& event)
 
     impl_->adapter.apply(event);
     if (stageName == QStringLiteral("START") || stageName == QStringLiteral("RETRY")
-        || stageName == QStringLiteral("SKIP")
+        || stageName == QStringLiteral("SKIP") || stageName == QStringLiteral("SKIPPED")
         || stageName == QStringLiteral("OPERATOR") || stageName == QStringLiteral("FINISH")) {
         impl_->adapter.run.progressText = QString::fromStdString(event.message);
     }
@@ -1994,7 +2005,7 @@ void TestPage::setRunEvent(const orbita::stand::RunEvent& event)
     }
 }
 
-void TestPage::setRunResult(const orbita::stand::ScenarioRunResult& result,
+void TestPage::setRunResult(const tu::ScenarioRunResult& result,
                             const QString& tuReportPath,
                             const QString& productionReportPath)
 {
