@@ -62,6 +62,29 @@ target_link_libraries(tu_ui PUBLIC
 add_executable(tu_ui_smoke tests/ui_smoke.cpp)
 target_link_libraries(tu_ui_smoke PRIVATE tu_ui)
 
+# Minimal desktop shell. It owns no equipment logic: the controller only wires
+# TestPage to ScenarioEngine and exposes procedure registration for the next
+# integration step. Until real procedures are installed, the HMI explicitly
+# reports that the backend is not ready and does not permit a TU run.
+add_executable(tu_app
+    app/main.cpp
+    app/tu_controller.cpp
+    app/tu_controller.h
+)
+target_include_directories(tu_app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(tu_app PRIVATE tu_ui)
+target_compile_definitions(tu_app PRIVATE
+    TU_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+
+add_custom_command(TARGET tu_app POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+            "$<TARGET_FILE_DIR:tu_app>/data"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_CURRENT_SOURCE_DIR}/data/ubsi_tu.yaml"
+            "$<TARGET_FILE_DIR:tu_app>/data/ubsi_tu.yaml"
+    VERBATIM
+)
+
 if(BUILD_TESTING)
     add_executable(scenario_engine_test tests/scenario_engine_test.cpp)
     target_link_libraries(scenario_engine_test PRIVATE tu_backend)
