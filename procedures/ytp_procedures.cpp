@@ -124,8 +124,8 @@ ProcedureResult calibration(const ScenarioStep& step, ProcedureContext& context,
     const auto snapshot = stand->yalk().readYtpSnapshot(
         natural(step, "sample_count", 16), std::chrono::milliseconds(3000),
         [&context] { context.checkpoint(); });
-    const double zero = snapshot.calibration32; // подтверждённая карта: слово 32 = 0 Ом
-    const double full = snapshot.calibration31; // слово 31 = 240 Ом
+    const double zero = snapshot.calibration32;
+    const double full = snapshot.calibration31;
     if (zero == 32768.0 || full == 32768.0 || !(full > zero))
         throw std::runtime_error("Недостоверная калибровка ЯТП по словам 32/31");
     context.state["ytp.calibration_zero_raw"] = std::to_string(zero);
@@ -146,7 +146,7 @@ ProcedureResult calibration(const ScenarioStep& step, ProcedureContext& context,
 
 ProcedureResult channels(const ScenarioStep& step, ProcedureContext& context,
                          const std::shared_ptr<hardware::StandHardware>& stand,
-                         const OperatorConfirm& confirm)
+                         const OperatorResistanceInput& operatorInput)
 {
     const unsigned channelCount = natural(step, "channel_count", 30);
     if (channelCount != 30)
@@ -171,25 +171,32 @@ ProcedureResult channels(const ScenarioStep& step, ProcedureContext& context,
 
     for (std::size_t pointIndex = 0; pointIndex < points.size(); ++pointIndex) {
         context.checkpoint();
-        const std::string title = "ЯТП · магазин сопротивлений";
-        const std::string prompt = "Установите Р4831 = " + std::to_string(points[pointIndex])
-            + " Ом и подтвердите продолжение";
+        const double targetResistance = points[pointIndex];
+        const std::string title = "Р4831: точка " + std::to_string(pointIndex + 1)
+            + " из " + std::to_string(points.size());
+        const std::string prompt = "Установите Р4831 = " + std::to_string(targetResistance)
+            + " Ом. Введите фактически установленное сопротивление.";
 
         publish(context, step, "OPERATOR", prompt, RunVerdict::NotRun,
-            {{"target_resistance_ohm",std::to_string(points[pointIndex])},
+            {{"target_resistance_ohm",std::to_string(targetResistance)},
              {"point_index",std::to_string(pointIndex + 1)},
              {"point_count",std::to_string(points.size())}});
 
-        if (!confirm || !confirm(title, prompt)) {
+        const auto actual = operatorInput
+            ? operatorInput(title, prompt, targetResistance)
+            : std::optional<double>{};
+        if (!actual || !std::isfinite(*actual)) {
             return {RunVerdict::Incomplete,
-                "Оператор не подтвердил установку Р4831; оставшиеся точки ЯТП не выполнялись", {}};
+                "Оператор не подтвердил фактическое сопротивление Р4831; оставшиеся точки ЯТП не выполнялись", {}};
         }
-        // Ctrl+Shift+Q, нажатый во время модального подтверждения, должен
-        // завершить именно текущую проверку, а не начать измерять после закрытия окна.
+
         context.checkpoint();
+        const double actualResistance = *actual;
         publish(context, step, "OPERATOR_CONFIRMED",
-            "Р4831 подтверждён оператором", RunVerdict::NotRun,
-            {{"target_resistance_ohm",std::to_string(points[pointIndex])},
+            "Р4831 подтверждён оператором: " + std::to_string(actualResistance) + " Ом",
+            RunVerdict::NotRun,
+            {{"target_resistance_ohm",std::to_string(targetResistance)},
+             {"actual_reference_ohm",std::to_string(actualResistance)},
              {"point_index",std::to_string(pointIndex + 1)},
              {"point_count",std::to_string(points.size())}});
 
@@ -204,20 +211,24 @@ ProcedureResult channels(const ScenarioStep& step, ProcedureContext& context,
             auto value = measurement("ubsi.ytp.channel." + std::to_string(channel + 1)
                     + "." + std::to_string(pointIndex),
                 "ЯТП канал " + std::to_string(channel + 1) + " · "
-                    + std::to_string(points[pointIndex]) + " Ом",
-                points[pointIndex], ohms,
-                points[pointIndex] - tolerance, points[pointIndex] + tolerance, "Ом");
+                    + std::to_string(targetResistance) + " Ом",
+                actualResistance, ohms,
+                actualResistance - tolerance, actualResistance + tolerance, "Ом");
+            const double error = ohms - actualResistance;
             value.attributes = {{"section","YTP"},
                 {"ytp_channel",std::to_string(channel + 1)},
                 {"channel_index",std::to_string(channel + 1)},
                 {"channel_count",std::to_string(channelCount)},
-                {"target_resistance_ohm",std::to_string(points[pointIndex])},
+                {"target_resistance_ohm",std::to_string(targetResistance)},
+                {"actual_reference_ohm",std::to_string(actualResistance)},
                 {"measured_resistance_ohm",std::to_string(ohms)},
+                {"absolute_error_ohm",std::to_string(std::abs(error))},
+                {"reduced_error_percent",std::to_string(std::abs(error) / fullScale * 100.0)},
                 {"point_index",std::to_string(pointIndex + 1)},
                 {"point_count",std::to_string(points.size())},
                 {"raw",std::to_string(raw)},
-                {"zero_raw",std::to_string(zero)},
-                {"full_raw",std::to_string(full)}};
+                {"calibration_zero_raw",std::to_string(zero)},
+                {"calibration_full_raw",std::to_string(full)}};
             publish(context, step, "MEASUREMENT", value.title, value.verdict, value.attributes);
             append(result, std::move(value));
         }
@@ -237,15 +248,15 @@ ProcedureResult finish(const ScenarioStep&, ProcedureContext& context,
 
 void registerYtpProcedures(ScenarioEngine& engine,
                            std::shared_ptr<hardware::StandHardware> hardware,
-                           OperatorConfirm operatorConfirm)
+                           OperatorResistanceInput operatorInput)
 {
     if (!hardware) throw std::invalid_argument("StandHardware is required");
     engine.registerProcedure("ytp.start", [hardware](const auto& s, auto& c) {
         return start(s,c,hardware); });
     engine.registerProcedure("ytp.calibration", [hardware](const auto& s, auto& c) {
         return calibration(s,c,hardware); });
-    engine.registerProcedure("ytp.channels", [hardware,operatorConfirm](const auto& s, auto& c) {
-        return channels(s,c,hardware,operatorConfirm); });
+    engine.registerProcedure("ytp.channels", [hardware,operatorInput](const auto& s, auto& c) {
+        return channels(s,c,hardware,operatorInput); });
     engine.registerProcedure("ytp.finish", [hardware](const auto& s, auto& c) {
         return finish(s,c,hardware); });
 }
