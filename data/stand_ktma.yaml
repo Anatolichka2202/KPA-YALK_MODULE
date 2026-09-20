@@ -1,0 +1,26 @@
+schema: 1
+id: ktma-main-clean
+version: 2026.09.20-power-slice-1
+
+# Параметры ниже перенесены из подтверждённого профиля delivery/tu-minimal.
+# Этот файл содержит только оборудование, уже нужное чистому маршруту ТУ.
+power_supply:
+  model: AKIP-1160/6
+  port: COM15
+  baud: 115200
+  expected_idn: AKIP-1160/6
+  timeout_ms: 1200
+  max_voltage_v: 60
+  overvoltage_limit_v: 40
+  max_current_a: 10
+  setpoint_voltage_tolerance_v: 0.011
+  setpoint_current_tolerance_a: 0.002
+  output_confirm_attempts: 4
+  output_confirm_settle_ms: 150
+
+yalk_adapter:
+  host: 192.168.0.115
+  local_address: 192.168.0.50
+  data_port: 1113
+  timeout_ms: 800
+  protocol: rokt_yalk
