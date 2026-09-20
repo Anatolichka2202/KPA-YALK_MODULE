@@ -1,6 +1,6 @@
 #pragma once
 
-#include "orbita_stand/scenario.h"
+#include "model/run_types.h"
 
 #include <QString>
 #include <QStringList>
@@ -18,9 +18,9 @@ enum class VerificationState { Pending, Norma, NeNorma, Incomplete, Error, Stopp
 enum class RuntimeState { Idle, Preparing, Running, WaitingOperator, StandError, Stopped, Finished };
 enum class Procedure { Preparation, Power, YalkInitial, YalkAnalog, YalkContact, YalkOverload, YalkReference, Ytp, Yvp, Finish };
 
-inline VerificationState verificationFromVerdict(orbita::stand::RunVerdict verdict)
+inline VerificationState verificationFromVerdict(tu::RunVerdict verdict)
 {
-    using V = orbita::stand::RunVerdict;
+    using V = tu::RunVerdict;
     switch (verdict) {
     case V::Ok: return VerificationState::Norma;
     case V::Fail: return VerificationState::NeNorma;
@@ -45,13 +45,13 @@ inline QString verificationText(VerificationState state)
     return QStringLiteral("—");
 }
 
-inline QString eventValue(const orbita::stand::RunEvent& event, const char* key)
+inline QString eventValue(const tu::RunEvent& event, const char* key)
 {
     const auto found = event.data.find(key);
     return found == event.data.end() ? QString() : QString::fromStdString(found->second);
 }
 
-inline double eventDouble(const orbita::stand::RunEvent& event, const char* key,
+inline double eventDouble(const tu::RunEvent& event, const char* key,
                           double fallback = std::numeric_limits<double>::quiet_NaN())
 {
     bool ok = false;
@@ -59,14 +59,14 @@ inline double eventDouble(const orbita::stand::RunEvent& event, const char* key,
     return ok && std::isfinite(value) ? value : fallback;
 }
 
-inline int eventInt(const orbita::stand::RunEvent& event, const char* key, int fallback = 0)
+inline int eventInt(const tu::RunEvent& event, const char* key, int fallback = 0)
 {
     bool ok = false;
     const int value = eventValue(event, key).toInt(&ok);
     return ok ? value : fallback;
 }
 
-inline bool eventBool(const orbita::stand::RunEvent& event, const char* key, bool fallback = false)
+inline bool eventBool(const tu::RunEvent& event, const char* key, bool fallback = false)
 {
     const QString value = eventValue(event, key).trimmed().toLower();
     if (value.isEmpty()) return fallback;
@@ -278,7 +278,7 @@ public:
         }
     }
 
-    void apply(const orbita::stand::RunEvent& event)
+    void apply(const tu::RunEvent& event)
     {
         const QString node = QString::fromStdString(event.nodeId);
         const QString stage = QString::fromStdString(event.stage);
@@ -316,10 +316,10 @@ public:
             applyYvp(event);
     }
 
-    void applyResult(const orbita::stand::ScenarioRunResult& result)
+    void applyResult(const tu::ScenarioRunResult& result)
     {
         run.productVerdict = verificationFromVerdict(result.verdict);
-        run.runtimeState = result.verdict == orbita::stand::RunVerdict::Aborted
+        run.runtimeState = result.verdict == tu::RunVerdict::Aborted
             ? RuntimeState::Stopped : RuntimeState::Finished;
         run.currentProcedure = Procedure::Finish;
         summaries.fill({});
@@ -374,7 +374,7 @@ private:
         }
     }
 
-    void applyPower(const orbita::stand::RunEvent& event)
+    void applyPower(const tu::RunEvent& event)
     {
         const double setpoint = eventDouble(event, "setpoint_v");
         const double actual = eventDouble(event, "volts", eventDouble(event, "actual_v"));
@@ -401,13 +401,13 @@ private:
             : QStringLiteral("Шаг %1 / %2").arg(power.sequenceIndex).arg(power.sequenceCount);
     }
 
-    void applyPowerYalk(const orbita::stand::RunEvent& event)
+    void applyPowerYalk(const tu::RunEvent& event)
     {
         power.passiveYalkFresh = eventBool(event, "fresh");
         if (power.passiveYalkFresh) power.passiveYalk = csvNumbers(eventValue(event, "values_v"));
     }
 
-    void applyYalkBackground(const orbita::stand::RunEvent& event)
+    void applyYalkBackground(const tu::RunEvent& event)
     {
         const auto mean = csvNumbersWithGaps(eventValue(event, "background_mean"));
         const auto minimum = csvNumbersWithGaps(eventValue(event, "background_min"));
@@ -430,7 +430,7 @@ private:
         }
     }
 
-    void applyYtpBackground(const orbita::stand::RunEvent& event)
+    void applyYtpBackground(const tu::RunEvent& event)
     {
         const auto mean = csvNumbersWithGaps(eventValue(event, "background_mean"));
         const auto minimum = csvNumbersWithGaps(eventValue(event, "background_min"));
@@ -442,7 +442,7 @@ private:
         }
     }
 
-    void applyYalkInitial(const orbita::stand::RunEvent& event)
+    void applyYalkInitial(const tu::RunEvent& event)
     {
         const int address = eventInt(event, "ulk_address");
         for (auto& channel : initial) {
@@ -459,7 +459,7 @@ private:
             .arg(index > 0 ? index : 0).arg(count).arg(address);
     }
 
-    void applyYalkAnalog(const orbita::stand::RunEvent& event)
+    void applyYalkAnalog(const tu::RunEvent& event)
     {
         const int address = eventInt(event, "ulk_address");
         const int index = findAddress(yalkAnalog.channels, address);
@@ -478,7 +478,6 @@ private:
         channel.maximumV = maximum;
         channel.verification = verificationFromVerdict(event.verdict);
         channel.reducedErrorPercent = eventDouble(event, "reduced_error_percent");
-        // A passed point remains a normal data point; show its error numerically.
         channel.warning = false;
         yalkAnalog.pointV = eventDouble(event, "command_v");
         yalkAnalog.actualReferenceV7 = eventDouble(event, "v7_v");
@@ -487,7 +486,7 @@ private:
             .arg(index + 1).arg(address);
     }
 
-    void applyYalkContact(const orbita::stand::RunEvent& event)
+    void applyYalkContact(const tu::RunEvent& event)
     {
         const int address = eventInt(event, "ulk_address");
         const int index = findAddress(yalkContact.channels, address);
@@ -514,7 +513,7 @@ private:
             .arg(yalkContact.pointV, 0, 'f', 1).arg(index + 1);
     }
 
-    void applyYalkOverload(const orbita::stand::RunEvent& event)
+    void applyYalkOverload(const tu::RunEvent& event)
     {
         yalkOverload.polarity = eventValue(event, "polarity");
         yalkOverload.stressedChannel = eventInt(event, "stressed_channel", yalkOverload.stressedChannel);
@@ -540,7 +539,7 @@ private:
             .arg(yalkOverload.polarity.isEmpty() ? QStringLiteral("±12 В") : yalkOverload.polarity);
     }
 
-    void applyYtp(const orbita::stand::RunEvent& event)
+    void applyYtp(const tu::RunEvent& event)
     {
         const QString stage = QString::fromStdString(event.stage);
         if (stage == QStringLiteral("OPERATOR")) {
@@ -576,7 +575,7 @@ private:
             .arg(ytp.resistancePointOhm, 0, 'f', 0).arg(channelNumber);
     }
 
-    void applyYvp(const orbita::stand::RunEvent& event)
+    void applyYvp(const tu::RunEvent& event)
     {
         if (QString::fromStdString(event.stage) != QStringLiteral("YVP_V7_POINT")) return;
         const int channelNumber = eventInt(event, "yvp_channel");
@@ -609,7 +608,7 @@ private:
         return -1;
     }
 
-    void collectResult(const orbita::stand::StepRunResult& step)
+    void collectResult(const tu::StepRunResult& step)
     {
         if (!step.children.empty()) {
             for (const auto& child : step.children) collectResult(child);
