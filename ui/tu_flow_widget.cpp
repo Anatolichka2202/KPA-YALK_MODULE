@@ -1,6 +1,6 @@
 #include "tu_flow_widget.h"
 
-#include "orbita_stand/scenario.h"
+#include "model/run_types.h"
 
 #include <QComboBox>
 #include <QDateTime>
@@ -51,9 +51,9 @@ QLabel* muted(const QString& text, QWidget* parent)
     return l;
 }
 
-QString verdictText(orbita::stand::RunVerdict verdict)
+QString verdictText(tu::RunVerdict verdict)
 {
-    using orbita::stand::RunVerdict;
+    using tu::RunVerdict;
     switch (verdict) {
     case RunVerdict::Ok: return QStringLiteral("НОРМА");
     case RunVerdict::Fail: return QStringLiteral("НЕ НОРМА");
@@ -65,22 +65,22 @@ QString verdictText(orbita::stand::RunVerdict verdict)
     return QStringLiteral("НЕ ВЫПОЛНЕНО");
 }
 
-QColor verdictColor(orbita::stand::RunVerdict verdict)
+QColor verdictColor(tu::RunVerdict verdict)
 {
-    using orbita::stand::RunVerdict;
+    using tu::RunVerdict;
     if (verdict == RunVerdict::Ok) return QColor(QStringLiteral("#158a48"));
     if (verdict == RunVerdict::Fail) return QColor(QStringLiteral("#c53939"));
     return QColor(QStringLiteral("#9a6a12"));
 }
 
-QString firstFailureDetail(const orbita::stand::ScenarioRunResult& result)
+QString firstFailureDetail(const tu::ScenarioRunResult& result)
 {
-    std::function<QString(const std::vector<orbita::stand::StepRunResult>&)> findFailure;
-    findFailure = [&findFailure](const std::vector<orbita::stand::StepRunResult>& steps) -> QString {
+    std::function<QString(const std::vector<tu::StepRunResult>&)> findFailure;
+    findFailure = [&findFailure](const std::vector<tu::StepRunResult>& steps) -> QString {
         for (const auto& step : steps) {
-            if (step.verdict == orbita::stand::RunVerdict::Error
-                || step.verdict == orbita::stand::RunVerdict::Aborted
-                || step.verdict == orbita::stand::RunVerdict::Incomplete) {
+            if (step.verdict == tu::RunVerdict::Error
+                || step.verdict == tu::RunVerdict::Aborted
+                || step.verdict == tu::RunVerdict::Incomplete) {
                 return QStringLiteral("Этап %1: %2")
                     .arg(QString::fromStdString(step.nodeId),
                          QString::fromStdString(step.message));
@@ -620,12 +620,12 @@ void TuFlowWidget::showNotReady(const QString& detail)
     back_->show();
 }
 
-void TuFlowWidget::completeRun(const orbita::stand::ScenarioRunResult& result,
+void TuFlowWidget::completeRun(const tu::ScenarioRunResult& result,
                                const QString& tuReportPath)
 {
-    if (result.verdict != orbita::stand::RunVerdict::Ok
-        && result.verdict != orbita::stand::RunVerdict::Fail
-        && result.verdict != orbita::stand::RunVerdict::Incomplete) {
+    if (result.verdict != tu::RunVerdict::Ok
+        && result.verdict != tu::RunVerdict::Fail
+        && result.verdict != tu::RunVerdict::Incomplete) {
         runStarted_ = false;
         completionShown_ = false;
         pages_->setCurrentWidget(readinessPage_);
@@ -693,14 +693,14 @@ void TuFlowWidget::showReport()
     pages_->setCurrentWidget(reportPage_);
 }
 
-void TuFlowWidget::populateReportRows(const orbita::stand::ScenarioRunResult& result)
+void TuFlowWidget::populateReportRows(const tu::ScenarioRunResult& result)
 {
     reportTable_->setRowCount(0);
 
-    std::function<const orbita::stand::StepRunResult*(
-        const std::vector<orbita::stand::StepRunResult>&, const char*)> findStep;
-    findStep = [&findStep](const std::vector<orbita::stand::StepRunResult>& steps,
-                           const char* nodeId) -> const orbita::stand::StepRunResult* {
+    std::function<const tu::StepRunResult*(
+        const std::vector<tu::StepRunResult>&, const char*)> findStep;
+    findStep = [&findStep](const std::vector<tu::StepRunResult>& steps,
+                           const char* nodeId) -> const tu::StepRunResult* {
         for (const auto& step : steps) {
             if (step.nodeId == nodeId) return &step;
             if (const auto* child = findStep(step.children, nodeId)) return child;
@@ -730,7 +730,7 @@ void TuFlowWidget::populateReportRows(const orbita::stand::ScenarioRunResult& re
 
     for (const ReportRow& spec : rows) {
         const auto* step = findStep(result.steps, spec.nodeId);
-        const auto verdict = step ? step->verdict : orbita::stand::RunVerdict::NotRun;
+        const auto verdict = step ? step->verdict : tu::RunVerdict::NotRun;
         const int row = reportTable_->rowCount();
         reportTable_->insertRow(row);
         auto* requirement = new QTableWidgetItem(QStringLiteral("ТУ %1 — %2")
