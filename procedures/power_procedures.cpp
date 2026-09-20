@@ -163,7 +163,10 @@ ProcedureResult readiness(const ScenarioStep& step, ProcedureContext& context,
             result.message = "УБСИ вышел на передачу данных после запуска ROKT ЯЛК";
         return result;
     } catch (...) {
-        if (context.stopRequested.load()) stand->safeStop();
+        // Сервисный skip может оставить источник включённым для следующего
+        // power-шага. Любая иная ошибка или STOP обязаны немедленно снять выход.
+        if (!context.skipRequested.load() || context.stopRequested.load())
+            stand->safeStop();
         throw;
     }
 }
