@@ -4,11 +4,15 @@
 #include "hardware/stand_config.h"
 #include "hardware/stand_hardware.h"
 #include "procedures/power_procedures.h"
+#include "procedures/yalk_procedures.h"
+#include "procedures/ytp_procedures.h"
+#include "procedures/yvp_procedures.h"
 #include "ui/test_page.h"
 
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
+#include <QMessageBox>
 #include <QMetaObject>
 #include <QPointer>
 #include <QThread>
@@ -23,6 +27,9 @@ namespace {
 const QString kUiScenarioCode = QStringLiteral("ULK_COMBINED_CHECK");
 const QString kBackendEquipmentCode = QStringLiteral("TU_BACKEND");
 const QString kSupplyEquipmentCode = QStringLiteral("AKIP_1160");
+const QString kIsdEquipmentCode = QStringLiteral("ISD");
+const QString kV7EquipmentCode = QStringLiteral("V7_78");
+const QString kGeneratorEquipmentCode = QStringLiteral("RIGOL_DG1022Z");
 
 std::filesystem::path dataPath(const QString& fileName)
 {
@@ -30,14 +37,12 @@ std::filesystem::path dataPath(const QString& fileName)
         .filePath(QStringLiteral("data/") + fileName);
     if (QFileInfo::exists(deployed))
         return std::filesystem::path(deployed.toStdWString());
-
 #ifdef TU_SOURCE_DIR
     const QString source = QDir(QString::fromUtf8(TU_SOURCE_DIR))
         .filePath(QStringLiteral("data/") + fileName);
     if (QFileInfo::exists(source))
         return std::filesystem::path(source.toStdWString());
 #endif
-
     throw std::runtime_error(
         QStringLiteral("Не найден data/%1").arg(fileName).toUtf8().toStdString());
 }
@@ -57,16 +62,21 @@ TuController::TuController(TestPage* page, QObject* parent)
     if (!page_) throw std::invalid_argument("TestPage is required");
 
     page_->setProductionMode(false);
-    page_->registerEquipmentRow(
-        kBackendEquipmentCode,
-        QStringLiteral("Маршрут и процедуры ТУ"),
-        QStringLiteral("локально"),
+    page_->registerEquipmentRow(kBackendEquipmentCode,
+        QStringLiteral("Маршрут и процедуры ТУ"), QStringLiteral("локально"),
         QStringLiteral("Проверка регистрации процедур"));
-    page_->registerEquipmentRow(
-        kSupplyEquipmentCode,
-        QStringLiteral("АКИП-1160/6 · питание УБСИ"),
-        QStringLiteral("COM из профиля стенда"),
-        QStringLiteral("Физический прибор ещё не проверен"));
+    page_->registerEquipmentRow(kSupplyEquipmentCode,
+        QStringLiteral("АКИП-1160/6 · питание УБСИ"), QStringLiteral("COM из профиля"),
+        QStringLiteral("Прибор ещё не проверен"));
+    page_->registerEquipmentRow(kIsdEquipmentCode,
+        QStringLiteral("ИСД · коммутация воздействий"), QStringLiteral("HTTP из профиля"),
+        QStringLiteral("Связь ещё не проверена"));
+    page_->registerEquipmentRow(kV7EquipmentCode,
+        QStringLiteral("В7-78/1 · эталонное измерение"), QStringLiteral("VISA"),
+        QStringLiteral("Прибор ещё не проверен"));
+    page_->registerEquipmentRow(kGeneratorEquipmentCode,
+        QStringLiteral("Rigol DG-1022Z · ЯВП"), QStringLiteral("VISA"),
+        QStringLiteral("Прибор ещё не проверен"));
 
     connect(page_, &TestPage::equipmentCheckRequested,
             this, [this] { checkBackendReadiness(); });
@@ -121,10 +131,16 @@ void TuController::loadHardware()
     try {
         const auto config = tu::hardware::loadStandConfig(
             dataPath(QStringLiteral("stand_ktma.yaml")));
-        const QString connection = QStringLiteral("%1 @ %2 бод")
-            .arg(QString::fromStdString(config.supply.portName))
-            .arg(config.supply.baudRate);
-        page_->setEquipmentConnection(kSupplyEquipmentCode, connection);
+        page_->setEquipmentConnection(kSupplyEquipmentCode,
+            QStringLiteral("%1 @ %2 бод")
+                .arg(QString::fromStdString(config.supply.portName)).arg(config.supply.baudRate));
+        page_->setEquipmentConnection(kIsdEquipmentCode,
+            QStringLiteral("http://%1:%2")
+                .arg(QString::fromStdString(config.isd.host)).arg(config.isd.port));
+        page_->setEquipmentConnection(kV7EquipmentCode,
+            QString::fromStdString(config.v7.resourceExpressions.front()));
+        page_->setEquipmentConnection(kGeneratorEquipmentCode,
+            QString::fromStdString(config.generator.resourceExpressions.front()));
         hardware_ = std::make_shared<tu::hardware::StandHardware>(config);
         hardwareLoaded_ = true;
         hardwareError_.clear();
@@ -139,90 +155,118 @@ void TuController::registerBuiltInProcedures()
 {
     if (!hardware_) return;
     tu::procedures::registerPowerProcedures(engine_, hardware_);
-    // Эти callbacks намеренно не имитируют ЯЛК/ЯТП/ЯВП: пока соответствующий
-    // вертикальный срез не перенесён, они только фиксируют INCOMPLETE.
-    tu::procedures::registerUnavailableProcedures(engine_);
+    tu::procedures::registerYalkProcedures(engine_, hardware_);
+
+    tu::procedures::OperatorConfirm confirm = [this](const std::string& title,
+                                                     const std::string& prompt) {
+        bool accepted = false;
+        const auto ask = [this, &accepted, title, prompt] {
+            accepted = QMessageBox::question(
+                page_, QString::fromUtf8(title.c_str()), QString::fromUtf8(prompt.c_str()),
+                QMessageBox::Ok | QMessageBox::Cancel, QMessageBox::Ok) == QMessageBox::Ok;
+        };
+        if (QThread::currentThread() == page_->thread()) ask();
+        else QMetaObject::invokeMethod(page_, ask, Qt::BlockingQueuedConnection);
+        return accepted;
+    };
+    tu::procedures::registerYtpProcedures(engine_, hardware_, std::move(confirm));
+    tu::procedures::registerYvpProcedures(engine_, hardware_);
 }
 
 void TuController::refreshBackendReadiness()
 {
+    const QStringList equipment{
+        kBackendEquipmentCode, kSupplyEquipmentCode, kIsdEquipmentCode,
+        kV7EquipmentCode, kGeneratorEquipmentCode};
+
     if (!scenarioLoaded_) {
         proceduresReady_ = false;
         page_->setScenarioInfo(kUiScenarioCode, false, false, {},
-                               QStringLiteral("Не удалось загрузить маршрут ТУ: %1")
-                                   .arg(scenarioError_));
+            QStringLiteral("Не удалось загрузить маршрут ТУ: %1").arg(scenarioError_));
         page_->setEquipmentStatus(kBackendEquipmentCode, false, scenarioError_);
         return;
     }
-
     if (!hardwareLoaded_) {
         proceduresReady_ = false;
-        page_->setScenarioInfo(
-            kUiScenarioCode, false, false, {},
+        page_->setScenarioInfo(kUiScenarioCode, false, false, {},
             QStringLiteral("Не удалось загрузить профиль стенда: %1").arg(hardwareError_));
         page_->setEquipmentStatus(kBackendEquipmentCode, false, hardwareError_);
-        page_->setEquipmentStatus(kSupplyEquipmentCode, false, hardwareError_);
         return;
     }
 
     const auto errors = engine_.validate(scenario_);
     proceduresReady_ = errors.empty();
-
-    page_->setScenarioInfo(
-        kUiScenarioCode,
-        true,
-        false,
-        {kBackendEquipmentCode, kSupplyEquipmentCode},
+    page_->setScenarioInfo(kUiScenarioCode, true, false, equipment,
         QStringLiteral("Маршрут %1 · версия %2")
             .arg(QString::fromStdString(scenario_.id),
                  QString::fromStdString(scenario_.version)));
 
-    if (proceduresReady_) {
-        page_->setEquipmentStatus(
-            kBackendEquipmentCode, true,
-            QStringLiteral(
-                "Power-slice подключён к реальному АКИП/ROKT; неперенесённые ЯЛК/ЯТП/ЯВП возвращают НЕПОЛНАЯ без воздействия"));
-    } else {
-        page_->setEquipmentStatus(
-            kBackendEquipmentCode, false,
-            QStringLiteral("Backend ещё не готов:\n%1").arg(joinedErrors(errors)));
-    }
-
-    if (hardwareChecked_) {
-        page_->setEquipmentStatus(
-            kSupplyEquipmentCode, true,
-            QStringLiteral("АКИП идентифицирован; выход подтверждён как OFF"));
-    }
+    page_->setEquipmentStatus(kBackendEquipmentCode, proceduresReady_,
+        proceduresReady_
+            ? QStringLiteral("Полный тракт зарегистрирован: питание · ЯЛК · ЯТП · ЯВП")
+            : QStringLiteral("Backend не готов:\n%1").arg(joinedErrors(errors)));
 }
 
 void TuController::checkBackendReadiness()
 {
-    page_->setEquipmentChecking(
-        kBackendEquipmentCode, QStringLiteral("Проверка регистрации процедур"));
-    page_->setEquipmentChecking(
-        kSupplyEquipmentCode, QStringLiteral("*IDN? и подтверждение OUTP OFF"));
     refreshBackendReadiness();
+    if (!proceduresReady_ || !hardware_) return;
 
-    if (!proceduresReady_ || !hardware_) {
-        if (!hardware_)
-            page_->setEquipmentStatus(kSupplyEquipmentCode, false, hardwareError_);
-        return;
-    }
+    hardwareChecked_ = false;
+    bool supplyOk = false, isdOk = false, v7Ok = false, generatorOk = false;
 
+    page_->setEquipmentChecking(kSupplyEquipmentCode,
+        QStringLiteral("*IDN? и подтверждение OUTP OFF"));
     try {
-        const std::string identity = hardware_->probeSupplyCold();
-        hardwareChecked_ = true;
-        page_->setEquipmentStatus(
-            kSupplyEquipmentCode, true,
+        const auto id = hardware_->probeSupplyCold();
+        supplyOk = true;
+        page_->setEquipmentStatus(kSupplyEquipmentCode, true,
             QStringLiteral("%1 · %2 · выход OFF")
                 .arg(QString::fromStdString(hardware_->config().supply.portName),
-                     QString::fromStdString(identity)));
+                     QString::fromStdString(id)));
     } catch (const std::exception& error) {
-        hardwareChecked_ = false;
-        if (hardware_) hardware_->safeStop();
-        page_->setEquipmentStatus(
-            kSupplyEquipmentCode, false, QString::fromUtf8(error.what()));
+        page_->setEquipmentStatus(kSupplyEquipmentCode, false, QString::fromUtf8(error.what()));
     }
+
+    page_->setEquipmentChecking(kIsdEquipmentCode, QStringLiteral("Пассивный HTTP probe"));
+    try {
+        const auto response = hardware_->probeIsd();
+        isdOk = true;
+        page_->setEquipmentStatus(kIsdEquipmentCode, true,
+            QStringLiteral("%1 · HTTP отвечает")
+                .arg(QString::fromStdString(hardware_->config().isd.host)));
+        Q_UNUSED(response);
+    } catch (const std::exception& error) {
+        page_->setEquipmentStatus(kIsdEquipmentCode, false, QString::fromUtf8(error.what()));
+    }
+
+    page_->setEquipmentChecking(kV7EquipmentCode, QStringLiteral("VISA *IDN?"));
+    try {
+        const auto id = hardware_->probeV7();
+        v7Ok = true;
+        page_->setEquipmentStatus(kV7EquipmentCode, true,
+            QStringLiteral("%1 · %2")
+                .arg(QString::fromStdString(hardware_->v7().resourceName()),
+                     QString::fromStdString(id)));
+    } catch (const std::exception& error) {
+        page_->setEquipmentStatus(kV7EquipmentCode, false, QString::fromUtf8(error.what()));
+    }
+
+    page_->setEquipmentChecking(kGeneratorEquipmentCode,
+        QStringLiteral("VISA *IDN? и OUTPUT OFF"));
+    try {
+        const auto id = hardware_->probeGenerator();
+        generatorOk = true;
+        page_->setEquipmentStatus(kGeneratorEquipmentCode, true,
+            QStringLiteral("%1 · %2 · выход OFF")
+                .arg(QString::fromStdString(hardware_->generator().resourceName()),
+                     QString::fromStdString(id)));
+    } catch (const std::exception& error) {
+        page_->setEquipmentStatus(kGeneratorEquipmentCode, false, QString::fromUtf8(error.what()));
+    }
+
+    hardwareChecked_ = supplyOk && isdOk && v7Ok && generatorOk;
+    if (!hardwareChecked_) hardware_->safeStop();
 }
 
 void TuController::startRun(const QString& scenarioCode,
@@ -230,42 +274,32 @@ void TuController::startRun(const QString& scenarioCode,
                             bool allowPartial)
 {
     Q_UNUSED(allowPartial);
-
     if (runThread_ || !scenarioLoaded_ || !proceduresReady_
         || !hardware_ || !hardwareChecked_) return;
     if (scenarioCode != kUiScenarioCode) return;
-
     const std::string serial = objectSerial.trimmed().toStdString();
     if (serial.empty()) return;
 
-    page_->setRunInProgress(true, QStringLiteral("Запуск маршрута ТУ"));
-
+    page_->setRunInProgress(true, QStringLiteral("Запуск полной проверки УБСИ"));
     runThread_ = QThread::create([this, serial] {
         auto result = engine_.run(
             scenario_, serial,
             [page = QPointer<TestPage>(page_)](const tu::RunEvent& event) {
                 if (!page) return;
-                QMetaObject::invokeMethod(
-                    page,
-                    [page, event] {
-                        if (page) page->setRunEvent(event);
-                    },
-                    Qt::QueuedConnection);
+                QMetaObject::invokeMethod(page, [page, event] {
+                    if (page) page->setRunEvent(event);
+                }, Qt::QueuedConnection);
             });
 
-        // Независимый safety net: даже если сценарий закончился ERROR/ABORTED и
-        // до power.off не дошёл, выход источника не остаётся включённым.
+        // Независимый safety net: Rigol OFF, ROKT stop, AKIP OFF даже при ERROR/ABORTED.
         if (hardware_) hardware_->safeStop();
 
         QPointer<TestPage> page(page_);
-        QMetaObject::invokeMethod(
-            page_,
-            [page, result = std::move(result)]() mutable {
-                if (!page) return;
-                page->setRunInProgress(false);
-                page->setRunResult(result);
-            },
-            Qt::QueuedConnection);
+        QMetaObject::invokeMethod(page_, [page, result = std::move(result)]() mutable {
+            if (!page) return;
+            page->setRunInProgress(false);
+            page->setRunResult(result);
+        }, Qt::QueuedConnection);
     });
 
     connect(runThread_, &QThread::finished, this, [this] {
