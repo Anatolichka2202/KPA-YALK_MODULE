@@ -24,6 +24,11 @@
 namespace tu::hardware {
 namespace {
 
+class FrameTimeout final : public std::runtime_error {
+public:
+    FrameTimeout() : std::runtime_error("Тайм-аут ожидания кадра адаптера УБСИ") {}
+};
+
 #ifdef _WIN32
 using Socket = SOCKET;
 constexpr Socket InvalidSocket = INVALID_SOCKET;
@@ -122,7 +127,8 @@ struct YalkReferenceLink::Impl
     Socket openSender()
     {
         Socket sender = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-        if (sender == InvalidSocket) throw std::runtime_error("Не удалось открыть командный UDP-сокет");
+        if (sender == InvalidSocket)
+            throw std::runtime_error("Не удалось открыть командный UDP-сокет");
         sockaddr_in source = endpoint(config.localHost, 0);
         if (::bind(sender, reinterpret_cast<const sockaddr*>(&source), sizeof(source)) != 0) {
             closeSocket(sender);
@@ -197,7 +203,8 @@ struct YalkReferenceLink::Impl
     std::vector<std::uint8_t> waitPayload(std::size_t requiredSize,
         std::chrono::milliseconds timeout, const Checkpoint& checkpoint)
     {
-        if (receiver == InvalidSocket) throw std::runtime_error("Поток адаптера УБСИ не запущен");
+        if (receiver == InvalidSocket)
+            throw std::runtime_error("Поток адаптера УБСИ не запущен");
         const auto deadline = std::chrono::steady_clock::now() + timeout;
         while (std::chrono::steady_clock::now() < deadline) {
             if (checkpoint) checkpoint();
@@ -229,7 +236,7 @@ struct YalkReferenceLink::Impl
             if (static_cast<std::size_t>(count) != requiredSize) continue;
             return {bytes.begin(), bytes.begin() + count};
         }
-        throw std::runtime_error("Тайм-аут ожидания кадра адаптера УБСИ");
+        throw FrameTimeout{};
     }
 
     std::vector<YalkChannelReading> yalkSnapshot(unsigned samples,
@@ -323,7 +330,7 @@ bool YalkReferenceLink::restartUntilReady(std::chrono::milliseconds timeout,
             if (remaining.count() <= 0) break;
             impl_->waitPayload(204, std::min(remaining, std::chrono::milliseconds(750)), checkpoint);
             return true;
-        } catch (const std::exception&) {
+        } catch (const FrameTimeout&) {
             impl_->stop();
         }
         const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -338,8 +345,12 @@ bool YalkReferenceLink::restartUntilReady(std::chrono::milliseconds timeout,
 bool YalkReferenceLink::waitNextReference(std::chrono::milliseconds timeout,
                                           const Checkpoint& checkpoint)
 {
-    try { impl_->waitPayload(204, timeout, checkpoint); return true; }
-    catch (const std::runtime_error&) { return false; }
+    try {
+        impl_->waitPayload(204, timeout, checkpoint);
+        return true;
+    } catch (const FrameTimeout&) {
+        return false;
+    }
 }
 
 bool YalkReferenceLink::startYalk(std::chrono::milliseconds configureSettle,
