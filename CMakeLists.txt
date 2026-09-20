@@ -1,10 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 project(UbsiTuMinimal VERSION 0.1.0 LANGUAGES CXX)
 
-# Pinned yaml-cpp still declares an old CMake baseline; CMake 4 requires this
-# compatibility floor. Keep it here so the build needs no local workaround.
 set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
-
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
@@ -32,11 +29,10 @@ add_library(tu_backend STATIC
 target_include_directories(tu_backend PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(tu_backend PUBLIC yaml-cpp)
 
-find_package(Qt6 REQUIRED COMPONENTS Widgets SerialPort)
+find_package(Qt6 REQUIRED COMPONENTS Widgets SerialPort Network)
 
-# Clean stand I/O. Only the pieces already verified on the KTMA stand are
-# present here: AKIP-1160/6 USB/COM control and the confirmed ROKT YALK
-# reference204 readiness sequence. No legacy Orbita runtime/plugin ABI is linked.
+# Direct clean hardware layer: no Orbita runtime/plugin ABI. VISA is resolved
+# dynamically from visa64.dll/visa32.dll at runtime, so no vendor .lib is needed.
 add_library(tu_hardware STATIC
     hardware/stand_config.cpp
     hardware/stand_config.h
@@ -44,12 +40,19 @@ add_library(tu_hardware STATIC
     hardware/akip1160.h
     hardware/yalk_reference_link.cpp
     hardware/yalk_reference_link.h
+    hardware/isd_router.cpp
+    hardware/isd_router.h
+    hardware/visa_instrument.cpp
+    hardware/visa_instrument.h
+    hardware/bench_instruments.cpp
+    hardware/bench_instruments.h
     hardware/stand_hardware.cpp
     hardware/stand_hardware.h
 )
 target_include_directories(tu_hardware PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(tu_hardware PUBLIC
     Qt6::SerialPort
+    Qt6::Network
     yaml-cpp
 )
 if(WIN32)
@@ -59,6 +62,12 @@ endif()
 add_library(tu_procedures STATIC
     procedures/power_procedures.cpp
     procedures/power_procedures.h
+    procedures/yalk_procedures.cpp
+    procedures/yalk_procedures.h
+    procedures/ytp_procedures.cpp
+    procedures/ytp_procedures.h
+    procedures/yvp_procedures.cpp
+    procedures/yvp_procedures.h
 )
 target_include_directories(tu_procedures PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(tu_procedures PUBLIC
@@ -66,8 +75,6 @@ target_link_libraries(tu_procedures PUBLIC
     tu_hardware
 )
 
-# Keep the approved/current drawing code as its own layer. The UI consumes only
-# clean tu::* run types; no Orbita target or compatibility layer is linked.
 add_library(tu_ui STATIC
     ui/test_page.cpp
     ui/test_page.h
@@ -87,13 +94,9 @@ target_link_libraries(tu_ui PUBLIC
     tu_backend
 )
 
-# Link-only smoke executable: built by the normal build so stale UI/backend
-# boundaries are caught immediately. It is intentionally not a CTest test,
-# because CI/headless machines do not need to launch a Qt platform plugin.
 add_executable(tu_ui_smoke tests/ui_smoke.cpp)
 target_link_libraries(tu_ui_smoke PRIVATE tu_ui)
 
-# Minimal desktop shell plus the first real hardware vertical slice.
 add_executable(tu_app
     app/main.cpp
     app/tu_controller.cpp
