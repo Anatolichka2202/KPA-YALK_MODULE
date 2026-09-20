@@ -18,6 +18,7 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <utility>
 
 namespace tu::hardware {
 namespace {
@@ -73,14 +74,24 @@ struct YalkReferenceLink::Impl {
     explicit Impl(YalkUdpConfig value) : config(std::move(value))
     {
         if (!config.port) throw std::invalid_argument("UDP-порт адаптера ЯЛК равен нулю");
-        remote = endpoint(config.remoteHost, config.port);
-        local = endpoint(config.localHost, config.port);
 #ifdef _WIN32
         WSADATA data{};
         if (WSAStartup(MAKEWORD(2, 2), &data) != 0)
             throw std::runtime_error("Не удалось инициализировать WinSock2");
         winsockStarted = true;
 #endif
+        try {
+            remote = endpoint(config.remoteHost, config.port);
+            local = endpoint(config.localHost, config.port);
+        } catch (...) {
+#ifdef _WIN32
+            if (winsockStarted) {
+                WSACleanup();
+                winsockStarted = false;
+            }
+#endif
+            throw;
+        }
     }
 
     ~Impl()
