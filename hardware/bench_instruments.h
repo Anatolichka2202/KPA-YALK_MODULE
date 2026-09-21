@@ -18,6 +18,7 @@ public:
     double readDcVoltage();
     double readAcVoltage();
     double readFrequency();
+    void reconnect();
     const std::string& resourceName() const;
 
 private:

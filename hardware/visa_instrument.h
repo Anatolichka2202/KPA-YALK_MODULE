@@ -23,6 +23,7 @@ public:
 
     void write(const std::string& command);
     std::string query(const std::string& command, unsigned delayMilliseconds = 45);
+    void reconnect();
     const std::string& resourceName() const;
 
 private:

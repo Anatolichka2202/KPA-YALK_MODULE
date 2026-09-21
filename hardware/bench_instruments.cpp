@@ -54,6 +54,7 @@ std::string V7Meter::identity() { return trim(instrument_.query("*IDN?")); }
 double V7Meter::readDcVoltage() { return parseNumber(instrument_.query(config_.dcVoltageCommand), "В7 DC voltage"); }
 double V7Meter::readAcVoltage() { return parseNumber(instrument_.query(config_.acVoltageCommand), "В7 AC voltage"); }
 double V7Meter::readFrequency() { return parseNumber(instrument_.query(config_.frequencyCommand), "В7 frequency"); }
+void V7Meter::reconnect() { instrument_.reconnect(); }
 const std::string& V7Meter::resourceName() const { return instrument_.resourceName(); }
 
 RigolGenerator::RigolGenerator(RigolConfig config)

@@ -175,6 +175,16 @@ std::string VisaInstrument::query(const std::string& command, unsigned delayMill
 #endif
 }
 
+void VisaInstrument::reconnect()
+{
+#ifdef _WIN32
+    impl_->close();
+    impl_->open();
+#else
+    throw std::runtime_error("VISA доступен только на Windows");
+#endif
+}
+
 const std::string& VisaInstrument::resourceName() const { return impl_->resource; }
 
 } // namespace tu::hardware

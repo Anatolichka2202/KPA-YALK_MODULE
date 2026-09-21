@@ -127,6 +127,8 @@ ProcedureResult run(const ScenarioStep& step, ProcedureContext& context,
 
     const double capacitancePf = number(step, "coupling_capacitance_pf");
     const unsigned settle = natural(step, "settle_ms", 2000);
+    const unsigned v7ReadRetries = natural(step, "v7_read_retries", 2);
+    const unsigned v7RetryDelay = natural(step, "v7_retry_delay_ms", 250);
     const double referenceFrequency = number(step, "reference_frequency_hz", 500.0);
     const double gainTolerance = number(step, "gain_tolerance_percent", 7.0);
     const double attenuationMinimum = number(step, "attenuation_min_db", 20.0);
@@ -205,12 +207,42 @@ ProcedureResult run(const ScenarioStep& step, ProcedureContext& context,
     };
 
     ProcedureResult result{RunVerdict::Ok, "ЯВП-8 соответствует проверенной методике V7/ИСД", {}};
+    const std::size_t totalPoints = channelCount * gains.size() * frequencies.size();
+    std::size_t completedPoints = 0;
+
+    auto readAcVoltage = [&](unsigned channel, double gain, double frequency) {
+        for (unsigned attempt = 0;; ++attempt) {
+            try {
+                return v7.readAcVoltage();
+            } catch (const std::exception& error) {
+                if (attempt >= v7ReadRetries) {
+                    throw std::runtime_error("В7: не удалось считать переменное напряжение "
+                        "после " + std::to_string(attempt + 1) + " попыток: " + error.what());
+                }
+                // После viRead timeout нельзя оставлять сеанс как есть: запоздалый
+                // ответ предыдущего запроса может быть принят за следующую точку.
+                v7.reconnect();
+                if (context.eventSink) {
+                    context.eventSink({std::chrono::system_clock::now(), step.id,
+                        "V7_RETRY",
+                        "Ошибка чтения В7; сеанс переподключён, повторяем без смены воздействия",
+                        RunVerdict::NotRun,
+                        {{"channel", std::to_string(channel)},
+                         {"gain_mv_per_pc", std::to_string(gain)},
+                         {"frequency_hz", std::to_string(frequency)},
+                         {"attempt", std::to_string(attempt + 1)},
+                         {"maximum_attempts", std::to_string(v7ReadRetries + 1)},
+                         {"error", error.what()}}});
+                }
+                waitChecked(context, v7RetryDelay);
+            }
+        }
+    };
+
     try {
         isd.probe();
         safeReset();
 
-        const std::size_t totalPoints = channelCount * gains.size() * frequencies.size();
-        std::size_t completedPoints = 0;
         for (unsigned channel = 0; channel < channelCount; ++channel) {
             context.checkpoint();
             for (const unsigned contact : inputMap[channel]) {
@@ -245,7 +277,7 @@ ProcedureResult run(const ScenarioStep& step, ProcedureContext& context,
                     generator.output(1, true);
                     waitChecked(context, settle);
 
-                    const double measuredRms = v7.readAcVoltage();
+                    const double measuredRms = readAcVoltage(channel + 1, gain, frequency);
                     std::string measuredFrequency;
                     std::string frequencyVerification = "unavailable_by_v7";
                     if (frequency >= 10.0) {
@@ -354,9 +386,32 @@ ProcedureResult run(const ScenarioStep& step, ProcedureContext& context,
             }
             safeReset();
         }
-    } catch (...) {
+    } catch (const StepSkipped&) {
         safeReset();
         throw;
+    } catch (const RunStopped&) {
+        safeReset();
+        throw;
+    } catch (const std::exception& error) {
+        safeReset();
+        result.verdict = RunVerdict::Error;
+        result.message = "Ошибка стенда ЯВП после " + std::to_string(completedPoints)
+            + " из " + std::to_string(totalPoints) + " точек: " + error.what();
+        if (context.eventSink) {
+            context.eventSink({std::chrono::system_clock::now(), step.id,
+                "YVP_ERROR", result.message, RunVerdict::Error,
+                {{"completed_points", std::to_string(completedPoints)},
+                 {"point_count", std::to_string(totalPoints)},
+                 {"partial_measurements_saved", "true"}}});
+        }
+        return result;
+    } catch (...) {
+        safeReset();
+        result.verdict = RunVerdict::Error;
+        result.message = "Неизвестная ошибка стенда ЯВП после "
+            + std::to_string(completedPoints) + " из "
+            + std::to_string(totalPoints) + " точек";
+        return result;
     }
 
     if (result.verdict == RunVerdict::Fail)
