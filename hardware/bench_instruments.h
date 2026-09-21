@@ -3,6 +3,7 @@
 #include "hardware/stand_config.h"
 #include "hardware/visa_instrument.h"
 
+#include <map>
 #include <memory>
 #include <string>
 
@@ -36,6 +37,9 @@ public:
     void setSine(unsigned channel, double frequencyHz, double amplitudeVpp,
                  double offsetVolts = 0.0);
     void output(unsigned channel, bool enabled);
+    // SCPI readback is diagnostic only: it confirms the generator's stored state,
+    // not voltage measured at the physical output.
+    std::map<std::string, std::string> readback(unsigned channel);
     void safeOff() noexcept;
     const std::string& resourceName() const;
 

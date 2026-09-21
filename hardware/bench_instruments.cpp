@@ -82,6 +82,27 @@ void RigolGenerator::output(unsigned channel, bool enabled)
     instrument_.write(prefix + (enabled ? "ON" : "OFF"));
 }
 
+std::map<std::string, std::string> RigolGenerator::readback(unsigned channel)
+{
+    if (channel < 1 || channel > 2) throw std::invalid_argument("Канал Rigol должен быть 1 или 2");
+
+    const std::string source = "SOUR" + std::to_string(channel) + ":";
+    const std::string output = "OUTP" + std::to_string(channel);
+    std::map<std::string, std::string> result;
+    const auto read = [&](const char* key, const std::string& command) {
+        try { result.emplace(key, trim(instrument_.query(command))); }
+        catch (const std::exception& error) { result.emplace(key, "ERROR: " + std::string(error.what())); }
+    };
+
+    read("appl", source + "APPL?");
+    read("volt", source + "VOLT?");
+    read("frequency", source + "FREQ?");
+    read("volt_unit", source + "VOLT:UNIT?");
+    read("output_load", output + ":LOAD?");
+    read("output", output + "?");
+    return result;
+}
+
 void RigolGenerator::safeOff() noexcept
 {
     try { output(1, false); } catch (...) {}

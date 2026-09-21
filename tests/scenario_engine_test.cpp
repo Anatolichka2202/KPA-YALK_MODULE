@@ -215,6 +215,21 @@ int main()
         require(argument(yvpComparatorStep, "afc_gain_mv_per_pcl") == "1",
                 "YVP AFC must use the documented K=1 method");
 
+        const auto yvpAbTrace = tu::loadScenarioYaml(
+            TU_SOURCE_DIR "/data/ubsi_yvp_channel3_ab_trace.yaml");
+        const auto& currentGainTrace = stepById(yvpAbTrace, "yvp_channel3_current_gain_trace");
+        require(argument(currentGainTrace, "tested_channels") == "3",
+                "YVP A/B trace must remain limited to channel 3");
+        require(argument(currentGainTrace, "diagnostic_gain_only") == "true",
+                "YVP A/B trace must not form an acceptance verdict");
+        require(argument(currentGainTrace, "generator_readback") == "true",
+                "YVP A/B trace must capture Rigol readback");
+        const auto& legacyGainTrace = stepById(yvpAbTrace, "yvp_channel3_legacy_k4_trace");
+        require(argument(legacyGainTrace, "frequencies_hz") == "250",
+                "YVP A/B trace must retain the 17.09 frequency");
+        require(argument(legacyGainTrace, "gain_4_input_vpp") == "1",
+                "YVP A/B trace must retain the 17.09 Rigol amplitude");
+
         tu::ScenarioEngine validationEngine;
         for (const auto& step : scenario.steps)
             validationEngine.registerProcedure(step.procedure, ok);

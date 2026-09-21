@@ -136,10 +136,16 @@ ProcedureResult run(const ScenarioStep& step, ProcedureContext& context,
     const unsigned v7ReadRetries = natural(step, "v7_read_retries", 2);
     const unsigned v7RetryDelay = natural(step, "v7_retry_delay_ms", 250);
     const double referenceFrequency = number(step, "reference_frequency_hz", 500.0);
+    const bool diagnosticGainOnly = argument(step, "diagnostic_gain_only") == "true";
+    const bool generatorReadback = argument(step, "generator_readback") == "true";
     const bool reducedSweep = !argument(step, "afc_gain_mv_per_pcl").empty();
     const double afcGain = reducedSweep ? number(step, "afc_gain_mv_per_pcl") : 0.0;
     if (reducedSweep && std::find(gains.begin(), gains.end(), afcGain) == gains.end())
         throw std::invalid_argument("ЯВП: afc_gain_mv_per_pcl отсутствует в gains_mv_per_pcl");
+    if (diagnosticGainOnly
+        && std::find(frequencies.begin(), frequencies.end(), referenceFrequency) == frequencies.end()) {
+        throw std::invalid_argument("ЯВП: diagnostic_gain_only требует reference_frequency_hz");
+    }
     const double gainTolerance = number(step, "gain_tolerance_percent", 7.0);
     const double attenuationMinimum = number(step, "attenuation_min_db", 20.0);
     const unsigned inputType = natural(step, "input_switch_type", 2);
@@ -216,9 +222,12 @@ ProcedureResult run(const ScenarioStep& step, ProcedureContext& context,
         disableContacts(inputType, activeInputContacts);
     };
 
-    ProcedureResult result{RunVerdict::Ok, "ЯВП-8 соответствует проверенной методике V7/ИСД", {}};
-    const std::size_t pointsPerChannel = reducedSweep
-        ? gains.size() - 1 + frequencies.size() : gains.size() * frequencies.size();
+    ProcedureResult result{RunVerdict::Ok, diagnosticGainOnly
+        ? "Инженерская проба ЯВП завершена; acceptance verdict не формируется"
+        : "ЯВП-8 соответствует проверенной методике V7/ИСД", {}};
+    const std::size_t pointsPerChannel = diagnosticGainOnly ? gains.size()
+        : (reducedSweep ? gains.size() - 1 + frequencies.size()
+                        : gains.size() * frequencies.size());
     const std::size_t totalPoints = testedChannels.size() * pointsPerChannel;
     std::size_t completedPoints = 0;
 
@@ -280,12 +289,15 @@ ProcedureResult run(const ScenarioStep& step, ProcedureContext& context,
                     isd.setSwitch(gainType, contact, true);
                 }
 
-                const double inputVpp = 2.0 / gain;
+                const double inputVpp = number(step, gainKey(gain) + "_input_vpp", 2.0 / gain);
+                if (!(inputVpp > 0.0))
+                    throw std::invalid_argument("ЯВП: input_vpp должен быть положительным");
                 const double chargePc = capacitancePf * inputVpp;
                 std::map<double,double> measuredGain;
 
-                const auto gainFrequencies = reducedSweep && std::abs(gain - afcGain) > 1e-9
-                    ? std::vector<double>{referenceFrequency} : frequencies;
+                const auto gainFrequencies = diagnosticGainOnly ? std::vector<double>{referenceFrequency}
+                    : (reducedSweep && std::abs(gain - afcGain) > 1e-9
+                        ? std::vector<double>{referenceFrequency} : frequencies);
                 for (const double frequency : gainFrequencies) {
                     context.checkpoint();
                     generator.setSine(1, frequency, inputVpp, 0.0);
@@ -293,6 +305,8 @@ ProcedureResult run(const ScenarioStep& step, ProcedureContext& context,
                     waitChecked(context, settle);
 
                     const double measuredRms = readAcVoltage(channel + 1, gain, frequency);
+                    const auto rigolState = generatorReadback
+                        ? generator.readback(1) : std::map<std::string, std::string>{};
                     std::string measuredFrequency;
                     std::string frequencyVerification = "unavailable_by_v7";
                     if (frequency >= 10.0) {
@@ -332,12 +346,16 @@ ProcedureResult run(const ScenarioStep& step, ProcedureContext& context,
                         {"acceptance","evaluated_after_gain_sweep"},
                         {"point_index",std::to_string(completedPoints)},
                         {"point_count",std::to_string(totalPoints)}};
+                    for (const auto& [key, value] : rigolState)
+                        raw.attributes.emplace("rigol_" + key, value);
                     if (context.eventSink) context.eventSink({
                         std::chrono::system_clock::now(), step.id, "YVP_V7_POINT",
                         raw.title, RunVerdict::NotRun, raw.attributes});
                     result.measurements.push_back(std::move(raw));
                     generatorOff();
                 }
+
+                if (diagnosticGainOnly) continue;
 
                 const auto ref = measuredGain.find(referenceFrequency);
                 if (ref == measuredGain.end())
