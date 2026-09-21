@@ -192,9 +192,34 @@ ProcedureResult isdBaseline(const ScenarioStep&, ProcedureContext& context,
         "Стартовый all-off baseline ИСД выполнен подтверждённой service-командой type=4", {}};
 }
 
+void resetYalkRoutesForRun(const ScenarioStep& step, ProcedureContext& context,
+                           const std::shared_ptr<hardware::StandHardware>& stand)
+{
+    const auto addresses = yalkAddresses(step);
+    journal(context, step,
+        "ЯЛК: адресно снимаю остаточные воздействия ИСД перед прогоном (без global type=4)");
+
+    // После аварийного завершения новый процесс не знает activeYalk_ старого процесса.
+    // Поэтому перед рабочим ЯЛК явно выключаем все 80 подтверждённых аналоговых
+    // маршрутов. Это также снимает type=1 фон, который мог остаться после перегрузки.
+    for (const unsigned address : addresses) {
+        context.checkpoint();
+        stand->isd().disableYalkOutput(address);
+    }
+
+    // Источники перегрузки type=3 выключаем адресно. Целевые type=3 здесь не
+    // перебираем: для обычного ЯЛК достаточно гарантированно снять общие ±12 В,
+    // а спорную методику перегрузки этим восстановлением не меняем.
+    stand->isd().setSwitch(3, 95, false);
+    stand->isd().setSwitch(3, 96, false);
+    waitChecked(context, natural(step, "preclean_settle_ms", 300));
+    journal(context, step, "ЯЛК: 80 аналоговых маршрутов и источники ±12 В сняты");
+}
+
 ProcedureResult start(const ScenarioStep& step, ProcedureContext& context,
                       const std::shared_ptr<hardware::StandHardware>& stand)
 {
+    resetYalkRoutesForRun(step, context, stand);
     journal(context, step, "ROKT: настраиваю поток ЯЛК reference204");
     const bool ready = stand->yalk().startYalk(
         std::chrono::milliseconds(natural(step, "configure_settle_ms", 500)),
