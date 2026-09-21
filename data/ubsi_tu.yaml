@@ -173,6 +173,8 @@ steps:
       channel_count: 8
       gains_mv_per_pcl: 0.25,0.5,1,2,4,8,32
       frequencies_hz: 2,6,20,500,1800,2000,4000
+      # АЧХ снимается на подтверждённом K=1; остальные КУ — только при 500 Гц.
+      afc_gain_mv_per_pcl: 1
       coupling_capacitance_pf: 1000
       settle_ms: 2000
       # Одиночный тайм-аут В7 не обрывает многочасовой прогон.

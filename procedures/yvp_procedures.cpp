@@ -136,6 +136,10 @@ ProcedureResult run(const ScenarioStep& step, ProcedureContext& context,
     const unsigned v7ReadRetries = natural(step, "v7_read_retries", 2);
     const unsigned v7RetryDelay = natural(step, "v7_retry_delay_ms", 250);
     const double referenceFrequency = number(step, "reference_frequency_hz", 500.0);
+    const bool reducedSweep = !argument(step, "afc_gain_mv_per_pcl").empty();
+    const double afcGain = reducedSweep ? number(step, "afc_gain_mv_per_pcl") : 0.0;
+    if (reducedSweep && std::find(gains.begin(), gains.end(), afcGain) == gains.end())
+        throw std::invalid_argument("ЯВП: afc_gain_mv_per_pcl отсутствует в gains_mv_per_pcl");
     const double gainTolerance = number(step, "gain_tolerance_percent", 7.0);
     const double attenuationMinimum = number(step, "attenuation_min_db", 20.0);
     const unsigned inputType = natural(step, "input_switch_type", 2);
@@ -213,7 +217,9 @@ ProcedureResult run(const ScenarioStep& step, ProcedureContext& context,
     };
 
     ProcedureResult result{RunVerdict::Ok, "ЯВП-8 соответствует проверенной методике V7/ИСД", {}};
-    const std::size_t totalPoints = testedChannels.size() * gains.size() * frequencies.size();
+    const std::size_t pointsPerChannel = reducedSweep
+        ? gains.size() - 1 + frequencies.size() : gains.size() * frequencies.size();
+    const std::size_t totalPoints = testedChannels.size() * pointsPerChannel;
     std::size_t completedPoints = 0;
 
     auto readAcVoltage = [&](unsigned channel, double gain, double frequency) {
@@ -278,7 +284,9 @@ ProcedureResult run(const ScenarioStep& step, ProcedureContext& context,
                 const double chargePc = capacitancePf * inputVpp;
                 std::map<double,double> measuredGain;
 
-                for (const double frequency : frequencies) {
+                const auto gainFrequencies = reducedSweep && std::abs(gain - afcGain) > 1e-9
+                    ? std::vector<double>{referenceFrequency} : frequencies;
+                for (const double frequency : gainFrequencies) {
                     context.checkpoint();
                     generator.setSine(1, frequency, inputVpp, 0.0);
                     generator.output(1, true);
@@ -349,6 +357,9 @@ ProcedureResult run(const ScenarioStep& step, ProcedureContext& context,
                     ? RunVerdict::Ok : RunVerdict::Fail;
                 gainResult.message = gainResult.verdict == RunVerdict::Ok ? "Норма" : "Вне допуска ±7%";
                 append(result, std::move(gainResult));
+
+                if (reducedSweep && std::abs(gain - afcGain) > 1e-9)
+                    continue;
 
                 for (const auto& [frequency,tolerance] :
                     std::vector<std::pair<double,double>>{{2,10},{6,5},{20,5},{1800,5},{2000,10}}) {
