@@ -1,0 +1,5 @@
+--cpu ARM7TDMI "lpc2300.o" "main.o" "flash.o" "fastport.o" "pinsel.o" "uart.o" "vic.o" 
+--strict --scatter "byte20YALK.sct" 
+--summary_stderr --info summarysizes --map --xref --callgraph --symbols 
+--info sizes --info totals --info unused --info veneers 
+ --list ".\byte20YALK.map" -o byte20YALK.axf

@@ -1,0 +1,26 @@
+*** Creating Trace Output File 'byte20YALK.tra' Ok.
+### Preparing for ADS-LD.
+### Creating ADS-LD Command Line
+### List of Objects: adding '"lpc2300.o"'
+### List of Objects: adding '"main.o"'
+### List of Objects: adding '"flash.o"'
+### List of Objects: adding '"fastport.o"'
+### List of Objects: adding '"pinsel.o"'
+### List of Objects: adding '"uart.o"'
+### List of Objects: adding '"vic.o"'
+### ADS-LD Command completed:
+--cpu ARM7TDMI "lpc2300.o" "main.o" "flash.o" "fastport.o" "pinsel.o" "uart.o" "vic.o" 
+--strict --scatter "byte20YALK.sct" 
+--summary_stderr --info summarysizes --map --xref --callgraph --symbols 
+--info sizes --info totals --info unused --info veneers 
+ --list ".\byte20YALK.map" -o byte20YALK.axf### Preparing Environment (PrepEnvAds)
+### ADS-LD Output File: 'byte20YALK.axf'
+### ADS-LD Command File: 'byte20YALK.lnp'
+### Checking for dirty Components...
+### Creating CmdFile 'byte20YALK.lnp', Handle=0x00000714
+### Writing '.lnp' file
+### ADS-LD Command file 'byte20YALK.lnp' is ready.
+### ADS-LD: About to start ADS-LD Thread.
+### ADS-LD: executed with 0 errors
+### Updating obj list
+### LDADS_file() completed.

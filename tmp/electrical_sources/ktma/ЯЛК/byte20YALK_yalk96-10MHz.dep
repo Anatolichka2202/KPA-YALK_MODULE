@@ -1,0 +1,30 @@
+Dependencies for Project 'byte20YALK', Target 'yalk96-10MHz': (DO NOT MODIFY !)
+F (.\LPC2300.s)(0x5D9C9C95)(--cpu ARM7TDMI -g --apcs=interwork -I C:\Keil\ARM\RV31\INC -I C:\Keil\ARM\CMSIS\Include -I C:\Keil\ARM\Inc\Philips --list "LPC2300.lst" --xref -o "LPC2300.o" --depend "LPC2300.d")
+F (.\main.cpp)(0x6A0E0B05)(--cpp -c --cpu ARM7TDMI -g -O0 -Otime --apcs=interwork -I C:\Keil\ARM\RV31\INC -I C:\Keil\ARM\CMSIS\Include -I C:\Keil\ARM\Inc\Philips -o "main.o" --omf_browse "main.crf" --depend "main.d")
+I (my_lib\fastport.h)(0x4DE35EBC)
+I (my_lib\type.h)(0x4DD0D1D8)
+I (my_lib\pinsel.h)(0x4DD63DE8)
+I (my_lib\peripheral.h)(0x4DDCA88A)
+I (C:\Keil\ARM\Inc\Philips\LPC23xx.h)(0x5086E13E)
+I (my_lib\vic.h)(0x4DEE06B0)
+I (my_lib\uart.h)(0x4E241D9C)
+I (my_lib\flash.h)(0x4EAFB202)
+F (.\my_lib\Flash.cpp)(0x4EAEC576)(--cpp -c --cpu ARM7TDMI -g -O0 -Otime --apcs=interwork -I C:\Keil\ARM\RV31\INC -I C:\Keil\ARM\CMSIS\Include -I C:\Keil\ARM\Inc\Philips -o "flash.o" --omf_browse "flash.crf" --depend "flash.d")
+I (my_lib\Flash.H)(0x4EAFB202)
+I (my_lib\main.H)(0x4E79CFDE)
+F (.\my_lib\fastport.cpp)(0x4DDCB082)(--cpp -c --cpu ARM7TDMI -g -O0 -Otime --apcs=interwork -I C:\Keil\ARM\RV31\INC -I C:\Keil\ARM\CMSIS\Include -I C:\Keil\ARM\Inc\Philips -o "fastport.o" --omf_browse "fastport.crf" --depend "fastport.d")
+I (my_lib\fastport.h)(0x4DE35EBC)
+I (my_lib\type.h)(0x4DD0D1D8)
+F (.\my_lib\pinsel.cpp)(0x4DD63E12)(--cpp -c --cpu ARM7TDMI -g -O0 -Otime --apcs=interwork -I C:\Keil\ARM\RV31\INC -I C:\Keil\ARM\CMSIS\Include -I C:\Keil\ARM\Inc\Philips -o "pinsel.o" --omf_browse "pinsel.crf" --depend "pinsel.d")
+I (my_lib\pinsel.h)(0x4DD63DE8)
+I (my_lib\peripheral.h)(0x4DDCA88A)
+I (my_lib\type.h)(0x4DD0D1D8)
+I (C:\Keil\ARM\Inc\Philips\LPC23xx.h)(0x5086E13E)
+F (.\my_lib\uart.cpp)(0x4EA52394)(--cpp -c --cpu ARM7TDMI -g -O0 -Otime --apcs=interwork -I C:\Keil\ARM\RV31\INC -I C:\Keil\ARM\CMSIS\Include -I C:\Keil\ARM\Inc\Philips -o "uart.o" --omf_browse "uart.crf" --depend "uart.d")
+I (my_lib\uart.h)(0x4E241D9C)
+I (my_lib\peripheral.h)(0x4DDCA88A)
+I (my_lib\type.h)(0x4DD0D1D8)
+I (C:\Keil\ARM\Inc\Philips\LPC23xx.h)(0x5086E13E)
+F (.\my_lib\vic.cpp)(0x4FC8E408)(--cpp -c --cpu ARM7TDMI -g -O0 -Otime --apcs=interwork -I C:\Keil\ARM\RV31\INC -I C:\Keil\ARM\CMSIS\Include -I C:\Keil\ARM\Inc\Philips -o "vic.o" --omf_browse "vic.crf" --depend "vic.d")
+I (my_lib\vic.h)(0x4DEE06B0)
+I (my_lib\type.h)(0x4DD0D1D8)

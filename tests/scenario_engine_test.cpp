@@ -66,6 +66,12 @@ int main()
         require(scenario.steps.size() == expectedSteps.size(), "TU route step count changed");
         for (std::size_t index = 0; index < expectedSteps.size(); ++index)
             require(scenario.steps[index].id == expectedSteps[index], "TU route order changed");
+
+        const auto& power = stepById(scenario, "supply_range");
+        require(argument(power, "voltage_points_v") == "24,27,35",
+                "power range points changed");
+        require(argument(power, "run_survival") == "false",
+                "short TU run must skip long 19/37 V holds");
         require(scenario.steps.front().procedure == "power.readiness",
                 "TU run must start with UБСИ power readiness, not an active ISD command");
 
@@ -109,6 +115,7 @@ int main()
         const auto& reference = stepById(scenario, "yalk_reference_voltage");
         require(argument(reference, "nominal_v") == "6.2", "YALK reference nominal changed");
         require(argument(reference, "tolerance_v") == "0.03", "YALK reference tolerance changed");
+        require(argument(reference, "sample_count") == "16", "YALK reference sample count changed");
 
         const auto& ytp = stepById(scenario, "ytp_channels");
         require(argument(ytp, "resistance_points_ohm") == "0,120,240",

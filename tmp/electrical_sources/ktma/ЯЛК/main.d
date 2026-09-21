@@ -1,0 +1,9 @@
+main.o: main.cpp
+main.o: my_lib\fastport.h
+main.o: my_lib\type.h
+main.o: my_lib\pinsel.h
+main.o: my_lib\peripheral.h
+main.o: C:\Keil\ARM\Inc\Philips\LPC23xx.h
+main.o: my_lib\vic.h
+main.o: my_lib\uart.h
+main.o: my_lib\flash.h

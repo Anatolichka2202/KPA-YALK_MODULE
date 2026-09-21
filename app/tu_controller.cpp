@@ -1,4 +1,5 @@
 #include "tu_controller.h"
+#include "tu_report_writer.h"
 
 #include "backend/scenario_yaml.h"
 #include "hardware/stand_config.h"
@@ -482,6 +483,16 @@ void TuController::startRun(const QString& scenarioCode,
             yalkCalibrationValid_ = false;
         }
 
+        QString reportPath;
+        try {
+            reportPath = writeTuReport(result);
+        } catch (const std::exception& error) {
+            result.verdict = tu::combineVerdicts(result.verdict, tu::RunVerdict::Error);
+            result.events.push_back({std::chrono::system_clock::now(), "report", "ERROR",
+                std::string("Не удалось сформировать отчёт: ") + error.what(),
+                tu::RunVerdict::Error, {}});
+        }
+
         // The scenario/report keeps canonical node IDs. Only the UI result copy
         // maps the renamed contact step to the existing contact requirement.
         auto uiResult = result;
@@ -489,11 +500,11 @@ void TuController::startRun(const QString& scenarioCode,
 
         QPointer<TestPage> page(page_);
         QPointer<RunJournalOverlay> journal(journal_);
-        QMetaObject::invokeMethod(page_, [page, journal, result = std::move(uiResult)]() mutable {
+        QMetaObject::invokeMethod(page_, [page, journal, result = std::move(uiResult), reportPath]() mutable {
             if (!page) return;
             if (journal) journal->finishRun();
             page->setRunInProgress(false);
-            page->setRunResult(result);
+            page->setRunResult(result, reportPath);
         }, Qt::QueuedConnection);
     });
 

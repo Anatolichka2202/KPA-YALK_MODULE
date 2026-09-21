@@ -105,6 +105,8 @@ add_executable(tu_app
     app/main.cpp
     app/tu_controller.cpp
     app/tu_controller.h
+    app/tu_report_writer.cpp
+    app/tu_report_writer.h
 )
 target_include_directories(tu_app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(tu_app PRIVATE

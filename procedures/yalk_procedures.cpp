@@ -285,21 +285,16 @@ ProcedureResult initial(const ScenarioStep& step, ProcedureContext& context,
                              {"yalk_v",std::to_string(volts)},
                              {"signal",reading.contact?"1":"0"}};
 
-        auto signal = measurement("ubsi.yalk.initial.signal." + std::to_string(address),
-            "ЯЛК адрес " + std::to_string(address) + ": исходный сигнал",
-            1.0, reading.contact ? 1.0 : 0.0, 1.0, 1.0, "лог.");
-
-        const RunVerdict channelVerdict = combineVerdicts(analog.verdict, signal.verdict);
         auto eventData = analog.attributes;
         eventData["channel_index"] = std::to_string(channelIndex + 1);
         eventData["channel_count"] = std::to_string(addresses.size());
-        eventData["expected_signal"] = "1";
         eventData["analog_ok"] = analog.verdict == RunVerdict::Ok ? "1" : "0";
-        eventData["signal_ok"] = signal.verdict == RunVerdict::Ok ? "1" : "0";
-        publish(context, step, "YALK_INITIAL", analog.title, channelVerdict, std::move(eventData));
+        // 1.1.4.10 нормирует только обнаружение обрыва напряжением ниже 0 В.
+        // Сигнальный бит сохраняем как диагностику, но не добавляем к verdict.
+        publish(context, step, "YALK_INITIAL", analog.title, analog.verdict,
+                std::move(eventData));
 
         append(result, std::move(analog));
-        append(result, std::move(signal));
     }
     return result;
 }
@@ -615,19 +610,38 @@ ProcedureResult reference(const ScenarioStep& step, ProcedureContext& context,
     context.checkpoint();
     const double nominal = number(step, "nominal_v", 6.2);
     const double tolerance = number(step, "tolerance_v", 0.03);
-    journal(context, step, "В7: измеряю эталонное напряжение 6,2 В");
+    journal(context, step, "ЯЛК: измеряю эталон 6,2 В по В7 и адресу 98");
 
-    const double volts = stand->v7().readDcVoltage();
-    ProcedureResult result{RunVerdict::Ok, "Проверено эталонное напряжение по В7", {}};
+    const double v7Volts = stand->v7().readDcVoltage();
+    const auto frame = stand->yalk().readYalkSnapshot(
+        natural(step, "sample_count", 16), std::chrono::milliseconds(3000),
+        [&context] { context.checkpoint(); });
+    publishLiveFrame(context, step, frame, "reference204 с эталоном ЯЛК");
+    const auto& reference98 = frame.at(97);
+    const double adapterVolts = yalkVolts(reference98.codeMean, context);
+
+    ProcedureResult result{RunVerdict::Ok,
+        "Проверено эталонное напряжение ЯЛК и его значение в телеметрии", {}};
     auto value = measurement("ubsi.reference_6v2", "Эталонное напряжение по В7",
-        nominal, volts, nominal - tolerance, nominal + tolerance, "В");
-    value.attributes = {{"v7_v",std::to_string(volts)},
+        nominal, v7Volts, nominal - tolerance, nominal + tolerance, "В");
+    value.attributes = {{"v7_v",std::to_string(v7Volts)},
                         {"nominal_v",std::to_string(nominal)},
-                        {"source","v7_reference"},
-                        {"adapter_address_98","not_used_unconfirmed"}};
+                        {"source","v7_reference"}};
     publishMeasurement(context, step, value);
     append(result, std::move(value));
-    journal(context, step, "В7: эталон=" + std::to_string(volts) + " В");
+
+    auto telemetry = measurement("ubsi.reference_6v2.adapter",
+        "Эталон 6,2 В в телеметрии ЯЛК, адрес 98",
+        v7Volts, adapterVolts, v7Volts - tolerance, v7Volts + tolerance, "В");
+    telemetry.attributes = {{"ulk_address","98"},
+                            {"raw",std::to_string(reference98.rawMean)},
+                            {"analog_code",std::to_string(reference98.codeMean)},
+                            {"yalk_v",std::to_string(adapterVolts)},
+                            {"v7_v",std::to_string(v7Volts)}};
+    publishMeasurement(context, step, telemetry);
+    append(result, std::move(telemetry));
+    journal(context, step, "Эталон: В7=" + std::to_string(v7Volts)
+        + " В; ЯЛК[98]=" + std::to_string(adapterVolts) + " В");
     return result;
 }
 

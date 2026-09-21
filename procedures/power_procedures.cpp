@@ -42,6 +42,15 @@ unsigned natural(const ScenarioStep& step, const std::string& key, unsigned fall
     return static_cast<unsigned>(value);
 }
 
+bool flag(const ScenarioStep& step, const std::string& key, bool fallback = false)
+{
+    const auto text = argument(step, key);
+    if (text.empty()) return fallback;
+    if (text == "true" || text == "1" || text == "yes") return true;
+    if (text == "false" || text == "0" || text == "no") return false;
+    throw std::invalid_argument("Некорректный логический аргумент " + key);
+}
+
 std::vector<double> numbers(const ScenarioStep& step, const std::string& key)
 {
     std::vector<double> result;
@@ -179,8 +188,9 @@ ProcedureResult supplyRange(const ScenarioStep& step, ProcedureContext& context,
 
     const auto points = numbers(step, "voltage_points_v");
     if (points.empty()) throw std::invalid_argument("Для проверки питания нужны voltage_points_v");
-    const auto survival = numbers(step, "survival_points_v");
-    const auto durations = numbers(step, "survival_seconds");
+    const bool runSurvival = flag(step, "run_survival", true);
+    const auto survival = runSurvival ? numbers(step, "survival_points_v") : std::vector<double>{};
+    const auto durations = runSurvival ? numbers(step, "survival_seconds") : std::vector<double>{};
     if (survival.size() != durations.size())
         throw std::invalid_argument("survival_points_v и survival_seconds должны совпадать");
 
