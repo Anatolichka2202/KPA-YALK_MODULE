@@ -61,7 +61,6 @@ int main()
             "yalk_calibration",
             "yalk_initial",
             "yalk_channels",
-            "yalk_contact_thresholds",
             "yalk_overload",
             "yalk_reference_voltage",
             "yalk_cleanup",
@@ -101,22 +100,18 @@ int main()
                 "YALK preparation must not depend on global ISD type=4");
 
         const auto& yalk = stepById(scenario, "yalk_channels");
-        require(yalk.procedure == "yalk.channels", "YALK analog procedure changed");
+        require(yalk.procedure == "yalk.combined", "YALK combined procedure changed");
         require(argument(yalk, "addresses") == "1-28,32-43,45-70,74-87",
                 "YALK verified address map changed");
         require(argument(yalk, "point_volts") == "0,3.1,6.2",
-                "YALK analog points changed");
-
-        const auto& contacts = stepById(scenario, "yalk_contact_thresholds");
-        require(contacts.procedure == "yalk.contacts",
-                "YALK signal field must use the confirmed contact-threshold procedure");
-        require(argument(contacts, "addresses") == "1-28,32-43,45-70,74-87",
-                "YALK signal address map changed");
-        require(argument(contacts, "contact_points_v") == "0,0.8,2.5",
+            "YALK analog points changed");
+        require(argument(yalk, "combined_points_v") == "0,0.8,2.4,3.1,6.2",
+                "YALK combined point order changed");
+        require(argument(yalk, "contact_points_v") == "0,0.8,2.4",
                 "YALK contact threshold points changed");
-        require(argument(contacts, "signal_expectations") == "0,0,1",
+        require(argument(yalk, "signal_expectations") == "0,0,1",
                 "YALK signal truth table changed");
-        require(argument(contacts, "verdict_policy") == "formal_norma",
+        require(argument(yalk, "verdict_policy") == "formal_norma",
                 "YALK production contact policy must preserve formal NORMA");
 
         const auto strictContact = tu::procedures::detail::yalkContactVerdict(

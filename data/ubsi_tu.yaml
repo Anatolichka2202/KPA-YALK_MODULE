@@ -82,30 +82,19 @@ steps:
       full_scale_v: 6.2
 
   - id: yalk_channels
-    title: Аналоговые каналы ЯЛК · 0 / 3,1 / 6,2 В
+    title: Аналоговые и контактные каналы ЯЛК · единый проход 0 / 0,8 / 2,4 / 3,1 / 6,2 В
     tu: 1.1.4.1, 1.1.4.14
-    procedure: yalk.channels
+    procedure: yalk.combined
     args:
       addresses: 1-28,32-43,45-70,74-87
+      combined_points_v: 0,0.8,2.4,3.1,6.2
       point_volts: 0,3.1,6.2
-      sample_count: 16
-      settle_ms: 150
-      channel_off_settle_ms: 1000
-      full_scale_v: 6.2
-      tolerance_percent_fs: 0.5
-
-  - id: yalk_contact_thresholds
-    title: Контактные пороги ЯЛК · 0 / 0,8 / 2,5 В → 0 / 0 / 1
-    tu: 1.1.4.1
-    procedure: yalk.contacts
-    args:
-      addresses: 1-28,32-43,45-70,74-87
-      contact_points_v: 0,0.8,2.5
+      contact_points_v: 0,0.8,2.4
       signal_expectations: 0,0,1
       verdict_policy: formal_norma
       sample_count: 16
       settle_ms: 150
-      channel_off_settle_ms: 1000
+      contact_2_4_settle_ms: 250
       full_scale_v: 6.2
       tolerance_percent_fs: 0.5
 

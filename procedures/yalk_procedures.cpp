@@ -478,6 +478,117 @@ ProcedureResult channelSweep(const ScenarioStep& step, ProcedureContext& context
     return result;
 }
 
+ProcedureResult combinedSweep(const ScenarioStep& step, ProcedureContext& context,
+                              const std::shared_ptr<hardware::StandHardware>& stand)
+{
+    const auto addresses = yalkAddresses(step);
+    const auto points = numbers(step, "combined_points_v");
+    const auto analogPoints = numbers(step, "point_volts");
+    const auto contactPoints = numbers(step, "contact_points_v");
+    const auto expected = numbers(step, "signal_expectations");
+    if (points.empty() || expected.size() != contactPoints.size())
+        throw std::invalid_argument("Не заполнены объединённые точки ЯЛК");
+    const auto includes = [](const std::vector<double>& values, double value) {
+        return std::any_of(values.begin(), values.end(), [value](double candidate) {
+            return std::abs(candidate - value) < 1e-9;
+        });
+    };
+    for (const double point : analogPoints)
+        if (!includes(points, point)) throw std::invalid_argument("Аналоговая точка отсутствует в порядке ЯЛК");
+    for (const double point : contactPoints)
+        if (!includes(points, point)) throw std::invalid_argument("Контактная точка отсутствует в порядке ЯЛК");
+
+    const auto policy = detail::yalkContactVerdictPolicy(argument(step, "verdict_policy", "strict"));
+    const unsigned samples = natural(step, "sample_count", 16);
+    const unsigned settle = natural(step, "settle_ms", 150);
+    const unsigned contact24Settle = natural(step, "contact_2_4_settle_ms", settle);
+    const double fullScale = number(step, "full_scale_v", 6.2);
+    const double tolerance = fullScale * number(step, "tolerance_percent_fs", 0.5) / 100.0;
+    ProcedureResult result{RunVerdict::Ok, "Проверены аналоговые и контактные точки 80 адресов ЯЛК", {}};
+
+    for (std::size_t channelIndex = 0; channelIndex < addresses.size(); ++channelIndex) {
+        const unsigned address = addresses[channelIndex];
+        bool outputEnabled = false;
+        try {
+            std::size_t analogIndex = 0;
+            std::size_t contactIndex = 0;
+            journal(context, step, "ЯЛК: объединённый проход канала " + std::to_string(channelIndex + 1)
+                + "/" + std::to_string(addresses.size()) + ", адрес " + std::to_string(address));
+            for (std::size_t sequenceIndex = 0; sequenceIndex < points.size(); ++sequenceIndex) {
+                context.checkpoint();
+                const double command = points[sequenceIndex];
+                const bool analogPoint = includes(analogPoints, command);
+                const bool contactPoint = includes(contactPoints, command);
+                const unsigned pointSettle = contactPoint && std::abs(command - 2.4) < 1e-9
+                    ? contact24Settle : settle;
+                stand->isd().setYalkVoltage(address, command);
+                outputEnabled = true;
+                waitChecked(context, pointSettle);
+                const double reference = stand->v7().readDcVoltage();
+                const auto frame = stand->yalk().readYalkSnapshot(samples, std::chrono::milliseconds(3000),
+                    [&context] { context.checkpoint(); });
+                publishLiveFrame(context, step, frame, "Свежий reference204 · адрес "
+                    + std::to_string(address) + " · " + std::to_string(command) + " В");
+                const auto& reading = frame.at(address - 1);
+                const double volts = yalkVolts(reading.codeMean, context);
+                const double absolute = std::abs(volts - reference);
+                const auto attributes = [&](std::size_t index, std::size_t count) {
+                    return std::map<std::string,std::string>{{"section","YALK"},
+                        {"channel_index",std::to_string(channelIndex + 1)}, {"channel_count",std::to_string(addresses.size())},
+                        {"ulk_address",std::to_string(address)}, {"command_v",std::to_string(command)},
+                        {"point_index",std::to_string(index)}, {"point_count",std::to_string(count)},
+                        {"sequence_index",std::to_string(sequenceIndex + 1)}, {"sequence_count",std::to_string(points.size())},
+                        {"scan_order","channel_major_combined"}, {"v7_v",std::to_string(reference)},
+                        {"yalk_v",std::to_string(volts)}, {"raw",std::to_string(reading.rawMean)},
+                        {"analog_code",std::to_string(reading.codeMean)}, {"signal",reading.contact ? "1" : "0"}};
+                };
+                if (analogPoint) {
+                    ++analogIndex;
+                    auto analog = measurement("ubsi.yalk.channel." + std::to_string(address) + "." + std::to_string(analogIndex - 1),
+                        "ЯЛК адрес " + std::to_string(address) + " · " + std::to_string(command) + " В",
+                        reference, volts, reference - tolerance, reference + tolerance, "В");
+                    analog.attributes = attributes(analogIndex, analogPoints.size());
+                    analog.attributes["absolute_error_v"] = std::to_string(absolute);
+                    analog.attributes["reduced_error_percent"] = std::to_string(absolute / fullScale * 100.0);
+                    publishMeasurement(context, step, analog);
+                    append(result, std::move(analog));
+                }
+                if (contactPoint) {
+                    const auto position = std::find_if(contactPoints.begin(), contactPoints.end(), [command](double candidate) {
+                        return std::abs(candidate - command) < 1e-9;
+                    });
+                    const std::size_t expectedIndex = static_cast<std::size_t>(position - contactPoints.begin());
+                    ++contactIndex;
+                    const bool expectedSignal = expected[expectedIndex] >= 0.5;
+                    const auto decision = detail::yalkContactVerdict(policy, expectedSignal, reading.contact);
+                    auto signal = measurement("ubsi.yalk.signal." + std::to_string(address) + "." + std::to_string(contactIndex - 1),
+                        "ЯЛК адрес " + std::to_string(address) + ": контакт при " + std::to_string(command) + " В",
+                        expectedSignal ? 1.0 : 0.0, reading.contact ? 1.0 : 0.0,
+                        expectedSignal ? 1.0 : 0.0, expectedSignal ? 1.0 : 0.0, "лог.");
+                    signal.verdict = decision.acceptanceVerdict;
+                    signal.message = signal.verdict == RunVerdict::Ok ? "Норма" : "Значение вне допуска";
+                    signal.attributes = attributes(contactIndex, contactPoints.size());
+                    signal.attributes["raw_signal"] = decision.rawSignal ? "1" : "0";
+                    signal.attributes["expected_signal"] = decision.expectedSignal ? "1" : "0";
+                    signal.attributes["raw_match"] = decision.rawMatch ? "true" : "false";
+                    signal.attributes["formal_override"] = decision.formalOverride ? "true" : "false";
+                    publishMeasurement(context, step, signal);
+                    append(result, std::move(signal));
+                }
+            }
+            journal(context, step, "ИСД: снимаю воздействие с адреса " + std::to_string(address)
+                + "; встроенная двухфазная пауза ИСД сохранена");
+            stand->isd().disableYalkOutput(address);
+            outputEnabled = false;
+        } catch (...) {
+            if (outputEnabled) { try { stand->isd().disableYalkOutput(address); } catch (...) {} }
+            stand->isd().safeStop();
+            throw;
+        }
+    }
+    return result;
+}
+
 ProcedureResult overload(const ScenarioStep& step, ProcedureContext& context,
                          const std::shared_ptr<hardware::StandHardware>& stand)
 {
@@ -733,6 +844,8 @@ void registerYalkProcedures(ScenarioEngine& engine,
         return channelSweep(s,c,hardware,false); });
     engine.registerProcedure("yalk.contacts", [hardware](const auto& s, auto& c) {
         return channelSweep(s,c,hardware,true); });
+    engine.registerProcedure("yalk.combined", [hardware](const auto& s, auto& c) {
+        return combinedSweep(s,c,hardware); });
     engine.registerProcedure("yalk.overload", [hardware](const auto& s, auto& c) {
         return overload(s,c,hardware); });
     engine.registerProcedure("yalk.reference", [hardware](const auto& s, auto& c) {

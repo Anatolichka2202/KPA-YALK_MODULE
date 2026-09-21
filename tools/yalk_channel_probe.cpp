@@ -159,7 +159,9 @@ int main(int argc, char** argv)
             // One post-switch frame preserves the unaveraged 16-bit word.
             const auto frame = stand.yalk().readYalkSnapshot(
                 1, std::chrono::milliseconds(3000), {});
-            stand.isd().disableYalkOutput(channel);
+            // Keep this one physical route connected through the whole point
+            // sequence. This is the condition to be proven before merging the
+            // analog and contact sweeps into one channel-major production pass.
 
             const double zero = frame.at(96).codeMean;
             const double full = frame.at(98).codeMean;
@@ -186,23 +188,30 @@ int main(int argc, char** argv)
                 + " code99=" + std::to_string(full)
                 + " yalk_v=" + std::to_string(volts)
                 + " error_v=" + std::to_string(std::abs(volts - v7))
-                + " freshness=post_switch_reference204");
+                + " freshness=post_switch_reference204_continuous_route");
         }
         const auto offStarted = std::chrono::steady_clock::now();
         stand.isd().disableYalkOutput(channel);
+        const auto offCompleted = std::chrono::steady_clock::now();
         for (const unsigned delay : offDelays) {
             std::this_thread::sleep_for(std::chrono::milliseconds(delay));
             const double v7 = stand.v7().readDcVoltage();
+            const auto v7Read = std::chrono::steady_clock::now();
             const auto frame = stand.yalk().readYalkSnapshot(
                 1, std::chrono::milliseconds(3000), {});
+            const auto frameRead = std::chrono::steady_clock::now();
             const auto& value = frame.at(channel - 1);
             const unsigned rawWord = static_cast<unsigned>(value.rawMean);
             write("timestamp_utc=" + timestampUtc()
                 + " channel=" + std::to_string(channel)
                 + " action=OFF"
                 + " requested_delay_ms=" + std::to_string(delay)
-                + " elapsed_since_off_ms=" + std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(
-                    std::chrono::steady_clock::now() - offStarted).count())
+                + " disable_elapsed_ms=" + std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(
+                    offCompleted - offStarted).count())
+                + " v7_elapsed_since_off_ms=" + std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(
+                    v7Read - offCompleted).count())
+                + " frame_elapsed_since_off_ms=" + std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(
+                    frameRead - offCompleted).count())
                 + " v7_v=" + std::to_string(v7)
                 + " raw_word=" + std::to_string(rawWord)
                 + " code=" + std::to_string(rawWord & 0x03ffu)
