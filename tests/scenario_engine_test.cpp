@@ -206,6 +206,18 @@ int main()
         require(argument(yvpProbeStep, "settle_ms") == "2000",
                 "YVP probe settle must match production");
 
+        const auto yvpComparator = tu::loadScenarioYaml(
+            TU_SOURCE_DIR "/data/ubsi_yvp_channel1_full_comparator.yaml");
+        const auto& yvpComparatorStep = stepById(yvpComparator, "yvp_channel1_full_comparator");
+        require(argument(yvpComparatorStep, "tested_channels") == "1",
+                "YVP comparator must be limited to one channel");
+        require(argument(yvpComparatorStep, "gains_mv_per_pcl") == "0.25,0.5,1,2,4,8,32",
+                "YVP comparator must retain the full production gain matrix");
+        require(argument(yvpComparatorStep, "frequencies_hz") == "2,6,20,500,1800,2000,4000",
+                "YVP comparator must retain the full production frequency matrix");
+        require(argument(yvpComparatorStep, "settle_ms") == "2000",
+                "YVP comparator settle must match production");
+
         tu::ScenarioEngine validationEngine;
         for (const auto& step : scenario.steps)
             validationEngine.registerProcedure(step.procedure, ok);
