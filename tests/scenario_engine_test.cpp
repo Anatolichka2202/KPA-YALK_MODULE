@@ -202,7 +202,7 @@ int main()
                 "YVP probe settle must match production");
 
         const auto yvpComparator = tu::loadScenarioYaml(
-            TU_SOURCE_DIR "/data/ubsi_yvp_important_parts_probe.yaml");
+            TU_SOURCE_DIR "/data/ubsi_yvp_channel1_full_comparator.yaml");
         const auto& yvpComparatorStep = stepById(yvpComparator, "yvp_important_parts_probe");
         require(argument(yvpComparatorStep, "tested_channels") == "1,2,3,4,5,6,7,8",
                 "YVP important-parts probe must cover all eight channels");
