@@ -11,6 +11,7 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <sstream>
 #include <stdexcept>
 #include <thread>
@@ -23,6 +24,24 @@ struct CommandPoint {
     unsigned settleMs = 500;
 };
 
+double parseDouble(const std::string& text, const char* name)
+{
+    std::size_t parsed = 0;
+    const double value = std::stod(text, &parsed);
+    if (parsed != text.size() || !std::isfinite(value))
+        throw std::invalid_argument(std::string(name) + " must be a number");
+    return value;
+}
+
+unsigned parseUnsigned(const std::string& text, const char* name)
+{
+    std::size_t parsed = 0;
+    const auto value = std::stoul(text, &parsed);
+    if (parsed != text.size() || value > std::numeric_limits<unsigned>::max())
+        throw std::invalid_argument(std::string(name) + " must be an unsigned integer");
+    return static_cast<unsigned>(value);
+}
+
 std::vector<CommandPoint> parsePoints(const std::string& text)
 {
     std::vector<CommandPoint> points;
@@ -33,11 +52,11 @@ std::vector<CommandPoint> parsePoints(const std::string& text)
         CommandPoint point;
         const auto separator = token.find('@');
         const auto voltsText = token.substr(0, separator);
-        point.volts = std::stod(voltsText);
+        point.volts = parseDouble(voltsText, "volts");
         if (separator != std::string::npos) {
             const auto settleText = token.substr(separator + 1);
             if (settleText.empty()) throw std::invalid_argument("settle_ms must not be empty");
-            point.settleMs = static_cast<unsigned>(std::stoul(settleText));
+            point.settleMs = parseUnsigned(settleText, "settle_ms");
         }
         if (point.volts < 0.0 || point.volts > 6.2)
             throw std::invalid_argument("each volts point must be 0..6.2");
@@ -54,7 +73,7 @@ std::vector<unsigned> parseDelays(const std::string& text)
     std::string token;
     while (std::getline(input, token, ',')) {
         if (token.empty()) throw std::invalid_argument("off_delays_ms must not contain empty values");
-        delays.push_back(static_cast<unsigned>(std::stoul(token)));
+        delays.push_back(parseUnsigned(token, "off_delays_ms"));
     }
     if (delays.empty()) throw std::invalid_argument("off_delays_ms must not be empty");
     return delays;
