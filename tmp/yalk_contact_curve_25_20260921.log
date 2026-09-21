@@ -1,0 +1,13 @@
+power_output=1 power_setpoint_v=27.000000 power_measured_v=26.989000 power_current_a=0.141000
+timestamp_utc=2026-09-21T20:13:03Z channel=25 command_v=0.000000 v7_v=-0.062599 raw_word=117 raw_hex=0x0075 code=117 contact=0 code97=125.000000 code99=926.000000 yalk_v=-0.061923 error_v=0.000677 freshness=post_switch_reference204
+timestamp_utc=2026-09-21T20:13:06Z channel=25 command_v=0.200000 v7_v=0.133932 raw_word=147 raw_hex=0x0093 code=147 contact=0 code97=125.000000 code99=926.000000 yalk_v=0.170287 error_v=0.036355 freshness=post_switch_reference204
+timestamp_utc=2026-09-21T20:13:10Z channel=25 command_v=0.400000 v7_v=0.328777 raw_word=1193 raw_hex=0x04A9 code=169 contact=1 code97=125.000000 code99=926.000000 yalk_v=0.340574 error_v=0.011797 freshness=post_switch_reference204
+timestamp_utc=2026-09-21T20:13:13Z channel=25 command_v=0.600000 v7_v=0.526959 raw_word=1218 raw_hex=0x04C2 code=194 contact=1 code97=125.000000 code99=926.000000 yalk_v=0.534082 error_v=0.007124 freshness=post_switch_reference204
+timestamp_utc=2026-09-21T20:13:16Z channel=25 command_v=0.800000 v7_v=0.726354 raw_word=1245 raw_hex=0x04DD code=221 contact=1 code97=125.000000 code99=926.000000 yalk_v=0.743071 error_v=0.016717 freshness=post_switch_reference204
+timestamp_utc=2026-09-21T20:13:19Z channel=25 command_v=1.000000 v7_v=0.924583 raw_word=1272 raw_hex=0x04F8 code=248 contact=1 code97=125.000000 code99=926.000000 yalk_v=0.952060 error_v=0.027477 freshness=post_switch_reference204
+timestamp_utc=2026-09-21T20:13:22Z channel=25 command_v=1.200000 v7_v=1.118469 raw_word=1294 raw_hex=0x050E code=270 contact=1 code97=125.000000 code99=926.000000 yalk_v=1.122347 error_v=0.003878 freshness=post_switch_reference204
+timestamp_utc=2026-09-21T20:13:25Z channel=25 command_v=1.500000 v7_v=1.413798 raw_word=1328 raw_hex=0x0530 code=304 contact=1 code97=125.000000 code99=926.000000 yalk_v=1.385518 error_v=0.028280 freshness=post_switch_reference204
+timestamp_utc=2026-09-21T20:13:28Z channel=25 command_v=2.000000 v7_v=1.901243 raw_word=1392 raw_hex=0x0570 code=368 contact=1 code97=125.000000 code99=926.000000 yalk_v=1.880899 error_v=0.020344 freshness=post_switch_reference204
+timestamp_utc=2026-09-21T20:13:31Z channel=25 command_v=2.400000 v7_v=2.293530 raw_word=1439 raw_hex=0x059F code=415 contact=1 code97=125.000000 code99=926.000000 yalk_v=2.244694 error_v=0.048836 freshness=post_switch_reference204
+timestamp_utc=2026-09-21T20:13:34Z channel=25 command_v=2.500000 v7_v=2.391308 raw_word=1457 raw_hex=0x05B1 code=433 contact=1 code97=125.000000 code99=926.000000 yalk_v=2.384020 error_v=0.007289 freshness=post_switch_reference204
+cleanup_power_output=0 cleanup_power_measured_v=0.000000 cleanup_power_current_a=0.000000

@@ -18,9 +18,11 @@ steps:
       off_settle_ms: 500
 
   - id: yalk_isd_reset
-    title: Единственный полный all-off ИСД перед проверкой ЯЛК
+    title: Адресное снятие маршрутов ЯЛК и ±12 В
     tu: инженерная подготовка
-    procedure: stand.isd_baseline
+    procedure: yalk.addressed_reset
+    args:
+      addresses: 1-28,32-43,45-70,74-87
 
   - id: yalk_stream
     title: Рабочий поток ЯЛК reference204

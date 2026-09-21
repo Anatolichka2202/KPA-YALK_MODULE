@@ -22,7 +22,6 @@ public:
     IsdRouter& operator=(const IsdRouter&) = delete;
 
     std::string probe();
-    void serviceFullReset();
     void setSwitch(unsigned type, unsigned channel, bool enabled);
     void setAnalog(unsigned channel, unsigned value, bool enabled);
     void setYalkVoltage(unsigned channel, double volts);

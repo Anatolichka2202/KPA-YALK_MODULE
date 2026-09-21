@@ -1,4 +1,5 @@
 #include "procedures/yalk_procedures.h"
+#include "procedures/yalk_initial_verdict.h"
 
 #include "hardware/stand_hardware.h"
 
@@ -183,15 +184,6 @@ void publishLiveFrame(ProcedureContext& context, const ScenarioStep& step,
          {"fresh","true"}});
 }
 
-ProcedureResult isdBaseline(const ScenarioStep&, ProcedureContext& context,
-                            const std::shared_ptr<hardware::StandHardware>& stand)
-{
-    context.checkpoint();
-    stand->isd().serviceFullReset();
-    return {RunVerdict::Ok,
-        "Стартовый all-off baseline ИСД выполнен подтверждённой service-командой type=4", {}};
-}
-
 void resetYalkRoutesForRun(const ScenarioStep& step, ProcedureContext& context,
                            const std::shared_ptr<hardware::StandHardware>& stand)
 {
@@ -299,7 +291,7 @@ ProcedureResult initial(const ScenarioStep& step, ProcedureContext& context,
         auto analog = measurement("ubsi.yalk.initial." + std::to_string(address),
             "ЯЛК адрес " + std::to_string(address) + ": обрыв", 0.0, volts,
             -number(step,"full_scale_v",6.2), -1e-12, "В");
-        if (!(volts < 0.0)) {
+        if (!detail::yalkOpenCircuitIsNormal(volts)) {
             analog.verdict = RunVerdict::Fail;
             analog.message = "При обрыве значение должно быть ниже 0 В";
         }
@@ -309,21 +301,16 @@ ProcedureResult initial(const ScenarioStep& step, ProcedureContext& context,
                              {"yalk_v",std::to_string(volts)},
                              {"signal",reading.contact?"1":"0"}};
 
-        auto signal = measurement("ubsi.yalk.initial.signal." + std::to_string(address),
-            "ЯЛК адрес " + std::to_string(address) + ": исходный сигнал",
-            1.0, reading.contact ? 1.0 : 0.0, 1.0, 1.0, "лог.");
-
-        const RunVerdict channelVerdict = combineVerdicts(analog.verdict, signal.verdict);
         auto eventData = analog.attributes;
         eventData["channel_index"] = std::to_string(channelIndex + 1);
         eventData["channel_count"] = std::to_string(addresses.size());
-        eventData["expected_signal"] = "1";
+        // The contact bit is diagnostic for an open input.  TU 1.1.4.10
+        // accepts or rejects this state solely by UyalK < 0 V.
+        eventData["signal_check"] = "diagnostic_only";
         eventData["analog_ok"] = analog.verdict == RunVerdict::Ok ? "1" : "0";
-        eventData["signal_ok"] = signal.verdict == RunVerdict::Ok ? "1" : "0";
-        publish(context, step, "YALK_INITIAL", analog.title, channelVerdict, std::move(eventData));
+        publish(context, step, "YALK_INITIAL", analog.title, analog.verdict, std::move(eventData));
 
         append(result, std::move(analog));
-        append(result, std::move(signal));
     }
     return result;
 }
@@ -534,7 +521,8 @@ ProcedureResult overload(const ScenarioStep& step, ProcedureContext& context,
         stressed.size() == physical.size()
             ? "Проверена устойчивость остальных каналов ЯЛК при перегрузке ±12 В"
             : "Проверена устойчивость 80 адресов ЯЛК при выборочной перегрузке ±12 В на "
-                + std::to_string(stressed.size()) + " каналах", {}};
+                + std::to_string(stressed.size())
+                + (stressed.size() == 1 ? " канале" : " каналах"), {}};
 
     // Фон формируется один раз. Начальный all-off выполняется отдельным
     // шагом перед ЯЛК; здесь не повторяем 80 адресных выключений. Для каждого
@@ -646,7 +634,8 @@ ProcedureResult overload(const ScenarioStep& step, ProcedureContext& context,
             }
         }
 
-        journal(context, step, "Перегрузка: все 160 воздействий завершены, снимаю пилообразный фон");
+        journal(context, step, "Перегрузка: все " + std::to_string(impactCount)
+            + " воздействий завершены, снимаю пилообразный фон");
         sourceOff(positiveCommon);
         sourceOff(negativeCommon);
         staircaseOff();
@@ -690,26 +679,6 @@ ProcedureResult reference(const ScenarioStep& step, ProcedureContext& context,
     return result;
 }
 
-ProcedureResult isdBaselineWithAddressedFallback(const ScenarioStep& step,
-                                                 ProcedureContext& context,
-                                                 const std::shared_ptr<hardware::StandHardware>& stand)
-{
-    try {
-        stand->isd().serviceFullReset();
-        return {RunVerdict::Ok, "Стартовый all-off ИСД выполнен командой type=4", {}};
-    } catch (const std::exception& error) {
-        // This procedure is available only to the engineering trace.  A
-        // rejected type=4 is retained in its trace; the addressed cleanup is
-        // a safe way to reach a known state on the current KM firmware.
-        publish(context, step, "ISD_BASELINE_FALLBACK",
-            std::string("ИСД отверг type=4; выполняю адресный all-off: ") + error.what(),
-            RunVerdict::Incomplete);
-        resetYalkRoutesForRun(step, context, stand);
-        return {RunVerdict::Ok,
-            "type=4 отвергнут ИСД; инженерный маршрут продолжен после адресного all-off", {}};
-    }
-}
-
 ProcedureResult finish(const ScenarioStep& step, ProcedureContext& context,
                        const std::shared_ptr<hardware::StandHardware>& stand)
 {
@@ -736,10 +705,6 @@ void registerYalkProcedures(ScenarioEngine& engine,
                             std::shared_ptr<hardware::StandHardware> hardware)
 {
     if (!hardware) throw std::invalid_argument("StandHardware is required");
-    engine.registerProcedure("stand.isd_baseline", [hardware](const auto& s, auto& c) {
-        return isdBaseline(s,c,hardware); });
-    engine.registerProcedure("stand.isd_baseline_with_addressed_fallback", [hardware](const auto& s, auto& c) {
-        return isdBaselineWithAddressedFallback(s,c,hardware); });
     engine.registerProcedure("yalk.addressed_reset", [hardware](const auto& s, auto& c) {
         resetYalkRoutesForRun(s,c,hardware);
         return ProcedureResult{RunVerdict::Ok,

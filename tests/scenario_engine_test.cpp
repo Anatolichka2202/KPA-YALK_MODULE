@@ -1,5 +1,6 @@
 #include "backend/scenario_engine.h"
 #include "backend/scenario_yaml.h"
+#include "procedures/yalk_initial_verdict.h"
 
 #include <atomic>
 #include <chrono>
@@ -84,9 +85,19 @@ int main()
 
         const auto& initial = stepById(scenario, "yalk_initial");
         require(initial.procedure == "yalk.initial",
-                "YALK initial state must use the production analog+signal procedure");
+                "YALK initial state must use the production analog procedure");
         require(argument(initial, "addresses") == "1-28,32-43,45-70,74-87",
                 "YALK initial address map changed");
+        require(tu::procedures::detail::yalkOpenCircuitIsNormal(-0.001),
+                "negative YALK open-circuit voltage must be NORMA");
+        require(!tu::procedures::detail::yalkOpenCircuitIsNormal(0.0),
+                "zero YALK open-circuit voltage must be NE NORMA");
+        require(!tu::procedures::detail::yalkOpenCircuitIsNormal(0.001),
+                "positive YALK open-circuit voltage must be NE NORMA regardless of signal bit");
+
+        const auto& yalkReset = stepById(scenario, "yalk_isd_reset");
+        require(yalkReset.procedure == "yalk.addressed_reset",
+                "YALK preparation must not depend on global ISD type=4");
 
         const auto& yalk = stepById(scenario, "yalk_channels");
         require(yalk.procedure == "yalk.channels", "YALK analog procedure changed");

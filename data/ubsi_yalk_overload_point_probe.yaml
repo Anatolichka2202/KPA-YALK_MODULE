@@ -1,10 +1,9 @@
-id: ubsi.yalk.overload.trace
-title: УБСИ · инженерная трассировка перегрузки ЯЛК
+id: ubsi.yalk.overload.point-probe
+title: УБСИ · точечная проба перегрузки ЯЛК
 version: 1.0.0
 
-# Не приёмочный сценарий. Проверяет порядок воздействия на 4 выбранных
-# адресах, при этом после каждого воздействия контролирует остальные 79
-# рабочих адресов относительно общего baseline.
+# Инженерная проба, не приёмочный маршрут. Один рабочий адрес получает +12 В
+# и -12 В; после каждого воздействия сравниваются остальные 79 адресов.
 steps:
   - id: readiness
     title: Однократная подготовка питания и потока ЯЛК
@@ -41,14 +40,14 @@ steps:
       settle_ms: 150
       full_voltage: 6.2
 
-  - id: yalk_overload_trace
-    title: Выборочная перегрузка ±12 В с наблюдением 80 адресов
-    tu: 1.1.4.11 · инженерная трассировка
+  - id: yalk_overload_point_probe
+    title: +12 В и -12 В на ЯЛК адресе 1 с контролем остальных 79 адресов
+    tu: 1.1.4.11 · точечная проба
     procedure: yalk.overload
     args:
       physical_channels: 1-28,32-43,45-70,74-87
       observed_addresses: 1-28,32-43,45-70,74-87
-      stressed_channels: 1,25,50,87
+      stressed_channels: 1
       positive_overload_contact: 96
       negative_overload_contact: 95
       sample_count: 4
@@ -67,6 +66,6 @@ steps:
       settle_ms: 300
 
   - id: power_off
-    title: Отключение питания после трассировки
+    title: Отключение питания после пробы
     tu: инженерное завершение
     procedure: power.off

@@ -50,9 +50,9 @@ steps:
       recovery_timeout_ms: 30000
 
   - id: yalk_isd_reset
-    title: Единственный полный all-off ИСД перед проверкой ЯЛК
+    title: Адресное снятие маршрутов ЯЛК и ±12 В перед проверкой
     tu: 5.6 / подготовка ЯЛК
-    procedure: stand.isd_baseline
+    procedure: yalk.addressed_reset
 
   - id: yalk_stream
     title: Запуск рабочего потока ЯЛК ROKT reference204

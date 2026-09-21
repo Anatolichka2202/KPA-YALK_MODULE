@@ -191,15 +191,6 @@ std::string IsdRouter::probe()
     return impl_->get(QStringLiteral("/"), false).left(200).toStdString();
 }
 
-void IsdRouter::serviceFullReset()
-{
-    // Startup baseline — единственное штатное глобальное type=4. Как и в
-    // финальном транспорте: одна попытка, длинный timeout и обязательный ACK.
-    impl_->get(QStringLiteral("/type=4num=1"), true,
-               impl_->config.serviceTimeoutMilliseconds);
-    impl_->active.clear();
-}
-
 void IsdRouter::setSwitch(unsigned type, unsigned channel, bool enabled)
 {
     if (!type || !channel) throw std::invalid_argument("ИСД type/channel начинаются с 1");

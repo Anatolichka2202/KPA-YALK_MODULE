@@ -1,0 +1,542 @@
+2026-09-21T23:14:38.090 EVENT node=readiness stage=START verdict=NOT_RUN message=Однократная подготовка питания и потока ЯЛК
+2026-09-21T23:14:44.071 EVENT node=readiness stage=SUPPLY verdict=NOT_RUN message=Питание УБСИ amperes=0.164000 duration_s=30 elapsed_s=4 output_enabled=true setpoint_v=27.000000 volts=26.999000
+2026-09-21T23:14:44.071 EVENT node=readiness stage=FINISH verdict=OK message=УБСИ вышел на передачу данных после запуска ROKT ЯЛК
+2026-09-21T23:14:44.071 EVENT node=yalk_isd_reset stage=START verdict=NOT_RUN message=Адресное снятие маршрутов ЯЛК и ±12 В
+2026-09-21T23:14:44.071 EVENT node=yalk_isd_reset stage=JOURNAL verdict=NOT_RUN message=ЯЛК: адресно снимаю остаточные воздействия ИСД перед прогоном (без global type=4)
+2026-09-21T23:14:44.182 ISD path=/type=1num=1val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:14:45.406 ISD path=/type=1num=1val=0work=0 http_status=200 response=OK
+2026-09-21T23:14:46.527 ISD path=/type=1num=2val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:14:47.729 ISD path=/type=1num=2val=0work=0 http_status=200 response=OK
+2026-09-21T23:14:48.838 ISD path=/type=1num=3val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:14:50.077 ISD path=/type=1num=3val=0work=0 http_status=200 response=OK
+2026-09-21T23:14:51.219 ISD path=/type=1num=4val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:14:52.456 ISD path=/type=1num=4val=0work=0 http_status=200 response=OK
+2026-09-21T23:14:53.580 ISD path=/type=1num=5val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:14:54.804 ISD path=/type=1num=5val=0work=0 http_status=200 response=OK
+2026-09-21T23:14:55.913 ISD path=/type=1num=6val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:14:57.137 ISD path=/type=1num=6val=0work=0 http_status=200 response=OK
+2026-09-21T23:14:58.263 ISD path=/type=1num=7val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:14:59.501 ISD path=/type=1num=7val=0work=0 http_status=200 response=OK
+2026-09-21T23:15:00.628 ISD path=/type=1num=8val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:15:01.850 ISD path=/type=1num=8val=0work=0 http_status=200 response=OK
+2026-09-21T23:15:02.976 ISD path=/type=1num=9val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:15:04.213 ISD path=/type=1num=9val=0work=0 http_status=200 response=OK
+2026-09-21T23:15:05.338 ISD path=/type=1num=10val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:15:06.577 ISD path=/type=1num=10val=0work=0 http_status=200 response=OK
+2026-09-21T23:15:07.720 ISD path=/type=1num=11val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:15:08.957 ISD path=/type=1num=11val=0work=0 http_status=200 response=OK
+2026-09-21T23:15:10.082 ISD path=/type=1num=12val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:15:11.303 ISD path=/type=1num=12val=0work=0 http_status=200 response=OK
+2026-09-21T23:15:12.416 ISD path=/type=1num=13val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:15:13.653 ISD path=/type=1num=13val=0work=0 http_status=200 response=OK
+2026-09-21T23:15:14.780 ISD path=/type=1num=14val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:15:16.016 ISD path=/type=1num=14val=0work=0 http_status=200 response=OK
+2026-09-21T23:15:17.128 ISD path=/type=1num=15val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:15:18.350 ISD path=/type=1num=15val=0work=0 http_status=200 response=OK
+2026-09-21T23:15:19.476 ISD path=/type=1num=16val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:15:20.713 ISD path=/type=1num=16val=0work=0 http_status=200 response=OK
+2026-09-21T23:15:21.837 ISD path=/type=1num=17val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:15:23.077 ISD path=/type=1num=17val=0work=0 http_status=200 response=OK
+2026-09-21T23:15:24.201 ISD path=/type=1num=18val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:15:25.425 ISD path=/type=1num=18val=0work=0 http_status=200 response=OK
+2026-09-21T23:15:26.550 ISD path=/type=1num=19val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:15:27.771 ISD path=/type=1num=19val=0work=0 http_status=200 response=OK
+2026-09-21T23:15:28.882 ISD path=/type=1num=20val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:15:30.106 ISD path=/type=1num=20val=0work=0 http_status=200 response=OK
+2026-09-21T23:15:31.216 ISD path=/type=1num=21val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:15:32.452 ISD path=/type=1num=21val=0work=0 http_status=200 response=OK
+2026-09-21T23:15:33.563 ISD path=/type=1num=22val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:15:34.787 ISD path=/type=1num=22val=0work=0 http_status=200 response=OK
+2026-09-21T23:15:35.914 ISD path=/type=1num=23val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:15:37.151 ISD path=/type=1num=23val=0work=0 http_status=200 response=OK
+2026-09-21T23:15:38.277 ISD path=/type=1num=24val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:15:39.515 ISD path=/type=1num=24val=0work=0 http_status=200 response=OK
+2026-09-21T23:15:40.641 ISD path=/type=1num=25val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:15:41.878 ISD path=/type=1num=25val=0work=0 http_status=200 response=OK
+2026-09-21T23:15:42.987 ISD path=/type=1num=26val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:15:44.211 ISD path=/type=1num=26val=0work=0 http_status=200 response=OK
+2026-09-21T23:15:45.338 ISD path=/type=1num=27val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:15:46.575 ISD path=/type=1num=27val=0work=0 http_status=200 response=OK
+2026-09-21T23:15:47.701 ISD path=/type=1num=28val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:15:48.939 ISD path=/type=1num=28val=0work=0 http_status=200 response=OK
+2026-09-21T23:15:50.063 ISD path=/type=1num=32val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:15:51.287 ISD path=/type=1num=32val=0work=0 http_status=200 response=OK
+2026-09-21T23:15:52.409 ISD path=/type=1num=33val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:15:53.595 ISD path=/type=1num=33val=0work=0 http_status=200 response=OK
+2026-09-21T23:15:54.706 ISD path=/type=1num=34val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:15:55.938 ISD path=/type=1num=34val=0work=0 http_status=200 response=OK
+2026-09-21T23:15:57.049 ISD path=/type=1num=35val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:15:58.268 ISD path=/type=1num=35val=0work=0 http_status=200 response=OK
+2026-09-21T23:15:59.395 ISD path=/type=1num=36val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:16:00.616 ISD path=/type=1num=36val=0work=0 http_status=200 response=OK
+2026-09-21T23:16:01.726 ISD path=/type=1num=37val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:16:02.962 ISD path=/type=1num=37val=0work=0 http_status=200 response=OK
+2026-09-21T23:16:04.093 ISD path=/type=1num=38val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:16:05.328 ISD path=/type=1num=38val=0work=0 http_status=200 response=OK
+2026-09-21T23:16:06.455 ISD path=/type=1num=39val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:16:07.692 ISD path=/type=1num=39val=0work=0 http_status=200 response=OK
+2026-09-21T23:16:08.819 ISD path=/type=1num=40val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:16:10.040 ISD path=/type=1num=40val=0work=0 http_status=200 response=OK
+2026-09-21T23:16:11.166 ISD path=/type=1num=41val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:16:12.403 ISD path=/type=1num=41val=0work=0 http_status=200 response=OK
+2026-09-21T23:16:13.528 ISD path=/type=1num=42val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:16:14.767 ISD path=/type=1num=42val=0work=0 http_status=200 response=OK
+2026-09-21T23:16:15.909 ISD path=/type=1num=43val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:16:17.127 ISD path=/type=1num=43val=0work=0 http_status=200 response=OK
+2026-09-21T23:16:18.236 ISD path=/type=1num=45val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:16:19.460 ISD path=/type=1num=45val=0work=0 http_status=200 response=OK
+2026-09-21T23:16:20.587 ISD path=/type=1num=46val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:16:21.825 ISD path=/type=1num=46val=0work=0 http_status=200 response=OK
+2026-09-21T23:16:22.952 ISD path=/type=1num=47val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:16:24.189 ISD path=/type=1num=47val=0work=0 http_status=200 response=OK
+2026-09-21T23:16:25.316 ISD path=/type=1num=48val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:16:26.538 ISD path=/type=1num=48val=0work=0 http_status=200 response=OK
+2026-09-21T23:16:27.663 ISD path=/type=1num=49val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:16:28.885 ISD path=/type=1num=49val=0work=0 http_status=200 response=OK
+2026-09-21T23:16:29.996 ISD path=/type=1num=50val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:16:31.234 ISD path=/type=1num=50val=0work=0 http_status=200 response=OK
+2026-09-21T23:16:32.347 ISD path=/type=1num=51val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:16:33.567 ISD path=/type=1num=51val=0work=0 http_status=200 response=OK
+2026-09-21T23:16:34.678 ISD path=/type=1num=52val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:16:35.902 ISD path=/type=1num=52val=0work=0 http_status=200 response=OK
+2026-09-21T23:16:37.029 ISD path=/type=1num=53val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:16:38.267 ISD path=/type=1num=53val=0work=0 http_status=200 response=OK
+2026-09-21T23:16:39.392 ISD path=/type=1num=54val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:16:40.616 ISD path=/type=1num=54val=0work=0 http_status=200 response=OK
+2026-09-21T23:16:41.725 ISD path=/type=1num=55val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:16:42.949 ISD path=/type=1num=55val=0work=0 http_status=200 response=OK
+2026-09-21T23:16:44.074 ISD path=/type=1num=56val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:16:45.313 ISD path=/type=1num=56val=0work=0 http_status=200 response=OK
+2026-09-21T23:16:46.438 ISD path=/type=1num=57val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:16:47.677 ISD path=/type=1num=57val=0work=0 http_status=200 response=OK
+2026-09-21T23:16:48.804 ISD path=/type=1num=58val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:16:50.041 ISD path=/type=1num=58val=0work=0 http_status=200 response=OK
+2026-09-21T23:16:51.167 ISD path=/type=1num=59val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:16:52.404 ISD path=/type=1num=59val=0work=0 http_status=200 response=OK
+2026-09-21T23:16:53.513 ISD path=/type=1num=60val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:16:54.750 ISD path=/type=1num=60val=0work=0 http_status=200 response=OK
+2026-09-21T23:16:55.879 ISD path=/type=1num=61val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:16:57.114 ISD path=/type=1num=61val=0work=0 http_status=200 response=OK
+2026-09-21T23:16:58.190 ISD path=/type=1num=62val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:16:59.378 ISD path=/type=1num=62val=0work=0 http_status=200 response=OK
+2026-09-21T23:17:00.520 ISD path=/type=1num=63val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:17:01.736 ISD path=/type=1num=63val=0work=0 http_status=200 response=OK
+2026-09-21T23:17:02.845 ISD path=/type=1num=64val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:17:04.081 ISD path=/type=1num=64val=0work=0 http_status=200 response=OK
+2026-09-21T23:17:05.191 ISD path=/type=1num=65val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:17:06.412 ISD path=/type=1num=65val=0work=0 http_status=200 response=OK
+2026-09-21T23:17:07.541 ISD path=/type=1num=66val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:17:08.778 ISD path=/type=1num=66val=0work=0 http_status=200 response=OK
+2026-09-21T23:17:09.905 ISD path=/type=1num=67val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:17:11.142 ISD path=/type=1num=67val=0work=0 http_status=200 response=OK
+2026-09-21T23:17:12.269 ISD path=/type=1num=68val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:17:13.490 ISD path=/type=1num=68val=0work=0 http_status=200 response=OK
+2026-09-21T23:17:14.617 ISD path=/type=1num=69val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:17:15.855 ISD path=/type=1num=69val=0work=0 http_status=200 response=OK
+2026-09-21T23:17:16.979 ISD path=/type=1num=70val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:17:18.203 ISD path=/type=1num=70val=0work=0 http_status=200 response=OK
+2026-09-21T23:17:19.329 ISD path=/type=1num=74val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:17:20.566 ISD path=/type=1num=74val=0work=0 http_status=200 response=OK
+2026-09-21T23:17:21.693 ISD path=/type=1num=75val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:17:22.914 ISD path=/type=1num=75val=0work=0 http_status=200 response=OK
+2026-09-21T23:17:24.041 ISD path=/type=1num=76val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:17:25.278 ISD path=/type=1num=76val=0work=0 http_status=200 response=OK
+2026-09-21T23:17:26.402 ISD path=/type=1num=77val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:17:27.641 ISD path=/type=1num=77val=0work=0 http_status=200 response=OK
+2026-09-21T23:17:28.768 ISD path=/type=1num=78val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:17:29.988 ISD path=/type=1num=78val=0work=0 http_status=200 response=OK
+2026-09-21T23:17:31.116 ISD path=/type=1num=79val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:17:32.354 ISD path=/type=1num=79val=0work=0 http_status=200 response=OK
+2026-09-21T23:17:33.496 ISD path=/type=1num=80val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:17:34.714 ISD path=/type=1num=80val=0work=0 http_status=200 response=OK
+2026-09-21T23:17:35.823 ISD path=/type=1num=81val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:17:37.045 ISD path=/type=1num=81val=0work=0 http_status=200 response=OK
+2026-09-21T23:17:38.156 ISD path=/type=1num=82val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:17:39.393 ISD path=/type=1num=82val=0work=0 http_status=200 response=OK
+2026-09-21T23:17:40.521 ISD path=/type=1num=83val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:17:41.759 ISD path=/type=1num=83val=0work=0 http_status=200 response=OK
+2026-09-21T23:17:42.868 ISD path=/type=1num=84val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:17:44.091 ISD path=/type=1num=84val=0work=0 http_status=200 response=OK
+2026-09-21T23:17:45.182 ISD path=/type=1num=85val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:17:46.405 ISD path=/type=1num=85val=0work=0 http_status=200 response=OK
+2026-09-21T23:17:47.532 ISD path=/type=1num=86val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:17:48.769 ISD path=/type=1num=86val=0work=0 http_status=200 response=OK
+2026-09-21T23:17:49.893 ISD path=/type=1num=87val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:17:51.116 ISD path=/type=1num=87val=0work=0 http_status=200 response=OK
+2026-09-21T23:17:52.225 ISD path=/type=3num=95val=0 http_status=200 response=OK
+2026-09-21T23:17:53.338 ISD path=/type=3num=96val=0 http_status=200 response=OK
+2026-09-21T23:17:53.716 EVENT node=yalk_isd_reset stage=JOURNAL verdict=NOT_RUN message=ЯЛК: 80 аналоговых маршрутов и источники ±12 В сняты
+2026-09-21T23:17:53.716 EVENT node=yalk_isd_reset stage=FINISH verdict=OK message=Адресно сняты воздействия с 80 каналов ЯЛК и источников ±12 В
+2026-09-21T23:17:53.716 EVENT node=yalk_stream stage=START verdict=NOT_RUN message=Рабочий поток ЯЛК reference204
+2026-09-21T23:17:53.716 EVENT node=yalk_stream stage=JOURNAL verdict=NOT_RUN message=ROKT: запускаю рабочий поток ЯЛК reference204
+2026-09-21T23:17:54.668 EVENT node=yalk_stream stage=JOURNAL verdict=NOT_RUN message=ROKT: reference204 получен, поток ЯЛК работает
+2026-09-21T23:17:54.668 EVENT node=yalk_stream stage=FINISH verdict=OK message=ROKT ЯЛК запущен, получен reference204 кадр
+2026-09-21T23:17:54.668 EVENT node=yalk_calibration stage=START verdict=NOT_RUN message=Калибровка ЯЛК по адресам 97 и 99
+2026-09-21T23:17:54.668 EVENT node=yalk_calibration stage=JOURNAL verdict=NOT_RUN message=Калибровка ЯЛК: подаю 6,2 В через первый рабочий канал ИСД
+2026-09-21T23:17:54.780 ISD path=/type=5num=1val=6.20work=1bus=1 http_status=200 response=OK
+2026-09-21T23:17:55.511 ISD path=/type=1num=1val=0work=1bus=0 http_status=200 response=OK
+2026-09-21T23:17:56.749 ISD path=/type=1num=1val=0work=0 http_status=200 response=OK
+2026-09-21T23:17:56.761 EVENT node=yalk_calibration stage=BACKGROUND verdict=NOT_RUN message=Свежий reference204 после калибровки background_max=6.1264497,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,3.172824475,3.106532428,3.131210489,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,3.121532818,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,3.122984469,3.141372044,3.142339811,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,3.113306798,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,0,6.102739405,6.2,-0.967283228 background_mean=6.1264497,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,3.172824475,3.106532428,3.131210489,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,3.121532818,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,3.122984469,3.141372044,3.142339811,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,3.113306798,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,0,6.102739405,6.2,-0.967283228 background_min=6.1264497,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,3.172824475,3.106532428,3.131210489,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,3.121532818,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,3.122984469,3.141372044,3.142339811,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,3.113306798,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,0,6.102739405,6.2,-0.967283228 fresh=true section=YALK
+2026-09-21T23:17:56.761 EVENT node=yalk_calibration stage=MEASUREMENT verdict=OK message=Опорное воздействие калибровки ЯЛК full_address=99 full_code=925.750000 scale_voltage_v=6.200000 stimulus_command_v=6.200000 v7_v=6.145315 zero_address=97 zero_code=124.937500
+2026-09-21T23:17:56.761 EVENT node=yalk_calibration stage=JOURNAL verdict=NOT_RUN message=Калибровка ЯЛК завершена: 97=124.937500, 99=925.750000, В7=6.145315 В
+2026-09-21T23:17:56.761 EVENT node=yalk_calibration stage=FINISH verdict=OK message=Снята калибровка ЯЛК по адресам 97/99
+2026-09-21T23:17:56.761 EVENT node=yalk_overload_point_probe stage=START verdict=NOT_RUN message=+12 В и -12 В на ЯЛК адресе 1 с контролем остальных 79 адресов
+2026-09-21T23:17:57.873 ISD path=/type=3num=96val=0 http_status=200 response=OK
+2026-09-21T23:17:58.985 ISD path=/type=3num=95val=0 http_status=200 response=OK
+2026-09-21T23:17:58.991 EVENT node=yalk_overload_point_probe stage=JOURNAL verdict=NOT_RUN message=Перегрузка: формирую безопасный 80-канальный пилообразный фон ИСД
+2026-09-21T23:18:00.095 ISD path=/type=1num=1val=780work=1 http_status=200 response=OK
+2026-09-21T23:18:01.204 ISD path=/type=1num=2val=810work=1 http_status=200 response=OK
+2026-09-21T23:18:02.332 ISD path=/type=1num=3val=840work=1 http_status=200 response=OK
+2026-09-21T23:18:03.442 ISD path=/type=1num=4val=870work=1 http_status=200 response=OK
+2026-09-21T23:18:04.532 ISD path=/type=1num=5val=900work=1 http_status=200 response=OK
+2026-09-21T23:18:05.641 ISD path=/type=1num=6val=930work=1 http_status=200 response=OK
+2026-09-21T23:18:06.717 ISD path=/type=1num=7val=960work=1 http_status=200 response=OK
+2026-09-21T23:18:07.824 ISD path=/type=1num=8val=990work=1 http_status=200 response=OK
+2026-09-21T23:18:08.934 ISD path=/type=1num=9val=1020work=1 http_status=200 response=OK
+2026-09-21T23:18:10.045 ISD path=/type=1num=10val=1050work=1 http_status=200 response=OK
+2026-09-21T23:18:11.158 ISD path=/type=1num=11val=1800work=1 http_status=200 response=OK
+2026-09-21T23:18:12.269 ISD path=/type=1num=12val=1820work=1 http_status=200 response=OK
+2026-09-21T23:18:13.379 ISD path=/type=1num=13val=1840work=1 http_status=200 response=OK
+2026-09-21T23:18:14.490 ISD path=/type=1num=14val=1860work=1 http_status=200 response=OK
+2026-09-21T23:18:15.600 ISD path=/type=1num=15val=1880work=1 http_status=200 response=OK
+2026-09-21T23:18:16.711 ISD path=/type=1num=16val=1900work=1 http_status=200 response=OK
+2026-09-21T23:18:17.824 ISD path=/type=1num=17val=1920work=1 http_status=200 response=OK
+2026-09-21T23:18:18.951 ISD path=/type=1num=18val=1940work=1 http_status=200 response=OK
+2026-09-21T23:18:20.076 ISD path=/type=1num=19val=1960work=1 http_status=200 response=OK
+2026-09-21T23:18:21.201 ISD path=/type=1num=20val=1980work=1 http_status=200 response=OK
+2026-09-21T23:18:22.326 ISD path=/type=1num=21val=2000work=1 http_status=200 response=OK
+2026-09-21T23:18:23.439 ISD path=/type=1num=22val=2020work=1 http_status=200 response=OK
+2026-09-21T23:18:24.566 ISD path=/type=1num=23val=2040work=1 http_status=200 response=OK
+2026-09-21T23:18:25.675 ISD path=/type=1num=24val=2060work=1 http_status=200 response=OK
+2026-09-21T23:18:26.786 ISD path=/type=1num=25val=2080work=1 http_status=200 response=OK
+2026-09-21T23:18:27.898 ISD path=/type=1num=26val=2100work=1 http_status=200 response=OK
+2026-09-21T23:18:29.008 ISD path=/type=1num=27val=2120work=1 http_status=200 response=OK
+2026-09-21T23:18:30.115 ISD path=/type=1num=28val=2140work=1 http_status=200 response=OK
+2026-09-21T23:18:31.226 ISD path=/type=1num=32val=2220work=1 http_status=200 response=OK
+2026-09-21T23:18:32.339 ISD path=/type=1num=33val=2240work=1 http_status=200 response=OK
+2026-09-21T23:18:33.448 ISD path=/type=1num=34val=2260work=1 http_status=200 response=OK
+2026-09-21T23:18:34.559 ISD path=/type=1num=35val=2280work=1 http_status=200 response=OK
+2026-09-21T23:18:35.670 ISD path=/type=1num=36val=2300work=1 http_status=200 response=OK
+2026-09-21T23:18:36.799 ISD path=/type=1num=37val=2320work=1 http_status=200 response=OK
+2026-09-21T23:18:37.923 ISD path=/type=1num=38val=2340work=1 http_status=200 response=OK
+2026-09-21T23:18:39.052 ISD path=/type=1num=39val=2360work=1 http_status=200 response=OK
+2026-09-21T23:18:40.178 ISD path=/type=1num=40val=2380work=1 http_status=200 response=OK
+2026-09-21T23:18:41.321 ISD path=/type=1num=41val=2400work=1 http_status=200 response=OK
+2026-09-21T23:18:42.431 ISD path=/type=1num=42val=2420work=1 http_status=200 response=OK
+2026-09-21T23:18:43.555 ISD path=/type=1num=43val=2440work=1 http_status=200 response=OK
+2026-09-21T23:18:44.668 ISD path=/type=1num=45val=2480work=1 http_status=200 response=OK
+2026-09-21T23:18:45.776 ISD path=/type=1num=46val=2500work=1 http_status=200 response=OK
+2026-09-21T23:18:46.889 ISD path=/type=1num=47val=2520work=1 http_status=200 response=OK
+2026-09-21T23:18:47.998 ISD path=/type=1num=48val=2540work=1 http_status=200 response=OK
+2026-09-21T23:18:49.110 ISD path=/type=1num=49val=2560work=1 http_status=200 response=OK
+2026-09-21T23:18:50.221 ISD path=/type=1num=50val=2580work=1 http_status=200 response=OK
+2026-09-21T23:18:51.330 ISD path=/type=1num=51val=2600work=1 http_status=200 response=OK
+2026-09-21T23:18:52.441 ISD path=/type=1num=52val=2620work=1 http_status=200 response=OK
+2026-09-21T23:18:53.551 ISD path=/type=1num=53val=2640work=1 http_status=200 response=OK
+2026-09-21T23:18:54.662 ISD path=/type=1num=54val=2660work=1 http_status=200 response=OK
+2026-09-21T23:18:55.774 ISD path=/type=1num=55val=2680work=1 http_status=200 response=OK
+2026-09-21T23:18:56.884 ISD path=/type=1num=56val=2700work=1 http_status=200 response=OK
+2026-09-21T23:18:57.992 ISD path=/type=1num=57val=2720work=1 http_status=200 response=OK
+2026-09-21T23:18:59.103 ISD path=/type=1num=58val=2740work=1 http_status=200 response=OK
+2026-09-21T23:19:00.214 ISD path=/type=1num=59val=2760work=1 http_status=200 response=OK
+2026-09-21T23:19:01.326 ISD path=/type=1num=60val=2780work=1 http_status=200 response=OK
+2026-09-21T23:19:02.436 ISD path=/type=1num=61val=2800work=1 http_status=200 response=OK
+2026-09-21T23:19:03.562 ISD path=/type=1num=62val=2820work=1 http_status=200 response=OK
+2026-09-21T23:19:04.687 ISD path=/type=1num=63val=2840work=1 http_status=200 response=OK
+2026-09-21T23:19:05.815 ISD path=/type=1num=64val=2860work=1 http_status=200 response=OK
+2026-09-21T23:19:06.942 ISD path=/type=1num=65val=2880work=1 http_status=200 response=OK
+2026-09-21T23:19:08.066 ISD path=/type=1num=66val=2900work=1 http_status=200 response=OK
+2026-09-21T23:19:09.142 ISD path=/type=1num=67val=2920work=1 http_status=200 response=OK
+2026-09-21T23:19:10.250 ISD path=/type=1num=68val=2940work=1 http_status=200 response=OK
+2026-09-21T23:19:11.342 ISD path=/type=1num=69val=2960work=1 http_status=200 response=OK
+2026-09-21T23:19:12.419 ISD path=/type=1num=70val=2980work=1 http_status=200 response=OK
+2026-09-21T23:19:13.526 ISD path=/type=1num=74val=3060work=1 http_status=200 response=OK
+2026-09-21T23:19:14.653 ISD path=/type=1num=75val=3080work=1 http_status=200 response=OK
+2026-09-21T23:19:15.777 ISD path=/type=1num=76val=3100work=1 http_status=200 response=OK
+2026-09-21T23:19:16.888 ISD path=/type=1num=77val=3120work=1 http_status=200 response=OK
+2026-09-21T23:19:17.998 ISD path=/type=1num=78val=3140work=1 http_status=200 response=OK
+2026-09-21T23:19:19.109 ISD path=/type=1num=79val=3160work=1 http_status=200 response=OK
+2026-09-21T23:19:20.222 ISD path=/type=1num=80val=3180work=1 http_status=200 response=OK
+2026-09-21T23:19:21.330 ISD path=/type=1num=81val=3200work=1 http_status=200 response=OK
+2026-09-21T23:19:22.441 ISD path=/type=1num=82val=3220work=1 http_status=200 response=OK
+2026-09-21T23:19:23.534 ISD path=/type=1num=83val=3240work=1 http_status=200 response=OK
+2026-09-21T23:19:24.660 ISD path=/type=1num=84val=3260work=1 http_status=200 response=OK
+2026-09-21T23:19:25.770 ISD path=/type=1num=85val=3280work=1 http_status=200 response=OK
+2026-09-21T23:19:26.881 ISD path=/type=1num=86val=3300work=1 http_status=200 response=OK
+2026-09-21T23:19:27.993 ISD path=/type=1num=87val=3320work=1 http_status=200 response=OK
+2026-09-21T23:19:29.322 EVENT node=yalk_overload_point_probe stage=BACKGROUND verdict=NOT_RUN message=Baseline ЯЛК перед перегрузкой background_max=0.002419417779,-0.05371107469,0.03145243112,0.0798407867,0.2017794428,0.2482322641,0.3837196597,0.4456567549,0.5501756029,0.4940451104,2.371513307,2.441192539,2.472161086,2.565066729,2.648294701,2.648294701,2.605712948,2.756684617,2.741200343,2.834105986,2.776039959,2.990884258,2.944431437,2.996690861,3.076047764,3.101209709,3.159275736,3.259923515,3.072176696,3.223148365,3.14766253,3.377991103,3.490252088,3.428314993,3.532833841,3.511542964,3.687676578,3.72058066,3.765097947,3.811550769,3.803808632,3.852196987,3.918005151,3.149598064,4.065105752,4.090267697,4.047685944,4.165753532,4.210270819,4.279950051,4.320596269,4.372855693,4.436728323,4.442534925,4.638023882,4.56834465,4.645766019,4.657379224,4.723187388,4.775446812,4.847061578,4.889643331,5.019324124,4.918676344,5.040615,5.059970343,5.149004917,5.125778506,5.203199875,5.307718723,3.09733864,3.172824475,3.089596504,5.437399516,5.586435651,5.578693514,5.598048857,5.743213923,5.67740576,5.749020526,5.799344416,5.847732771,5.983220167,5.872894716,6.039350659,6.081932412,6.074190276,3.118629517,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,0.0004838835558,6.105158823,6.2,4.34382268 background_mean=0.002419417779,-0.05371107469,0.03145243112,0.0798407867,0.2017794428,0.2482322641,0.3837196597,0.4456567549,0.5501756029,0.4940451104,2.371513307,2.441192539,2.472161086,2.565066729,2.648294701,2.648294701,2.605712948,2.756684617,2.741200343,2.834105986,2.776039959,2.990884258,2.944431437,2.996690861,3.076047764,3.101209709,3.159275736,3.259923515,3.072176696,3.223148365,3.14766253,3.377991103,3.490252088,3.428314993,3.532833841,3.511542964,3.687676578,3.72058066,3.765097947,3.811550769,3.803808632,3.852196987,3.918005151,3.149598064,4.065105752,4.090267697,4.047685944,4.165753532,4.210270819,4.279950051,4.320596269,4.372855693,4.436728323,4.442534925,4.638023882,4.56834465,4.645766019,4.657379224,4.723187388,4.775446812,4.847061578,4.889643331,5.019324124,4.918676344,5.040615,5.059970343,5.149004917,5.125778506,5.203199875,5.307718723,3.09733864,3.172824475,3.089596504,5.437399516,5.586435651,5.578693514,5.598048857,5.743213923,5.67740576,5.749020526,5.799344416,5.847732771,5.983220167,5.872894716,6.039350659,6.081932412,6.074190276,3.118629517,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,0.0004838835558,6.105158823,6.2,4.34382268 background_min=0.002419417779,-0.05371107469,0.03145243112,0.0798407867,0.2017794428,0.2482322641,0.3837196597,0.4456567549,0.5501756029,0.4940451104,2.371513307,2.441192539,2.472161086,2.565066729,2.648294701,2.648294701,2.605712948,2.756684617,2.741200343,2.834105986,2.776039959,2.990884258,2.944431437,2.996690861,3.076047764,3.101209709,3.159275736,3.259923515,3.072176696,3.223148365,3.14766253,3.377991103,3.490252088,3.428314993,3.532833841,3.511542964,3.687676578,3.72058066,3.765097947,3.811550769,3.803808632,3.852196987,3.918005151,3.149598064,4.065105752,4.090267697,4.047685944,4.165753532,4.210270819,4.279950051,4.320596269,4.372855693,4.436728323,4.442534925,4.638023882,4.56834465,4.645766019,4.657379224,4.723187388,4.775446812,4.847061578,4.889643331,5.019324124,4.918676344,5.040615,5.059970343,5.149004917,5.125778506,5.203199875,5.307718723,3.09733864,3.172824475,3.089596504,5.437399516,5.586435651,5.578693514,5.598048857,5.743213923,5.67740576,5.749020526,5.799344416,5.847732771,5.983220167,5.872894716,6.039350659,6.081932412,6.074190276,3.118629517,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,0.0004838835558,6.105158823,6.2,4.34382268 fresh=true section=YALK
+2026-09-21T23:19:29.322 EVENT node=yalk_overload_point_probe stage=JOURNAL verdict=NOT_RUN message=Перегрузка: baseline reference204 снят; начинаю ±12 В
+2026-09-21T23:19:29.322 EVENT node=yalk_overload_point_probe stage=OVERLOAD verdict=NOT_RUN message=ЯЛК: перегрузка +12 В, канал 1 coverage=selective impact_count=2 impact_index=1 observed_count=80 polarity=+12 В settle_ms=1000 stressed_channel=1 target_count=1
+2026-09-21T23:19:29.322 EVENT node=yalk_overload_point_probe stage=JOURNAL verdict=NOT_RUN message=Перегрузка +12 В · 1/2: канал 1 — отключаю ЦАП
+2026-09-21T23:19:29.421 ISD path=/type=1num=1val=0work=0 http_status=200 response=OK
+2026-09-21T23:19:29.815 EVENT node=yalk_overload_point_probe stage=JOURNAL verdict=NOT_RUN message=Перегрузка: подключаю источник type=3/96 к каналу 1
+2026-09-21T23:19:30.926 ISD path=/type=3num=96val=1 http_status=200 response=OK
+2026-09-21T23:19:32.037 ISD path=/type=3num=1val=1 http_status=200 response=OK
+2026-09-21T23:19:32.043 EVENT node=yalk_overload_point_probe stage=JOURNAL verdict=NOT_RUN message=Перегрузка: выдержка 1.000000 с на канале 1
+2026-09-21T23:19:33.369 EVENT node=yalk_overload_point_probe stage=BACKGROUND verdict=NOT_RUN message=reference204 при +12 В на канале 1 background_max=-0.967283228,-0.05177554047,0.03725903379,0.07596971825,0.203714977,0.2404901272,0.3759775228,0.4437212206,0.5443690002,0.4940451104,2.36377117,2.448934676,2.476032155,2.567002263,2.650230235,2.648294701,2.605712948,2.758620151,2.737329275,2.841848123,2.779911028,2.985077656,2.946366971,3.000561929,3.066370093,3.09733864,3.165082338,3.256052447,3.062499024,3.153469133,3.130242722,3.374120034,3.494123156,3.420572856,3.528962772,3.511542964,3.687676578,3.714774058,3.765097947,3.811550769,3.8076797,3.85800359,3.921876219,2.988948724,4.067041286,4.086396628,4.049621478,4.158011395,4.210270819,4.285756653,4.320596269,4.363178022,4.442534925,4.44447046,4.64189495,4.566409116,4.651572622,4.651572622,4.72899399,4.771575743,4.845126044,4.887707797,5.013517521,4.914805276,5.042550535,5.058034808,5.143198314,5.125778506,5.201264341,5.309654257,3.157340201,3.16121127,3.120565051,5.431592913,5.586435651,5.574822446,5.598048857,5.737407321,5.675470226,5.747084992,5.797408882,5.85160384,5.98902677,5.878701319,6.033544057,6.079996878,6.078061344,3.172824475,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,0.0004838835558,6.103223289,6.196128932,4.345758214 background_mean=-0.967283228,-0.05177554047,0.03725903379,0.07596971825,0.203714977,0.2404901272,0.3759775228,0.4437212206,0.5443690002,0.4940451104,2.36377117,2.448934676,2.476032155,2.567002263,2.650230235,2.648294701,2.605712948,2.758620151,2.737329275,2.841848123,2.779911028,2.985077656,2.946366971,3.000561929,3.066370093,3.09733864,3.165082338,3.256052447,3.062499024,3.153469133,3.130242722,3.374120034,3.494123156,3.420572856,3.528962772,3.511542964,3.687676578,3.714774058,3.765097947,3.811550769,3.8076797,3.85800359,3.921876219,2.988948724,4.067041286,4.086396628,4.049621478,4.158011395,4.210270819,4.285756653,4.320596269,4.363178022,4.442534925,4.44447046,4.64189495,4.566409116,4.651572622,4.651572622,4.72899399,4.771575743,4.845126044,4.887707797,5.013517521,4.914805276,5.042550535,5.058034808,5.143198314,5.125778506,5.201264341,5.309654257,3.157340201,3.16121127,3.120565051,5.431592913,5.586435651,5.574822446,5.598048857,5.737407321,5.675470226,5.747084992,5.797408882,5.85160384,5.98902677,5.878701319,6.033544057,6.079996878,6.078061344,3.172824475,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,0.0004838835558,6.103223289,6.196128932,4.345758214 background_min=-0.967283228,-0.05177554047,0.03725903379,0.07596971825,0.203714977,0.2404901272,0.3759775228,0.4437212206,0.5443690002,0.4940451104,2.36377117,2.448934676,2.476032155,2.567002263,2.650230235,2.648294701,2.605712948,2.758620151,2.737329275,2.841848123,2.779911028,2.985077656,2.946366971,3.000561929,3.066370093,3.09733864,3.165082338,3.256052447,3.062499024,3.153469133,3.130242722,3.374120034,3.494123156,3.420572856,3.528962772,3.511542964,3.687676578,3.714774058,3.765097947,3.811550769,3.8076797,3.85800359,3.921876219,2.988948724,4.067041286,4.086396628,4.049621478,4.158011395,4.210270819,4.285756653,4.320596269,4.363178022,4.442534925,4.44447046,4.64189495,4.566409116,4.651572622,4.651572622,4.72899399,4.771575743,4.845126044,4.887707797,5.013517521,4.914805276,5.042550535,5.058034808,5.143198314,5.125778506,5.201264341,5.309654257,3.157340201,3.16121127,3.120565051,5.431592913,5.586435651,5.574822446,5.598048857,5.737407321,5.675470226,5.747084992,5.797408882,5.85160384,5.98902677,5.878701319,6.033544057,6.079996878,6.078061344,3.172824475,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,0.0004838835558,6.103223289,6.196128932,4.345758214 fresh=true section=YALK
+2026-09-21T23:19:33.369 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 2 baseline_code=118.000000 current_code=118.250000 delta_code=0.250000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=2 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.369 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 3 baseline_code=129.000000 current_code=129.750000 delta_code=0.750000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=3 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.369 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 4 baseline_code=135.250000 current_code=134.750000 delta_code=-0.500000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=4 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.369 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 5 baseline_code=151.000000 current_code=151.250000 delta_code=0.250000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=5 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.369 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 6 baseline_code=157.000000 current_code=156.000000 delta_code=-1.000000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=6 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.369 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 7 baseline_code=174.500000 current_code=173.500000 delta_code=-1.000000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=7 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.369 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 8 baseline_code=182.500000 current_code=182.250000 delta_code=-0.250000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=8 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.371 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 9 baseline_code=196.000000 current_code=195.250000 delta_code=-0.750000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=9 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.371 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 10 baseline_code=188.750000 current_code=188.750000 delta_code=0.000000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=10 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.371 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 11 baseline_code=431.250000 current_code=430.250000 delta_code=-1.000000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=11 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.371 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 12 baseline_code=440.250000 current_code=441.250000 delta_code=1.000000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=12 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.371 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 13 baseline_code=444.250000 current_code=444.750000 delta_code=0.500000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=13 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.371 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 14 baseline_code=456.250000 current_code=456.500000 delta_code=0.250000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=14 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.371 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 15 baseline_code=467.000000 current_code=467.250000 delta_code=0.250000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=15 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.371 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 16 baseline_code=467.000000 current_code=467.000000 delta_code=0.000000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=16 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.371 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 17 baseline_code=461.500000 current_code=461.500000 delta_code=0.000000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=17 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.371 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 18 baseline_code=481.000000 current_code=481.250000 delta_code=0.250000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=18 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.371 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 19 baseline_code=479.000000 current_code=478.500000 delta_code=-0.500000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=19 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.371 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 20 baseline_code=491.000000 current_code=492.000000 delta_code=1.000000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=20 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.371 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 21 baseline_code=483.500000 current_code=484.000000 delta_code=0.500000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=21 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.371 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 22 baseline_code=511.250000 current_code=510.500000 delta_code=-0.750000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=22 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.373 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 23 baseline_code=505.250000 current_code=505.500000 delta_code=0.250000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=23 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.373 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 24 baseline_code=512.000000 current_code=512.500000 delta_code=0.500000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=24 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.373 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 25 baseline_code=522.250000 current_code=521.000000 delta_code=-1.250000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=25 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.373 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 26 baseline_code=525.500000 current_code=525.000000 delta_code=-0.500000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=26 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.373 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 27 baseline_code=533.000000 current_code=533.750000 delta_code=0.750000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=27 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.373 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 28 baseline_code=546.000000 current_code=545.500000 delta_code=-0.500000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=28 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.373 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 32 baseline_code=561.250000 current_code=560.750000 delta_code=-0.500000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=32 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.373 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 33 baseline_code=575.750000 current_code=576.250000 delta_code=0.500000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=33 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.373 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 34 baseline_code=567.750000 current_code=566.750000 delta_code=-1.000000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=34 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.373 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 35 baseline_code=581.250000 current_code=580.750000 delta_code=-0.500000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=35 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.373 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 36 baseline_code=578.500000 current_code=578.500000 delta_code=0.000000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=36 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.373 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 37 baseline_code=601.250000 current_code=601.250000 delta_code=0.000000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=37 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.373 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 38 baseline_code=605.500000 current_code=604.750000 delta_code=-0.750000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=38 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.373 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 39 baseline_code=611.250000 current_code=611.250000 delta_code=0.000000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=39 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.375 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 40 baseline_code=617.250000 current_code=617.250000 delta_code=0.000000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=40 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.375 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 41 baseline_code=616.250000 current_code=616.750000 delta_code=0.500000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=41 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.375 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 42 baseline_code=622.500000 current_code=623.250000 delta_code=0.750000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=42 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.375 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 43 baseline_code=631.000000 current_code=631.500000 delta_code=0.500000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=43 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.375 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 45 baseline_code=650.000000 current_code=650.250000 delta_code=0.250000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=45 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.375 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 46 baseline_code=653.250000 current_code=652.750000 delta_code=-0.500000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=46 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.375 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 47 baseline_code=647.750000 current_code=648.000000 delta_code=0.250000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=47 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.375 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 48 baseline_code=663.000000 current_code=662.000000 delta_code=-1.000000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=48 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.375 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 49 baseline_code=668.750000 current_code=668.750000 delta_code=0.000000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=49 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.375 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 50 baseline_code=677.750000 current_code=678.500000 delta_code=0.750000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=50 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.375 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 51 baseline_code=683.000000 current_code=683.000000 delta_code=0.000000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=51 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.375 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 52 baseline_code=689.750000 current_code=688.500000 delta_code=-1.250000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=52 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.375 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 53 baseline_code=698.000000 current_code=698.750000 delta_code=0.750000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=53 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.375 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 54 baseline_code=698.750000 current_code=699.000000 delta_code=0.250000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=54 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.377 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 55 baseline_code=724.000000 current_code=724.500000 delta_code=0.500000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=55 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.377 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 56 baseline_code=715.000000 current_code=714.750000 delta_code=-0.250000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=56 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.377 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 57 baseline_code=725.000000 current_code=725.750000 delta_code=0.750000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=57 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.377 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 58 baseline_code=726.500000 current_code=725.750000 delta_code=-0.750000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=58 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.377 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 59 baseline_code=735.000000 current_code=735.750000 delta_code=0.750000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=59 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.377 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 60 baseline_code=741.750000 current_code=741.250000 delta_code=-0.500000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=60 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.377 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 61 baseline_code=751.000000 current_code=750.750000 delta_code=-0.250000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=61 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.377 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 62 baseline_code=756.500000 current_code=756.250000 delta_code=-0.250000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=62 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.377 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 63 baseline_code=773.250000 current_code=772.500000 delta_code=-0.750000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=63 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.377 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 64 baseline_code=760.250000 current_code=759.750000 delta_code=-0.500000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=64 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.377 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 65 baseline_code=776.000000 current_code=776.250000 delta_code=0.250000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=65 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.377 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 66 baseline_code=778.500000 current_code=778.250000 delta_code=-0.250000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=66 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.377 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 67 baseline_code=790.000000 current_code=789.250000 delta_code=-0.750000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=67 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.377 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 68 baseline_code=787.000000 current_code=787.000000 delta_code=0.000000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=68 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.377 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 69 baseline_code=797.000000 current_code=796.750000 delta_code=-0.250000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=69 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.379 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 70 baseline_code=810.500000 current_code=810.750000 delta_code=0.250000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=70 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.379 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 74 baseline_code=827.250000 current_code=826.500000 delta_code=-0.750000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=74 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.379 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 75 baseline_code=846.500000 current_code=846.500000 delta_code=0.000000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=75 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.379 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 76 baseline_code=845.500000 current_code=845.000000 delta_code=-0.500000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=76 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.379 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 77 baseline_code=848.000000 current_code=848.000000 delta_code=0.000000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=77 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.379 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 78 baseline_code=866.750000 current_code=866.000000 delta_code=-0.750000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=78 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.379 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 79 baseline_code=858.250000 current_code=858.000000 delta_code=-0.250000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=79 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.379 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 80 baseline_code=867.500000 current_code=867.250000 delta_code=-0.250000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=80 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.379 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 81 baseline_code=874.000000 current_code=873.750000 delta_code=-0.250000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=81 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.379 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 82 baseline_code=880.250000 current_code=880.750000 delta_code=0.500000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=82 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.379 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 83 baseline_code=897.750000 current_code=898.500000 delta_code=0.750000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=83 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.379 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 84 baseline_code=883.500000 current_code=884.250000 delta_code=0.750000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=84 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.379 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 85 baseline_code=905.000000 current_code=904.250000 delta_code=-0.750000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=85 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.379 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 86 baseline_code=910.500000 current_code=910.250000 delta_code=-0.250000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=86 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.381 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: +12 В на 1, наблюдение 87 baseline_code=909.500000 current_code=910.000000 delta_code=0.500000 impact_count=2 impact_index=1 lower_delta_code=-5.000000 observed_channel=87 polarity=+12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:33.482 ISD path=/type=3num=1val=0 http_status=200 response=OK
+2026-09-21T23:19:34.609 ISD path=/type=3num=96val=0 http_status=200 response=OK
+2026-09-21T23:19:35.733 ISD path=/type=1num=1val=780work=1 http_status=200 response=OK
+2026-09-21T23:19:36.129 EVENT node=yalk_overload_point_probe stage=JOURNAL verdict=NOT_RUN message=Перегрузка: канал 1 снят, пилообразный фон восстановлен
+2026-09-21T23:19:36.129 EVENT node=yalk_overload_point_probe stage=OVERLOAD verdict=NOT_RUN message=ЯЛК: перегрузка -12 В, канал 1 coverage=selective impact_count=2 impact_index=2 observed_count=80 polarity=-12 В settle_ms=1000 stressed_channel=1 target_count=1
+2026-09-21T23:19:36.129 EVENT node=yalk_overload_point_probe stage=JOURNAL verdict=NOT_RUN message=Перегрузка -12 В · 2/2: канал 1 — отключаю ЦАП
+2026-09-21T23:19:37.242 ISD path=/type=1num=1val=0work=0 http_status=200 response=OK
+2026-09-21T23:19:37.621 EVENT node=yalk_overload_point_probe stage=JOURNAL verdict=NOT_RUN message=Перегрузка: подключаю источник type=3/95 к каналу 1
+2026-09-21T23:19:38.731 ISD path=/type=3num=95val=1 http_status=200 response=OK
+2026-09-21T23:19:39.842 ISD path=/type=3num=1val=1 http_status=200 response=OK
+2026-09-21T23:19:39.848 EVENT node=yalk_overload_point_probe stage=JOURNAL verdict=NOT_RUN message=Перегрузка: выдержка 1.000000 с на канале 1
+2026-09-21T23:19:41.189 EVENT node=yalk_overload_point_probe stage=BACKGROUND verdict=NOT_RUN message=reference204 при -12 В на канале 1 background_max=-0.967283228,-0.0459689378,0.02758136268,0.07596971825,0.2056505112,0.2501677983,0.3817841255,0.4437212206,0.5540466713,0.4959806447,2.361835636,2.439257005,2.479903223,2.567002263,2.634745961,2.650230235,2.603777414,2.754749083,2.745071412,2.843783657,2.781846562,2.990884258,2.946366971,2.996690861,3.066370093,3.09733864,3.168953407,3.257987981,3.099274175,3.168953407,3.058627956,3.381862171,3.490252088,3.430250527,3.527027238,3.515414033,3.679934442,3.722516194,3.774775619,3.819292906,3.801873098,3.865745727,3.929618356,3.03733708,4.070912355,4.084461094,4.049621478,4.163817997,4.212206353,4.278014517,4.320596269,4.367049091,4.436728323,4.442534925,4.643830485,4.562538047,4.639959416,4.65544369,4.72899399,4.775446812,4.850932647,4.885772263,5.019324124,4.914805276,5.036743932,5.059970343,5.143198314,5.12771404,5.199328807,5.311589792,3.103145243,3.101209709,3.223148365,5.427721845,5.588371186,5.57675798,5.599984391,5.743213923,5.685147897,5.743213923,5.795473347,5.849668306,5.990962304,5.870959182,6.041286194,6.07612581,6.068383673,3.130242722,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,0.0004838835558,6.103223289,6.196128932,4.349629283 background_mean=-0.967283228,-0.0459689378,0.02758136268,0.07596971825,0.2056505112,0.2501677983,0.3817841255,0.4437212206,0.5540466713,0.4959806447,2.361835636,2.439257005,2.479903223,2.567002263,2.634745961,2.650230235,2.603777414,2.754749083,2.745071412,2.843783657,2.781846562,2.990884258,2.946366971,2.996690861,3.066370093,3.09733864,3.168953407,3.257987981,3.099274175,3.168953407,3.058627956,3.381862171,3.490252088,3.430250527,3.527027238,3.515414033,3.679934442,3.722516194,3.774775619,3.819292906,3.801873098,3.865745727,3.929618356,3.03733708,4.070912355,4.084461094,4.049621478,4.163817997,4.212206353,4.278014517,4.320596269,4.367049091,4.436728323,4.442534925,4.643830485,4.562538047,4.639959416,4.65544369,4.72899399,4.775446812,4.850932647,4.885772263,5.019324124,4.914805276,5.036743932,5.059970343,5.143198314,5.12771404,5.199328807,5.311589792,3.103145243,3.101209709,3.223148365,5.427721845,5.588371186,5.57675798,5.599984391,5.743213923,5.685147897,5.743213923,5.795473347,5.849668306,5.990962304,5.870959182,6.041286194,6.07612581,6.068383673,3.130242722,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,0.0004838835558,6.103223289,6.196128932,4.349629283 background_min=-0.967283228,-0.0459689378,0.02758136268,0.07596971825,0.2056505112,0.2501677983,0.3817841255,0.4437212206,0.5540466713,0.4959806447,2.361835636,2.439257005,2.479903223,2.567002263,2.634745961,2.650230235,2.603777414,2.754749083,2.745071412,2.843783657,2.781846562,2.990884258,2.946366971,2.996690861,3.066370093,3.09733864,3.168953407,3.257987981,3.099274175,3.168953407,3.058627956,3.381862171,3.490252088,3.430250527,3.527027238,3.515414033,3.679934442,3.722516194,3.774775619,3.819292906,3.801873098,3.865745727,3.929618356,3.03733708,4.070912355,4.084461094,4.049621478,4.163817997,4.212206353,4.278014517,4.320596269,4.367049091,4.436728323,4.442534925,4.643830485,4.562538047,4.639959416,4.65544369,4.72899399,4.775446812,4.850932647,4.885772263,5.019324124,4.914805276,5.036743932,5.059970343,5.143198314,5.12771404,5.199328807,5.311589792,3.103145243,3.101209709,3.223148365,5.427721845,5.588371186,5.57675798,5.599984391,5.743213923,5.685147897,5.743213923,5.795473347,5.849668306,5.990962304,5.870959182,6.041286194,6.07612581,6.068383673,3.130242722,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,-0.967283228,0.0004838835558,6.103223289,6.196128932,4.349629283 fresh=true section=YALK
+2026-09-21T23:19:41.189 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 2 baseline_code=118.000000 current_code=119.000000 delta_code=1.000000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=2 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.189 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 3 baseline_code=129.000000 current_code=128.500000 delta_code=-0.500000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=3 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.189 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 4 baseline_code=135.250000 current_code=134.750000 delta_code=-0.500000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=4 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.189 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 5 baseline_code=151.000000 current_code=151.500000 delta_code=0.500000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=5 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.189 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 6 baseline_code=157.000000 current_code=157.250000 delta_code=0.250000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=6 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.189 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 7 baseline_code=174.500000 current_code=174.250000 delta_code=-0.250000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=7 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.189 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 8 baseline_code=182.500000 current_code=182.250000 delta_code=-0.250000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=8 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.189 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 9 baseline_code=196.000000 current_code=196.500000 delta_code=0.500000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=9 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.189 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 10 baseline_code=188.750000 current_code=189.000000 delta_code=0.250000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=10 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.191 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 11 baseline_code=431.250000 current_code=430.000000 delta_code=-1.250000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=11 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.191 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 12 baseline_code=440.250000 current_code=440.000000 delta_code=-0.250000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=12 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.191 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 13 baseline_code=444.250000 current_code=445.250000 delta_code=1.000000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=13 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.191 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 14 baseline_code=456.250000 current_code=456.500000 delta_code=0.250000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=14 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.191 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 15 baseline_code=467.000000 current_code=465.250000 delta_code=-1.750000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=15 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.191 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 16 baseline_code=467.000000 current_code=467.250000 delta_code=0.250000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=16 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.191 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 17 baseline_code=461.500000 current_code=461.250000 delta_code=-0.250000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=17 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.191 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 18 baseline_code=481.000000 current_code=480.750000 delta_code=-0.250000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=18 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.191 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 19 baseline_code=479.000000 current_code=479.500000 delta_code=0.500000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=19 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.191 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 20 baseline_code=491.000000 current_code=492.250000 delta_code=1.250000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=20 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.191 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 21 baseline_code=483.500000 current_code=484.250000 delta_code=0.750000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=21 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.191 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 22 baseline_code=511.250000 current_code=511.250000 delta_code=0.000000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=22 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.191 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 23 baseline_code=505.250000 current_code=505.500000 delta_code=0.250000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=23 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.191 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 24 baseline_code=512.000000 current_code=512.000000 delta_code=0.000000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=24 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.193 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 25 baseline_code=522.250000 current_code=521.000000 delta_code=-1.250000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=25 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.193 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 26 baseline_code=525.500000 current_code=525.000000 delta_code=-0.500000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=26 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.193 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 27 baseline_code=533.000000 current_code=534.250000 delta_code=1.250000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=27 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.193 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 28 baseline_code=546.000000 current_code=545.750000 delta_code=-0.250000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=28 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.193 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 32 baseline_code=561.250000 current_code=561.750000 delta_code=0.500000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=32 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.193 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 33 baseline_code=575.750000 current_code=575.750000 delta_code=0.000000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=33 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.193 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 34 baseline_code=567.750000 current_code=568.000000 delta_code=0.250000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=34 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.193 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 35 baseline_code=581.250000 current_code=580.500000 delta_code=-0.750000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=35 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.193 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 36 baseline_code=578.500000 current_code=579.000000 delta_code=0.500000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=36 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.193 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 37 baseline_code=601.250000 current_code=600.250000 delta_code=-1.000000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=37 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.193 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 38 baseline_code=605.500000 current_code=605.750000 delta_code=0.250000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=38 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.193 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 39 baseline_code=611.250000 current_code=612.500000 delta_code=1.250000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=39 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.193 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 40 baseline_code=617.250000 current_code=618.250000 delta_code=1.000000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=40 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.193 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 41 baseline_code=616.250000 current_code=616.000000 delta_code=-0.250000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=41 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.193 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 42 baseline_code=622.500000 current_code=624.250000 delta_code=1.750000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=42 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.195 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 43 baseline_code=631.000000 current_code=632.500000 delta_code=1.500000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=43 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.195 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 45 baseline_code=650.000000 current_code=650.750000 delta_code=0.750000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=45 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.195 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 46 baseline_code=653.250000 current_code=652.500000 delta_code=-0.750000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=46 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.195 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 47 baseline_code=647.750000 current_code=648.000000 delta_code=0.250000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=47 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.195 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 48 baseline_code=663.000000 current_code=662.750000 delta_code=-0.250000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=48 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.195 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 49 baseline_code=668.750000 current_code=669.000000 delta_code=0.250000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=49 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.195 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 50 baseline_code=677.750000 current_code=677.500000 delta_code=-0.250000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=50 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.195 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 51 baseline_code=683.000000 current_code=683.000000 delta_code=0.000000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=51 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.195 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 52 baseline_code=689.750000 current_code=689.000000 delta_code=-0.750000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=52 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.195 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 53 baseline_code=698.000000 current_code=698.000000 delta_code=0.000000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=53 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.195 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 54 baseline_code=698.750000 current_code=698.750000 delta_code=0.000000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=54 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.195 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 55 baseline_code=724.000000 current_code=724.750000 delta_code=0.750000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=55 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.195 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 56 baseline_code=715.000000 current_code=714.250000 delta_code=-0.750000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=56 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.195 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 57 baseline_code=725.000000 current_code=724.250000 delta_code=-0.750000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=57 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.197 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 58 baseline_code=726.500000 current_code=726.250000 delta_code=-0.250000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=58 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.197 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 59 baseline_code=735.000000 current_code=735.750000 delta_code=0.750000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=59 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.197 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 60 baseline_code=741.750000 current_code=741.750000 delta_code=0.000000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=60 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.197 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 61 baseline_code=751.000000 current_code=751.500000 delta_code=0.500000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=61 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.197 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 62 baseline_code=756.500000 current_code=756.000000 delta_code=-0.500000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=62 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.197 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 63 baseline_code=773.250000 current_code=773.250000 delta_code=0.000000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=63 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.197 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 64 baseline_code=760.250000 current_code=759.750000 delta_code=-0.500000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=64 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.197 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 65 baseline_code=776.000000 current_code=775.500000 delta_code=-0.500000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=65 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.197 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 66 baseline_code=778.500000 current_code=778.500000 delta_code=0.000000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=66 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.197 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 67 baseline_code=790.000000 current_code=789.250000 delta_code=-0.750000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=67 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.197 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 68 baseline_code=787.000000 current_code=787.250000 delta_code=0.250000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=68 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.197 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 69 baseline_code=797.000000 current_code=796.500000 delta_code=-0.500000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=69 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.197 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 70 baseline_code=810.500000 current_code=811.000000 delta_code=0.500000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=70 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.197 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 74 baseline_code=827.250000 current_code=826.000000 delta_code=-1.250000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=74 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.197 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 75 baseline_code=846.500000 current_code=846.750000 delta_code=0.250000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=75 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.197 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 76 baseline_code=845.500000 current_code=845.250000 delta_code=-0.250000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=76 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.199 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 77 baseline_code=848.000000 current_code=848.250000 delta_code=0.250000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=77 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.199 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 78 baseline_code=866.750000 current_code=866.750000 delta_code=0.000000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=78 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.199 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 79 baseline_code=858.250000 current_code=859.250000 delta_code=1.000000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=79 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.199 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 80 baseline_code=867.500000 current_code=866.750000 delta_code=-0.750000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=80 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.199 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 81 baseline_code=874.000000 current_code=873.500000 delta_code=-0.500000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=81 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.199 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 82 baseline_code=880.250000 current_code=880.500000 delta_code=0.250000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=82 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.199 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 83 baseline_code=897.750000 current_code=898.750000 delta_code=1.000000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=83 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.199 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 84 baseline_code=883.500000 current_code=883.250000 delta_code=-0.250000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=84 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.199 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 85 baseline_code=905.000000 current_code=905.250000 delta_code=0.250000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=85 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.199 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 86 baseline_code=910.500000 current_code=909.750000 delta_code=-0.750000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=86 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.199 EVENT node=yalk_overload_point_probe stage=MEASUREMENT verdict=OK message=ЯЛК: -12 В на 1, наблюдение 87 baseline_code=909.500000 current_code=908.750000 delta_code=-0.750000 impact_count=2 impact_index=2 lower_delta_code=-5.000000 observed_channel=87 polarity=-12 В stressed_channel=1 upper_delta_code=5.000000
+2026-09-21T23:19:41.303 ISD path=/type=3num=1val=0 http_status=200 response=OK
+2026-09-21T23:19:42.430 ISD path=/type=3num=95val=0 http_status=200 response=OK
+2026-09-21T23:19:43.557 ISD path=/type=1num=1val=780work=1 http_status=200 response=OK
+2026-09-21T23:19:43.951 EVENT node=yalk_overload_point_probe stage=JOURNAL verdict=NOT_RUN message=Перегрузка: канал 1 снят, пилообразный фон восстановлен
+2026-09-21T23:19:43.951 EVENT node=yalk_overload_point_probe stage=JOURNAL verdict=NOT_RUN message=Перегрузка: все 160 воздействий завершены, снимаю пилообразный фон
+2026-09-21T23:19:45.062 ISD path=/type=3num=96val=0 http_status=200 response=OK
+2026-09-21T23:19:46.175 ISD path=/type=3num=95val=0 http_status=200 response=OK
+2026-09-21T23:19:47.285 ISD path=/type=1num=87val=0work=0 http_status=200 response=OK
+2026-09-21T23:19:48.394 ISD path=/type=1num=86val=0work=0 http_status=200 response=OK
+2026-09-21T23:19:49.504 ISD path=/type=1num=85val=0work=0 http_status=200 response=OK
+2026-09-21T23:19:50.614 ISD path=/type=1num=84val=0work=0 http_status=200 response=OK
+2026-09-21T23:19:51.739 ISD path=/type=1num=83val=0work=0 http_status=200 response=OK
+2026-09-21T23:19:52.848 ISD path=/type=1num=82val=0work=0 http_status=200 response=OK
+2026-09-21T23:19:53.972 ISD path=/type=1num=81val=0work=0 http_status=200 response=OK
+2026-09-21T23:19:55.082 ISD path=/type=1num=80val=0work=0 http_status=200 response=OK
+2026-09-21T23:19:56.195 ISD path=/type=1num=79val=0work=0 http_status=200 response=OK
+2026-09-21T23:19:57.303 ISD path=/type=1num=78val=0work=0 http_status=200 response=OK
+2026-09-21T23:19:58.413 ISD path=/type=1num=77val=0work=0 http_status=200 response=OK
+2026-09-21T23:19:59.524 ISD path=/type=1num=76val=0work=0 http_status=200 response=OK
+2026-09-21T23:20:00.652 ISD path=/type=1num=75val=0work=0 http_status=200 response=OK
+2026-09-21T23:20:01.745 ISD path=/type=1num=74val=0work=0 http_status=200 response=OK
+2026-09-21T23:20:02.855 ISD path=/type=1num=70val=0work=0 http_status=200 response=OK
+2026-09-21T23:20:03.965 ISD path=/type=1num=69val=0work=0 http_status=200 response=OK
+2026-09-21T23:20:05.076 ISD path=/type=1num=68val=0work=0 http_status=200 response=OK
+2026-09-21T23:20:06.187 ISD path=/type=1num=67val=0work=0 http_status=200 response=OK
+2026-09-21T23:20:07.316 ISD path=/type=1num=66val=0work=0 http_status=200 response=OK
+2026-09-21T23:20:08.440 ISD path=/type=1num=65val=0work=0 http_status=200 response=OK
+2026-09-21T23:20:09.569 ISD path=/type=1num=64val=0work=0 http_status=200 response=OK
+2026-09-21T23:20:10.680 ISD path=/type=1num=63val=0work=0 http_status=200 response=OK
+2026-09-21T23:20:11.789 ISD path=/type=1num=62val=0work=0 http_status=200 response=OK
+2026-09-21T23:20:12.900 ISD path=/type=1num=61val=0work=0 http_status=200 response=OK
+2026-09-21T23:20:14.012 ISD path=/type=1num=60val=0work=0 http_status=200 response=OK
+2026-09-21T23:20:15.086 ISD path=/type=1num=59val=0work=0 http_status=200 response=OK
+2026-09-21T23:20:16.179 ISD path=/type=1num=58val=0work=0 http_status=200 response=OK
+2026-09-21T23:20:17.254 ISD path=/type=1num=57val=0work=0 http_status=200 response=OK
+2026-09-21T23:20:18.361 ISD path=/type=1num=56val=0work=0 http_status=200 response=OK
+2026-09-21T23:20:19.469 ISD path=/type=1num=55val=0work=0 http_status=200 response=OK
+2026-09-21T23:20:20.580 ISD path=/type=1num=54val=0work=0 http_status=200 response=OK
+2026-09-21T23:20:21.691 ISD path=/type=1num=53val=0work=0 http_status=200 response=OK
+2026-09-21T23:20:22.802 ISD path=/type=1num=52val=0work=0 http_status=200 response=OK
+2026-09-21T23:20:23.915 ISD path=/type=1num=51val=0work=0 http_status=200 response=OK
+2026-09-21T23:20:25.024 ISD path=/type=1num=50val=0work=0 http_status=200 response=OK
+2026-09-21T23:20:26.153 ISD path=/type=1num=49val=0work=0 http_status=200 response=OK
+2026-09-21T23:20:27.279 ISD path=/type=1num=48val=0work=0 http_status=200 response=OK
+2026-09-21T23:20:28.406 ISD path=/type=1num=47val=0work=0 http_status=200 response=OK
+2026-09-21T23:20:29.533 ISD path=/type=1num=46val=0work=0 http_status=200 response=OK
+2026-09-21T23:20:30.658 ISD path=/type=1num=45val=0work=0 http_status=200 response=OK
+2026-09-21T23:20:31.769 ISD path=/type=1num=43val=0work=0 http_status=200 response=OK
+2026-09-21T23:20:32.882 ISD path=/type=1num=42val=0work=0 http_status=200 response=OK
+2026-09-21T23:20:33.991 ISD path=/type=1num=41val=0work=0 http_status=200 response=OK
+2026-09-21T23:20:35.102 ISD path=/type=1num=40val=0work=0 http_status=200 response=OK
+2026-09-21T23:20:36.215 ISD path=/type=1num=39val=0work=0 http_status=200 response=OK
+2026-09-21T23:20:37.325 ISD path=/type=1num=38val=0work=0 http_status=200 response=OK
+2026-09-21T23:20:38.434 ISD path=/type=1num=37val=0work=0 http_status=200 response=OK
+2026-09-21T23:20:39.544 ISD path=/type=1num=36val=0work=0 http_status=200 response=OK
+2026-09-21T23:20:40.671 ISD path=/type=1num=35val=0work=0 http_status=200 response=OK
+2026-09-21T23:20:41.799 ISD path=/type=1num=34val=0work=0 http_status=200 response=OK
+2026-09-21T23:20:42.926 ISD path=/type=1num=33val=0work=0 http_status=200 response=OK
+2026-09-21T23:20:44.052 ISD path=/type=1num=32val=0work=0 http_status=200 response=OK
+2026-09-21T23:20:45.177 ISD path=/type=1num=28val=0work=0 http_status=200 response=OK
+2026-09-21T23:20:46.255 ISD path=/type=1num=27val=0work=0 http_status=200 response=OK
+2026-09-21T23:20:47.366 ISD path=/type=1num=26val=0work=0 http_status=200 response=OK
+2026-09-21T23:20:48.492 ISD path=/type=1num=25val=0work=0 http_status=200 response=OK
+2026-09-21T23:20:49.619 ISD path=/type=1num=24val=0work=0 http_status=200 response=OK
+2026-09-21T23:20:50.745 ISD path=/type=1num=23val=0work=0 http_status=200 response=OK
+2026-09-21T23:20:51.871 ISD path=/type=1num=22val=0work=0 http_status=200 response=OK
+2026-09-21T23:20:52.982 ISD path=/type=1num=21val=0work=0 http_status=200 response=OK
+2026-09-21T23:20:54.092 ISD path=/type=1num=20val=0work=0 http_status=200 response=OK
+2026-09-21T23:20:55.201 ISD path=/type=1num=19val=0work=0 http_status=200 response=OK
+2026-09-21T23:20:56.311 ISD path=/type=1num=18val=0work=0 http_status=200 response=OK
+2026-09-21T23:20:57.420 ISD path=/type=1num=17val=0work=0 http_status=200 response=OK
+2026-09-21T23:20:58.530 ISD path=/type=1num=16val=0work=0 http_status=200 response=OK
+2026-09-21T23:20:59.643 ISD path=/type=1num=15val=0work=0 http_status=200 response=OK
+2026-09-21T23:21:00.753 ISD path=/type=1num=14val=0work=0 http_status=200 response=OK
+2026-09-21T23:21:01.829 ISD path=/type=1num=13val=0work=0 http_status=200 response=OK
+2026-09-21T23:21:02.942 ISD path=/type=1num=12val=0work=0 http_status=200 response=OK
+2026-09-21T23:21:04.050 ISD path=/type=1num=11val=0work=0 http_status=200 response=OK
+2026-09-21T23:21:05.161 ISD path=/type=1num=10val=0work=0 http_status=200 response=OK
+2026-09-21T23:21:06.273 ISD path=/type=1num=9val=0work=0 http_status=200 response=OK
+2026-09-21T23:21:07.382 ISD path=/type=1num=8val=0work=0 http_status=200 response=OK
+2026-09-21T23:21:08.493 ISD path=/type=1num=7val=0work=0 http_status=200 response=OK
+2026-09-21T23:21:09.604 ISD path=/type=1num=6val=0work=0 http_status=200 response=OK
+2026-09-21T23:21:10.714 ISD path=/type=1num=5val=0work=0 http_status=200 response=OK
+2026-09-21T23:21:11.826 ISD path=/type=1num=4val=0work=0 http_status=200 response=OK
+2026-09-21T23:21:12.935 ISD path=/type=1num=3val=0work=0 http_status=200 response=OK
+2026-09-21T23:21:14.046 ISD path=/type=1num=2val=0work=0 http_status=200 response=OK
+2026-09-21T23:21:15.156 ISD path=/type=1num=1val=0work=0 http_status=200 response=OK
+2026-09-21T23:21:15.162 EVENT node=yalk_overload_point_probe stage=FINISH verdict=OK message=Проверена устойчивость 80 адресов ЯЛК при выборочной перегрузке ±12 В на 1 каналах
+2026-09-21T23:21:15.162 EVENT node=yalk_cleanup stage=START verdict=NOT_RUN message=Адресное снятие воздействий ЯЛК
+2026-09-21T23:21:15.162 EVENT node=yalk_cleanup stage=JOURNAL verdict=NOT_RUN message=ЯЛК: снимаю активные воздействия и останавливаю поток
+2026-09-21T23:21:15.618 EVENT node=yalk_cleanup stage=MEASUREMENT verdict=OK message=Остаточное напряжение после ЯЛК cleanup_voltage_v=-0.000602 v7_v=-0.000602
+2026-09-21T23:21:15.618 EVENT node=yalk_cleanup stage=JOURNAL verdict=NOT_RUN message=ЯЛК: остаточное напряжение В7=-0.000602 В
+2026-09-21T23:21:15.618 EVENT node=yalk_cleanup stage=FINISH verdict=OK message=Поток ЯЛК остановлен; воздействие снято
+2026-09-21T23:21:15.618 EVENT node=power_off stage=START verdict=NOT_RUN message=Отключение питания после пробы
+2026-09-21T23:21:16.245 EVENT node=power_off stage=FINISH verdict=OK message=Выход АКИП выключен после испытания
+2026-09-21T23:21:16.396 RUN verdict=OK steps=7
