@@ -29,6 +29,18 @@ QString verdict(tu::RunVerdict value)
     return QString::fromLatin1(tu::toString(value));
 }
 
+QString protocolVerdict(tu::RunVerdict value)
+{
+    switch (value) {
+    case tu::RunVerdict::Ok: return QStringLiteral("НОРМА");
+    case tu::RunVerdict::Fail:
+    case tu::RunVerdict::Error: return QStringLiteral("НЕ НОРМА");
+    case tu::RunVerdict::Incomplete: return QStringLiteral("НЕ ЗАВЕРШЕНО");
+    case tu::RunVerdict::NotRun: return QStringLiteral("НЕ ВЫПОЛНЕНО");
+    }
+    return QStringLiteral("НЕ ВЫПОЛНЕНО");
+}
+
 QString instant(std::chrono::system_clock::time_point value)
 {
     if (value.time_since_epoch().count() == 0) return {};
@@ -84,6 +96,83 @@ void visitMeasurements(const std::vector<tu::StepRunResult>& steps,
     }
 }
 
+QString attribute(const tu::MeasurementResult& value, const char* key)
+{
+    const auto found = value.attributes.find(key);
+    return found == value.attributes.end() ? QString{} : text(found->second);
+}
+
+void writeProtocolSteps(QTextStream& output,
+                        const std::vector<tu::StepRunResult>& steps)
+{
+    for (const auto& step : steps) {
+        const QString heading = text(step.title).toUpper()
+            + (step.tuRequirement.empty() ? QString{}
+                : QStringLiteral(" (ПУНКТ %1 ТУ)").arg(text(step.tuRequirement)));
+        output << QStringLiteral("<section><h2>") << heading.toHtmlEscaped()
+               << QStringLiteral("</h2>\n");
+        if (!step.message.empty())
+            output << QStringLiteral("<p>") << html(step.message) << QStringLiteral("</p>\n");
+
+        QString previousPoint;
+        for (const auto& value : step.measurements) {
+            const QString voltage = attribute(value, "command_v");
+            const QString resistance = attribute(value, "target_resistance_ohm");
+            const QString frequency = attribute(value, "frequency_hz");
+            QString point;
+            if (!voltage.isEmpty())
+                point = QStringLiteral("Установлено напряжение %1 В.").arg(voltage);
+            else if (!resistance.isEmpty())
+                point = QStringLiteral("Установлено сопротивление %1 Ом.").arg(resistance);
+            else if (!frequency.isEmpty())
+                point = QStringLiteral("Установлена частота %1 Гц.").arg(frequency);
+            if (!point.isEmpty() && point != previousPoint) {
+                output << QStringLiteral("<p class=\"point\">") << point.toHtmlEscaped()
+                       << QStringLiteral("</p>\n");
+                previousPoint = point;
+            }
+
+            QString channel;
+            const QString yalkAddress = attribute(value, "ulk_address");
+            const QString ytpChannel = attribute(value, "ytp_channel");
+            const QString yvpChannel = attribute(value, "channel");
+            if (!yalkAddress.isEmpty())
+                channel = QStringLiteral("Канал № %1").arg(yalkAddress);
+            else if (!ytpChannel.isEmpty())
+                channel = QStringLiteral("Канал № %1").arg(ytpChannel);
+            else if (!yvpChannel.isEmpty())
+                channel = QStringLiteral("Канал № %1").arg(yvpChannel);
+            else
+                channel = text(value.title);
+
+            output << QStringLiteral("<p class=\"measurement\">") << channel.toHtmlEscaped()
+                   << QStringLiteral(": &nbsp; Значение = ") << value.measured
+                   << QLatin1Char(' ') << html(value.unit);
+            const QString reference = attribute(value, "v7_v");
+            if (!reference.isEmpty())
+                output << QStringLiteral(" &nbsp; Вольтметр = ")
+                       << reference.toHtmlEscaped() << QStringLiteral(" В");
+            QString error = attribute(value, "reduced_error_percent");
+            if (error.isEmpty()) error = attribute(value, "gain_error_percent");
+            if (error.isEmpty()) error = attribute(value, "absolute_error_ohm");
+            if (error.isEmpty()) error = attribute(value, "absolute_error_v");
+            if (!error.isEmpty())
+                output << QStringLiteral(" &nbsp; Погрешность = ") << error.toHtmlEscaped()
+                       << (attribute(value, "absolute_error_ohm").isEmpty()
+                               && attribute(value, "absolute_error_v").isEmpty()
+                           ? QStringLiteral(" %") : QStringLiteral(" ") + html(value.unit));
+            output << QStringLiteral(" &nbsp; <strong>")
+                   << protocolVerdict(value.verdict).toHtmlEscaped()
+                   << QStringLiteral("</strong></p>\n");
+        }
+        writeProtocolSteps(output, step.children);
+        output << QStringLiteral("<p class=\"section-result\">")
+               << heading.toHtmlEscaped() << QStringLiteral(" &nbsp; <strong>")
+               << protocolVerdict(step.verdict).toHtmlEscaped()
+               << QStringLiteral("</strong></p></section>\n");
+    }
+}
+
 QString attributes(const std::map<std::string, std::string>& values)
 {
     QStringList parts;
@@ -106,41 +195,21 @@ QString writeTuReport(const tu::ScenarioRunResult& result)
         throw std::runtime_error(QStringLiteral("Не удалось открыть отчёт: %1").arg(htmlPath).toUtf8().toStdString());
     QTextStream out(&htmlFile);
     out.setEncoding(QStringConverter::Utf8);
-    out << QStringLiteral("<!doctype html><html lang=\"ru\"><head><meta charset=\"utf-8\"><title>Протокол ТУ</title>")
-        << QStringLiteral("<style>body{font-family:Arial,sans-serif;margin:24px;color:#17202a}table{border-collapse:collapse;width:100%;margin:12px 0 28px}th,td{border:1px solid #aeb6bf;padding:6px;text-align:left;vertical-align:top}th{background:#edf2f7}h1,h2{margin-bottom:8px}</style></head><body>")
-        << QStringLiteral("<h1>Протокол проверки УБСИ по ТУ</h1><table>")
-        << QStringLiteral("<tr><th>Запуск</th><td>") << html(result.runId) << QStringLiteral("</td></tr>")
-        << QStringLiteral("<tr><th>Сценарий</th><td>") << html(result.scenarioTitle) << QStringLiteral(" · ")
-        << html(result.scenarioVersion) << QStringLiteral("</td></tr>")
-        << QStringLiteral("<tr><th>Заводской номер</th><td>") << html(result.objectSerial) << QStringLiteral("</td></tr>")
-        << QStringLiteral("<tr><th>Оператор</th><td></td></tr>")
-        << QStringLiteral("<tr><th>Начало</th><td>") << instant(result.startedAt).toHtmlEscaped() << QStringLiteral("</td></tr>")
-        << QStringLiteral("<tr><th>Окончание</th><td>") << instant(result.finishedAt).toHtmlEscaped() << QStringLiteral("</td></tr>")
-        << QStringLiteral("<tr><th>Итог</th><td>") << verdict(result.verdict).toHtmlEscaped() << QStringLiteral("</td></tr></table>")
-        << QStringLiteral("<h2>Этапы</h2><table><tr><th>ID</th><th>ТУ</th><th>Этап</th><th>Результат</th><th>Сообщение</th></tr>");
-    writeStepRows(out, result.steps, 0);
-    out << QStringLiteral("</table><h2>Измерения</h2><table><tr><th>Этап</th><th>Параметр</th><th>Наименование</th><th>Измерено</th><th>Норма</th><th>Результат</th><th>Атрибуты</th></tr>");
-    visitMeasurements(result.steps, [&out](const auto& step, const auto& measurement) {
-        out << QStringLiteral("<tr><td>") << html(step.nodeId) << QStringLiteral("</td><td>")
-            << html(measurement.parameterKey) << QStringLiteral("</td><td>") << html(measurement.title)
-            << QStringLiteral("</td><td>") << measurement.measured << QLatin1Char(' ') << html(measurement.unit)
-            << QStringLiteral("</td><td>") << measurement.lowerLimit << QStringLiteral(" … ")
-            << measurement.upperLimit << QLatin1Char(' ') << html(measurement.unit)
-            << QStringLiteral("</td><td>") << verdict(measurement.verdict).toHtmlEscaped()
-            << QStringLiteral("</td><td>") << attributes(measurement.attributes).toHtmlEscaped()
-            << QStringLiteral("</td></tr>\n");
-    });
-    out << QStringLiteral("</table><h2>Журнал команд и событий</h2><table><tr><th>Время</th><th>Этап</th><th>Событие</th><th>Сообщение</th><th>Результат</th><th>Данные</th></tr>");
-    for (const auto& event : result.events) {
-        out << QStringLiteral("<tr><td>") << instant(event.timestamp).toHtmlEscaped()
-            << QStringLiteral("</td><td>") << html(event.nodeId)
-            << QStringLiteral("</td><td>") << html(event.stage)
-            << QStringLiteral("</td><td>") << html(event.message)
-            << QStringLiteral("</td><td>") << verdict(event.verdict).toHtmlEscaped()
-            << QStringLiteral("</td><td>") << attributes(event.data).toHtmlEscaped()
-            << QStringLiteral("</td></tr>\n");
-    }
-    out << QStringLiteral("</table></body></html>");
+    const QString reportTitle = QStringLiteral("Результаты проверки УБСИ №%1 в нормальных условиях")
+        .arg(text(result.objectSerial));
+    out << QStringLiteral("<!doctype html><html lang=\"ru\"><head><meta charset=\"utf-8\"><title>")
+        << reportTitle.toHtmlEscaped()
+        << QStringLiteral("</title><style>@page{size:A4;margin:18mm}body{font-family:'Times New Roman',serif;margin:28px;color:#111;font-size:14px;line-height:1.35}h1{text-align:center;font-size:20px;margin:0 0 24px}h2{font-size:15px;margin:24px 0 10px;text-transform:uppercase}p{margin:4px 0}.point{margin-top:12px}.measurement{padding-left:14px}.section-result{margin-top:10px}.final{font-size:17px;margin-top:30px;text-align:center}@media print{body{margin:0}}</style></head><body><h1>")
+        << reportTitle.toHtmlEscaped() << QStringLiteral("</h1>")
+        << QStringLiteral("<p>Заводской номер: ") << html(result.objectSerial) << QStringLiteral(".</p>")
+        << QStringLiteral("<p>Начало: ") << instant(result.startedAt).toHtmlEscaped()
+        << QStringLiteral(". Окончание: ") << instant(result.finishedAt).toHtmlEscaped()
+        << QStringLiteral(".</p>");
+    writeProtocolSteps(out, result.steps);
+    out << QStringLiteral("<p class=\"final\">") << reportTitle.toHtmlEscaped()
+        << QStringLiteral(" &nbsp; <strong>")
+        << protocolVerdict(result.verdict).toHtmlEscaped()
+        << QStringLiteral("</strong></p></body></html>");
     if (!htmlFile.commit())
         throw std::runtime_error(QStringLiteral("Не удалось сохранить отчёт: %1").arg(htmlPath).toUtf8().toStdString());
 

@@ -997,7 +997,7 @@ protected:
                 previousPoint = point;
                 hasPreviousPoint = true;
                 hits_.push_back({QRectF(x, area.top(), cell, area.height()), channel.physicalAddress,
-                    QStringLiteral("Канал %1\nbaseline %2\ncurrent %3\nΔcode %4\n%5")
+                    QStringLiteral("Канал %1\nИсходный код %2\nТекущий код %3\nΔcode %4\n%5")
                         .arg(channel.physicalAddress)
                         .arg(channel.baselineCode, 0, 'f', 1)
                         .arg(channel.currentCode, 0, 'f', 1)
@@ -1015,7 +1015,7 @@ protected:
         p.setPen(palette::muted);
         p.setFont(QFont(QStringLiteral("Segoe UI"), 8));
         p.drawText(QRectF(area.left(), 8, area.width(), 20), Qt::AlignLeft,
-                   QStringLiteral("Δcode = current − baseline · допуск ±%1 кода")
+                   QStringLiteral("Δcode = текущий − исходный · допуск ±%1 кодов")
                        .arg(frame_.criterionCode, 0, 'f', 0));
         p.setPen(maxDelta > frame_.criterionCode ? palette::red : palette::blue2);
         p.drawText(QRectF(area.left(), 8, area.width(), 20), Qt::AlignRight,

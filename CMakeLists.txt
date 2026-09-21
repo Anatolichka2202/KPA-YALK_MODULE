@@ -101,6 +101,15 @@ target_link_libraries(tu_ui PUBLIC
 add_executable(tu_ui_smoke tests/ui_smoke.cpp)
 target_link_libraries(tu_ui_smoke PRIVATE tu_ui)
 
+add_executable(yalk_channel_probe tools/yalk_channel_probe.cpp)
+target_link_libraries(yalk_channel_probe PRIVATE tu_hardware)
+
+add_executable(yalk_overload_probe tools/yalk_overload_probe.cpp)
+target_link_libraries(yalk_overload_probe PRIVATE tu_hardware)
+
+add_executable(tu_yalk_trace tools/tu_yalk_trace.cpp)
+target_link_libraries(tu_yalk_trace PRIVATE tu_backend tu_hardware tu_procedures Qt6::Core)
+
 add_executable(tu_app
     app/main.cpp
     app/tu_controller.cpp

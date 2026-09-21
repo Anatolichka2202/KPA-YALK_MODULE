@@ -36,6 +36,12 @@ std::string argument(const tu::ScenarioStep& step, const std::string& key)
     return found->second;
 }
 
+std::string optionalArgument(const tu::ScenarioStep& step, const std::string& key)
+{
+    const auto found = step.arguments.find(key);
+    return found == step.arguments.end() ? std::string{} : found->second;
+}
+
 } // namespace
 
 int main()
@@ -43,11 +49,12 @@ int main()
     try {
         auto scenario = tu::loadScenarioYaml(TU_SOURCE_DIR "/data/ubsi_tu.yaml");
         require(scenario.id == "ubsi.tu.normal", "wrong scenario id");
-        require(scenario.version == "1.2.2", "unexpected TU scenario version");
+        require(scenario.version == "1.2.3", "unexpected TU scenario version");
 
         const std::vector<std::string> expectedSteps{
             "readiness",
             "supply_range",
+            "yalk_isd_reset",
             "yalk_stream",
             "yalk_calibration",
             "yalk_initial",
@@ -93,9 +100,9 @@ int main()
                 "YALK signal field must use the confirmed contact-threshold procedure");
         require(argument(contacts, "addresses") == "1-28,32-43,45-70,74-87",
                 "YALK signal address map changed");
-        require(argument(contacts, "contact_points_v") == "1.0,2.4",
+        require(argument(contacts, "contact_points_v") == "0,0.8,2.5",
                 "YALK contact threshold points changed");
-        require(argument(contacts, "signal_expectations") == "0,1",
+        require(argument(contacts, "signal_expectations") == "0,0,1",
                 "YALK signal truth table changed");
 
         const auto& overload = stepById(scenario, "yalk_overload");
@@ -103,13 +110,15 @@ int main()
                 "YALK overload must use the production special procedure");
         require(argument(overload, "physical_channels") == "1-28,32-43,45-70,74-87",
                 "YALK overload physical channel map changed");
+        require(optionalArgument(overload, "stressed_channels").empty(),
+                "TU run must stress all 80 YALK channels");
         require(argument(overload, "observed_addresses") == "1-28,32-43,45-70,74-87",
                 "YALK overload observed address map changed");
         require(argument(overload, "positive_overload_contact") == "96",
                 "YALK +12 V common route changed");
         require(argument(overload, "negative_overload_contact") == "95",
                 "YALK -12 V common route changed");
-        require(argument(overload, "maximum_code_delta") == "2",
+        require(argument(overload, "maximum_code_delta") == "5",
                 "YALK overload delta criterion changed");
 
         const auto& reference = stepById(scenario, "yalk_reference_voltage");
@@ -193,10 +202,12 @@ int main()
         runThread.join();
 
         require(skipped.steps.size() == 2, "skip must continue with next step");
-        require(skipped.steps[0].verdict == tu::RunVerdict::Ok, "skipped step must be NORMA/OK");
+        require(skipped.steps[0].verdict == tu::RunVerdict::Ok,
+                "operator-accepted step must be NORMA/OK");
         require(skipped.steps[0].operatorSkipped, "skip audit flag missing");
         require(skipped.steps[1].verdict == tu::RunVerdict::Ok, "step after skip did not run");
-        require(skipped.verdict == tu::RunVerdict::Ok, "skip must not degrade overall verdict");
+        require(skipped.verdict == tu::RunVerdict::Ok,
+                "operator-accepted step must keep overall NORMA/OK");
 
         std::cout << "scenario_engine_test: OK\n";
         return 0;

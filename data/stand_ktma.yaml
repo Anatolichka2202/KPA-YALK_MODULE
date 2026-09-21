@@ -19,6 +19,8 @@ power_supply:
 
 yalk_adapter:
   host: 192.168.0.115
+  # Это поле используется одновременно для UDP receive-bind и исходящего
+  # ROKT-сокета. Рабочий маршрут стенда использует адрес сетевой карты .50.
   local_address: 192.168.0.50
   data_port: 1113
   timeout_ms: 800

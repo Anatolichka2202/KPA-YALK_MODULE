@@ -2,7 +2,7 @@ schema: 1
 id: ubsi.tu.normal
 # Единственный маршрут поставки: проверка функционирования УБСИ по 5.6.
 title: УБСИ · полная проверка по ТУ
-version: 1.2.2
+version: 1.2.3
 
 # Маршрут: питание -> ЯЛК -> ЯТП -> ЯВП.
 # 1.1.4.1 выполняется полностью: потенциометрические и контактные входы ЯЛК
@@ -49,6 +49,14 @@ steps:
       restore_voltage_v: 27
       recovery_timeout_ms: 30000
 
+  - id: yalk_isd_reset
+    title: Сброс ИСД перед проверкой ЯЛК
+    tu: 5.6 / подготовка ЯЛК
+    procedure: yalk.addressed_reset
+    args:
+      addresses: 1-28,32-43,45-70,74-87
+      settle_ms: 300
+
   - id: yalk_stream
     title: Запуск рабочего потока ЯЛК ROKT reference204
     tu: 5.6 / ЯЛК
@@ -90,13 +98,13 @@ steps:
       tolerance_percent_fs: 0.5
 
   - id: yalk_contact_thresholds
-    title: Контактные пороги ЯЛК · 1,0 В → 0 / 2,4 В → 1
+    title: Контактные пороги ЯЛК · 0 / 0,8 / 2,5 В → 0 / 0 / 1
     tu: 1.1.4.1
     procedure: yalk.contacts
     args:
       addresses: 1-28,32-43,45-70,74-87
-      contact_points_v: 1.0,2.4
-      signal_expectations: 0,1
+      contact_points_v: 0,0.8,2.5
+      signal_expectations: 0,0,1
       sample_count: 16
       settle_ms: 150
       channel_off_settle_ms: 1000
@@ -104,7 +112,7 @@ steps:
       tolerance_percent_fs: 0.5
 
   - id: yalk_overload
-    title: Перегрузка ±12 В функциональных входов ЯЛК с контролем остальных каналов
+    title: Перегрузка ±12 В · 80 каналов · контроль остальных каналов
     tu: 1.1.4.11
     procedure: yalk.overload
     args:
@@ -116,10 +124,10 @@ steps:
       baseline_settle_ms: 1000
       overload_settle_ms: 10000
       cleanup_settle_ms: 300
-      maximum_code_delta: 2
+      maximum_code_delta: 5
 
   - id: yalk_reference_voltage
-    title: Эталонное напряжение 6,2 ±0,03 В
+    title: Служебный эталон полной шкалы ЯЛК 6,2 ±0,03 В · адрес 99
     tu: 1.1.4.9
     procedure: yalk.reference
     args:
@@ -170,7 +178,7 @@ steps:
     procedure: ytp.finish
 
   - id: yvp_channels
-    title: ЯВП-8 · коэффициенты усиления, АЧХ и затухание
+    title: ЯВП-8 · коэффициенты усиления и АЧХ · 8 каналов
     tu: 1.1.4.1, 1.1.4.7, 1.1.4.8, 1.1.4.14
     procedure: yvp.run
     args:

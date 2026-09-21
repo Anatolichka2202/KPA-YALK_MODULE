@@ -219,8 +219,7 @@ void resetYalkRoutesForRun(const ScenarioStep& step, ProcedureContext& context,
 ProcedureResult start(const ScenarioStep& step, ProcedureContext& context,
                       const std::shared_ptr<hardware::StandHardware>& stand)
 {
-    resetYalkRoutesForRun(step, context, stand);
-    journal(context, step, "ROKT: настраиваю поток ЯЛК reference204");
+    journal(context, step, "ROKT: запускаю рабочий поток ЯЛК reference204");
     const bool ready = stand->yalk().startYalk(
         std::chrono::milliseconds(natural(step, "configure_settle_ms", 500)),
         std::chrono::milliseconds(natural(step, "timeout_ms", 3000)),
@@ -334,6 +333,14 @@ ProcedureResult channelSweep(const ScenarioStep& step, ProcedureContext& context
                              bool thresholds)
 {
     const auto addresses = yalkAddresses(step);
+    // trace_addresses is a diagnostic subset of the confirmed 80-address map.
+    // The acceptance scenario omits it and therefore retains the full sweep.
+    auto testedAddresses = addressList(argument(step, "trace_addresses"));
+    if (testedAddresses.empty()) testedAddresses = addresses;
+    for (const unsigned address : testedAddresses) {
+        if (std::find(addresses.begin(), addresses.end(), address) == addresses.end())
+            throw std::invalid_argument("Адрес выборочной проверки отсутствует в карте ЯЛК");
+    }
     const auto points = numbers(step, thresholds ? "contact_points_v" : "point_volts");
     const auto expected = thresholds ? numbers(step, "signal_expectations") : std::vector<double>{};
     if (points.empty() || (thresholds && expected.size() != points.size()))
@@ -346,20 +353,23 @@ ProcedureResult channelSweep(const ScenarioStep& step, ProcedureContext& context
     const double tolerance = fullScale
         * number(step, "tolerance_percent_fs", 0.5) / 100.0;
     ProcedureResult result{RunVerdict::Ok,
-        thresholds ? "Проверены контактные пороги 80 адресов ЯЛК"
-                   : "Проверены аналоговые каналы ЯЛК", {}};
+        thresholds ? "Проверены контактные пороги " + std::to_string(testedAddresses.size())
+                         + " адресов ЯЛК"
+                   : "Проверены аналоговые каналы " + std::to_string(testedAddresses.size())
+                         + " адресов ЯЛК", {}};
 
     // Минимальная поставка проходила канал-major: один физический канал ИСД,
     // все его точки подряд, затем канал снимается и только после этого берётся
     // следующий. Не делаем point-major 0 В по всем 80, затем 3,1 и т.д.
-    for (std::size_t channelIndex = 0; channelIndex < addresses.size(); ++channelIndex) {
+    for (std::size_t channelIndex = 0; channelIndex < testedAddresses.size(); ++channelIndex) {
         context.checkpoint();
-        const unsigned address = addresses[channelIndex];
+        const unsigned address = testedAddresses[channelIndex];
         bool outputEnabled = false;
         try {
             journal(context, step,
                 std::string(thresholds ? "Контактный признак" : "Аналоговый вход")
-                    + ": канал " + std::to_string(channelIndex + 1) + "/80, адрес "
+                    + ": канал " + std::to_string(channelIndex + 1) + "/"
+                    + std::to_string(testedAddresses.size()) + ", адрес "
                     + std::to_string(address));
 
             for (std::size_t pointIndex = 0; pointIndex < points.size(); ++pointIndex) {
@@ -372,7 +382,7 @@ ProcedureResult channelSweep(const ScenarioStep& step, ProcedureContext& context
                     {{"point_index",std::to_string(pointIndex + 1)},
                      {"point_count",std::to_string(points.size())},
                      {"channel_index",std::to_string(channelIndex + 1)},
-                     {"channel_count",std::to_string(addresses.size())},
+                     {"channel_count",std::to_string(testedAddresses.size())},
                      {"ulk_address",std::to_string(address)},
                      {"command_v",std::to_string(command)}});
                 journal(context, step, "ИСД: канал " + std::to_string(address)
@@ -403,7 +413,7 @@ ProcedureResult channelSweep(const ScenarioStep& step, ProcedureContext& context
                     analog.attributes = {{"section","YALK"},
                         {"channel",std::to_string(channelIndex + 1)},
                         {"channel_index",std::to_string(channelIndex + 1)},
-                        {"channel_count",std::to_string(addresses.size())},
+                        {"channel_count",std::to_string(testedAddresses.size())},
                         {"ulk_address",std::to_string(address)},
                         {"command_v",std::to_string(command)},
                         {"point_index",std::to_string(pointIndex + 1)},
@@ -434,7 +444,7 @@ ProcedureResult channelSweep(const ScenarioStep& step, ProcedureContext& context
                     signal.attributes = {{"section","YALK"},
                         {"channel",std::to_string(channelIndex + 1)},
                         {"channel_index",std::to_string(channelIndex + 1)},
-                        {"channel_count",std::to_string(addresses.size())},
+                        {"channel_count",std::to_string(testedAddresses.size())},
                         {"ulk_address",std::to_string(address)},
                         {"command_v",std::to_string(command)},
                         {"point_index",std::to_string(pointIndex + 1)},
@@ -474,10 +484,16 @@ ProcedureResult overload(const ScenarioStep& step, ProcedureContext& context,
 {
     const auto physical = addressList(argument(step, "physical_channels",
         "1-28,32-43,45-70,74-87"));
+    const auto stressed = addressList(argument(step, "stressed_channels",
+        argument(step, "physical_channels", "1-28,32-43,45-70,74-87")));
     const auto observed = addressList(argument(step, "observed_addresses",
         "1-28,32-43,45-70,74-87"));
-    if (physical.size() != 80 || observed.size() != 80)
+    if (physical.size() != 80 || observed.size() != 80 || stressed.empty())
         throw std::invalid_argument("Перегрузка ЯЛК должна использовать безопасную карту 80 каналов");
+    for (const unsigned target : stressed) {
+        if (std::find(physical.begin(), physical.end(), target) == physical.end())
+            throw std::invalid_argument("Канал выборочной перегрузки отсутствует в карте ЯЛК");
+    }
 
     const unsigned samples = natural(step, "sample_count", 4);
     const unsigned baselineSettle = natural(step, "baseline_settle_ms", 1000);
@@ -514,7 +530,10 @@ ProcedureResult overload(const ScenarioStep& step, ProcedureContext& context,
     };
 
     ProcedureResult result{RunVerdict::Ok,
-        "Проверена устойчивость остальных каналов ЯЛК при перегрузке ±12 В", {}};
+        stressed.size() == physical.size()
+            ? "Проверена устойчивость остальных каналов ЯЛК при перегрузке ±12 В"
+            : "Проверена устойчивость 80 адресов ЯЛК при выборочной перегрузке ±12 В на "
+                + std::to_string(stressed.size()) + " каналах", {}};
 
     // В отличие от предыдущей реализации не перещёлкиваем всю 80-канальную
     // лестницу перед каждым из 160 воздействий. Фон формируется один раз,
@@ -535,17 +554,19 @@ ProcedureResult overload(const ScenarioStep& step, ProcedureContext& context,
         const std::vector<std::pair<unsigned,std::string>> polarities{
             {positiveCommon,"+12 В"},{negativeCommon,"-12 В"}};
         unsigned impactIndex = 0;
-        const unsigned impactCount = static_cast<unsigned>(physical.size() * polarities.size());
+        const unsigned impactCount = static_cast<unsigned>(stressed.size() * polarities.size());
 
         for (const auto& polarity : polarities) {
-            for (const unsigned target : physical) {
+            for (const unsigned target : stressed) {
                 context.checkpoint();
                 ++impactIndex;
                 publish(context, step, "OVERLOAD",
                     "ЯЛК: перегрузка " + polarity.second + ", канал " + std::to_string(target),
                     RunVerdict::NotRun,
                     {{"polarity",polarity.second},{"stressed_channel",std::to_string(target)},
-                     {"target_count",std::to_string(physical.size())},
+                     {"target_count",std::to_string(stressed.size())},
+                     {"observed_count",std::to_string(observed.size())},
+                     {"coverage",stressed.size() == physical.size() ? "full" : "selective"},
                      {"impact_index",std::to_string(impactIndex)},
                      {"impact_count",std::to_string(impactCount)},
                      {"settle_ms",std::to_string(overloadSettle)}});
@@ -637,22 +658,30 @@ ProcedureResult overload(const ScenarioStep& step, ProcedureContext& context,
 ProcedureResult reference(const ScenarioStep& step, ProcedureContext& context,
                           const std::shared_ptr<hardware::StandHardware>& stand)
 {
-    context.checkpoint();
     const double nominal = number(step, "nominal_v", 6.2);
     const double tolerance = number(step, "tolerance_v", 0.03);
-    journal(context, step, "В7: измеряю эталонное напряжение 6,2 В");
+    context.checkpoint();
+    journal(context, step, "ЯЛК: контролирую служебный эталон полной шкалы, адрес 99");
+    const auto frame = stand->yalk().readYalkSnapshot(
+        natural(step, "sample_count", 16), std::chrono::milliseconds(3000),
+        [&context] { context.checkpoint(); });
+    publishLiveFrame(context, step, frame, "reference204 со служебным эталоном ЯЛК");
+    const auto& fullScaleReference = frame.at(98);
+    const double volts = yalkVolts(fullScaleReference.codeMean, context);
 
-    const double volts = stand->v7().readDcVoltage();
-    ProcedureResult result{RunVerdict::Ok, "Проверено эталонное напряжение по В7", {}};
-    auto value = measurement("ubsi.reference_6v2", "Эталонное напряжение по В7",
+    ProcedureResult result{RunVerdict::Ok,
+        "Проверен служебный эталон полной шкалы ЯЛК по адресу 99", {}};
+    auto value = measurement("ubsi.reference_6v2", "Эталон полной шкалы ЯЛК, адрес 99",
         nominal, volts, nominal - tolerance, nominal + tolerance, "В");
-    value.attributes = {{"v7_v",std::to_string(volts)},
+    value.attributes = {{"ulk_address","99"},
+                        {"raw",std::to_string(fullScaleReference.rawMean)},
+                        {"analog_code",std::to_string(fullScaleReference.codeMean)},
+                        {"yalk_v",std::to_string(volts)},
                         {"nominal_v",std::to_string(nominal)},
-                        {"source","v7_reference"},
-                        {"adapter_address_98","not_used_unconfirmed"}};
+                        {"source","yalk_internal_full_scale_reference"}};
     publishMeasurement(context, step, value);
     append(result, std::move(value));
-    journal(context, step, "В7: эталон=" + std::to_string(volts) + " В");
+    journal(context, step, "ЯЛК: эталон адреса 99=" + std::to_string(volts) + " В");
     return result;
 }
 
@@ -684,6 +713,11 @@ void registerYalkProcedures(ScenarioEngine& engine,
     if (!hardware) throw std::invalid_argument("StandHardware is required");
     engine.registerProcedure("stand.isd_baseline", [hardware](const auto& s, auto& c) {
         return isdBaseline(s,c,hardware); });
+    engine.registerProcedure("yalk.addressed_reset", [hardware](const auto& s, auto& c) {
+        resetYalkRoutesForRun(s,c,hardware);
+        return ProcedureResult{RunVerdict::Ok,
+            "Адресно сняты воздействия с 80 каналов ЯЛК и источников ±12 В", {}};
+    });
     engine.registerProcedure("yalk.start", [hardware](const auto& s, auto& c) {
         return start(s,c,hardware); });
     engine.registerProcedure("yalk.calibration", [hardware](const auto& s, auto& c) {

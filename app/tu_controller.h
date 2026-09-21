@@ -6,9 +6,11 @@
 #include <QString>
 
 #include <functional>
+#include <deque>
 #include <memory>
 #include <mutex>
 #include <string>
+#include <vector>
 
 class QThread;
 class TestPage;
@@ -56,4 +58,7 @@ private:
     double yalkFullCode_ = 0.0;
     double yalkFullVoltage_ = 6.2;
     bool yalkCalibrationValid_ = false;
+    // Последние кадры ROKT для живого min/max на графиках ЯЛК. Это не
+    // приёмочные samples процедуры, а видимый оператору разброс телеметрии.
+    std::vector<std::deque<double>> yalkLiveWindow_;
 };

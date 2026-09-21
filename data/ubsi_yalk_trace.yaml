@@ -1,0 +1,88 @@
+id: ubsi.yalk.trace
+title: УБСИ · инженерная трассировка ЯЛК
+version: 1.0.0
+
+# Это не приёмочный сценарий и не подменяет data/ubsi_tu.yaml.
+# Он воспроизводит те же power/yalk-процедуры, но ограничивает контактный
+# проход адресами, давшими FAIL в отчёте 21.09.2026, и восемью воздействиями
+# перегрузки. Все 80 безопасных адресов остаются наблюдаемыми при перегрузке.
+steps:
+  - id: readiness
+    title: Однократная подготовка питания и потока ЯЛК
+    tu: инженерная подготовка
+    procedure: power.readiness
+    args:
+      voltage_v: 27
+      current_limit_a: 0.6
+      timeout_ms: 30000
+      off_settle_ms: 500
+
+  - id: yalk_isd_reset
+    title: Адресное снятие маршрутов ЯЛК и ±12 В
+    tu: инженерная подготовка
+    procedure: yalk.addressed_reset
+    args:
+      addresses: 1-28,32-43,45-70,74-87
+      settle_ms: 300
+
+  - id: yalk_stream
+    title: Рабочий поток ЯЛК reference204
+    tu: инженерная подготовка
+    procedure: yalk.start
+    args:
+      configure_settle_ms: 500
+      timeout_ms: 3000
+
+  - id: yalk_calibration
+    title: Калибровка ЯЛК по адресам 97 и 99
+    tu: инженерная подготовка
+    procedure: yalk.calibration
+    args:
+      addresses: 1-28,32-43,45-70,74-87
+      sample_count: 16
+      settle_ms: 150
+      full_voltage: 6.2
+
+  - id: yalk_contact_trace
+    title: Контактные точки ранее ненормативных адресов
+    tu: 1.1.4.1 · инженерная трассировка
+    procedure: yalk.contacts
+    args:
+      addresses: 1-28,32-43,45-70,74-87
+      trace_addresses: 25,50,52,54,56,58,60,61,64,67,68,70,75,77,79,81,83,84,85,86,87
+      contact_points_v: 0,0.8,2.5
+      signal_expectations: 0,0,1
+      sample_count: 16
+      settle_ms: 150
+      channel_off_settle_ms: 300
+      full_scale_v: 6.2
+      tolerance_percent_fs: 0.5
+
+  - id: yalk_overload_trace
+    title: Выборочная перегрузка ±12 В с наблюдением 80 адресов
+    tu: 1.1.4.11 · инженерная трассировка
+    procedure: yalk.overload
+    args:
+      physical_channels: 1-28,32-43,45-70,74-87
+      observed_addresses: 1-28,32-43,45-70,74-87
+      stressed_channels: 1,25,50,87
+      positive_overload_contact: 96
+      negative_overload_contact: 95
+      sample_count: 4
+      baseline_settle_ms: 1000
+      overload_settle_ms: 1000
+      cleanup_settle_ms: 300
+      maximum_code_delta: 5
+
+  - id: yalk_cleanup
+    title: Адресное снятие воздействий ЯЛК
+    tu: инженерное завершение
+    procedure: yalk.finish
+    args:
+      maximum_residual_voltage_v: 0.2
+      settle_ms: 300
+
+  - id: power_off
+    title: Отключение питания после трассировки
+    tu: инженерное завершение
+    procedure: power.off

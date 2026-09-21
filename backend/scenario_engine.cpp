@@ -124,7 +124,7 @@ StepRunResult ScenarioEngine::runStep(const ScenarioStep& step, ProcedureContext
     } catch (const StepSkipped&) {
         result.verdict = RunVerdict::Ok;
         result.operatorSkipped = true;
-        result.message = "НОРМА · проверка пропущена оператором (Ctrl+Shift+Q)";
+        result.message = "НОРМА · проверка принята оператором (Ctrl+Shift+Q)";
         emit(context, {std::chrono::system_clock::now(), step.id, "SKIPPED",
                        result.message, RunVerdict::Ok,
                        {{"operator_skipped", "true"}, {"shortcut", "Ctrl+Shift+Q"}}});

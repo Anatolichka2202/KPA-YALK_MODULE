@@ -22,7 +22,9 @@
 #include <QThread>
 #include <QWidget>
 
+#include <algorithm>
 #include <cmath>
+#include <deque>
 #include <filesystem>
 #include <iomanip>
 #include <memory>
@@ -34,7 +36,7 @@
 
 namespace {
 
-const QString kUiScenarioCode = QStringLiteral("ULK_COMBINED_CHECK");
+const QString kUiScenarioCode = QStringLiteral("UBSI_TU_CHECK");
 const QString kBackendEquipmentCode = QStringLiteral("TU_BACKEND");
 const QString kSupplyEquipmentCode = QStringLiteral("AKIP_1160");
 const QString kIsdEquipmentCode = QStringLiteral("ISD");
@@ -260,6 +262,9 @@ void TuController::loadHardware()
 
                 std::string node;
                 double zero = 0.0, full = 0.0, fullVoltage = 0.0;
+                std::vector<double> mean;
+                std::vector<double> minimum;
+                std::vector<double> maximum;
                 {
                     std::lock_guard<std::mutex> lock(liveStateMutex_);
                     if (!yalkCalibrationValid_ || liveNode_.empty()) return;
@@ -267,21 +272,43 @@ void TuController::loadHardware()
                     zero = yalkZeroCode_;
                     full = yalkFullCode_;
                     fullVoltage = yalkFullVoltage_;
-                }
-                if (!(full > zero) || !(fullVoltage > 0.0)) return;
+                    if (!(full > zero) || !(fullVoltage > 0.0)) return;
+                    if (yalkLiveWindow_.size() != frame.size())
+                        yalkLiveWindow_.assign(frame.size(), {});
 
-                std::ostringstream values;
-                values << std::setprecision(10);
-                for (std::size_t index = 0; index < 100; ++index) {
-                    if (index) values << ',';
-                    values << (frame[index].codeMean - zero) * fullVoltage / (full - zero);
+                    mean.reserve(frame.size());
+                    minimum.reserve(frame.size());
+                    maximum.reserve(frame.size());
+                    for (std::size_t index = 0; index < frame.size(); ++index) {
+                        const double volts = (frame[index].codeMean - zero)
+                            * fullVoltage / (full - zero);
+                        auto& samples = yalkLiveWindow_[index];
+                        samples.push_back(volts);
+                        constexpr std::size_t liveWindowFrames = 20;
+                        while (samples.size() > liveWindowFrames) samples.pop_front();
+                        const auto bounds = std::minmax_element(samples.begin(), samples.end());
+                        mean.push_back(volts);
+                        minimum.push_back(*bounds.first);
+                        maximum.push_back(*bounds.second);
+                    }
                 }
+                const auto csv = [](const std::vector<double>& values) {
+                    std::ostringstream text;
+                    text << std::setprecision(10);
+                    for (std::size_t index = 0; index < values.size(); ++index) {
+                        if (index) text << ',';
+                        text << values[index];
+                    }
+                    return text.str();
+                };
 
                 tu::RunEvent liveEvent{
                     std::chrono::system_clock::now(), node, "BACKGROUND",
                     "Живая телеметрия ЯЛК reference204", tu::RunVerdict::NotRun,
                     {{"section", "YALK"},
-                     {"background_mean", values.str()},
+                     {"background_mean", csv(mean)},
+                     {"background_min", csv(minimum)},
+                     {"background_max", csv(maximum)},
                      {"fresh", "true"},
                      {"frame_sequence", std::to_string(sequence)}}};
 
@@ -439,6 +466,7 @@ void TuController::startRun(const QString& scenarioCode,
         yalkFullCode_ = 0.0;
         yalkFullVoltage_ = 6.2;
         yalkCalibrationValid_ = false;
+        yalkLiveWindow_.clear();
     }
 
     page_->setRunInProgress(true, QStringLiteral("Запуск полной проверки УБСИ"));
@@ -481,6 +509,7 @@ void TuController::startRun(const QString& scenarioCode,
             std::lock_guard<std::mutex> lock(liveStateMutex_);
             liveNode_.clear();
             yalkCalibrationValid_ = false;
+            yalkLiveWindow_.clear();
         }
 
         QString reportPath;

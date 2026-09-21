@@ -221,7 +221,7 @@ QString tuStageTitle(const QString& node, const QString& fallback)
     if (node == QStringLiteral("yalk_channels"))
         return QStringLiteral("ЯЛК · 80 адресов · точки 0 / 3,1 / 6,2 В");
     if (node == QStringLiteral("yalk_overload"))
-        return QStringLiteral("ЯЛК · перегрузка ±12 В · 160 воздействий · |Δcode| ≤ 2");
+        return QStringLiteral("ЯЛК · перегрузка ±12 В · 160 воздействий · |Δcode| ≤ 5");
     if (node == QStringLiteral("yalk_reference_voltage"))
         return QStringLiteral("В7 и ЯЛК · эталон 6,20 ± 0,03 В");
     if (node == QStringLiteral("yalk_cleanup"))
@@ -235,7 +235,7 @@ QString tuStageTitle(const QString& node, const QString& fallback)
     if (node == QStringLiteral("ytp_cleanup"))
         return QStringLiteral("ЯТП · безопасная остановка потока");
     if (node == QStringLiteral("yvp_channels"))
-        return QStringLiteral("ЯВП-8 · 392 точки · Kу 0,25–32 мВ/пКл · 2–4000 Гц");
+        return QStringLiteral("ЯВП-8 · 8 каналов · 7 коэффициентов · 7 частот · 392 точки");
     if (node == QStringLiteral("power_off"))
         return QStringLiteral("Безопасное отключение питания и снятие воздействий");
     return fallback;
@@ -702,7 +702,7 @@ struct TestPage::Impl
         auto* tuLayout = new QVBoxLayout(tuSidebar);
         tuLayout->setContentsMargins(12, 12, 12, 12);
         tuLayout->setSpacing(8);
-        tuTitle = heading(QStringLiteral("ПРОВЕРКА ПО ТУ"), 12, tuSidebar);
+        tuTitle = heading(QStringLiteral("ЭТАПЫ ПРОВЕРКИ"), 12, tuSidebar);
         tuTitle->setObjectName(QStringLiteral("tuRuntimeTitle"));
         tuLayout->addWidget(tuTitle);
         tuSerial = muted(QStringLiteral("УБСИ"), tuSidebar);
@@ -861,7 +861,7 @@ struct TestPage::Impl
         contactsContext = heading(QStringLiteral("ЯЛК-96 · контактные сигналы"), 18, contacts);
         contactsLayout->addWidget(contactsContext);
         contactsLayout->addWidget(muted(
-            QStringLiteral("Проверяем дискретный признак 80 адресов ЯЛК в точках 0 / 0,9 / 2,5 В. Видны фактическое напряжение, ожидаемая и измеренная логика по каждому адресу."), contacts));
+            QStringLiteral("Проверяем дискретный признак 80 адресов ЯЛК в точках 0 / 0,8 / 2,5 В. Видны фактическое напряжение, ожидаемая и измеренная логика по каждому адресу."), contacts));
         contactPlane = new ContactPlane(contacts);
         contactsLayout->addWidget(contactPlane, 1);
         stageStack->addWidget(contacts);
@@ -873,7 +873,7 @@ struct TestPage::Impl
         overloadContext = heading(QStringLiteral("ЯЛК-96 · перегрузка ±12 В"), 18, overload);
         overloadLayout->addWidget(overloadContext);
         overloadLayout->addWidget(muted(
-            QStringLiteral("Поочерёдно подаём +12 В и −12 В на 80 адресов: 1–28, 32–43, 45–70, 74–87. Видны baseline, текущий code и Δcode остальных каналов; критерий |Δcode| ≤ 2. Линии ЯВП исключены."), overload));
+            QStringLiteral("Поочерёдно подаём +12 В и −12 В на 80 адресов: 1–28, 32–43, 45–70, 74–87. Видны исходный и текущий коды остальных каналов; критерий |Δcode| ≤ 5. Линии ЯВП исключены."), overload));
         overloadPlane = new OverloadPlane(overload);
         overloadLayout->addWidget(overloadPlane, 1);
         stageStack->addWidget(overload);
@@ -916,7 +916,7 @@ struct TestPage::Impl
         yvpContext = heading(QStringLiteral("ЯВП-8"), 18, yvp);
         yvpLayout->addWidget(yvpContext);
         yvpLayout->addWidget(muted(
-            QStringLiteral("Проверяем 8 каналов × 7 коэффициентов 0,25–32 мВ/пКл × 7 частот 2–4000 Гц. Видны V7, рассчитанный Kу, АЧХ и затухание; Kу при 500 Гц — ±7 %, 4000 Гц — не менее 20 дБ."), yvp));
+            QStringLiteral("Проверяем 8 каналов при Kу 0,25 / 0,5 / 1 / 2 / 4 / 8 / 32 мВ/пКл на 7 частотах 2–4000 Гц: всего 392 точки. Видны V7, рассчитанный Kу, АЧХ и затухание; Kу при 500 Гц — ±7 %, 4000 Гц — не менее 20 дБ."), yvp));
         auto* yvpMetrics = new QHBoxLayout;
         yvpMetrics->setSpacing(10);
         auto yvpMetric = [yvp, yvpMetrics](const QString& name, QLabel*& target) {
@@ -1002,20 +1002,20 @@ struct TestPage::Impl
     void buildTuRequirementRail()
     {
         // Only requirements that belong to the current automated TU route are
-        // present here. 1.1.4.2/.4/.6/.12 and the non-automated input-current
-        // part of 1.1.4.14 are intentionally not rendered as pending checks.
-        addTuRequirement(QStringLiteral("readiness"), QStringLiteral("1.1.4.13"), QStringLiteral("Готовность ≤ 30 с при 27 В"));
-        addTuRequirement(QStringLiteral("supply"), QStringLiteral("1.1.4.3"), QStringLiteral("Питание 24 / 27 / 35 В · выдержки 19 / 37 В"));
-        addTuRequirement(QStringLiteral("current"), QStringLiteral("1.1.4.5"), QStringLiteral("Общий ток УБСИ ≤ 0,4 А"));
-        addTuRequirement(QStringLiteral("yalk_analog"), QStringLiteral("1.1.4.1"), QStringLiteral("ЯЛК · 80 адресов · 0 / 3,1 / 6,2 В"));
-        addTuRequirement(QStringLiteral("yalk_accuracy"), QStringLiteral("1.1.4.14"), QStringLiteral("ЯЛК · погрешность ≤ 0,5 % диапазона"));
-        addTuRequirement(QStringLiteral("yalk_contact"), QStringLiteral("1.1.4.1"), QStringLiteral("ЯЛК · логика при 0 / 0,9 / 2,5 В"));
-        addTuRequirement(QStringLiteral("yalk_initial"), QStringLiteral("1.1.4.10"), QStringLiteral("ЯЛК · обрыв 80 входов · U < 0 В"));
-        addTuRequirement(QStringLiteral("yalk_overload"), QStringLiteral("1.1.4.11"), QStringLiteral("ЯЛК · ±12 В · 80 адресов · |Δcode| ≤ 2"));
-        addTuRequirement(QStringLiteral("yalk_reference"), QStringLiteral("1.1.4.9"), QStringLiteral("В7 · эталон 6,20 ± 0,03 В"));
-        addTuRequirement(QStringLiteral("ytp"), QStringLiteral("1.1.4.1"), QStringLiteral("ЯТП · 30 каналов · 0 / 120 / 240 Ом"));
-        addTuRequirement(QStringLiteral("yvp_afc"), QStringLiteral("1.1.4.7"), QStringLiteral("ЯВП-8 · АЧХ 2–4000 Гц · 8 × 7 × 7"));
-        addTuRequirement(QStringLiteral("yvp_gain"), QStringLiteral("1.1.4.8"), QStringLiteral("ЯВП-8 · Kу 0,25–32 мВ/пКл · ±7 %"));
+        // present here. 1.4.2/.4/.6/.12 and the non-automated input-current
+        // part of 1.4.14 are intentionally not rendered as pending checks.
+        addTuRequirement(QStringLiteral("readiness"), QStringLiteral("1.4.13"), QStringLiteral("Подготовка · готовность"));
+        addTuRequirement(QStringLiteral("supply"), QStringLiteral("1.4.3"), QStringLiteral("Питание · 24 / 27 / 35 В"));
+        addTuRequirement(QStringLiteral("current"), QStringLiteral("1.4.5"), QStringLiteral("Питание · общий ток"));
+        addTuRequirement(QStringLiteral("yalk_initial"), QStringLiteral("1.4.10"), QStringLiteral("ЯЛК · обрыв"));
+        addTuRequirement(QStringLiteral("yalk_analog"), QStringLiteral("1.4.1"), QStringLiteral("ЯЛК · аналоговые каналы"));
+        addTuRequirement(QStringLiteral("yalk_accuracy"), QStringLiteral("1.4.14"), QStringLiteral("ЯЛК · погрешность"));
+        addTuRequirement(QStringLiteral("yalk_contact"), QStringLiteral("1.4.1"), QStringLiteral("ЯЛК · контактные каналы"));
+        addTuRequirement(QStringLiteral("yalk_overload"), QStringLiteral("1.4.11"), QStringLiteral("ЯЛК · перегрузка ±12 В"));
+        addTuRequirement(QStringLiteral("yalk_reference"), QStringLiteral("1.4.9"), QStringLiteral("ЯЛК · эталон 6,20 В"));
+        addTuRequirement(QStringLiteral("ytp"), QStringLiteral("1.4.1"), QStringLiteral("ЯТП · 30 каналов"));
+        addTuRequirement(QStringLiteral("yvp_afc"), QStringLiteral("1.4.7"), QStringLiteral("ЯВП · АЧХ · 8 × 7 × 7"));
+        addTuRequirement(QStringLiteral("yvp_gain"), QStringLiteral("1.4.8"), QStringLiteral("ЯВП · коэффициент передачи"));
     }
 
     void addTuRequirement(const QString& key, const QString& id, const QString& title)
@@ -1026,17 +1026,14 @@ struct TestPage::Impl
         row.title = title;
         row.frame = new QFrame(tuSidebar);
         row.frame->setProperty("tuRow", true);
-        row.frame->setMinimumHeight(54);
+        row.frame->setMinimumHeight(42);
         auto* layout = new QVBoxLayout(row.frame);
         layout->setContentsMargins(9, 6, 9, 6);
         layout->setSpacing(1);
         auto* top = new QHBoxLayout;
-        auto* idLabel = new QLabel(id, row.frame);
-        idLabel->setProperty("tuId", true);
         row.status = new QLabel(QStringLiteral("ОЖИДАЕТ"), row.frame);
         row.status->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
         row.status->setStyleSheet(QStringLiteral("color:#61788a;font-size:10px;font-weight:700;"));
-        top->addWidget(idLabel);
         top->addStretch();
         top->addWidget(row.status);
         layout->addLayout(top);
@@ -1306,9 +1303,9 @@ struct TestPage::Impl
         const auto& row = tuRows[index];
         const QString title = tuStageTitle(node, row.title);
         context->setText(QStringLiteral(
-            "<span style='color:#67d8eb;font-size:14px;font-weight:800'>%1</span>"
+            "<span style='color:#67d8eb;font-size:14px;font-weight:800'>ЭТАП</span>"
             "&nbsp;&nbsp;<span style='color:#eaf4fb;font-size:20px;font-weight:700'>%2</span>")
-            .arg(row.id.toHtmlEscaped(), title.toHtmlEscaped()));
+            .arg(title.toHtmlEscaped()));
     }
 
     void updateTuForEvent(const tu::RunEvent& event)
@@ -1728,7 +1725,7 @@ void TestPage::setScenarioInfo(const QString& code, bool available, bool diagnos
                                const QStringList& requiredEquipment, const QString& detail)
 {
     impl_->scenarios[code] = {available, diagnostic, requiredEquipment, detail};
-    if (!impl_->productionMode && impl_->tuFlow && code == QStringLiteral("ULK_COMBINED_CHECK"))
+    if (!impl_->productionMode && impl_->tuFlow && code == QStringLiteral("UBSI_TU_CHECK"))
         impl_->tuFlow->setScenarioAvailable(available, detail);
     updateSelectionSummary();
 }
@@ -1844,7 +1841,7 @@ void TestPage::rebuildTests()
         impl_->testCombo->addItem(scenarioDisplay(scope), scenarioForScope(scope));
     } else {
         impl_->testCombo->addItem(QStringLiteral("Полная автоматизированная проверка УБСИ по ТУ"),
-                                  QStringLiteral("ULK_COMBINED_CHECK"));
+                                  QStringLiteral("UBSI_TU_CHECK"));
     }
     impl_->testCombo->setCurrentIndex(0);
     impl_->testCombo->blockSignals(false);

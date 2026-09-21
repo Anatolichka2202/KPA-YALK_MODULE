@@ -97,6 +97,10 @@ struct IsdRouter::Impl
         const QByteArray body = reply->readAll();
         reply->deleteLater();
 
+        if (traceSink) {
+            traceSink(path.toStdString(), status, body.left(160).toStdString());
+        }
+
         // Активные команды ИСД принципиально НЕ повторяем: timeout/обрыв ACK
         // не доказывает, что физическая коммутация не произошла. Pessimistic
         // active-log затем снимет потенциально выполненное воздействие адресно.
@@ -176,6 +180,7 @@ struct IsdRouter::Impl
 
     IsdConfig config;
     std::vector<ActiveAction> active;
+    TraceSink traceSink;
 };
 
 IsdRouter::IsdRouter(IsdConfig config) : impl_(std::make_unique<Impl>(std::move(config))) {}
@@ -229,6 +234,11 @@ void IsdRouter::disableYalkOutput(unsigned channel)
     const ActiveAction action{ActionKind::YalkOutput, 5, channel};
     impl_->yalkOffRaw(channel);
     impl_->forget(action);
+}
+
+void IsdRouter::setTraceSink(TraceSink sink)
+{
+    impl_->traceSink = std::move(sink);
 }
 
 void IsdRouter::safeStop() noexcept
