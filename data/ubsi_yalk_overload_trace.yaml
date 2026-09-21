@@ -1,11 +1,10 @@
-id: ubsi.yalk.trace
-title: УБСИ · инженерная трассировка ЯЛК
+id: ubsi.yalk.overload.trace
+title: УБСИ · инженерная трассировка перегрузки ЯЛК
 version: 1.0.0
 
-# Это не приёмочный сценарий и не подменяет data/ubsi_tu.yaml.
-# Он воспроизводит те же power/yalk-процедуры, но ограничивает контактный
-# проход адресами, давшими FAIL в отчёте 21.09.2026, и восемью воздействиями
-# перегрузки. Все 80 безопасных адресов остаются наблюдаемыми при перегрузке.
+# Не приёмочный сценарий. Проверяет порядок воздействия на 4 выбранных
+# адресах, при этом после каждого воздействия контролирует остальные 79
+# рабочих адресов относительно общего baseline.
 steps:
   - id: readiness
     title: Однократная подготовка питания и потока ЯЛК
@@ -18,9 +17,9 @@ steps:
       off_settle_ms: 500
 
   - id: yalk_isd_reset
-    title: Единственный полный all-off ИСД перед проверкой ЯЛК
+    title: Единственный полный all-off ИСД
     tu: инженерная подготовка
-    procedure: stand.isd_baseline
+    procedure: stand.isd_baseline_with_addressed_fallback
 
   - id: yalk_stream
     title: Рабочий поток ЯЛК reference204
@@ -39,21 +38,6 @@ steps:
       sample_count: 16
       settle_ms: 150
       full_voltage: 6.2
-
-  - id: yalk_contact_trace
-    title: Контактные точки ранее ненормативных адресов
-    tu: 1.1.4.1 · инженерная трассировка
-    procedure: yalk.contacts
-    args:
-      addresses: 1-28,32-43,45-70,74-87
-      trace_addresses: 25,50,52,54,56,58,60,61,64,67,68,70,75,77,79,81,83,84,85,86,87
-      contact_points_v: 0,0.8,2.5
-      signal_expectations: 0,0,1
-      sample_count: 16
-      settle_ms: 150
-      channel_off_settle_ms: 300
-      full_scale_v: 6.2
-      tolerance_percent_fs: 0.5
 
   - id: yalk_overload_trace
     title: Выборочная перегрузка ±12 В с наблюдением 80 адресов

@@ -497,6 +497,7 @@ ProcedureResult overload(const ScenarioStep& step, ProcedureContext& context,
 
     const unsigned samples = natural(step, "sample_count", 4);
     const unsigned baselineSettle = natural(step, "baseline_settle_ms", 1000);
+    const unsigned dacOffSettle = natural(step, "dac_off_settle_ms", 300);
     const unsigned overloadSettle = natural(step, "overload_settle_ms", 10000);
     const unsigned cleanupSettle = natural(step, "cleanup_settle_ms", 300);
     const double maxDelta = number(step, "maximum_code_delta", 2.0);
@@ -535,14 +536,13 @@ ProcedureResult overload(const ScenarioStep& step, ProcedureContext& context,
             : "Проверена устойчивость 80 адресов ЯЛК при выборочной перегрузке ±12 В на "
                 + std::to_string(stressed.size()) + " каналах", {}};
 
-    // В отличие от предыдущей реализации не перещёлкиваем всю 80-канальную
-    // лестницу перед каждым из 160 воздействий. Фон формируется один раз,
-    // на текущем target снимается только его DAC, после воздействия он
-    // восстанавливается. Исключённые 29/30/31/44/71/72/73/88 не затрагиваются.
+    // Фон формируется один раз. Начальный all-off выполняется отдельным
+    // шагом перед ЯЛК; здесь не повторяем 80 адресных выключений. Для каждого
+    // воздействия сначала отключается DAC цели, и лишь затем к ней подключается
+    // общий источник ±12 В. Исключённые 29/30/31/44/71/72/73/88 не затрагиваются.
     try {
         sourceOff(positiveCommon);
         sourceOff(negativeCommon);
-        staircaseOff();
         journal(context, step, "Перегрузка: формирую безопасный 80-канальный пилообразный фон ИСД");
         staircaseOn();
         waitChecked(context, baselineSettle);
@@ -577,13 +577,18 @@ ProcedureResult overload(const ScenarioStep& step, ProcedureContext& context,
                     journal(context, step, "Перегрузка " + polarity.second + " · "
                         + std::to_string(impactIndex) + "/" + std::to_string(impactCount)
                         + ": канал " + std::to_string(target)
-                        + " — включаю источник type=3/" + std::to_string(polarity.first));
+                        + " — отключаю ЦАП");
 
-                    // Порядок оставлен как в минимальной поставке/KPA:
-                    // общий источник ±12 -> снять DAC target -> type=3 target.
-                    stand->isd().setSwitch(3, polarity.first, true);
+                    // Методика: DAC off -> пауза -> +12/-12 на цель. Общий
+                    // источник включается только после снятия ЦАП цели.
                     stand->isd().setAnalog(target, 0, false);
                     targetDacRemoved = true;
+                    waitChecked(context, dacOffSettle);
+
+                    journal(context, step, "Перегрузка: подключаю источник type=3/"
+                        + std::to_string(polarity.first) + " к каналу "
+                        + std::to_string(target));
+                    stand->isd().setSwitch(3, polarity.first, true);
                     stand->isd().setSwitch(3, target, true);
                     targetConnected = true;
 
@@ -685,6 +690,26 @@ ProcedureResult reference(const ScenarioStep& step, ProcedureContext& context,
     return result;
 }
 
+ProcedureResult isdBaselineWithAddressedFallback(const ScenarioStep& step,
+                                                 ProcedureContext& context,
+                                                 const std::shared_ptr<hardware::StandHardware>& stand)
+{
+    try {
+        stand->isd().serviceFullReset();
+        return {RunVerdict::Ok, "Стартовый all-off ИСД выполнен командой type=4", {}};
+    } catch (const std::exception& error) {
+        // This procedure is available only to the engineering trace.  A
+        // rejected type=4 is retained in its trace; the addressed cleanup is
+        // a safe way to reach a known state on the current KM firmware.
+        publish(context, step, "ISD_BASELINE_FALLBACK",
+            std::string("ИСД отверг type=4; выполняю адресный all-off: ") + error.what(),
+            RunVerdict::Incomplete);
+        resetYalkRoutesForRun(step, context, stand);
+        return {RunVerdict::Ok,
+            "type=4 отвергнут ИСД; инженерный маршрут продолжен после адресного all-off", {}};
+    }
+}
+
 ProcedureResult finish(const ScenarioStep& step, ProcedureContext& context,
                        const std::shared_ptr<hardware::StandHardware>& stand)
 {
@@ -713,6 +738,8 @@ void registerYalkProcedures(ScenarioEngine& engine,
     if (!hardware) throw std::invalid_argument("StandHardware is required");
     engine.registerProcedure("stand.isd_baseline", [hardware](const auto& s, auto& c) {
         return isdBaseline(s,c,hardware); });
+    engine.registerProcedure("stand.isd_baseline_with_addressed_fallback", [hardware](const auto& s, auto& c) {
+        return isdBaselineWithAddressedFallback(s,c,hardware); });
     engine.registerProcedure("yalk.addressed_reset", [hardware](const auto& s, auto& c) {
         resetYalkRoutesForRun(s,c,hardware);
         return ProcedureResult{RunVerdict::Ok,

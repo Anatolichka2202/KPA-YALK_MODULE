@@ -50,12 +50,9 @@ steps:
       recovery_timeout_ms: 30000
 
   - id: yalk_isd_reset
-    title: Сброс ИСД перед проверкой ЯЛК
+    title: Единственный полный all-off ИСД перед проверкой ЯЛК
     tu: 5.6 / подготовка ЯЛК
-    procedure: yalk.addressed_reset
-    args:
-      addresses: 1-28,32-43,45-70,74-87
-      settle_ms: 300
+    procedure: stand.isd_baseline
 
   - id: yalk_stream
     title: Запуск рабочего потока ЯЛК ROKT reference204
@@ -122,6 +119,7 @@ steps:
       negative_overload_contact: 95
       sample_count: 4
       baseline_settle_ms: 1000
+      dac_off_settle_ms: 300
       overload_settle_ms: 10000
       cleanup_settle_ms: 300
       maximum_code_delta: 5

@@ -1,0 +1,8 @@
+id: ubsi.power.off
+title: Безопасное отключение стенда
+version: 1.0.0
+steps:
+  - id: power_off
+    title: Снять активные воздействия и отключить питание
+    tu: инженерное завершение
+    procedure: power.off
