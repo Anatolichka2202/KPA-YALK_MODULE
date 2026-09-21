@@ -3,7 +3,9 @@
 
 #include <QCoreApplication>
 
+#include <algorithm>
 #include <chrono>
+#include <cctype>
 #include <cmath>
 #include <ctime>
 #include <fstream>
@@ -16,20 +18,53 @@
 
 namespace {
 
-std::vector<double> parsePoints(const std::string& text)
+struct CommandPoint {
+    double volts = 0.0;
+    unsigned settleMs = 500;
+};
+
+std::vector<CommandPoint> parsePoints(const std::string& text)
 {
-    std::vector<double> points;
+    std::vector<CommandPoint> points;
     std::stringstream input(text);
     std::string token;
     while (std::getline(input, token, ',')) {
         if (token.empty()) throw std::invalid_argument("volts must not contain empty points");
-        const double point = std::stod(token);
-        if (point < 0.0 || point > 6.2)
+        CommandPoint point;
+        const auto separator = token.find('@');
+        const auto voltsText = token.substr(0, separator);
+        point.volts = std::stod(voltsText);
+        if (separator != std::string::npos) {
+            const auto settleText = token.substr(separator + 1);
+            if (settleText.empty()) throw std::invalid_argument("settle_ms must not be empty");
+            point.settleMs = static_cast<unsigned>(std::stoul(settleText));
+        }
+        if (point.volts < 0.0 || point.volts > 6.2)
             throw std::invalid_argument("each volts point must be 0..6.2");
         points.push_back(point);
     }
     if (points.empty()) throw std::invalid_argument("at least one volts point is required");
     return points;
+}
+
+std::vector<unsigned> parseDelays(const std::string& text)
+{
+    std::vector<unsigned> delays;
+    std::stringstream input(text);
+    std::string token;
+    while (std::getline(input, token, ',')) {
+        if (token.empty()) throw std::invalid_argument("off_delays_ms must not contain empty values");
+        delays.push_back(static_cast<unsigned>(std::stoul(token)));
+    }
+    if (delays.empty()) throw std::invalid_argument("off_delays_ms must not be empty");
+    return delays;
+}
+
+bool isDelayList(const std::string& text)
+{
+    return !text.empty() && std::all_of(text.begin(), text.end(), [](unsigned char value) {
+        return std::isdigit(value) || value == ',';
+    });
 }
 
 std::string timestampUtc()
@@ -52,15 +87,19 @@ std::string timestampUtc()
 int main(int argc, char** argv)
 {
     QCoreApplication application(argc, argv);
-    if (argc < 2 || argc > 5) {
-        std::cerr << "Usage: yalk_channel_probe <stand.yaml> [channel] [volts[,volts...]] [log-file]\n";
+    if (argc < 2 || argc > 6) {
+        std::cerr << "Usage: yalk_channel_probe <stand.yaml> [channel] "
+                     "[volts[@settle_ms],...] [off_delays_ms] [log-file]\n";
         return 2;
     }
     const unsigned channel = argc >= 3 ? static_cast<unsigned>(std::stoul(argv[2])) : 87u;
     if (!channel || channel > 96) throw std::invalid_argument("channel must be 1..96");
     const auto commands = parsePoints(argc >= 4 ? argv[3] : "3.1");
+    const bool fourthIsDelays = argc >= 5 && isDelayList(argv[4]);
+    const auto offDelays = parseDelays(fourthIsDelays ? argv[4] : "300");
+    const char* logPath = argc == 6 ? argv[5] : (argc == 5 && !fourthIsDelays ? argv[4] : nullptr);
     std::ofstream log;
-    if (argc == 5) log.open(argv[4], std::ios::out | std::ios::trunc);
+    if (logPath) log.open(logPath, std::ios::out | std::ios::trunc);
     const auto write = [&log](const std::string& line) {
         std::cout << line << std::endl;
         if (log) { log << line << '\n'; log.flush(); }
@@ -93,9 +132,10 @@ int main(int argc, char** argv)
             std::chrono::milliseconds(500), std::chrono::milliseconds(3000), {});
         if (!ready) throw std::runtime_error("reference204 not received");
 
-        for (const double command : commands) {
-            stand.isd().setYalkVoltage(channel, command);
-            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        for (const auto& command : commands) {
+            const auto switchStarted = std::chrono::steady_clock::now();
+            stand.isd().setYalkVoltage(channel, command.volts);
+            std::this_thread::sleep_for(std::chrono::milliseconds(command.settleMs));
             const double v7 = stand.v7().readDcVoltage();
             // One post-switch frame preserves the unaveraged 16-bit word.
             const auto frame = stand.yalk().readYalkSnapshot(
@@ -114,7 +154,10 @@ int main(int argc, char** argv)
                    << std::setfill('0') << rawWord;
             write("timestamp_utc=" + timestampUtc()
                 + " channel=" + std::to_string(channel)
-                + " command_v=" + std::to_string(command)
+                + " command_v=" + std::to_string(command.volts)
+                + " settle_ms=" + std::to_string(command.settleMs)
+                + " elapsed_ms=" + std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::steady_clock::now() - switchStarted).count())
                 + " v7_v=" + std::to_string(v7)
                 + " raw_word=" + std::to_string(rawWord)
                 + " raw_hex=" + rawHex.str()
@@ -125,6 +168,27 @@ int main(int argc, char** argv)
                 + " yalk_v=" + std::to_string(volts)
                 + " error_v=" + std::to_string(std::abs(volts - v7))
                 + " freshness=post_switch_reference204");
+        }
+        const auto offStarted = std::chrono::steady_clock::now();
+        stand.isd().disableYalkOutput(channel);
+        for (const unsigned delay : offDelays) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(delay));
+            const double v7 = stand.v7().readDcVoltage();
+            const auto frame = stand.yalk().readYalkSnapshot(
+                1, std::chrono::milliseconds(3000), {});
+            const auto& value = frame.at(channel - 1);
+            const unsigned rawWord = static_cast<unsigned>(value.rawMean);
+            write("timestamp_utc=" + timestampUtc()
+                + " channel=" + std::to_string(channel)
+                + " action=OFF"
+                + " requested_delay_ms=" + std::to_string(delay)
+                + " elapsed_since_off_ms=" + std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::steady_clock::now() - offStarted).count())
+                + " v7_v=" + std::to_string(v7)
+                + " raw_word=" + std::to_string(rawWord)
+                + " code=" + std::to_string(rawWord & 0x03ffu)
+                + " contact=" + std::to_string((rawWord & 0x0400u) != 0 ? 1 : 0)
+                + " freshness=post_off_reference204");
         }
         stand.yalk().stop();
         stand.supply().safeOff();
