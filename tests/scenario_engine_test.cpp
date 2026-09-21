@@ -93,9 +93,9 @@ int main()
                 "YALK signal field must use the confirmed contact-threshold procedure");
         require(argument(contacts, "addresses") == "1-28,32-43,45-70,74-87",
                 "YALK signal address map changed");
-        require(argument(contacts, "contact_points_v") == "0,0.9,2.5",
+        require(argument(contacts, "contact_points_v") == "1.0,2.4",
                 "YALK contact threshold points changed");
-        require(argument(contacts, "signal_expectations") == "0,0,1",
+        require(argument(contacts, "signal_expectations") == "0,1",
                 "YALK signal truth table changed");
 
         const auto& overload = stepById(scenario, "yalk_overload");
