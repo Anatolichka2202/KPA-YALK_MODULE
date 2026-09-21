@@ -1,9 +1,8 @@
-id: ubsi.yvp.channel1.full-comparator
-title: УБСИ · контрольная полная матрица ЯВП-8, канал 1
+id: ubsi.yvp.important-parts-probe
+title: УБСИ · сокращённая production-проба ЯВП-8
 version: 1.0.0
 
-# Базовый 7 x 7 sweep для сравнения с будущей сокращённой методикой.
-# Используются production карта, выдержка, точки и критерии; production route не меняется.
+# АЧХ K=1 и все КУ на 500 Гц: 13 точек на канал вместо 49.
 steps:
   - id: readiness
     title: Однократная подготовка питания перед контрольной пробой ЯВП
@@ -15,15 +14,16 @@ steps:
       timeout_ms: 30000
       off_settle_ms: 500
 
-  - id: yvp_channel1_full_comparator
-    title: ЯВП-8 · канал 1 · все КУ и production частоты
-    tu: 1.1.4.1, 1.1.4.7, 1.1.4.8, 1.1.4.14 · инженерное сравнение
+  - id: yvp_important_parts_probe
+    title: ЯВП-8 · АЧХ K=1 и все КУ при 500 Гц
+    tu: 1.1.4.1, 1.1.4.7, 1.1.4.8, 1.1.4.14 · сокращённая методика
     procedure: yvp.run
     args:
       channel_count: 8
-      tested_channels: 1
+      tested_channels: 1,2,3,4,5,6,7,8
       gains_mv_per_pcl: 0.25,0.5,1,2,4,8,32
       frequencies_hz: 2,6,20,500,1800,2000,4000
+      afc_gain_mv_per_pcl: 1
       coupling_capacitance_pf: 1000
       settle_ms: 2000
       v7_read_retries: 2
