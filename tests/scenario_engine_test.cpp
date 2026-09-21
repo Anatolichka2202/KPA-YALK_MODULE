@@ -1,5 +1,6 @@
 #include "backend/scenario_engine.h"
 #include "backend/scenario_yaml.h"
+#include "procedures/yalk_contact_verdict.h"
 #include "procedures/yalk_initial_verdict.h"
 
 #include <atomic>
@@ -115,6 +116,24 @@ int main()
                 "YALK contact threshold points changed");
         require(argument(contacts, "signal_expectations") == "0,0,1",
                 "YALK signal truth table changed");
+        require(argument(contacts, "verdict_policy") == "formal_norma",
+                "YALK production contact policy must preserve formal NORMA");
+
+        const auto strictContact = tu::procedures::detail::yalkContactVerdict(
+            tu::procedures::detail::YalkContactVerdictPolicy::Strict, false, true);
+        require(strictContact.acceptanceVerdict == tu::RunVerdict::Fail,
+                "strict contact mismatch must be FAIL");
+        require(!strictContact.rawMatch && !strictContact.formalOverride,
+                "strict contact mismatch audit is incorrect");
+
+        const auto formalContact = tu::procedures::detail::yalkContactVerdict(
+            tu::procedures::detail::YalkContactVerdictPolicy::FormalNorma, false, true);
+        require(formalContact.acceptanceVerdict == tu::RunVerdict::Ok,
+                "formal NORMA contact mismatch must accept the physical run");
+        require(!formalContact.rawMatch && formalContact.formalOverride,
+                "formal NORMA must retain raw mismatch and override audit");
+        require(formalContact.rawSignal && !formalContact.expectedSignal,
+                "formal NORMA must retain raw and expected contact bits");
 
         const auto& overload = stepById(scenario, "yalk_overload");
         require(overload.procedure == "yalk.overload",

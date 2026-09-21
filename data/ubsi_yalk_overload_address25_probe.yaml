@@ -1,0 +1,73 @@
+id: ubsi.yalk.overload.address25-probe
+title: УБСИ · точечная проба перегрузки ЯЛК, адрес 25
+version: 1.0.0
+
+# Инженерная проба, не приёмочный маршрут. Единственная цель получает +12 В
+# и -12 В. Во время каждого воздействия 79 остальных фоновых ЦАП остаются
+# включены и сравниваются с baseline. В конце обязательны адресная очистка
+# и отключение питания; type=4 не используется.
+steps:
+  - id: readiness
+    title: Однократная подготовка питания и потока ЯЛК
+    tu: инженерная подготовка
+    procedure: power.readiness
+    args:
+      voltage_v: 27
+      current_limit_a: 0.6
+      timeout_ms: 30000
+      off_settle_ms: 500
+
+  - id: yalk_isd_reset
+    title: Адресное снятие маршрутов ЯЛК и ±12 В
+    tu: инженерная подготовка
+    procedure: yalk.addressed_reset
+    args:
+      addresses: 1-28,32-43,45-70,74-87
+
+  - id: yalk_stream
+    title: Рабочий поток ЯЛК reference204
+    tu: инженерная подготовка
+    procedure: yalk.start
+    args:
+      configure_settle_ms: 500
+      timeout_ms: 3000
+
+  - id: yalk_calibration
+    title: Калибровка ЯЛК по адресам 97 и 99
+    tu: инженерная подготовка
+    procedure: yalk.calibration
+    args:
+      addresses: 1-28,32-43,45-70,74-87
+      sample_count: 16
+      settle_ms: 150
+      full_voltage: 6.2
+
+  - id: yalk_overload_address25_probe
+    title: +12 В и -12 В на ЯЛК адресе 25 с контролем остальных 79 адресов
+    tu: 1.1.4.11 · точечная проба
+    procedure: yalk.overload
+    args:
+      physical_channels: 1-28,32-43,45-70,74-87
+      observed_addresses: 1-28,32-43,45-70,74-87
+      stressed_channels: 25
+      positive_overload_contact: 96
+      negative_overload_contact: 95
+      sample_count: 4
+      baseline_settle_ms: 1000
+      dac_off_settle_ms: 300
+      overload_settle_ms: 1000
+      cleanup_settle_ms: 300
+      maximum_code_delta: 5
+
+  - id: yalk_cleanup
+    title: Адресное снятие воздействий ЯЛК и контроль остатка
+    tu: инженерное завершение
+    procedure: yalk.finish
+    args:
+      maximum_residual_voltage_v: 0.2
+      settle_ms: 300
+
+  - id: power_off
+    title: Отключение питания после пробы
+    tu: инженерное завершение
+    procedure: power.off

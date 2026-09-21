@@ -102,6 +102,7 @@ steps:
       addresses: 1-28,32-43,45-70,74-87
       contact_points_v: 0,0.8,2.5
       signal_expectations: 0,0,1
+      verdict_policy: formal_norma
       sample_count: 16
       settle_ms: 150
       channel_off_settle_ms: 1000

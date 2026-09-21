@@ -1,4 +1,5 @@
 #include "procedures/yalk_procedures.h"
+#include "procedures/yalk_contact_verdict.h"
 #include "procedures/yalk_initial_verdict.h"
 
 #include "hardware/stand_hardware.h"
@@ -332,6 +333,9 @@ ProcedureResult channelSweep(const ScenarioStep& step, ProcedureContext& context
     const auto expected = thresholds ? numbers(step, "signal_expectations") : std::vector<double>{};
     if (points.empty() || (thresholds && expected.size() != points.size()))
         throw std::invalid_argument("Не заполнены точки ЯЛК");
+    const auto contactPolicy = thresholds
+        ? detail::yalkContactVerdictPolicy(argument(step, "verdict_policy", "strict"))
+        : detail::YalkContactVerdictPolicy::Strict;
 
     const unsigned samples = natural(step, "sample_count", 16);
     const unsigned settle = natural(step, "settle_ms", 150);
@@ -420,6 +424,8 @@ ProcedureResult channelSweep(const ScenarioStep& step, ProcedureContext& context
                         + " В; ЯЛК=" + std::to_string(volts) + " В");
                 } else {
                     const bool expectedSignal = expected[pointIndex] >= 0.5;
+                    const auto decision = detail::yalkContactVerdict(
+                        contactPolicy, expectedSignal, reading.contact);
                     auto signal = measurement("ubsi.yalk.signal." + std::to_string(address)
                             + "." + std::to_string(pointIndex),
                         "ЯЛК адрес " + std::to_string(address) + ": контакт при "
@@ -428,6 +434,9 @@ ProcedureResult channelSweep(const ScenarioStep& step, ProcedureContext& context
                         reading.contact ? 1.0 : 0.0,
                         expectedSignal ? 1.0 : 0.0,
                         expectedSignal ? 1.0 : 0.0, "лог.");
+                    signal.verdict = decision.acceptanceVerdict;
+                    signal.message = signal.verdict == RunVerdict::Ok
+                        ? "Норма" : "Значение вне допуска";
                     signal.attributes = {{"section","YALK"},
                         {"channel",std::to_string(channelIndex + 1)},
                         {"channel_index",std::to_string(channelIndex + 1)},
@@ -442,7 +451,10 @@ ProcedureResult channelSweep(const ScenarioStep& step, ProcedureContext& context
                         {"raw",std::to_string(reading.rawMean)},
                         {"analog_code",std::to_string(reading.codeMean)},
                         {"signal",reading.contact?"1":"0"},
-                        {"expected_signal",expectedSignal?"1":"0"}};
+                        {"raw_signal",decision.rawSignal?"1":"0"},
+                        {"expected_signal",decision.expectedSignal?"1":"0"},
+                        {"raw_match",decision.rawMatch?"true":"false"},
+                        {"formal_override",decision.formalOverride?"true":"false"}};
                     publishMeasurement(context, step, signal);
                     append(result, std::move(signal));
                     journal(context, step, "В7=" + std::to_string(reference)
@@ -526,8 +538,9 @@ ProcedureResult overload(const ScenarioStep& step, ProcedureContext& context,
 
     // Фон формируется один раз. Начальный all-off выполняется отдельным
     // шагом перед ЯЛК; здесь не повторяем 80 адресных выключений. Для каждого
-    // воздействия сначала отключается DAC цели, и лишь затем к ней подключается
-    // общий источник ±12 В. Исключённые 29/30/31/44/71/72/73/88 не затрагиваются.
+    // воздействия отключается только ЦАП цели; 79 остальных фоновых ЦАП
+    // остаются включены. Лишь затем к цели подключается общий источник ±12 В.
+    // Исключённые 29/30/31/44/71/72/73/88 не затрагиваются.
     try {
         sourceOff(positiveCommon);
         sourceOff(negativeCommon);
@@ -565,10 +578,10 @@ ProcedureResult overload(const ScenarioStep& step, ProcedureContext& context,
                     journal(context, step, "Перегрузка " + polarity.second + " · "
                         + std::to_string(impactIndex) + "/" + std::to_string(impactCount)
                         + ": канал " + std::to_string(target)
-                        + " — отключаю ЦАП");
+                        + " — отключаю ЦАП целевого канала; остальной 79-канальный фон остаётся включён");
 
-                    // Методика: DAC off -> пауза -> +12/-12 на цель. Общий
-                    // источник включается только после снятия ЦАП цели.
+                    // Методика: target DAC off -> пауза -> +12/-12 на цель.
+                    // Общий источник включается только после снятия ЦАП цели.
                     stand->isd().setAnalog(target, 0, false);
                     targetDacRemoved = true;
                     waitChecked(context, dacOffSettle);
