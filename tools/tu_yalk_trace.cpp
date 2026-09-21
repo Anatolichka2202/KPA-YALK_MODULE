@@ -4,6 +4,7 @@
 #include "hardware/stand_hardware.h"
 #include "procedures/power_procedures.h"
 #include "procedures/yalk_procedures.h"
+#include "procedures/yvp_procedures.h"
 
 #include <QCoreApplication>
 #include <QDateTime>
@@ -64,6 +65,7 @@ int main(int argc, char** argv)
     tu::ScenarioEngine engine;
     tu::procedures::registerPowerProcedures(engine, hardware);
     tu::procedures::registerYalkProcedures(engine, hardware);
+    tu::procedures::registerYvpProcedures(engine, hardware);
 
     try {
         const auto scenario = tu::loadScenarioYaml(argv[2]);

@@ -194,6 +194,18 @@ int main()
         require(argument(yvp, "gain_8_bits") == "4", "YVP K8 map changed");
         require(argument(yvp, "gain_32_bits") == "2,4", "YVP K32 map changed");
 
+        const auto yvpProbe = tu::loadScenarioYaml(
+            TU_SOURCE_DIR "/data/ubsi_yvp_k1_channel1_probe.yaml");
+        const auto& yvpProbeStep = stepById(yvpProbe, "yvp_k1_channel1_probe");
+        require(argument(yvpProbeStep, "tested_channels") == "1",
+                "YVP probe must be limited to one channel");
+        require(argument(yvpProbeStep, "gains_mv_per_pcl") == "1",
+                "YVP probe must retain K=1");
+        require(argument(yvpProbeStep, "frequencies_hz") == "2,6,20,500,1800,2000,4000",
+                "YVP probe frequencies must match production");
+        require(argument(yvpProbeStep, "settle_ms") == "2000",
+                "YVP probe settle must match production");
+
         tu::ScenarioEngine validationEngine;
         for (const auto& step : scenario.steps)
             validationEngine.registerProcedure(step.procedure, ok);

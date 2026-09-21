@@ -120,6 +120,12 @@ ProcedureResult run(const ScenarioStep& step, ProcedureContext& context,
 {
     const unsigned channelCount = natural(step, "channel_count", 8);
     if (channelCount != 8) throw std::invalid_argument("ЯВП-8 содержит ровно 8 каналов");
+    auto testedChannels = unsigneds(argument(step, "tested_channels", "1,2,3,4,5,6,7,8"));
+    std::set<unsigned> uniqueTestedChannels;
+    for (const unsigned channel : testedChannels) {
+        if (channel > channelCount || !uniqueTestedChannels.insert(channel).second)
+            throw std::invalid_argument("ЯВП: tested_channels должен содержать уникальные номера 1..8");
+    }
     const auto gains = numbers(step, "gains_mv_per_pcl");
     const auto frequencies = numbers(step, "frequencies_hz");
     if (gains.empty() || frequencies.empty()) throw std::invalid_argument("Не задана методика ЯВП");
@@ -207,7 +213,7 @@ ProcedureResult run(const ScenarioStep& step, ProcedureContext& context,
     };
 
     ProcedureResult result{RunVerdict::Ok, "ЯВП-8 соответствует проверенной методике V7/ИСД", {}};
-    const std::size_t totalPoints = channelCount * gains.size() * frequencies.size();
+    const std::size_t totalPoints = testedChannels.size() * gains.size() * frequencies.size();
     std::size_t completedPoints = 0;
 
     auto readAcVoltage = [&](unsigned channel, double gain, double frequency) {
@@ -243,8 +249,9 @@ ProcedureResult run(const ScenarioStep& step, ProcedureContext& context,
         isd.probe();
         safeReset();
 
-        for (unsigned channel = 0; channel < channelCount; ++channel) {
+        for (const unsigned oneBasedChannel : testedChannels) {
             context.checkpoint();
+            const unsigned channel = oneBasedChannel - 1;
             for (const unsigned contact : inputMap[channel]) {
                 // Записываем контакт до HTTP ON: если ACK потеряется после фактической
                 // коммутации, cleanup всё равно пошлёт адресный OFF.
