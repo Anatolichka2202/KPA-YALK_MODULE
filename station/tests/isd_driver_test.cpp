@@ -25,6 +25,7 @@ struct FakeIsd {
     std::atomic<int> maxInFlight{0};
     bool failNextSwitch = false;
     bool failNextReset = false;
+    bool failNextProbe = false;
     unsigned fullResetCount = 0;
 
     void record(const std::string& call)
@@ -41,11 +42,21 @@ struct FakeIsd {
         --inFlight;
     }
 
+    void clearCalls()
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        calls.clear();
+    }
+
     IsdDriverOps ops()
     {
         IsdDriverOps result;
         result.probe = [this] {
             record("probe");
+            if (failNextProbe) {
+                failNextProbe = false;
+                throw std::runtime_error("simulated probe failure");
+            }
             return std::string("HTTP page");
         };
         result.serviceFullReset = [this] {
@@ -68,8 +79,8 @@ struct FakeIsd {
             record("analog:" + std::to_string(channel) + ":"
                    + std::to_string(value) + ":" + (enabled ? "1" : "0"));
         };
-        result.setYalkVoltage = [this](unsigned channel, double) {
-            record("yalk_voltage:" + std::to_string(channel));
+        result.setYalkVoltage = [this](unsigned channel, double volts) {
+            record("yalk_voltage:" + std::to_string(channel) + ":" + std::to_string(volts));
         };
         result.disableYalkOutput = [this](unsigned channel) {
             record("yalk_off:" + std::to_string(channel));
@@ -138,6 +149,78 @@ void timeoutOnRemainsPossiblyActive()
             "Successful targeted cleanup did not resolve process-owned uncertainty");
     require(fake.calls.back() == "switch:2:38:0",
             "Cleanup after timeout did not attempt targeted OFF");
+}
+
+void restartRecoveryReplaysExactDesiredState()
+{
+    FakeIsd fake;
+    IsdDriver driver(fake.ops(), 128);
+
+    driver.setSwitch(2, 33, true, "run");
+    driver.setAnalog(44, 777, true, "run");
+    driver.setYalkVoltage(1, 3.1, "run");
+
+    fake.failNextSwitch = true;
+    bool failed = false;
+    try { driver.setSwitch(2, 35, true, "run"); }
+    catch (const std::runtime_error&) { failed = true; }
+    require(failed, "Recovery setup did not enter indeterminate state");
+    require(driver.sessionState() == IsdSessionState::Indeterminate,
+            "Timed-out ON did not make recovery necessary");
+    require(driver.ownedCount() == 4,
+            "Desired state for timed-out route was not retained");
+
+    fake.clearCalls();
+    driver.recoverAfterRestart("operator-restart");
+
+    const std::vector<std::string> expected{
+        "probe",
+        "switch:2:33:1",
+        "analog:44:777:1",
+        "yalk_voltage:1:3.100000",
+        "switch:2:35:1",
+    };
+    require(fake.calls == expected,
+            "Recovery did not probe then replay exact remembered state in activation order");
+    require(fake.fullResetCount == 0,
+            "Restart recovery must never use firmware type=4/full reset");
+    require(driver.sessionState() == IsdSessionState::Operational,
+            "Successful restart recovery did not restore operational session");
+    require(driver.ownedCount() == 4,
+            "Recovery must retain ownership of replayed active routes");
+    const auto status = driver.statusText();
+    require(status.find("possibly_active") == std::string::npos,
+            "Recovered routes were not promoted to acknowledged state");
+    require(status.find("kind=analog,type=1,channel=44,value=777") != std::string::npos,
+            "Analog desired code is not retained for recovery/status");
+    require(status.find("kind=yalk_output,type=5,channel=1,volts=3.1") != std::string::npos,
+            "YALK desired voltage is not retained for recovery/status");
+    require(driver.traceText().find("operation=recover_after_restart") != std::string::npos,
+            "Recovery operation is absent from the trace");
+
+    driver.safeStopAll();
+}
+
+void failedRecoveryStaysIndeterminate()
+{
+    FakeIsd fake;
+    IsdDriver driver(fake.ops(), 64);
+    fake.failNextSwitch = true;
+    try { driver.setSwitch(2, 41, true, "run"); } catch (...) {}
+    fake.failNextProbe = true;
+    const auto resetBefore = fake.fullResetCount;
+
+    bool failed = false;
+    try { driver.recoverAfterRestart("operator-restart"); }
+    catch (const std::runtime_error&) { failed = true; }
+    require(failed, "Recovery probe failure was swallowed");
+    require(driver.sessionState() == IsdSessionState::Indeterminate,
+            "Failed recovery must keep session indeterminate");
+    require(driver.ownedCount() == 1,
+            "Failed recovery lost desired owned state");
+    require(fake.fullResetCount == resetBefore,
+            "Failed recovery fell back to a destructive full reset");
+    driver.safeStopAll();
 }
 
 void safeStopNeverUsesFullReset()
@@ -213,6 +296,8 @@ int main()
     try {
         ownershipAndTargetedCleanup();
         timeoutOnRemainsPossiblyActive();
+        restartRecoveryReplaysExactDesiredState();
+        failedRecoveryStaysIndeterminate();
         safeStopNeverUsesFullReset();
         probeIsConnectivityOnly();
         serviceResetIsExplicitAndOneShot();

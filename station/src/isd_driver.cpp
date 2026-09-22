@@ -24,6 +24,8 @@ struct OwnedResource {
     unsigned channel = 0;
     std::string owner;
     IsdOwnedCertainty certainty = IsdOwnedCertainty::PossiblyActive;
+    unsigned analogValue = 0;
+    double volts = 0.0;
 };
 
 struct TraceEntry {
@@ -142,7 +144,7 @@ struct IsdDriver::Impl {
     {
         if (state != IsdSessionState::Operational) {
             throw std::runtime_error(
-                "ISD session is indeterminate; new active mutations are blocked until targeted cleanup or explicit service recovery");
+                "ISD session is indeterminate; new active mutations are blocked until targeted cleanup or explicit recovery");
         }
     }
 
@@ -168,11 +170,22 @@ struct IsdDriver::Impl {
 
     void maybeResolveAfterCleanup()
     {
-        // The session state is only about unresolved mutations issued by this
-        // process.  If every owned/possibly-active route has been positively
-        // driven OFF, there is no remaining unresolved process-owned mutation.
-        // This says nothing about unrelated physical routes in the ISD.
         if (owned.empty()) state = IsdSessionState::Operational;
+    }
+
+    void replay(const OwnedResource& resource)
+    {
+        switch (resource.kind) {
+        case ResourceKind::Switch:
+            ops.setSwitch(resource.type, resource.channel, true);
+            break;
+        case ResourceKind::Analog:
+            ops.setAnalog(resource.channel, resource.analogValue, true);
+            break;
+        case ResourceKind::YalkOutput:
+            ops.setYalkVoltage(resource.channel, resource.volts);
+            break;
+        }
     }
 
     template<typename Function>
@@ -183,8 +196,9 @@ struct IsdDriver::Impl {
         ensureOwnerMayTouch(resource);
         const auto before = state;
 
-        // Ownership is recorded BEFORE the request.  A timeout/connection close
-        // cannot prove that the physical ON did not happen.
+        // Remember desired state before the request. A timeout cannot prove the
+        // physical ON did not happen, and explicit recovery needs the exact
+        // requested state to replay after an operator-confirmed ISD restart.
         markPossiblyActive(resource);
         const auto started = std::chrono::steady_clock::now();
         try {
@@ -333,8 +347,6 @@ void IsdDriver::serviceFullReset(const std::string& owner)
     const auto before = impl_->state;
     const auto started = std::chrono::steady_clock::now();
     try {
-        // Exactly one underlying operation.  Retry policy is intentionally not
-        // implemented here or in the HTTP transport.
         impl_->ops.serviceFullReset();
         impl_->owned.clear();
         impl_->state = IsdSessionState::Operational;
@@ -363,7 +375,7 @@ void IsdDriver::setSwitch(unsigned type, unsigned channel, bool enabled,
     if (owner.empty()) throw std::invalid_argument("ISD switch requires owner");
     std::lock_guard<std::mutex> lock(impl_->mutex);
     OwnedResource resource{ResourceKind::Switch, type, channel, owner,
-                           IsdOwnedCertainty::PossiblyActive};
+                           IsdOwnedCertainty::PossiblyActive, 0, 0.0};
     const std::string detail = "type=" + std::to_string(type)
         + ",channel=" + std::to_string(channel)
         + ",value=" + (enabled ? "1" : "0");
@@ -383,7 +395,7 @@ void IsdDriver::setAnalog(unsigned channel, unsigned value, bool enabled,
     if (owner.empty()) throw std::invalid_argument("ISD analog operation requires owner");
     std::lock_guard<std::mutex> lock(impl_->mutex);
     OwnedResource resource{ResourceKind::Analog, 1, channel, owner,
-                           IsdOwnedCertainty::PossiblyActive};
+                           IsdOwnedCertainty::PossiblyActive, value, 0.0};
     const std::string detail = "type=1,channel=" + std::to_string(channel)
         + ",value=" + std::to_string(value)
         + ",work=" + (enabled ? "1" : "0");
@@ -403,7 +415,7 @@ void IsdDriver::setYalkVoltage(unsigned channel, double volts,
     if (owner.empty()) throw std::invalid_argument("ISD YALK output requires owner");
     std::lock_guard<std::mutex> lock(impl_->mutex);
     OwnedResource resource{ResourceKind::YalkOutput, 5, channel, owner,
-                           IsdOwnedCertainty::PossiblyActive};
+                           IsdOwnedCertainty::PossiblyActive, 0, volts};
     std::ostringstream detail;
     detail << "type=5,channel=" << channel << ",volts=" << volts << ",work=1,bus=1";
     impl_->activate(resource, "yalk_voltage", detail.str(),
@@ -416,10 +428,49 @@ void IsdDriver::disableYalkOutput(unsigned channel, const std::string& owner)
     if (owner.empty()) throw std::invalid_argument("ISD YALK output requires owner");
     std::lock_guard<std::mutex> lock(impl_->mutex);
     OwnedResource resource{ResourceKind::YalkOutput, 5, channel, owner,
-                           IsdOwnedCertainty::PossiblyActive};
+                           IsdOwnedCertainty::PossiblyActive, 0, 0.0};
     impl_->deactivate(resource, "yalk_output_off",
         "type=1,channel=" + std::to_string(channel) + ",work=off_sequence",
         [&] { impl_->ops.disableYalkOutput(channel); });
+}
+
+void IsdDriver::recoverAfterRestart(const std::string& owner)
+{
+    if (owner.empty()) throw std::invalid_argument("ISD recovery requires owner");
+    std::lock_guard<std::mutex> lock(impl_->mutex);
+    const auto before = impl_->state;
+    const auto started = std::chrono::steady_clock::now();
+    try {
+        (void)impl_->ops.probe();
+        for (const auto& resource : impl_->owned) impl_->replay(resource);
+        for (auto& resource : impl_->owned)
+            resource.certainty = IsdOwnedCertainty::AcknowledgedActive;
+        impl_->state = IsdSessionState::Operational;
+        const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - started).count();
+        impl_->appendTrace({0, 0, owner, "recover_after_restart",
+            "probe=1,replayed=" + std::to_string(impl_->owned.size()) + ",full_reset=0",
+            static_cast<unsigned>(std::max<std::int64_t>(0, elapsed)),
+            "ack", before, impl_->state, {}});
+    } catch (const std::exception& error) {
+        impl_->state = IsdSessionState::Indeterminate;
+        const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - started).count();
+        impl_->appendTrace({0, 0, owner, "recover_after_restart",
+            "probe=1,replayed=partial,full_reset=0",
+            static_cast<unsigned>(std::max<std::int64_t>(0, elapsed)),
+            "indeterminate", before, impl_->state, clean(error.what())});
+        throw;
+    } catch (...) {
+        impl_->state = IsdSessionState::Indeterminate;
+        const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - started).count();
+        impl_->appendTrace({0, 0, owner, "recover_after_restart",
+            "probe=1,replayed=partial,full_reset=0",
+            static_cast<unsigned>(std::max<std::int64_t>(0, elapsed)),
+            "indeterminate", before, impl_->state, "unknown error"});
+        throw;
+    }
 }
 
 void IsdDriver::releaseOwner(const std::string& owner)
@@ -476,8 +527,10 @@ std::string IsdDriver::statusText() const
         out << "owned." << index << "=owner=" << item.owner
             << ",kind=" << kindName(item.kind)
             << ",type=" << item.type
-            << ",channel=" << item.channel
-            << ",certainty=" << toString(item.certainty) << "\n";
+            << ",channel=" << item.channel;
+        if (item.kind == ResourceKind::Analog) out << ",value=" << item.analogValue;
+        if (item.kind == ResourceKind::YalkOutput) out << ",volts=" << item.volts;
+        out << ",certainty=" << toString(item.certainty) << "\n";
     }
     return out.str();
 }

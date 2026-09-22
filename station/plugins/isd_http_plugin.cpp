@@ -181,6 +181,10 @@ orbita_plugin_status_v1 invoke(void* value, const char* capability, const char* 
 
         if (command == "service_full_reset") {
             instance.driver->serviceFullReset(owner);
+        } else if (command == "recover_after_restart" || command == "recover") {
+            // Explicit only: caller/operator must have restarted ISD first.
+            // Driver probes and replays the exact process-owned desired state.
+            instance.driver->recoverAfterRestart(owner);
         } else if (command == "yalk_set_voltage") {
             instance.driver->setYalkVoltage(
                 resolvedChannel(), plugin::doubleValue(args, "volts"), owner);
