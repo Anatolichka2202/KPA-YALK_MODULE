@@ -15,7 +15,7 @@ namespace ktma::registrar {
 class Registrar;
 }
 
-class KtmaMainWindow final : public MainWindow
+class KtmaMainWindow : public MainWindow
 {
     Q_OBJECT
 
@@ -28,6 +28,12 @@ protected:
     {
         return integrationProductionWorkflowActive();
     }
+
+    // Universal/free scenarios use the current delivery's physical readiness
+    // policy without becoming part of the delivery registry.  The ordering is
+    // still KTMA/UBSI-owned (power -> independent devices -> boot wait -> ULK).
+    void integrationPrepareEquipmentForScenario(
+        const orbita::stand::ScenarioDefinition& scenario);
 
 private slots:
     void runScenario(const QString& scenarioCode, const QString& objectSerial,
