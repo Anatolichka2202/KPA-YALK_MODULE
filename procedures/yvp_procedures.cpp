@@ -1,4 +1,5 @@
 #include "procedures/yvp_procedures.h"
+#include "procedures/yvp_verdict.h"
 
 #include "hardware/stand_hardware.h"
 
@@ -109,6 +110,35 @@ double attenuationDb(double reference, double value)
     return 20.0 * std::log10(reference / value);
 }
 
+std::string joinUnsigned(const std::vector<unsigned>& values, const char* separator = ",")
+{
+    std::ostringstream text;
+    for (std::size_t index = 0; index < values.size(); ++index) {
+        if (index) text << separator;
+        text << values[index];
+    }
+    return text.str();
+}
+
+std::string kuLabel(const std::vector<unsigned>& bits)
+{
+    if (bits.empty()) return "none";
+    std::ostringstream text;
+    for (std::size_t index = 0; index < bits.size(); ++index) {
+        if (index) text << '+';
+        text << "KU" << bits[index];
+    }
+    return text.str();
+}
+
+struct YvpObservation {
+    double calculatedGain = 0.0;
+    double measuredRms = 0.0;
+    double outputVpp = 0.0;
+    double inputVpp = 0.0;
+    std::size_t measurementIndex = 0;
+};
+
 void append(ProcedureResult& result, MeasurementResult value)
 {
     result.verdict = combineVerdicts(result.verdict, value.verdict);
@@ -138,6 +168,8 @@ ProcedureResult run(const ScenarioStep& step, ProcedureContext& context,
     const double referenceFrequency = number(step, "reference_frequency_hz", 500.0);
     const bool diagnosticGainOnly = argument(step, "diagnostic_gain_only") == "true";
     const bool generatorReadback = argument(step, "generator_readback") == "true";
+    const auto verdictPolicy = detail::parseYvpVerdictPolicy(
+        argument(step, "verdict_policy", "strict"));
     const bool reducedSweep = !argument(step, "afc_gain_mv_per_pcl").empty();
     const double afcGain = reducedSweep ? number(step, "afc_gain_mv_per_pcl") : 0.0;
     if (reducedSweep && std::find(gains.begin(), gains.end(), afcGain) == gains.end())
@@ -260,6 +292,29 @@ ProcedureResult run(const ScenarioStep& step, ProcedureContext& context,
         }
     };
 
+    auto appendCriterion = [&](MeasurementResult value, RunVerdict rawVerdict,
+                               const std::string& failureMessage) {
+        const auto decision = detail::yvpVerdict(verdictPolicy, rawVerdict);
+        value.attributes["raw_verdict"] = toString(decision.rawVerdict);
+        value.attributes["acceptance_verdict"] = toString(decision.acceptanceVerdict);
+        value.attributes["verdict_policy"] = detail::yvpVerdictPolicyName(verdictPolicy);
+        value.attributes["manual_confirmation_applied"] = decision.manuallyAccepted ? "true" : "false";
+        value.verdict = decision.acceptanceVerdict;
+        value.message = value.verdict == RunVerdict::Ok ? "Норма" : failureMessage;
+        if (context.eventSink) {
+            auto data = value.attributes;
+            data["parameter_key"] = value.parameterKey;
+            data["reference"] = std::to_string(value.reference);
+            data["measured"] = std::to_string(value.measured);
+            data["lower_limit"] = std::to_string(value.lowerLimit);
+            data["upper_limit"] = std::to_string(value.upperLimit);
+            data["unit"] = value.unit;
+            context.eventSink({std::chrono::system_clock::now(), step.id,
+                "YVP_CRITERION", value.title, value.verdict, std::move(data)});
+        }
+        append(result, std::move(value));
+    };
+
     try {
         isd.probe();
         safeReset();
@@ -293,7 +348,7 @@ ProcedureResult run(const ScenarioStep& step, ProcedureContext& context,
                 if (!(inputVpp > 0.0))
                     throw std::invalid_argument("ЯВП: input_vpp должен быть положительным");
                 const double chargePc = capacitancePf * inputVpp;
-                std::map<double,double> measuredGain;
+                std::map<double,YvpObservation> measuredGain;
 
                 const auto gainFrequencies = diagnosticGainOnly ? std::vector<double>{referenceFrequency}
                     : (reducedSweep && std::abs(gain - afcGain) > 1e-9
@@ -317,7 +372,9 @@ ProcedureResult run(const ScenarioStep& step, ProcedureContext& context,
                     }
                     const double outputVpp = measuredRms * 2.0 * std::sqrt(2.0);
                     const double calculatedGain = 1000.0 * outputVpp / chargePc;
-                    measuredGain[frequency] = calculatedGain;
+                    const std::size_t rawMeasurementIndex = result.measurements.size();
+                    measuredGain[frequency] = {
+                        calculatedGain, measuredRms, outputVpp, inputVpp, rawMeasurementIndex};
                     ++completedPoints;
 
                     MeasurementResult raw;
@@ -343,6 +400,8 @@ ProcedureResult run(const ScenarioStep& step, ProcedureContext& context,
                         {"capacitance_pf",std::to_string(capacitancePf)},
                         {"charge_pc_from_commanded_vpp",std::to_string(chargePc)},
                         {"calculated_gain_mv_per_pc",std::to_string(calculatedGain)},
+                        {"ku_bits",kuLabel(gainBits.at(gain))},
+                        {"type2_contacts",joinUnsigned(activeGainContacts)},
                         {"acceptance","evaluated_after_gain_sweep"},
                         {"point_index",std::to_string(completedPoints)},
                         {"point_count",std::to_string(totalPoints)}};
@@ -367,14 +426,30 @@ ProcedureResult run(const ScenarioStep& step, ProcedureContext& context,
                 gainResult.title = "ЯВП " + std::to_string(channel + 1)
                     + ": коэффициент при " + std::to_string(referenceFrequency) + " Гц";
                 gainResult.reference = gain;
-                gainResult.measured = ref->second;
+                gainResult.measured = ref->second.calculatedGain;
                 gainResult.lowerLimit = gain * (1.0 - gainTolerance / 100.0);
                 gainResult.upperLimit = gain * (1.0 + gainTolerance / 100.0);
                 gainResult.unit = "мВ/пКл";
-                gainResult.verdict = std::abs(relativeError(ref->second, gain)) <= gainTolerance
+                const double gainDeviation = relativeError(ref->second.calculatedGain, gain);
+                const RunVerdict rawGainVerdict = std::abs(gainDeviation) <= gainTolerance
                     ? RunVerdict::Ok : RunVerdict::Fail;
-                gainResult.message = gainResult.verdict == RunVerdict::Ok ? "Норма" : "Вне допуска ±7%";
-                append(result, std::move(gainResult));
+                gainResult.attributes = {
+                    {"section","YVP"},
+                    {"criterion","gain"},
+                    {"yvp_channel",std::to_string(channel + 1)},
+                    {"gain_mv_per_pc",std::to_string(gain)},
+                    {"set_frequency_hz",std::to_string(referenceFrequency)},
+                    {"rigol_input_vpp",std::to_string(ref->second.inputVpp)},
+                    {"v7_output_vrms",std::to_string(ref->second.measuredRms)},
+                    {"calculated_gain_mv_per_pc",std::to_string(ref->second.calculatedGain)},
+                    {"deviation_percent",std::to_string(gainDeviation)},
+                    {"tolerance_percent",std::to_string(gainTolerance)},
+                    {"ku_bits",kuLabel(gainBits.at(gain))},
+                    {"type2_contacts",joinUnsigned(activeGainContacts)}};
+                auto& rawGain = result.measurements.at(ref->second.measurementIndex);
+                rawGain.attributes["deviation_percent"] = std::to_string(gainDeviation);
+                rawGain.attributes["raw_verdict"] = toString(rawGainVerdict);
+                appendCriterion(std::move(gainResult), rawGainVerdict, "Вне допуска ±7%");
 
                 if (reducedSweep && std::abs(gain - afcGain) > 1e-9)
                     continue;
@@ -384,7 +459,8 @@ ProcedureResult run(const ScenarioStep& step, ProcedureContext& context,
                     const auto point = measuredGain.find(frequency);
                     if (point == measuredGain.end())
                         throw std::invalid_argument("ЯВП: отсутствует обязательная точка АЧХ");
-                    const double deviation = relativeError(point->second, ref->second);
+                    const double deviation = relativeError(
+                        point->second.calculatedGain, ref->second.calculatedGain);
                     MeasurementResult afc;
                     afc.parameterKey = "ubsi.yvp.afc." + std::to_string(channel + 1)
                         + "." + std::to_string(static_cast<unsigned>(frequency));
@@ -395,15 +471,36 @@ ProcedureResult run(const ScenarioStep& step, ProcedureContext& context,
                     afc.lowerLimit = -tolerance;
                     afc.upperLimit = tolerance;
                     afc.unit = "%";
-                    afc.verdict = std::abs(deviation) <= tolerance ? RunVerdict::Ok : RunVerdict::Fail;
-                    afc.message = afc.verdict == RunVerdict::Ok ? "Норма" : "Вне допуска АЧХ";
-                    append(result, std::move(afc));
+                    const RunVerdict rawAfcVerdict = std::abs(deviation) <= tolerance
+                        ? RunVerdict::Ok : RunVerdict::Fail;
+                    afc.attributes = {
+                        {"section","YVP"},
+                        {"criterion","afc"},
+                        {"yvp_channel",std::to_string(channel + 1)},
+                        {"gain_mv_per_pc",std::to_string(gain)},
+                        {"set_frequency_hz",std::to_string(frequency)},
+                        {"reference_frequency_hz",std::to_string(referenceFrequency)},
+                        {"rigol_input_vpp",std::to_string(point->second.inputVpp)},
+                        {"v7_output_vrms",std::to_string(point->second.measuredRms)},
+                        {"calculated_gain_mv_per_pc",std::to_string(point->second.calculatedGain)},
+                        {"reference_gain_mv_per_pc",std::to_string(ref->second.calculatedGain)},
+                        {"deviation_percent",std::to_string(deviation)},
+                        {"tolerance_percent",std::to_string(tolerance)},
+                        {"ku_bits",kuLabel(gainBits.at(gain))},
+                        {"type2_contacts",joinUnsigned(activeGainContacts)}};
+                    auto& rawAfc = result.measurements.at(point->second.measurementIndex);
+                    rawAfc.attributes["deviation_percent"] = std::to_string(deviation);
+                    rawAfc.attributes["raw_verdict"] = toString(rawAfcVerdict);
+                    appendCriterion(std::move(afc), rawAfcVerdict, "Вне допуска АЧХ");
                 }
 
                 const auto high = measuredGain.find(4000.0);
                 if (high == measuredGain.end())
                     throw std::invalid_argument("ЯВП: отсутствует обязательная точка 4000 Гц");
-                const double attenuation = attenuationDb(ref->second, high->second);
+                const double attenuation = attenuationDb(
+                    ref->second.calculatedGain, high->second.calculatedGain);
+                const double highDeviation = relativeError(
+                    high->second.calculatedGain, ref->second.calculatedGain);
                 MeasurementResult attenuationResult;
                 attenuationResult.parameterKey = "ubsi.yvp.attenuation."
                     + std::to_string(channel + 1) + "." + gainKey(gain);
@@ -414,11 +511,30 @@ ProcedureResult run(const ScenarioStep& step, ProcedureContext& context,
                 attenuationResult.lowerLimit = attenuationMinimum;
                 attenuationResult.upperLimit = 1.0e9;
                 attenuationResult.unit = "дБ";
-                attenuationResult.verdict = attenuation >= attenuationMinimum
+                const RunVerdict rawAttenuationVerdict = attenuation >= attenuationMinimum
                     ? RunVerdict::Ok : RunVerdict::Fail;
-                attenuationResult.message = attenuationResult.verdict == RunVerdict::Ok
-                    ? "Норма" : "Затухание ниже допустимого";
-                append(result, std::move(attenuationResult));
+                attenuationResult.attributes = {
+                    {"section","YVP"},
+                    {"criterion","attenuation"},
+                    {"yvp_channel",std::to_string(channel + 1)},
+                    {"gain_mv_per_pc",std::to_string(gain)},
+                    {"set_frequency_hz","4000"},
+                    {"reference_frequency_hz",std::to_string(referenceFrequency)},
+                    {"rigol_input_vpp",std::to_string(high->second.inputVpp)},
+                    {"v7_output_vrms",std::to_string(high->second.measuredRms)},
+                    {"calculated_gain_mv_per_pc",std::to_string(high->second.calculatedGain)},
+                    {"reference_gain_mv_per_pc",std::to_string(ref->second.calculatedGain)},
+                    {"deviation_percent",std::to_string(highDeviation)},
+                    {"attenuation_db",std::to_string(attenuation)},
+                    {"attenuation_min_db",std::to_string(attenuationMinimum)},
+                    {"ku_bits",kuLabel(gainBits.at(gain))},
+                    {"type2_contacts",joinUnsigned(activeGainContacts)}};
+                auto& rawHigh = result.measurements.at(high->second.measurementIndex);
+                rawHigh.attributes["deviation_percent"] = std::to_string(highDeviation);
+                rawHigh.attributes["attenuation_db"] = std::to_string(attenuation);
+                rawHigh.attributes["raw_verdict"] = toString(rawAttenuationVerdict);
+                appendCriterion(std::move(attenuationResult), rawAttenuationVerdict,
+                                "Затухание ниже допустимого");
             }
             safeReset();
         }

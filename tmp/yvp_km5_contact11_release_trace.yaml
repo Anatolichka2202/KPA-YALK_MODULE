@@ -1,0 +1,119 @@
+id: ubsi.yvp.km5-contact11-release-trace
+title: УБСИ · проверка физического отпускания контакта 11 KM5
+version: 1.0.0
+
+steps:
+  - id: readiness
+    title: Однократная подготовка питания
+    tu: инженерная подготовка
+    procedure: power.readiness
+    args:
+      voltage_v: 27
+      current_limit_a: 0.6
+      timeout_ms: 30000
+      off_settle_ms: 500
+
+  - id: contact11_on
+    title: ЯВП-3 · включение линии KU3 (контакт 11)
+    tu: инженерная диагностика
+    procedure: yvp.run
+    args:
+      channel_count: 8
+      tested_channels: 3
+      gains_mv_per_pcl: 2
+      frequencies_hz: 500
+      coupling_capacitance_pf: 1000
+      settle_ms: 2000
+      reference_frequency_hz: 500
+      diagnostic_gain_only: true
+      generator_readback: true
+      input_switch_type: 2
+      gain_switch_type: 2
+      measurement_analog_type: 1
+      measurement_switch_type: 3
+      input_1_contacts: 33
+      input_2_contacts: 34
+      input_3_contacts: 35
+      input_4_contacts: 36
+      input_5_contacts: 37
+      input_6_contacts: 38
+      input_7_contacts: 39
+      input_8_contacts: 40
+      measurement_1_contacts: 44
+      measurement_2_contacts: 29
+      measurement_3_contacts: 30
+      measurement_4_contacts: 31
+      measurement_5_contacts: 71
+      measurement_6_contacts: 72
+      measurement_7_contacts: 88
+      measurement_8_contacts: 73
+      channel_1_gain_contacts: 1,2,3,4
+      channel_2_gain_contacts: 5,6,7,8
+      channel_3_gain_contacts: 9,10,11,12
+      channel_4_gain_contacts: 13,14,15,16
+      channel_5_gain_contacts: 17,18,19,20
+      channel_6_gain_contacts: 21,22,23,24
+      channel_7_gain_contacts: 25,26,27,28
+      channel_8_gain_contacts: 29,30,31,32
+      gain_0_25_bits: none
+      gain_0_5_bits: 1
+      gain_1_bits: 2
+      gain_2_bits: 3
+      gain_4_bits: 1,3
+      gain_8_bits: 4
+      gain_32_bits: 2,4
+
+  - id: contact11_off_then_ku2
+    title: ЯВП-3 · KU2 после адресного снятия контакта 11
+    tu: инженерная диагностика
+    procedure: yvp.run
+    args:
+      channel_count: 8
+      tested_channels: 3
+      gains_mv_per_pcl: 1
+      frequencies_hz: 500
+      coupling_capacitance_pf: 1000
+      settle_ms: 2000
+      reference_frequency_hz: 500
+      diagnostic_gain_only: true
+      generator_readback: true
+      input_switch_type: 2
+      gain_switch_type: 2
+      measurement_analog_type: 1
+      measurement_switch_type: 3
+      input_1_contacts: 33
+      input_2_contacts: 34
+      input_3_contacts: 35
+      input_4_contacts: 36
+      input_5_contacts: 37
+      input_6_contacts: 38
+      input_7_contacts: 39
+      input_8_contacts: 40
+      measurement_1_contacts: 44
+      measurement_2_contacts: 29
+      measurement_3_contacts: 30
+      measurement_4_contacts: 31
+      measurement_5_contacts: 71
+      measurement_6_contacts: 72
+      measurement_7_contacts: 88
+      measurement_8_contacts: 73
+      channel_1_gain_contacts: 1,2,3,4
+      channel_2_gain_contacts: 5,6,7,8
+      channel_3_gain_contacts: 9,10,11,12
+      channel_4_gain_contacts: 13,14,15,16
+      channel_5_gain_contacts: 17,18,19,20
+      channel_6_gain_contacts: 21,22,23,24
+      channel_7_gain_contacts: 25,26,27,28
+      channel_8_gain_contacts: 29,30,31,32
+      gain_0_25_bits: none
+      gain_0_5_bits: 1
+      gain_1_bits: 2
+      gain_2_bits: 3
+      gain_4_bits: 1,3
+      gain_8_bits: 4
+      gain_32_bits: 2,4
+
+  - id: power_off
+    title: Отключение питания после точечной пробы
+    tu: инженерное завершение
+    procedure: power.off
