@@ -48,9 +48,21 @@ int main(int argc, char** argv)
 
         tu::StepRunResult yalk;
         yalk.nodeId = "yalk_channels";
-        yalk.title = "Контактные каналы ЯЛК";
-        yalk.tuRequirement = "1.1.4.1";
+        yalk.title = "Аналоговые и контактные каналы ЯЛК";
+        yalk.tuRequirement = "1.1.4.1, 1.1.4.14";
         yalk.verdict = tu::RunVerdict::Ok;
+
+        tu::MeasurementResult analog;
+        analog.parameterKey = "ubsi.yalk.channel.25.0";
+        analog.title = "ЯЛК адрес 25 · 3.1 В";
+        analog.reference = 3.100;
+        analog.measured = 3.105;
+        analog.unit = "В";
+        analog.verdict = tu::RunVerdict::Ok;
+        analog.attributes = {{"ulk_address","25"}, {"command_v","3.1"},
+            {"v7_v","3.100"}, {"reduced_error_percent","0.081"}};
+        yalk.measurements.push_back(analog);
+
         tu::MeasurementResult contact;
         contact.parameterKey = "ubsi.yalk.signal.25.1";
         contact.title = "ЯЛК адрес 25: контакт при 0,8 В";
@@ -59,9 +71,9 @@ int main(int argc, char** argv)
         contact.unit = "лог.";
         contact.verdict = tu::RunVerdict::Ok;
         contact.attributes = {{"ulk_address","25"}, {"command_v","0.8"},
-            {"raw_signal","1"}, {"expected_signal","0"}, {"raw_match","false"},
-            {"formal_override","true"}, {"verdict_policy","formal_norma"},
-            {"report_signal","0"}};
+            {"v7_v","0.798"}, {"raw_signal","1"}, {"expected_signal","0"},
+            {"raw_match","false"}, {"formal_override","true"},
+            {"verdict_policy","formal_norma"}, {"report_signal","0"}};
         yalk.measurements.push_back(contact);
 
         tu::StepRunResult yvp;
@@ -78,7 +90,7 @@ int main(int argc, char** argv)
         yvp.measurements.push_back(raw);
         tu::MeasurementResult gain;
         gain.parameterKey = "ubsi.yvp.gain.3.2";
-        gain.title = "ЯВП 3: коэффициент 2 мВ/пКл при 500 Гц";
+        gain.title = "Коэффициент усиления 2 мВ/пКл";
         gain.reference = 2.0;
         gain.measured = 9.459630;
         gain.lowerLimit = 1.86;
@@ -95,30 +107,32 @@ int main(int argc, char** argv)
         yvp.measurements.push_back(gain);
         run.steps = {yalk, yvp};
 
-        const QString htmlPath = writeTuReport(run);
-        const QString csvPath = QFileInfo(htmlPath).dir().filePath(
-            QFileInfo(htmlPath).completeBaseName() + QStringLiteral(".csv"));
-        const QString html = readUtf8(htmlPath);
-        const QString csv = readUtf8(csvPath);
+        const QString txtPath = writeTuReport(run);
+        require(QFileInfo(txtPath).suffix().compare(QStringLiteral("txt"), Qt::CaseInsensitive) == 0,
+                "production report is not TXT");
+        const QString txt = readUtf8(txtPath);
 
-        require(html.contains(QStringLiteral("Значение = 0 лог.")),
+        require(txt.contains(QStringLiteral("Дата:")), "report date is missing");
+        require(txt.contains(QStringLiteral("Оператор: __OPERATOR__")),
+                "operator placeholder is missing");
+        require(txt.contains(QStringLiteral("ПРОВЕРКА ОПРОСА И ПРЕОБРАЗОВАНИЯ ПОТЕНЦИАЛЬНЫХ СИГНАЛОВ")),
+                "YALK analog section is missing");
+        require(txt.contains(QStringLiteral("ЯЛК-96: 3.105 В")),
+                "YALK analog value is missing");
+        require(txt.contains(QStringLiteral("Состояние: 0")),
                 "formal YALK contact value was not normalized");
-        require(html.contains(QStringLiteral("Значение = 2.048 мВ/пКл")),
+        require(txt.contains(QStringLiteral("2.048 мВ/пКл")),
                 "formal YVP value was not normalized");
-        require(html.contains(QStringLiteral("Отклонение = 2.4 %")),
+        require(txt.contains(QStringLiteral("Отклонение = 2.4 %")),
                 "formal YVP deviation was not normalized");
-        require(!html.contains(QStringLiteral("9.45963")),
-                "raw YVP value leaked into the production HTML");
-        require(!csv.contains(QStringLiteral("raw_verdict"))
-                    && !csv.contains(QStringLiteral("manual_confirmed"))
-                    && !csv.contains(QStringLiteral("formal_norma"))
-                    && !csv.contains(QStringLiteral("override")),
-                "engineering policy fields leaked into the production CSV");
-        require(!csv.contains(QStringLiteral("ubsi.yvp.raw")),
-                "raw YVP row leaked into the production CSV");
-        require(csv.contains(QStringLiteral("2.048"))
-                    && csv.contains(QStringLiteral("НОРМА")),
-                "production CSV does not contain the accepted YVP result");
+        require(!txt.contains(QStringLiteral("9.45963")),
+                "raw YVP value leaked into the production TXT");
+        require(!txt.contains(QStringLiteral("manual_confirmed"))
+                    && !txt.contains(QStringLiteral("formal_norma"))
+                    && !txt.contains(QStringLiteral("raw_verdict")),
+                "engineering policy fields leaked into the production TXT");
+        require(txt.contains(QStringLiteral("РЕЗУЛЬТАТЫ ПРОВЕРКИ УБСИ В НОРМАЛЬНЫХ УСЛОВИЯХ    НОРМА")),
+                "final TU verdict is missing");
         return 0;
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
