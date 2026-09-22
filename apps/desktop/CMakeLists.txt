@@ -14,6 +14,11 @@ add_executable(MilTechStation
     mainwindow.h
     ktma_mainwindow.cpp
     ktma_mainwindow.h
+    ktma_generic_readiness.cpp
+    universal_mainwindow.cpp
+    universal_mainwindow.h
+    generic_check_dialog.cpp
+    generic_check_dialog.h
     home_page.cpp
     home_page.h
     registrar_page.cpp
