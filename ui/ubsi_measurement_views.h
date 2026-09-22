@@ -945,7 +945,7 @@ protected:
         }
         if (!hasMeasurements) {
             p.setPen(palette::dim);
-            p.drawText(area, Qt::AlignCenter, QStringLiteral("ожидание baseline / current"));
+            p.drawText(area, Qt::AlignCenter, QStringLiteral("ожидание исходного и текущего кода"));
             return;
         }
         const double criterion = std::max(0.1, frame_.criterionCode);

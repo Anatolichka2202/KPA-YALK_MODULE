@@ -235,7 +235,7 @@ QString tuStageTitle(const QString& node, const QString& fallback)
     if (node == QStringLiteral("ytp_cleanup"))
         return QStringLiteral("ЯТП · безопасная остановка потока");
     if (node == QStringLiteral("yvp_channels"))
-        return QStringLiteral("ЯВП-8 · 8 каналов · 7 коэффициентов · 7 частот · 392 точки");
+        return QStringLiteral("ЯВП-8 · 8 каналов · 13 точек на канал · 104 точки");
     if (node == QStringLiteral("power_off"))
         return QStringLiteral("Безопасное отключение питания и снятие воздействий");
     return fallback;
@@ -916,7 +916,7 @@ struct TestPage::Impl
         yvpContext = heading(QStringLiteral("ЯВП-8"), 18, yvp);
         yvpLayout->addWidget(yvpContext);
         yvpLayout->addWidget(muted(
-            QStringLiteral("Проверяем 8 каналов при Kу 0,25 / 0,5 / 1 / 2 / 4 / 8 / 32 мВ/пКл на 7 частотах 2–4000 Гц: всего 392 точки. Видны V7, рассчитанный Kу, АЧХ и затухание; Kу при 500 Гц — ±7 %, 4000 Гц — не менее 20 дБ."), yvp));
+            QStringLiteral("Проверяем 8 каналов: семь коэффициентов при 500 Гц и АЧХ при Kу=1 на семи частотах 2–4000 Гц. Общая точка 500 Гц учитывается один раз: 13 точек на канал, всего 104. Видны В7, рассчитанный Kу, АЧХ и затухание; Kу при 500 Гц — ±7 %, 4000 Гц — не менее 20 дБ."), yvp));
         auto* yvpMetrics = new QHBoxLayout;
         yvpMetrics->setSpacing(10);
         auto yvpMetric = [yvp, yvpMetrics](const QString& name, QLabel*& target) {
@@ -1014,8 +1014,8 @@ struct TestPage::Impl
         addTuRequirement(QStringLiteral("yalk_overload"), QStringLiteral("1.4.11"), QStringLiteral("ЯЛК · перегрузка ±12 В"));
         addTuRequirement(QStringLiteral("yalk_reference"), QStringLiteral("1.4.9"), QStringLiteral("ЯЛК · эталон 6,20 В"));
         addTuRequirement(QStringLiteral("ytp"), QStringLiteral("1.4.1"), QStringLiteral("ЯТП · 30 каналов"));
-        addTuRequirement(QStringLiteral("yvp_afc"), QStringLiteral("1.4.7"), QStringLiteral("ЯВП · АЧХ · 8 × 7 × 7"));
-        addTuRequirement(QStringLiteral("yvp_gain"), QStringLiteral("1.4.8"), QStringLiteral("ЯВП · коэффициент передачи"));
+        addTuRequirement(QStringLiteral("yvp_afc"), QStringLiteral("1.1.4.7, 1.1.4.8"), QStringLiteral("ЯВП · коэффициенты и АЧХ · 8 × 13"));
+        addTuRequirement(QStringLiteral("yvp_gain"), QStringLiteral("1.1.4.8"), QStringLiteral("ЯВП · коэффициент передачи"));
     }
 
     void addTuRequirement(const QString& key, const QString& id, const QString& title)

@@ -234,7 +234,7 @@ struct YvpFrame {
     double gain = std::numeric_limits<double>::quiet_NaN();
     double frequencyHz = std::numeric_limits<double>::quiet_NaN();
     int pointIndex = 0;
-    int pointCount = 392;
+    int pointCount = 104;
     bool acceptanceApplied = false;
     QVector<YvpChannel> channels;
 };
@@ -577,11 +577,17 @@ private:
 
     void applyYvp(const tu::RunEvent& event)
     {
-        if (QString::fromStdString(event.stage) != QStringLiteral("YVP_V7_POINT")) return;
+        const QString stage = QString::fromStdString(event.stage);
+        if (stage != QStringLiteral("YVP_V7_POINT")
+                && stage != QStringLiteral("YVP_CRITERION")) return;
         const int channelNumber = eventInt(event, "yvp_channel");
         if (channelNumber < 1 || channelNumber > yvp.channels.size()) return;
         auto& channel = yvp.channels[channelNumber - 1];
         yvp.testedChannel = channelNumber;
+        if (stage == QStringLiteral("YVP_CRITERION")) {
+            channel.verification = verificationFromVerdict(event.verdict);
+            return;
+        }
         yvp.gain = eventDouble(event, "gain_mv_per_pc");
         yvp.frequencyHz = eventDouble(event, "set_frequency_hz");
         channel.stimulusValue = yvp.gain;
@@ -589,9 +595,8 @@ private:
         channel.calculatedGain = eventDouble(event, "calculated_gain_mv_per_pc");
         channel.verification = verificationFromVerdict(event.verdict);
         yvp.acceptanceApplied = eventValue(event, "acceptance") != QStringLiteral("not_applied");
-        int completed = 0;
-        for (const auto& c : yvp.channels) if (std::isfinite(c.measuredValue)) ++completed;
-        yvp.pointIndex = std::max(yvp.pointIndex, completed);
+        yvp.pointIndex = std::max(yvp.pointIndex, eventInt(event, "point_index"));
+        yvp.pointCount = std::max(yvp.pointCount, eventInt(event, "point_count", 104));
         run.progressText = QStringLiteral("Канал %1 / 8 · Kу %2 · %3 Гц")
             .arg(channelNumber)
             .arg(yvp.gain, 0, 'g', 6)

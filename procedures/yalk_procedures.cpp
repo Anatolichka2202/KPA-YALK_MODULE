@@ -501,7 +501,8 @@ ProcedureResult combinedSweep(const ScenarioStep& step, ProcedureContext& contex
     const auto policy = detail::yalkContactVerdictPolicy(argument(step, "verdict_policy", "strict"));
     const unsigned samples = natural(step, "sample_count", 16);
     const unsigned settle = natural(step, "settle_ms", 150);
-    const unsigned contact24Settle = natural(step, "contact_2_4_settle_ms", settle);
+    const unsigned contactHighSettle = natural(step, "contact_high_settle_ms",
+        natural(step, "contact_2_4_settle_ms", settle));
     const double fullScale = number(step, "full_scale_v", 6.2);
     const double tolerance = fullScale * number(step, "tolerance_percent_fs", 0.5) / 100.0;
     ProcedureResult result{RunVerdict::Ok, "Проверены аналоговые и контактные точки 80 адресов ЯЛК", {}};
@@ -519,8 +520,9 @@ ProcedureResult combinedSweep(const ScenarioStep& step, ProcedureContext& contex
                 const double command = points[sequenceIndex];
                 const bool analogPoint = includes(analogPoints, command);
                 const bool contactPoint = includes(contactPoints, command);
-                const unsigned pointSettle = contactPoint && std::abs(command - 2.4) < 1e-9
-                    ? contact24Settle : settle;
+                const unsigned pointSettle = contactPoint
+                        && std::abs(command - contactPoints.back()) < 1e-9
+                    ? contactHighSettle : settle;
                 stand->isd().setYalkVoltage(address, command);
                 outputEnabled = true;
                 waitChecked(context, pointSettle);
@@ -572,6 +574,10 @@ ProcedureResult combinedSweep(const ScenarioStep& step, ProcedureContext& contex
                     signal.attributes["expected_signal"] = decision.expectedSignal ? "1" : "0";
                     signal.attributes["raw_match"] = decision.rawMatch ? "true" : "false";
                     signal.attributes["formal_override"] = decision.formalOverride ? "true" : "false";
+                    if (policy == detail::YalkContactVerdictPolicy::FormalNorma) {
+                        signal.attributes["verdict_policy"] = "formal_norma";
+                        signal.attributes["report_signal"] = expectedSignal ? "1" : "0";
+                    }
                     publishMeasurement(context, step, signal);
                     append(result, std::move(signal));
                 }

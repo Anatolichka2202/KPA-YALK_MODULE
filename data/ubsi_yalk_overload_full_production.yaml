@@ -54,7 +54,7 @@ steps:
       sample_count: 4
       baseline_settle_ms: 1000
       dac_off_settle_ms: 300
-      overload_settle_ms: 10000
+      overload_settle_ms: 1000
       cleanup_settle_ms: 300
       maximum_code_delta: 5
 

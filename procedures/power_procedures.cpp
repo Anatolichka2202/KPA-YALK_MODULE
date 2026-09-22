@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <set>
 #include <sstream>
 #include <stdexcept>
 #include <thread>
@@ -65,6 +66,34 @@ std::vector<double> numbers(const ScenarioStep& step, const std::string& key)
         result.push_back(value);
     }
     return result;
+}
+
+std::vector<unsigned> addresses(const ScenarioStep& step, const std::string& key)
+{
+    std::set<unsigned> unique;
+    std::stringstream stream(argument(step, key));
+    std::string item;
+    while (std::getline(stream, item, ',')) {
+        if (item.empty()) continue;
+        const auto dash = item.find('-');
+        const auto parse = [&key](const std::string& value) {
+            std::size_t parsed = 0;
+            const auto number = std::stoul(value, &parsed, 0);
+            if (parsed != value.size() || number == 0)
+                throw std::invalid_argument("Некорректный адрес в " + key);
+            return static_cast<unsigned>(number);
+        };
+        if (dash == std::string::npos) {
+            unique.insert(parse(item));
+            continue;
+        }
+        const unsigned first = parse(item.substr(0, dash));
+        const unsigned last = parse(item.substr(dash + 1));
+        if (first > last) throw std::invalid_argument("Обратный диапазон в " + key);
+        for (unsigned address = first; address <= last; ++address)
+            unique.insert(address);
+    }
+    return {unique.begin(), unique.end()};
 }
 
 RunVerdict limit(double value, double lower, double upper)
@@ -327,6 +356,80 @@ ProcedureResult powerOff(const ScenarioStep&, ProcedureContext& context,
     return result;
 }
 
+ProcedureResult addressedBaseline(const ScenarioStep& step, ProcedureContext& context,
+                                   const std::shared_ptr<hardware::StandHardware>& stand)
+{
+    const auto type2Contacts = addresses(step, "type2_contacts");
+    const auto type3Contacts = addresses(step, "type3_contacts");
+    const auto analogContacts = addresses(step, "analog_type1_contacts");
+    if (type2Contacts.empty() || type3Contacts.empty() || analogContacts.empty())
+        throw std::invalid_argument("Для стартовой очистки ИСД должны быть заданы все адресные списки");
+
+    auto publish = [&](const std::string& action, unsigned completed, unsigned total) {
+        if (!context.eventSink) return;
+        context.eventSink({std::chrono::system_clock::now(), step.id,
+            "ADDRESSED_BASELINE", action, RunVerdict::NotRun,
+            {{"completed_commands", std::to_string(completed)},
+             {"total_commands", std::to_string(total)}}});
+    };
+
+    const unsigned total = 2u + static_cast<unsigned>(type3Contacts.size()
+        + type2Contacts.size() + analogContacts.size());
+    unsigned completed = 0;
+    try {
+        context.checkpoint();
+        stand->generator().output(1, false);
+        publish("Rigol, выход 1 выключен", ++completed, total);
+        context.checkpoint();
+        stand->generator().output(2, false);
+        publish("Rigol, выход 2 выключен", ++completed, total);
+
+        // Сначала снимаем силовые и измерительные маршруты type=3, включая
+        // общие источники -12/+12 В (95/96). Каждый HTTP OFF обязан получить ACK.
+        for (const unsigned contact : type3Contacts) {
+            context.checkpoint();
+            stand->isd().setSwitch(3, contact, false);
+            publish("ИСД type=3, канал " + std::to_string(contact) + " выключен",
+                    ++completed, total);
+        }
+        for (const unsigned contact : type2Contacts) {
+            context.checkpoint();
+            stand->isd().setSwitch(2, contact, false);
+            publish("ИСД type=2, канал " + std::to_string(contact) + " выключен",
+                    ++completed, total);
+        }
+        for (const unsigned contact : analogContacts) {
+            context.checkpoint();
+            stand->isd().setAnalog(contact, 0, false);
+            publish("ИСД type=1, канал " + std::to_string(contact) + " выключен",
+                    ++completed, total);
+        }
+
+        MeasurementResult value;
+        value.parameterKey = "ubsi.isd.addressed_baseline";
+        value.title = "Адресная стартовая очистка ИСД";
+        value.reference = total;
+        value.measured = completed;
+        value.lowerLimit = total;
+        value.upperLimit = total;
+        value.unit = "команд";
+        value.verdict = RunVerdict::Ok;
+        value.message = "Все адресные команды выключения подтверждены ИСД";
+        value.attributes = {{"type2_contacts", argument(step, "type2_contacts")},
+            {"type3_contacts", argument(step, "type3_contacts")},
+            {"analog_type1_contacts", argument(step, "analog_type1_contacts")},
+            {"global_reset_used", "false"}};
+        return {RunVerdict::Ok,
+            "Rigol и используемые маршруты ИСД приведены в исходное состояние адресными командами",
+            {std::move(value)}};
+    } catch (...) {
+        // Ошибка baseline не должна оставлять генератор или уже известные
+        // активные маршруты включёнными. safeStop использует адресный cleanup.
+        stand->safeStop();
+        throw;
+    }
+}
+
 ProcedureResult unavailable(const ScenarioStep& step, ProcedureContext&)
 {
     return {RunVerdict::Incomplete,
@@ -352,6 +455,10 @@ void registerPowerProcedures(ScenarioEngine& engine,
     engine.registerProcedure("power.off",
         [hardware](const ScenarioStep& step, ProcedureContext& context) {
             return powerOff(step, context, hardware);
+        });
+    engine.registerProcedure("stand.addressed_baseline",
+        [hardware](const ScenarioStep& step, ProcedureContext& context) {
+            return addressedBaseline(step, context, hardware);
         });
 }
 

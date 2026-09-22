@@ -724,8 +724,8 @@ void TuFlowWidget::populateReportRows(const tu::ScenarioRunResult& result)
         {"yalk_overload", "1.4.11", "ЯЛК: перегрузка +/-12 В; |Δcode| ≤ 5"},
         {"yalk_reference_voltage", "1.4.9", "В7: эталон 6,20 +/- 0,03 В"},
         {"ytp_channels", "1.4.1", "ЯТП: 30 каналов; 0 / 120 / 240 Ом"},
-        {"yvp_channels", "1.4.7", "ЯВП-8: выборочно Kу=1; АЧХ 2-4000 Гц; 8 x 1 x 7"},
-        {"yvp_channels", "1.4.8", "ЯВП-8: Kу=1 мВ/пКл; +/-7 %"},
+        {"yvp_channels", "1.1.4.7", "ЯВП-8: АЧХ при Kу=1; 7 частот; 8 каналов"},
+        {"yvp_channels", "1.1.4.8", "ЯВП-8: 7 коэффициентов при 500 Гц; 8 каналов"},
     };
 
     for (const ReportRow& spec : rows) {

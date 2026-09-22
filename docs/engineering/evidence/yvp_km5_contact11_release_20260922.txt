@@ -1,0 +1,30 @@
+2026-09-22T02:52:47.941 EVENT node=readiness stage=START verdict=NOT_RUN message=Однократная подготовка питания
+2026-09-22T02:52:52.678 EVENT node=readiness stage=SUPPLY verdict=NOT_RUN message=Питание УБСИ amperes=0.151000 duration_s=30 elapsed_s=2 output_enabled=true setpoint_v=27.000000 volts=26.999000
+2026-09-22T02:52:52.678 EVENT node=readiness stage=FINISH verdict=OK message=УБСИ вышел на передачу данных после запуска ROKT ЯЛК
+2026-09-22T02:52:52.678 EVENT node=contact11_on stage=START verdict=NOT_RUN message=ЯВП-3 · включение линии KU3 (контакт 11)
+2026-09-22T02:52:52.805 ISD path=/ http_status=200 response=komanda ne vypolnena. Nepravilny format zaprosa: http://192.168.0.99/type=1num=2val=3work=1
+2026-09-22T02:52:53.881 ISD path=/type=2num=35val=1 http_status=200 response=OK
+2026-09-22T02:52:54.955 ISD path=/type=1num=30val=0work=0 http_status=200 response=OK
+2026-09-22T02:52:56.024 ISD path=/type=3num=30val=1 http_status=200 response=OK
+2026-09-22T02:52:57.100 ISD path=/type=2num=11val=1 http_status=200 response=OK
+2026-09-22T02:53:02.917 EVENT node=contact11_on stage=YVP_V7_POINT verdict=NOT_RUN message=ЯВП 3: K=2.000000 мВ/пКл, 500.000000 Гц acceptance=evaluated_after_gain_sweep backend=production_isd_v7 calculated_gain_mv_per_pc=9.455903 capacitance_pf=1000.000000 charge_pc_from_commanded_vpp=1000.000000 frequency_verification=v7_diagnostic gain_mv_per_pc=2.000000 measured_frequency_hz=519.535520 point_count=1 point_index=1 rigol_appl="SIN,5.000000E+02,1.000000E+00,0.000000E+00,0.000000E+00" rigol_frequency=5.000000E+02 rigol_input_vpp=1.000000 rigol_output=ON rigol_output_load=9.900000E+37 rigol_volt=1.000000E+00 rigol_volt_unit=VPP section=YVP set_frequency_hz=500.000000 v7_output_vpp=9.455903 v7_output_vrms=3.343166 yvp_channel=3
+2026-09-22T02:53:02.984 ISD path=/type=2num=11val=0 http_status=200 response=OK
+2026-09-22T02:53:04.059 ISD path=/type=3num=30val=0 http_status=200 response=OK
+2026-09-22T02:53:05.136 ISD path=/type=1num=30val=0work=0 http_status=200 response=OK
+2026-09-22T02:53:06.214 ISD path=/type=2num=35val=0 http_status=200 response=OK
+2026-09-22T02:53:06.218 EVENT node=contact11_on stage=FINISH verdict=OK message=Инженерская проба ЯВП завершена; acceptance verdict не формируется
+2026-09-22T02:53:06.218 EVENT node=contact11_off_then_ku2 stage=START verdict=NOT_RUN message=ЯВП-3 · KU2 после адресного снятия контакта 11
+2026-09-22T02:53:07.302 ISD path=/ http_status=200 response=komanda ne vypolnena. Nepravilny format zaprosa: http://192.168.0.99/type=1num=2val=3work=1
+2026-09-22T02:53:08.371 ISD path=/type=2num=35val=1 http_status=200 response=OK
+2026-09-22T02:53:09.455 ISD path=/type=1num=30val=0work=0 http_status=200 response=OK
+2026-09-22T02:53:10.539 ISD path=/type=3num=30val=1 http_status=200 response=OK
+2026-09-22T02:53:11.611 ISD path=/type=2num=10val=1 http_status=200 response=OK
+2026-09-22T02:53:17.445 EVENT node=contact11_off_then_ku2 stage=YVP_V7_POINT verdict=NOT_RUN message=ЯВП 3: K=1.000000 мВ/пКл, 500.000000 Гц acceptance=evaluated_after_gain_sweep backend=production_isd_v7 calculated_gain_mv_per_pc=0.937324 capacitance_pf=1000.000000 charge_pc_from_commanded_vpp=2000.000000 frequency_verification=v7_diagnostic gain_mv_per_pc=1.000000 measured_frequency_hz=1059.108400 point_count=1 point_index=1 rigol_appl="SIN,5.000000E+02,2.000000E+00,0.000000E+00,0.000000E+00" rigol_frequency=5.000000E+02 rigol_input_vpp=2.000000 rigol_output=ON rigol_output_load=9.900000E+37 rigol_volt=2.000000E+00 rigol_volt_unit=VPP section=YVP set_frequency_hz=500.000000 v7_output_vpp=1.874649 v7_output_vrms=0.662788 yvp_channel=3
+2026-09-22T02:53:17.508 ISD path=/type=2num=10val=0 http_status=200 response=OK
+2026-09-22T02:53:18.588 ISD path=/type=3num=30val=0 http_status=200 response=OK
+2026-09-22T02:53:19.665 ISD path=/type=1num=30val=0work=0 http_status=200 response=OK
+2026-09-22T02:53:20.744 ISD path=/type=2num=35val=0 http_status=200 response=OK
+2026-09-22T02:53:20.746 EVENT node=contact11_off_then_ku2 stage=FINISH verdict=OK message=Инженерская проба ЯВП завершена; acceptance verdict не формируется
+2026-09-22T02:53:20.746 EVENT node=power_off stage=START verdict=NOT_RUN message=Отключение питания после точечной пробы
+2026-09-22T02:53:21.360 EVENT node=power_off stage=FINISH verdict=OK message=Выход АКИП выключен после испытания
+2026-09-22T02:53:21.492 RUN verdict=OK steps=4

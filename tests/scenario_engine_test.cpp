@@ -2,6 +2,7 @@
 #include "backend/scenario_yaml.h"
 #include "procedures/yalk_contact_verdict.h"
 #include "procedures/yalk_initial_verdict.h"
+#include "procedures/yvp_verdict.h"
 
 #include <atomic>
 #include <chrono>
@@ -51,12 +52,12 @@ int main()
     try {
         auto scenario = tu::loadScenarioYaml(TU_SOURCE_DIR "/data/ubsi_tu.yaml");
         require(scenario.id == "ubsi.tu.normal", "wrong scenario id");
-        require(scenario.version == "1.2.3", "unexpected TU scenario version");
+        require(scenario.version == "1.3.0", "unexpected TU scenario version");
 
         const std::vector<std::string> expectedSteps{
             "readiness",
             "supply_range",
-            "yalk_isd_reset",
+            "isd_startup_baseline",
             "yalk_stream",
             "yalk_calibration",
             "yalk_initial",
@@ -78,8 +79,12 @@ int main()
         const auto& power = stepById(scenario, "supply_range");
         require(argument(power, "voltage_points_v") == "24,27,35",
                 "power range points changed");
-        require(argument(power, "run_survival") == "false",
-                "short TU run must skip long 19/37 V holds");
+        require(argument(power, "run_survival") == "true",
+                "full TU run must include 19/37 V holds");
+        require(argument(power, "survival_points_v") == "19,37",
+                "TU survival voltage points changed");
+        require(argument(power, "survival_seconds") == "300,60",
+                "TU survival hold durations changed");
         require(scenario.steps.front().procedure == "power.readiness",
                 "TU run must start with UБСИ power readiness, not an active ISD command");
 
@@ -95,9 +100,15 @@ int main()
         require(!tu::procedures::detail::yalkOpenCircuitIsNormal(0.001),
                 "positive YALK open-circuit voltage must be NE NORMA regardless of signal bit");
 
-        const auto& yalkReset = stepById(scenario, "yalk_isd_reset");
-        require(yalkReset.procedure == "yalk.addressed_reset",
-                "YALK preparation must not depend on global ISD type=4");
+        const auto& baseline = stepById(scenario, "isd_startup_baseline");
+        require(baseline.procedure == "stand.addressed_baseline",
+                "stand preparation must use the addressed baseline");
+        require(argument(baseline, "type2_contacts") == "1-40",
+                "addressed baseline type=2 map changed");
+        require(argument(baseline, "type3_contacts") == "1-88,95-96",
+                "addressed baseline type=3 map changed");
+        require(argument(baseline, "analog_type1_contacts") == "1-88",
+                "addressed baseline type=1 map changed");
 
         const auto& yalk = stepById(scenario, "yalk_channels");
         require(yalk.procedure == "yalk.combined", "YALK combined procedure changed");
@@ -105,9 +116,9 @@ int main()
                 "YALK verified address map changed");
         require(argument(yalk, "point_volts") == "0,3.1,6.2",
             "YALK analog points changed");
-        require(argument(yalk, "combined_points_v") == "0,0.8,2.4,3.1,6.2",
+        require(argument(yalk, "combined_points_v") == "0,0.8,2.5,3.1,6.2",
                 "YALK combined point order changed");
-        require(argument(yalk, "contact_points_v") == "0,0.8,2.4",
+        require(argument(yalk, "contact_points_v") == "0,0.8,2.5",
                 "YALK contact threshold points changed");
         require(argument(yalk, "signal_expectations") == "0,0,1",
                 "YALK signal truth table changed");
@@ -145,6 +156,8 @@ int main()
                 "YALK -12 V common route changed");
         require(argument(overload, "maximum_code_delta") == "5",
                 "YALK overload delta criterion changed");
+        require(argument(overload, "overload_settle_ms") == "1000",
+                "YALK overload verified settling time changed");
 
         const auto& reference = stepById(scenario, "yalk_reference_voltage");
         require(argument(reference, "nominal_v") == "6.2", "YALK reference nominal changed");
@@ -170,6 +183,8 @@ int main()
                 "YVP gain tolerance changed");
         require(argument(yvp, "attenuation_min_db") == "20.0",
                 "YVP attenuation criterion changed");
+        require(argument(yvp, "verdict_policy") == "manual_confirmed",
+                "YVP production acceptance policy changed");
 
         const std::vector<std::string> expectedInputs{"33","34","35","36","37","38","39","40"};
         const std::vector<std::string> expectedMeasurements{"44","29","30","31","71","72","88","73"};
@@ -179,6 +194,11 @@ int main()
                     "YVP input channel map changed");
             require(argument(yvp, "measurement_" + number + "_contacts") == expectedMeasurements[index],
                     "YVP measurement channel map changed");
+            const unsigned first = static_cast<unsigned>(index * 4 + 1);
+            require(argument(yvp, "channel_" + number + "_gain_contacts")
+                        == std::to_string(first) + "," + std::to_string(first + 1)
+                            + "," + std::to_string(first + 2) + "," + std::to_string(first + 3),
+                    "YVP gain contact map changed");
         }
 
         require(argument(yvp, "gain_0_25_bits") == "none", "YVP K0.25 map changed");
@@ -188,6 +208,23 @@ int main()
         require(argument(yvp, "gain_4_bits") == "1,3", "YVP K4 map changed");
         require(argument(yvp, "gain_8_bits") == "4", "YVP K8 map changed");
         require(argument(yvp, "gain_32_bits") == "2,4", "YVP K32 map changed");
+
+        const auto strictYvp = tu::procedures::detail::yvpVerdict(
+            tu::procedures::detail::YvpVerdictPolicy::Strict, tu::RunVerdict::Fail);
+        require(strictYvp.rawVerdict == tu::RunVerdict::Fail
+                    && strictYvp.acceptanceVerdict == tu::RunVerdict::Fail
+                    && !strictYvp.manuallyAccepted,
+                "strict YVP failure must remain a failure");
+        const auto acceptedYvp = tu::procedures::detail::yvpVerdict(
+            tu::procedures::detail::YvpVerdictPolicy::ManualConfirmed, tu::RunVerdict::Fail);
+        require(acceptedYvp.rawVerdict == tu::RunVerdict::Fail
+                    && acceptedYvp.acceptanceVerdict == tu::RunVerdict::Ok
+                    && acceptedYvp.manuallyAccepted,
+                "manual YVP acceptance must preserve the raw failure");
+        const auto errorYvp = tu::procedures::detail::yvpVerdict(
+            tu::procedures::detail::YvpVerdictPolicy::ManualConfirmed, tu::RunVerdict::Error);
+        require(errorYvp.acceptanceVerdict == tu::RunVerdict::Error,
+                "YVP equipment errors must never be accepted");
 
         const auto yvpProbe = tu::loadScenarioYaml(
             TU_SOURCE_DIR "/data/ubsi_yvp_k1_channel1_probe.yaml");

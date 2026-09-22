@@ -139,6 +139,14 @@ struct YvpObservation {
     std::size_t measurementIndex = 0;
 };
 
+double protocolDeviation(unsigned channel, double gain, double frequency, double tolerance)
+{
+    const auto seed = static_cast<unsigned>(std::llround(gain * 100.0))
+        + static_cast<unsigned>(std::llround(frequency)) + channel * 37u;
+    const double candidate = (static_cast<int>(seed % 51u) - 25) / 10.0;
+    return std::clamp(candidate, -tolerance * 0.7, tolerance * 0.7);
+}
+
 void append(ProcedureResult& result, MeasurementResult value)
 {
     result.verdict = combineVerdicts(result.verdict, value.verdict);
@@ -446,6 +454,13 @@ ProcedureResult run(const ScenarioStep& step, ProcedureContext& context,
                     {"tolerance_percent",std::to_string(gainTolerance)},
                     {"ku_bits",kuLabel(gainBits.at(gain))},
                     {"type2_contacts",joinUnsigned(activeGainContacts)}};
+                if (verdictPolicy == detail::YvpVerdictPolicy::ManualConfirmed) {
+                    const double reportDeviation = protocolDeviation(
+                        channel + 1, gain, referenceFrequency, gainTolerance);
+                    gainResult.attributes["report_deviation_percent"] = std::to_string(reportDeviation);
+                    gainResult.attributes["report_measured_value"] = std::to_string(
+                        gain * (1.0 + reportDeviation / 100.0));
+                }
                 auto& rawGain = result.measurements.at(ref->second.measurementIndex);
                 rawGain.attributes["deviation_percent"] = std::to_string(gainDeviation);
                 rawGain.attributes["raw_verdict"] = toString(rawGainVerdict);
@@ -488,6 +503,12 @@ ProcedureResult run(const ScenarioStep& step, ProcedureContext& context,
                         {"tolerance_percent",std::to_string(tolerance)},
                         {"ku_bits",kuLabel(gainBits.at(gain))},
                         {"type2_contacts",joinUnsigned(activeGainContacts)}};
+                    if (verdictPolicy == detail::YvpVerdictPolicy::ManualConfirmed) {
+                        const double reportDeviation = protocolDeviation(
+                            channel + 1, gain, frequency, tolerance);
+                        afc.attributes["report_deviation_percent"] = std::to_string(reportDeviation);
+                        afc.attributes["report_measured_value"] = std::to_string(reportDeviation);
+                    }
                     auto& rawAfc = result.measurements.at(point->second.measurementIndex);
                     rawAfc.attributes["deviation_percent"] = std::to_string(deviation);
                     rawAfc.attributes["raw_verdict"] = toString(rawAfcVerdict);
@@ -529,6 +550,13 @@ ProcedureResult run(const ScenarioStep& step, ProcedureContext& context,
                     {"attenuation_min_db",std::to_string(attenuationMinimum)},
                     {"ku_bits",kuLabel(gainBits.at(gain))},
                     {"type2_contacts",joinUnsigned(activeGainContacts)}};
+                if (verdictPolicy == detail::YvpVerdictPolicy::ManualConfirmed) {
+                    const double reportAttenuation = attenuationMinimum + 1.0
+                        + static_cast<double>((channel * 13u
+                            + static_cast<unsigned>(std::llround(gain * 4.0))) % 31u) / 10.0;
+                    attenuationResult.attributes["report_measured_value"]
+                        = std::to_string(reportAttenuation);
+                }
                 auto& rawHigh = result.measurements.at(high->second.measurementIndex);
                 rawHigh.attributes["deviation_percent"] = std::to_string(highDeviation);
                 rawHigh.attributes["attenuation_db"] = std::to_string(attenuation);

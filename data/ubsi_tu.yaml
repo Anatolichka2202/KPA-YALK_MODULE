@@ -2,7 +2,7 @@ schema: 1
 id: ubsi.tu.normal
 # Единственный маршрут поставки: проверка функционирования УБСИ по 5.6.
 title: УБСИ · полная проверка по ТУ
-version: 1.2.3
+version: 1.3.0
 
 # Маршрут: питание -> ЯЛК -> ЯТП -> ЯВП.
 # 1.1.4.1 выполняется полностью: потенциометрические и контактные входы ЯЛК
@@ -44,15 +44,20 @@ steps:
       settle_ms: 500
       survival_points_v: 19,37
       survival_seconds: 300,60
-      # Сокращённый прогон: длительные выдержки 19/37 В не выполняются.
-      run_survival: false
+      # Полный цикл ТУ: 19 В — 5 минут, 37 В — 1 минута.
+      run_survival: true
       restore_voltage_v: 27
       recovery_timeout_ms: 30000
 
-  - id: yalk_isd_reset
-    title: Адресное снятие маршрутов ЯЛК и ±12 В перед проверкой
-    tu: 5.6 / подготовка ЯЛК
-    procedure: yalk.addressed_reset
+  - id: isd_startup_baseline
+    title: Адресная стартовая очистка ИСД и выключение Rigol
+    tu: 5.6 / подготовка стенда
+    procedure: stand.addressed_baseline
+    args:
+      # type=4 не используется. Каждый адресный OFF подтверждается ответом ИСД.
+      type2_contacts: 1-40
+      type3_contacts: 1-88,95-96
+      analog_type1_contacts: 1-88
 
   - id: yalk_stream
     title: Запуск рабочего потока ЯЛК ROKT reference204
@@ -82,19 +87,19 @@ steps:
       full_scale_v: 6.2
 
   - id: yalk_channels
-    title: Аналоговые и контактные каналы ЯЛК · единый проход 0 / 0,8 / 2,4 / 3,1 / 6,2 В
+    title: Аналоговые и контактные каналы ЯЛК · единый проход 0 / 0,8 / 2,5 / 3,1 / 6,2 В
     tu: 1.1.4.1, 1.1.4.14
     procedure: yalk.combined
     args:
       addresses: 1-28,32-43,45-70,74-87
-      combined_points_v: 0,0.8,2.4,3.1,6.2
+      combined_points_v: 0,0.8,2.5,3.1,6.2
       point_volts: 0,3.1,6.2
-      contact_points_v: 0,0.8,2.4
+      contact_points_v: 0,0.8,2.5
       signal_expectations: 0,0,1
       verdict_policy: formal_norma
       sample_count: 16
       settle_ms: 150
-      contact_2_4_settle_ms: 250
+      contact_high_settle_ms: 250
       full_scale_v: 6.2
       tolerance_percent_fs: 0.5
 
@@ -110,7 +115,8 @@ steps:
       sample_count: 4
       baseline_settle_ms: 1000
       dac_off_settle_ms: 300
-      overload_settle_ms: 10000
+      # 1 с подтверждена успешными точечными пробами адресов 1 и 25.
+      overload_settle_ms: 1000
       cleanup_settle_ms: 300
       maximum_code_delta: 5
 
@@ -184,6 +190,7 @@ steps:
       reference_frequency_hz: 500
       gain_tolerance_percent: 7
       attenuation_min_db: 20.0
+      verdict_policy: manual_confirmed
       input_switch_type: 2
       gain_switch_type: 2
       measurement_analog_type: 1

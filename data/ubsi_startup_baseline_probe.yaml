@@ -1,0 +1,29 @@
+schema: 1
+id: ubsi.diagnostic.startup-baseline
+title: Точечная проба стартовой адресной очистки стенда
+version: 1.0.0
+
+steps:
+  - id: readiness
+    title: Однократная подача 27 В и ожидание свежего reference204
+    tu: 1.1.4.13 · точечная проба
+    procedure: power.readiness
+    args:
+      voltage_v: 27
+      current_limit_a: 0.6
+      timeout_ms: 30000
+      off_settle_ms: 500
+
+  - id: isd_startup_baseline
+    title: Адресная очистка всех используемых production-маршрутов
+    tu: 5.6 · подготовка стенда
+    procedure: stand.addressed_baseline
+    args:
+      type2_contacts: 1-40
+      type3_contacts: 1-88,95-96
+      analog_type1_contacts: 1-88
+
+  - id: power_off
+    title: Безопасное отключение питания после пробы
+    tu: 5.6.8
+    procedure: power.off

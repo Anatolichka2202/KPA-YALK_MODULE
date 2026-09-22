@@ -1,0 +1,446 @@
+2026-09-22T04:00:51.463 EVENT node=readiness stage=START verdict=NOT_RUN message=Однократная подача 27 В и ожидание свежего reference204
+2026-09-22T04:00:59.836 EVENT node=readiness stage=SUPPLY verdict=NOT_RUN message=Питание УБСИ amperes=0.150000 duration_s=30 elapsed_s=6 output_enabled=true setpoint_v=27.000000 volts=26.999000
+2026-09-22T04:00:59.836 EVENT node=readiness stage=FINISH verdict=OK message=УБСИ вышел на передачу данных после запуска ROKT ЯЛК
+2026-09-22T04:00:59.836 EVENT node=isd_startup_baseline stage=START verdict=NOT_RUN message=Адресная очистка всех используемых production-маршрутов
+2026-09-22T04:00:59.941 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=Rigol, выход 1 выключен completed_commands=1 total_commands=220
+2026-09-22T04:00:59.941 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=Rigol, выход 2 выключен completed_commands=2 total_commands=220
+2026-09-22T04:01:00.043 ISD path=/type=3num=1val=0 http_status=200 response=OK
+2026-09-22T04:01:00.047 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 1 выключен completed_commands=3 total_commands=220
+2026-09-22T04:01:01.155 ISD path=/type=3num=2val=0 http_status=200 response=OK
+2026-09-22T04:01:01.166 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 2 выключен completed_commands=4 total_commands=220
+2026-09-22T04:01:02.282 ISD path=/type=3num=3val=0 http_status=200 response=OK
+2026-09-22T04:01:02.290 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 3 выключен completed_commands=5 total_commands=220
+2026-09-22T04:01:03.407 ISD path=/type=3num=4val=0 http_status=200 response=OK
+2026-09-22T04:01:03.419 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 4 выключен completed_commands=6 total_commands=220
+2026-09-22T04:01:04.536 ISD path=/type=3num=5val=0 http_status=200 response=OK
+2026-09-22T04:01:04.546 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 5 выключен completed_commands=7 total_commands=220
+2026-09-22T04:01:05.662 ISD path=/type=3num=6val=0 http_status=200 response=OK
+2026-09-22T04:01:05.672 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 6 выключен completed_commands=8 total_commands=220
+2026-09-22T04:01:06.789 ISD path=/type=3num=7val=0 http_status=200 response=OK
+2026-09-22T04:01:06.799 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 7 выключен completed_commands=9 total_commands=220
+2026-09-22T04:01:07.916 ISD path=/type=3num=8val=0 http_status=200 response=OK
+2026-09-22T04:01:07.922 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 8 выключен completed_commands=10 total_commands=220
+2026-09-22T04:01:09.024 ISD path=/type=3num=9val=0 http_status=200 response=OK
+2026-09-22T04:01:09.030 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 9 выключен completed_commands=11 total_commands=220
+2026-09-22T04:01:10.135 ISD path=/type=3num=10val=0 http_status=200 response=OK
+2026-09-22T04:01:10.141 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 10 выключен completed_commands=12 total_commands=220
+2026-09-22T04:01:11.246 ISD path=/type=3num=11val=0 http_status=200 response=OK
+2026-09-22T04:01:11.252 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 11 выключен completed_commands=13 total_commands=220
+2026-09-22T04:01:12.358 ISD path=/type=3num=12val=0 http_status=200 response=OK
+2026-09-22T04:01:12.364 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 12 выключен completed_commands=14 total_commands=220
+2026-09-22T04:01:13.467 ISD path=/type=3num=13val=0 http_status=200 response=OK
+2026-09-22T04:01:13.471 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 13 выключен completed_commands=15 total_commands=220
+2026-09-22T04:01:14.578 ISD path=/type=3num=14val=0 http_status=200 response=OK
+2026-09-22T04:01:14.584 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 14 выключен completed_commands=16 total_commands=220
+2026-09-22T04:01:15.688 ISD path=/type=3num=15val=0 http_status=200 response=OK
+2026-09-22T04:01:15.697 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 15 выключен completed_commands=17 total_commands=220
+2026-09-22T04:01:16.799 ISD path=/type=3num=16val=0 http_status=200 response=OK
+2026-09-22T04:01:16.807 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 16 выключен completed_commands=18 total_commands=220
+2026-09-22T04:01:17.910 ISD path=/type=3num=17val=0 http_status=200 response=OK
+2026-09-22T04:01:17.914 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 17 выключен completed_commands=19 total_commands=220
+2026-09-22T04:01:19.021 ISD path=/type=3num=18val=0 http_status=200 response=OK
+2026-09-22T04:01:19.025 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 18 выключен completed_commands=20 total_commands=220
+2026-09-22T04:01:20.131 ISD path=/type=3num=19val=0 http_status=200 response=OK
+2026-09-22T04:01:20.135 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 19 выключен completed_commands=21 total_commands=220
+2026-09-22T04:01:21.241 ISD path=/type=3num=20val=0 http_status=200 response=OK
+2026-09-22T04:01:21.249 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 20 выключен completed_commands=22 total_commands=220
+2026-09-22T04:01:22.370 ISD path=/type=3num=21val=0 http_status=200 response=OK
+2026-09-22T04:01:22.380 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 21 выключен completed_commands=23 total_commands=220
+2026-09-22T04:01:23.497 ISD path=/type=3num=22val=0 http_status=200 response=OK
+2026-09-22T04:01:23.507 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 22 выключен completed_commands=24 total_commands=220
+2026-09-22T04:01:24.623 ISD path=/type=3num=23val=0 http_status=200 response=OK
+2026-09-22T04:01:24.627 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 23 выключен completed_commands=25 total_commands=220
+2026-09-22T04:01:25.732 ISD path=/type=3num=24val=0 http_status=200 response=OK
+2026-09-22T04:01:25.738 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 24 выключен completed_commands=26 total_commands=220
+2026-09-22T04:01:26.843 ISD path=/type=3num=25val=0 http_status=200 response=OK
+2026-09-22T04:01:26.849 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 25 выключен completed_commands=27 total_commands=220
+2026-09-22T04:01:27.956 ISD path=/type=3num=26val=0 http_status=200 response=OK
+2026-09-22T04:01:27.960 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 26 выключен completed_commands=28 total_commands=220
+2026-09-22T04:01:29.067 ISD path=/type=3num=27val=0 http_status=200 response=OK
+2026-09-22T04:01:29.071 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 27 выключен completed_commands=29 total_commands=220
+2026-09-22T04:01:30.176 ISD path=/type=3num=28val=0 http_status=200 response=OK
+2026-09-22T04:01:30.182 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 28 выключен completed_commands=30 total_commands=220
+2026-09-22T04:01:31.287 ISD path=/type=3num=29val=0 http_status=200 response=OK
+2026-09-22T04:01:31.291 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 29 выключен completed_commands=31 total_commands=220
+2026-09-22T04:01:32.397 ISD path=/type=3num=30val=0 http_status=200 response=OK
+2026-09-22T04:01:32.401 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 30 выключен completed_commands=32 total_commands=220
+2026-09-22T04:01:33.509 ISD path=/type=3num=31val=0 http_status=200 response=OK
+2026-09-22T04:01:33.517 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 31 выключен completed_commands=33 total_commands=220
+2026-09-22T04:01:34.599 ISD path=/type=3num=32val=0 http_status=200 response=OK
+2026-09-22T04:01:34.601 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 32 выключен completed_commands=34 total_commands=220
+2026-09-22T04:01:35.710 ISD path=/type=3num=33val=0 http_status=200 response=OK
+2026-09-22T04:01:35.720 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 33 выключен completed_commands=35 total_commands=220
+2026-09-22T04:01:36.800 ISD path=/type=3num=34val=0 http_status=200 response=OK
+2026-09-22T04:01:36.804 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 34 выключен completed_commands=36 total_commands=220
+2026-09-22T04:01:37.880 ISD path=/type=3num=35val=0 http_status=200 response=OK
+2026-09-22T04:01:37.890 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 35 выключен completed_commands=37 total_commands=220
+2026-09-22T04:01:38.974 ISD path=/type=3num=36val=0 http_status=200 response=OK
+2026-09-22T04:01:38.976 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 36 выключен completed_commands=38 total_commands=220
+2026-09-22T04:01:40.083 ISD path=/type=3num=37val=0 http_status=200 response=OK
+2026-09-22T04:01:40.094 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 37 выключен completed_commands=39 total_commands=220
+2026-09-22T04:01:41.208 ISD path=/type=3num=38val=0 http_status=200 response=OK
+2026-09-22T04:01:41.218 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 38 выключен completed_commands=40 total_commands=220
+2026-09-22T04:01:42.338 ISD path=/type=3num=39val=0 http_status=200 response=OK
+2026-09-22T04:01:42.348 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 39 выключен completed_commands=41 total_commands=220
+2026-09-22T04:01:43.465 ISD path=/type=3num=40val=0 http_status=200 response=OK
+2026-09-22T04:01:43.471 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 40 выключен completed_commands=42 total_commands=220
+2026-09-22T04:01:44.574 ISD path=/type=3num=41val=0 http_status=200 response=OK
+2026-09-22T04:01:44.580 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 41 выключен completed_commands=43 total_commands=220
+2026-09-22T04:01:45.686 ISD path=/type=3num=42val=0 http_status=200 response=OK
+2026-09-22T04:01:45.692 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 42 выключен completed_commands=44 total_commands=220
+2026-09-22T04:01:46.799 ISD path=/type=3num=43val=0 http_status=200 response=OK
+2026-09-22T04:01:46.805 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 43 выключен completed_commands=45 total_commands=220
+2026-09-22T04:01:47.909 ISD path=/type=3num=44val=0 http_status=200 response=OK
+2026-09-22T04:01:47.914 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 44 выключен completed_commands=46 total_commands=220
+2026-09-22T04:01:49.019 ISD path=/type=3num=45val=0 http_status=200 response=OK
+2026-09-22T04:01:49.023 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 45 выключен completed_commands=47 total_commands=220
+2026-09-22T04:01:50.132 ISD path=/type=3num=46val=0 http_status=200 response=OK
+2026-09-22T04:01:50.142 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 46 выключен completed_commands=48 total_commands=220
+2026-09-22T04:01:51.257 ISD path=/type=3num=47val=0 http_status=200 response=OK
+2026-09-22T04:01:51.267 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 47 выключен completed_commands=49 total_commands=220
+2026-09-22T04:01:52.385 ISD path=/type=3num=48val=0 http_status=200 response=OK
+2026-09-22T04:01:52.395 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 48 выключен completed_commands=50 total_commands=220
+2026-09-22T04:01:53.514 ISD path=/type=3num=49val=0 http_status=200 response=OK
+2026-09-22T04:01:53.520 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 49 выключен completed_commands=51 total_commands=220
+2026-09-22T04:01:54.626 ISD path=/type=3num=50val=0 http_status=200 response=OK
+2026-09-22T04:01:54.630 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 50 выключен completed_commands=52 total_commands=220
+2026-09-22T04:01:55.735 ISD path=/type=3num=51val=0 http_status=200 response=OK
+2026-09-22T04:01:55.741 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 51 выключен completed_commands=53 total_commands=220
+2026-09-22T04:01:56.846 ISD path=/type=3num=52val=0 http_status=200 response=OK
+2026-09-22T04:01:56.852 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 52 выключен completed_commands=54 total_commands=220
+2026-09-22T04:01:57.957 ISD path=/type=3num=53val=0 http_status=200 response=OK
+2026-09-22T04:01:57.961 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 53 выключен completed_commands=55 total_commands=220
+2026-09-22T04:01:59.071 ISD path=/type=3num=54val=0 http_status=200 response=OK
+2026-09-22T04:01:59.077 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 54 выключен completed_commands=56 total_commands=220
+2026-09-22T04:02:00.182 ISD path=/type=3num=55val=0 http_status=200 response=OK
+2026-09-22T04:02:00.188 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 55 выключен completed_commands=57 total_commands=220
+2026-09-22T04:02:01.291 ISD path=/type=3num=56val=0 http_status=200 response=OK
+2026-09-22T04:02:01.297 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 56 выключен completed_commands=58 total_commands=220
+2026-09-22T04:02:02.402 ISD path=/type=3num=57val=0 http_status=200 response=OK
+2026-09-22T04:02:02.412 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 57 выключен completed_commands=59 total_commands=220
+2026-09-22T04:02:03.531 ISD path=/type=3num=58val=0 http_status=200 response=OK
+2026-09-22T04:02:03.541 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 58 выключен completed_commands=60 total_commands=220
+2026-09-22T04:02:04.658 ISD path=/type=3num=59val=0 http_status=200 response=OK
+2026-09-22T04:02:04.669 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 59 выключен completed_commands=61 total_commands=220
+2026-09-22T04:02:05.784 ISD path=/type=3num=60val=0 http_status=200 response=OK
+2026-09-22T04:02:05.790 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 60 выключен completed_commands=62 total_commands=220
+2026-09-22T04:02:06.895 ISD path=/type=3num=61val=0 http_status=200 response=OK
+2026-09-22T04:02:06.901 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 61 выключен completed_commands=63 total_commands=220
+2026-09-22T04:02:08.008 ISD path=/type=3num=62val=0 http_status=200 response=OK
+2026-09-22T04:02:08.014 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 62 выключен completed_commands=64 total_commands=220
+2026-09-22T04:02:09.117 ISD path=/type=3num=63val=0 http_status=200 response=OK
+2026-09-22T04:02:09.123 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 63 выключен completed_commands=65 total_commands=220
+2026-09-22T04:02:10.229 ISD path=/type=3num=64val=0 http_status=200 response=OK
+2026-09-22T04:02:10.235 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 64 выключен completed_commands=66 total_commands=220
+2026-09-22T04:02:11.338 ISD path=/type=3num=65val=0 http_status=200 response=OK
+2026-09-22T04:02:11.346 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 65 выключен completed_commands=67 total_commands=220
+2026-09-22T04:02:12.449 ISD path=/type=3num=66val=0 http_status=200 response=OK
+2026-09-22T04:02:12.453 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 66 выключен completed_commands=68 total_commands=220
+2026-09-22T04:02:13.562 ISD path=/type=3num=67val=0 http_status=200 response=OK
+2026-09-22T04:02:13.574 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 67 выключен completed_commands=69 total_commands=220
+2026-09-22T04:02:14.689 ISD path=/type=3num=68val=0 http_status=200 response=OK
+2026-09-22T04:02:14.699 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 68 выключен completed_commands=70 total_commands=220
+2026-09-22T04:02:15.816 ISD path=/type=3num=69val=0 http_status=200 response=OK
+2026-09-22T04:02:15.826 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 69 выключен completed_commands=71 total_commands=220
+2026-09-22T04:02:16.958 ISD path=/type=3num=70val=0 http_status=200 response=OK
+2026-09-22T04:02:16.968 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 70 выключен completed_commands=72 total_commands=220
+2026-09-22T04:02:18.083 ISD path=/type=3num=71val=0 http_status=200 response=OK
+2026-09-22T04:02:18.089 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 71 выключен completed_commands=73 total_commands=220
+2026-09-22T04:02:19.194 ISD path=/type=3num=72val=0 http_status=200 response=OK
+2026-09-22T04:02:19.200 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 72 выключен completed_commands=74 total_commands=220
+2026-09-22T04:02:20.306 ISD path=/type=3num=73val=0 http_status=200 response=OK
+2026-09-22T04:02:20.312 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 73 выключен completed_commands=75 total_commands=220
+2026-09-22T04:02:21.415 ISD path=/type=3num=74val=0 http_status=200 response=OK
+2026-09-22T04:02:21.421 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 74 выключен completed_commands=76 total_commands=220
+2026-09-22T04:02:22.528 ISD path=/type=3num=75val=0 http_status=200 response=OK
+2026-09-22T04:02:22.534 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 75 выключен completed_commands=77 total_commands=220
+2026-09-22T04:02:23.636 ISD path=/type=3num=76val=0 http_status=200 response=OK
+2026-09-22T04:02:23.643 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 76 выключен completed_commands=78 total_commands=220
+2026-09-22T04:02:24.747 ISD path=/type=3num=77val=0 http_status=200 response=OK
+2026-09-22T04:02:24.753 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 77 выключен completed_commands=79 total_commands=220
+2026-09-22T04:02:25.859 ISD path=/type=3num=78val=0 http_status=200 response=OK
+2026-09-22T04:02:25.865 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 78 выключен completed_commands=80 total_commands=220
+2026-09-22T04:02:26.968 ISD path=/type=3num=79val=0 http_status=200 response=OK
+2026-09-22T04:02:26.974 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 79 выключен completed_commands=81 total_commands=220
+2026-09-22T04:02:28.081 ISD path=/type=3num=80val=0 http_status=200 response=OK
+2026-09-22T04:02:28.087 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 80 выключен completed_commands=82 total_commands=220
+2026-09-22T04:02:29.189 ISD path=/type=3num=81val=0 http_status=200 response=OK
+2026-09-22T04:02:29.193 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 81 выключен completed_commands=83 total_commands=220
+2026-09-22T04:02:30.300 ISD path=/type=3num=82val=0 http_status=200 response=OK
+2026-09-22T04:02:30.306 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 82 выключен completed_commands=84 total_commands=220
+2026-09-22T04:02:31.412 ISD path=/type=3num=83val=0 http_status=200 response=OK
+2026-09-22T04:02:31.422 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 83 выключен completed_commands=85 total_commands=220
+2026-09-22T04:02:32.539 ISD path=/type=3num=84val=0 http_status=200 response=OK
+2026-09-22T04:02:32.549 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 84 выключен completed_commands=86 total_commands=220
+2026-09-22T04:02:33.665 ISD path=/type=3num=85val=0 http_status=200 response=OK
+2026-09-22T04:02:33.676 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 85 выключен completed_commands=87 total_commands=220
+2026-09-22T04:02:34.792 ISD path=/type=3num=86val=0 http_status=200 response=OK
+2026-09-22T04:02:34.802 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 86 выключен completed_commands=88 total_commands=220
+2026-09-22T04:02:35.919 ISD path=/type=3num=87val=0 http_status=200 response=OK
+2026-09-22T04:02:35.929 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 87 выключен completed_commands=89 total_commands=220
+2026-09-22T04:02:37.043 ISD path=/type=3num=88val=0 http_status=200 response=OK
+2026-09-22T04:02:37.049 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 88 выключен completed_commands=90 total_commands=220
+2026-09-22T04:02:38.154 ISD path=/type=3num=95val=0 http_status=200 response=OK
+2026-09-22T04:02:38.160 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 95 выключен completed_commands=91 total_commands=220
+2026-09-22T04:02:39.265 ISD path=/type=3num=96val=0 http_status=200 response=OK
+2026-09-22T04:02:39.272 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=3, канал 96 выключен completed_commands=92 total_commands=220
+2026-09-22T04:02:40.376 ISD path=/type=2num=1val=0 http_status=200 response=OK
+2026-09-22T04:02:40.382 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=2, канал 1 выключен completed_commands=93 total_commands=220
+2026-09-22T04:02:41.487 ISD path=/type=2num=2val=0 http_status=200 response=OK
+2026-09-22T04:02:41.493 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=2, канал 2 выключен completed_commands=94 total_commands=220
+2026-09-22T04:02:42.598 ISD path=/type=2num=3val=0 http_status=200 response=OK
+2026-09-22T04:02:42.606 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=2, канал 3 выключен completed_commands=95 total_commands=220
+2026-09-22T04:02:43.709 ISD path=/type=2num=4val=0 http_status=200 response=OK
+2026-09-22T04:02:43.715 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=2, канал 4 выключен completed_commands=96 total_commands=220
+2026-09-22T04:02:44.821 ISD path=/type=2num=5val=0 http_status=200 response=OK
+2026-09-22T04:02:44.827 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=2, канал 5 выключен completed_commands=97 total_commands=220
+2026-09-22T04:02:45.931 ISD path=/type=2num=6val=0 http_status=200 response=OK
+2026-09-22T04:02:45.938 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=2, канал 6 выключен completed_commands=98 total_commands=220
+2026-09-22T04:02:47.041 ISD path=/type=2num=7val=0 http_status=200 response=OK
+2026-09-22T04:02:47.045 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=2, канал 7 выключен completed_commands=99 total_commands=220
+2026-09-22T04:02:48.152 ISD path=/type=2num=8val=0 http_status=200 response=OK
+2026-09-22T04:02:48.162 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=2, канал 8 выключен completed_commands=100 total_commands=220
+2026-09-22T04:02:49.276 ISD path=/type=2num=9val=0 http_status=200 response=OK
+2026-09-22T04:02:49.288 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=2, канал 9 выключен completed_commands=101 total_commands=220
+2026-09-22T04:02:50.403 ISD path=/type=2num=10val=0 http_status=200 response=OK
+2026-09-22T04:02:50.411 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=2, канал 10 выключен completed_commands=102 total_commands=220
+2026-09-22T04:02:51.532 ISD path=/type=2num=11val=0 http_status=200 response=OK
+2026-09-22T04:02:51.544 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=2, канал 11 выключен completed_commands=103 total_commands=220
+2026-09-22T04:02:52.658 ISD path=/type=2num=12val=0 http_status=200 response=OK
+2026-09-22T04:02:52.669 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=2, канал 12 выключен completed_commands=104 total_commands=220
+2026-09-22T04:02:53.785 ISD path=/type=2num=13val=0 http_status=200 response=OK
+2026-09-22T04:02:53.791 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=2, канал 13 выключен completed_commands=105 total_commands=220
+2026-09-22T04:02:54.896 ISD path=/type=2num=14val=0 http_status=200 response=OK
+2026-09-22T04:02:54.902 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=2, канал 14 выключен completed_commands=106 total_commands=220
+2026-09-22T04:02:56.004 ISD path=/type=2num=15val=0 http_status=200 response=OK
+2026-09-22T04:02:56.010 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=2, канал 15 выключен completed_commands=107 total_commands=220
+2026-09-22T04:02:57.115 ISD path=/type=2num=16val=0 http_status=200 response=OK
+2026-09-22T04:02:57.123 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=2, канал 16 выключен completed_commands=108 total_commands=220
+2026-09-22T04:02:58.226 ISD path=/type=2num=17val=0 http_status=200 response=OK
+2026-09-22T04:02:58.230 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=2, канал 17 выключен completed_commands=109 total_commands=220
+2026-09-22T04:02:59.337 ISD path=/type=2num=18val=0 http_status=200 response=OK
+2026-09-22T04:02:59.343 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=2, канал 18 выключен completed_commands=110 total_commands=220
+2026-09-22T04:03:00.450 ISD path=/type=2num=19val=0 http_status=200 response=OK
+2026-09-22T04:03:00.456 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=2, канал 19 выключен completed_commands=111 total_commands=220
+2026-09-22T04:03:01.558 ISD path=/type=2num=20val=0 http_status=200 response=OK
+2026-09-22T04:03:01.564 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=2, канал 20 выключен completed_commands=112 total_commands=220
+2026-09-22T04:03:02.671 ISD path=/type=2num=21val=0 http_status=200 response=OK
+2026-09-22T04:03:02.675 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=2, канал 21 выключен completed_commands=113 total_commands=220
+2026-09-22T04:03:03.779 ISD path=/type=2num=22val=0 http_status=200 response=OK
+2026-09-22T04:03:03.788 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=2, канал 22 выключен completed_commands=114 total_commands=220
+2026-09-22T04:03:04.908 ISD path=/type=2num=23val=0 http_status=200 response=OK
+2026-09-22T04:03:04.918 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=2, канал 23 выключен completed_commands=115 total_commands=220
+2026-09-22T04:03:06.033 ISD path=/type=2num=24val=0 http_status=200 response=OK
+2026-09-22T04:03:06.041 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=2, канал 24 выключен completed_commands=116 total_commands=220
+2026-09-22T04:03:07.161 ISD path=/type=2num=25val=0 http_status=200 response=OK
+2026-09-22T04:03:07.172 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=2, канал 25 выключен completed_commands=117 total_commands=220
+2026-09-22T04:03:08.288 ISD path=/type=2num=26val=0 http_status=200 response=OK
+2026-09-22T04:03:08.296 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=2, канал 26 выключен completed_commands=118 total_commands=220
+2026-09-22T04:03:09.413 ISD path=/type=2num=27val=0 http_status=200 response=OK
+2026-09-22T04:03:09.419 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=2, канал 27 выключен completed_commands=119 total_commands=220
+2026-09-22T04:03:10.524 ISD path=/type=2num=28val=0 http_status=200 response=OK
+2026-09-22T04:03:10.530 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=2, канал 28 выключен completed_commands=120 total_commands=220
+2026-09-22T04:03:11.635 ISD path=/type=2num=29val=0 http_status=200 response=OK
+2026-09-22T04:03:11.641 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=2, канал 29 выключен completed_commands=121 total_commands=220
+2026-09-22T04:03:12.716 ISD path=/type=2num=30val=0 http_status=200 response=OK
+2026-09-22T04:03:12.726 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=2, канал 30 выключен completed_commands=122 total_commands=220
+2026-09-22T04:03:13.842 ISD path=/type=2num=31val=0 http_status=200 response=OK
+2026-09-22T04:03:13.852 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=2, канал 31 выключен completed_commands=123 total_commands=220
+2026-09-22T04:03:14.967 ISD path=/type=2num=32val=0 http_status=200 response=OK
+2026-09-22T04:03:14.973 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=2, канал 32 выключен completed_commands=124 total_commands=220
+2026-09-22T04:03:16.077 ISD path=/type=2num=33val=0 http_status=200 response=OK
+2026-09-22T04:03:16.081 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=2, канал 33 выключен completed_commands=125 total_commands=220
+2026-09-22T04:03:17.188 ISD path=/type=2num=34val=0 http_status=200 response=OK
+2026-09-22T04:03:17.192 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=2, канал 34 выключен completed_commands=126 total_commands=220
+2026-09-22T04:03:18.299 ISD path=/type=2num=35val=0 http_status=200 response=OK
+2026-09-22T04:03:18.305 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=2, канал 35 выключен completed_commands=127 total_commands=220
+2026-09-22T04:03:19.411 ISD path=/type=2num=36val=0 http_status=200 response=OK
+2026-09-22T04:03:19.417 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=2, канал 36 выключен completed_commands=128 total_commands=220
+2026-09-22T04:03:20.521 ISD path=/type=2num=37val=0 http_status=200 response=OK
+2026-09-22T04:03:20.527 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=2, канал 37 выключен completed_commands=129 total_commands=220
+2026-09-22T04:03:21.633 ISD path=/type=2num=38val=0 http_status=200 response=OK
+2026-09-22T04:03:21.643 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=2, канал 38 выключен completed_commands=130 total_commands=220
+2026-09-22T04:03:22.759 ISD path=/type=2num=39val=0 http_status=200 response=OK
+2026-09-22T04:03:22.763 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=2, канал 39 выключен completed_commands=131 total_commands=220
+2026-09-22T04:03:23.870 ISD path=/type=2num=40val=0 http_status=200 response=OK
+2026-09-22T04:03:23.880 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=2, канал 40 выключен completed_commands=132 total_commands=220
+2026-09-22T04:03:24.997 ISD path=/type=1num=1val=0work=0 http_status=200 response=OK
+2026-09-22T04:03:25.007 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 1 выключен completed_commands=133 total_commands=220
+2026-09-22T04:03:26.124 ISD path=/type=1num=2val=0work=0 http_status=200 response=OK
+2026-09-22T04:03:26.130 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 2 выключен completed_commands=134 total_commands=220
+2026-09-22T04:03:27.235 ISD path=/type=1num=3val=0work=0 http_status=200 response=OK
+2026-09-22T04:03:27.241 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 3 выключен completed_commands=135 total_commands=220
+2026-09-22T04:03:28.346 ISD path=/type=1num=4val=0work=0 http_status=200 response=OK
+2026-09-22T04:03:28.350 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 4 выключен completed_commands=136 total_commands=220
+2026-09-22T04:03:29.457 ISD path=/type=1num=5val=0work=0 http_status=200 response=OK
+2026-09-22T04:03:29.463 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 5 выключен completed_commands=137 total_commands=220
+2026-09-22T04:03:30.568 ISD path=/type=1num=6val=0work=0 http_status=200 response=OK
+2026-09-22T04:03:30.574 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 6 выключен completed_commands=138 total_commands=220
+2026-09-22T04:03:31.676 ISD path=/type=1num=7val=0work=0 http_status=200 response=OK
+2026-09-22T04:03:31.682 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 7 выключен completed_commands=139 total_commands=220
+2026-09-22T04:03:32.787 ISD path=/type=1num=8val=0work=0 http_status=200 response=OK
+2026-09-22T04:03:32.793 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 8 выключен completed_commands=140 total_commands=220
+2026-09-22T04:03:33.897 ISD path=/type=1num=9val=0work=0 http_status=200 response=OK
+2026-09-22T04:03:33.903 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 9 выключен completed_commands=141 total_commands=220
+2026-09-22T04:03:35.023 ISD path=/type=1num=10val=0work=0 http_status=200 response=OK
+2026-09-22T04:03:35.033 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 10 выключен completed_commands=142 total_commands=220
+2026-09-22T04:03:36.148 ISD path=/type=1num=11val=0work=0 http_status=200 response=OK
+2026-09-22T04:03:36.154 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 11 выключен completed_commands=143 total_commands=220
+2026-09-22T04:03:37.259 ISD path=/type=1num=12val=0work=0 http_status=200 response=OK
+2026-09-22T04:03:37.267 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 12 выключен completed_commands=144 total_commands=220
+2026-09-22T04:03:38.371 ISD path=/type=1num=13val=0work=0 http_status=200 response=OK
+2026-09-22T04:03:38.375 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 13 выключен completed_commands=145 total_commands=220
+2026-09-22T04:03:39.480 ISD path=/type=1num=14val=0work=0 http_status=200 response=OK
+2026-09-22T04:03:39.484 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 14 выключен completed_commands=146 total_commands=220
+2026-09-22T04:03:40.590 ISD path=/type=1num=15val=0work=0 http_status=200 response=OK
+2026-09-22T04:03:40.598 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 15 выключен completed_commands=147 total_commands=220
+2026-09-22T04:03:41.719 ISD path=/type=1num=16val=0work=0 http_status=200 response=OK
+2026-09-22T04:03:41.729 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 16 выключен completed_commands=148 total_commands=220
+2026-09-22T04:03:42.846 ISD path=/type=1num=17val=0work=0 http_status=200 response=OK
+2026-09-22T04:03:42.855 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 17 выключен completed_commands=149 total_commands=220
+2026-09-22T04:03:43.972 ISD path=/type=1num=18val=0work=0 http_status=200 response=OK
+2026-09-22T04:03:43.976 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 18 выключен completed_commands=150 total_commands=220
+2026-09-22T04:03:45.081 ISD path=/type=1num=19val=0work=0 http_status=200 response=OK
+2026-09-22T04:03:45.092 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 19 выключен completed_commands=151 total_commands=220
+2026-09-22T04:03:46.209 ISD path=/type=1num=20val=0work=0 http_status=200 response=OK
+2026-09-22T04:03:46.219 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 20 выключен completed_commands=152 total_commands=220
+2026-09-22T04:03:47.336 ISD path=/type=1num=21val=0work=0 http_status=200 response=OK
+2026-09-22T04:03:47.342 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 21 выключен completed_commands=153 total_commands=220
+2026-09-22T04:03:48.444 ISD path=/type=1num=22val=0work=0 http_status=200 response=OK
+2026-09-22T04:03:48.450 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 22 выключен completed_commands=154 total_commands=220
+2026-09-22T04:03:49.555 ISD path=/type=1num=23val=0work=0 http_status=200 response=OK
+2026-09-22T04:03:49.562 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 23 выключен completed_commands=155 total_commands=220
+2026-09-22T04:03:50.669 ISD path=/type=1num=24val=0work=0 http_status=200 response=OK
+2026-09-22T04:03:50.675 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 24 выключен completed_commands=156 total_commands=220
+2026-09-22T04:03:51.778 ISD path=/type=1num=25val=0work=0 http_status=200 response=OK
+2026-09-22T04:03:51.784 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 25 выключен completed_commands=157 total_commands=220
+2026-09-22T04:03:52.889 ISD path=/type=1num=26val=0work=0 http_status=200 response=OK
+2026-09-22T04:03:52.895 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 26 выключен completed_commands=158 total_commands=220
+2026-09-22T04:03:54.000 ISD path=/type=1num=27val=0work=0 http_status=200 response=OK
+2026-09-22T04:03:54.006 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 27 выключен completed_commands=159 total_commands=220
+2026-09-22T04:03:55.112 ISD path=/type=1num=28val=0work=0 http_status=200 response=OK
+2026-09-22T04:03:55.118 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 28 выключен completed_commands=160 total_commands=220
+2026-09-22T04:03:56.221 ISD path=/type=1num=29val=0work=0 http_status=200 response=OK
+2026-09-22T04:03:56.227 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 29 выключен completed_commands=161 total_commands=220
+2026-09-22T04:03:57.331 ISD path=/type=1num=30val=0work=0 http_status=200 response=OK
+2026-09-22T04:03:57.337 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 30 выключен completed_commands=162 total_commands=220
+2026-09-22T04:03:58.441 ISD path=/type=1num=31val=0work=0 http_status=200 response=OK
+2026-09-22T04:03:58.451 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 31 выключен completed_commands=163 total_commands=220
+2026-09-22T04:03:59.570 ISD path=/type=1num=32val=0work=0 http_status=200 response=OK
+2026-09-22T04:03:59.581 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 32 выключен completed_commands=164 total_commands=220
+2026-09-22T04:04:00.697 ISD path=/type=1num=33val=0work=0 http_status=200 response=OK
+2026-09-22T04:04:00.707 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 33 выключен completed_commands=165 total_commands=220
+2026-09-22T04:04:01.824 ISD path=/type=1num=34val=0work=0 http_status=200 response=OK
+2026-09-22T04:04:01.830 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 34 выключен completed_commands=166 total_commands=220
+2026-09-22T04:04:02.933 ISD path=/type=1num=35val=0work=0 http_status=200 response=OK
+2026-09-22T04:04:02.939 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 35 выключен completed_commands=167 total_commands=220
+2026-09-22T04:04:04.044 ISD path=/type=1num=36val=0work=0 http_status=200 response=OK
+2026-09-22T04:04:04.051 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 36 выключен completed_commands=168 total_commands=220
+2026-09-22T04:04:05.158 ISD path=/type=1num=37val=0work=0 http_status=200 response=OK
+2026-09-22T04:04:05.164 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 37 выключен completed_commands=169 total_commands=220
+2026-09-22T04:04:06.266 ISD path=/type=1num=38val=0work=0 http_status=200 response=OK
+2026-09-22T04:04:06.272 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 38 выключен completed_commands=170 total_commands=220
+2026-09-22T04:04:07.376 ISD path=/type=1num=39val=0work=0 http_status=200 response=OK
+2026-09-22T04:04:07.380 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 39 выключен completed_commands=171 total_commands=220
+2026-09-22T04:04:08.488 ISD path=/type=1num=40val=0work=0 http_status=200 response=OK
+2026-09-22T04:04:08.494 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 40 выключен completed_commands=172 total_commands=220
+2026-09-22T04:04:09.599 ISD path=/type=1num=41val=0work=0 http_status=200 response=OK
+2026-09-22T04:04:09.605 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 41 выключен completed_commands=173 total_commands=220
+2026-09-22T04:04:10.711 ISD path=/type=1num=42val=0work=0 http_status=200 response=OK
+2026-09-22T04:04:10.722 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 42 выключен completed_commands=174 total_commands=220
+2026-09-22T04:04:11.838 ISD path=/type=1num=43val=0work=0 http_status=200 response=OK
+2026-09-22T04:04:11.849 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 43 выключен completed_commands=175 total_commands=220
+2026-09-22T04:04:12.963 ISD path=/type=1num=44val=0work=0 http_status=200 response=OK
+2026-09-22T04:04:12.973 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 44 выключен completed_commands=176 total_commands=220
+2026-09-22T04:04:14.092 ISD path=/type=1num=45val=0work=0 http_status=200 response=OK
+2026-09-22T04:04:14.098 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 45 выключен completed_commands=177 total_commands=220
+2026-09-22T04:04:15.201 ISD path=/type=1num=46val=0work=0 http_status=200 response=OK
+2026-09-22T04:04:15.207 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 46 выключен completed_commands=178 total_commands=220
+2026-09-22T04:04:16.314 ISD path=/type=1num=47val=0work=0 http_status=200 response=OK
+2026-09-22T04:04:16.320 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 47 выключен completed_commands=179 total_commands=220
+2026-09-22T04:04:17.423 ISD path=/type=1num=48val=0work=0 http_status=200 response=OK
+2026-09-22T04:04:17.429 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 48 выключен completed_commands=180 total_commands=220
+2026-09-22T04:04:18.534 ISD path=/type=1num=49val=0work=0 http_status=200 response=OK
+2026-09-22T04:04:18.542 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 49 выключен completed_commands=181 total_commands=220
+2026-09-22T04:04:19.644 ISD path=/type=1num=50val=0work=0 http_status=200 response=OK
+2026-09-22T04:04:19.650 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 50 выключен completed_commands=182 total_commands=220
+2026-09-22T04:04:20.757 ISD path=/type=1num=51val=0work=0 http_status=200 response=OK
+2026-09-22T04:04:20.763 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 51 выключен completed_commands=183 total_commands=220
+2026-09-22T04:04:21.868 ISD path=/type=1num=52val=0work=0 http_status=200 response=OK
+2026-09-22T04:04:21.874 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 52 выключен completed_commands=184 total_commands=220
+2026-09-22T04:04:22.978 ISD path=/type=1num=53val=0work=0 http_status=200 response=OK
+2026-09-22T04:04:22.984 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 53 выключен completed_commands=185 total_commands=220
+2026-09-22T04:04:24.087 ISD path=/type=1num=54val=0work=0 http_status=200 response=OK
+2026-09-22T04:04:24.091 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 54 выключен completed_commands=186 total_commands=220
+2026-09-22T04:04:25.198 ISD path=/type=1num=55val=0work=0 http_status=200 response=OK
+2026-09-22T04:04:25.206 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 55 выключен completed_commands=187 total_commands=220
+2026-09-22T04:04:26.308 ISD path=/type=1num=56val=0work=0 http_status=200 response=OK
+2026-09-22T04:04:26.314 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 56 выключен completed_commands=188 total_commands=220
+2026-09-22T04:04:27.418 ISD path=/type=1num=57val=0work=0 http_status=200 response=OK
+2026-09-22T04:04:27.422 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 57 выключен completed_commands=189 total_commands=220
+2026-09-22T04:04:28.531 ISD path=/type=1num=58val=0work=0 http_status=200 response=OK
+2026-09-22T04:04:28.541 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 58 выключен completed_commands=190 total_commands=220
+2026-09-22T04:04:29.657 ISD path=/type=1num=59val=0work=0 http_status=200 response=OK
+2026-09-22T04:04:29.669 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 59 выключен completed_commands=191 total_commands=220
+2026-09-22T04:04:30.782 ISD path=/type=1num=60val=0work=0 http_status=200 response=OK
+2026-09-22T04:04:30.788 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 60 выключен completed_commands=192 total_commands=220
+2026-09-22T04:04:31.893 ISD path=/type=1num=61val=0work=0 http_status=200 response=OK
+2026-09-22T04:04:31.899 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 61 выключен completed_commands=193 total_commands=220
+2026-09-22T04:04:33.003 ISD path=/type=1num=62val=0work=0 http_status=200 response=OK
+2026-09-22T04:04:33.011 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 62 выключен completed_commands=194 total_commands=220
+2026-09-22T04:04:34.116 ISD path=/type=1num=63val=0work=0 http_status=200 response=OK
+2026-09-22T04:04:34.126 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 63 выключен completed_commands=195 total_commands=220
+2026-09-22T04:04:35.241 ISD path=/type=1num=64val=0work=0 http_status=200 response=OK
+2026-09-22T04:04:35.247 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 64 выключен completed_commands=196 total_commands=220
+2026-09-22T04:04:36.351 ISD path=/type=1num=65val=0work=0 http_status=200 response=OK
+2026-09-22T04:04:36.357 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 65 выключен completed_commands=197 total_commands=220
+2026-09-22T04:04:37.462 ISD path=/type=1num=66val=0work=0 http_status=200 response=OK
+2026-09-22T04:04:37.470 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 66 выключен completed_commands=198 total_commands=220
+2026-09-22T04:04:38.575 ISD path=/type=1num=67val=0work=0 http_status=200 response=OK
+2026-09-22T04:04:38.581 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 67 выключен completed_commands=199 total_commands=220
+2026-09-22T04:04:39.684 ISD path=/type=1num=68val=0work=0 http_status=200 response=OK
+2026-09-22T04:04:39.690 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 68 выключен completed_commands=200 total_commands=220
+2026-09-22T04:04:40.794 ISD path=/type=1num=69val=0work=0 http_status=200 response=OK
+2026-09-22T04:04:40.800 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 69 выключен completed_commands=201 total_commands=220
+2026-09-22T04:04:41.905 ISD path=/type=1num=70val=0work=0 http_status=200 response=OK
+2026-09-22T04:04:41.911 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 70 выключен completed_commands=202 total_commands=220
+2026-09-22T04:04:43.017 ISD path=/type=1num=71val=0work=0 http_status=200 response=OK
+2026-09-22T04:04:43.023 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 71 выключен completed_commands=203 total_commands=220
+2026-09-22T04:04:44.144 ISD path=/type=1num=72val=0work=0 http_status=200 response=OK
+2026-09-22T04:04:44.154 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 72 выключен completed_commands=204 total_commands=220
+2026-09-22T04:04:45.268 ISD path=/type=1num=73val=0work=0 http_status=200 response=OK
+2026-09-22T04:04:45.276 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 73 выключен completed_commands=205 total_commands=220
+2026-09-22T04:04:46.397 ISD path=/type=1num=74val=0work=0 http_status=200 response=OK
+2026-09-22T04:04:46.407 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 74 выключен completed_commands=206 total_commands=220
+2026-09-22T04:04:47.523 ISD path=/type=1num=75val=0work=0 http_status=200 response=OK
+2026-09-22T04:04:47.534 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 75 выключен completed_commands=207 total_commands=220
+2026-09-22T04:04:48.650 ISD path=/type=1num=76val=0work=0 http_status=200 response=OK
+2026-09-22T04:04:48.660 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 76 выключен completed_commands=208 total_commands=220
+2026-09-22T04:04:49.775 ISD path=/type=1num=77val=0work=0 http_status=200 response=OK
+2026-09-22T04:04:49.787 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 77 выключен completed_commands=209 total_commands=220
+2026-09-22T04:04:50.901 ISD path=/type=1num=78val=0work=0 http_status=200 response=OK
+2026-09-22T04:04:50.907 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 78 выключен completed_commands=210 total_commands=220
+2026-09-22T04:04:52.012 ISD path=/type=1num=79val=0work=0 http_status=200 response=OK
+2026-09-22T04:04:52.018 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 79 выключен completed_commands=211 total_commands=220
+2026-09-22T04:04:53.124 ISD path=/type=1num=80val=0work=0 http_status=200 response=OK
+2026-09-22T04:04:53.130 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 80 выключен completed_commands=212 total_commands=220
+2026-09-22T04:04:54.237 ISD path=/type=1num=81val=0work=0 http_status=200 response=OK
+2026-09-22T04:04:54.243 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 81 выключен completed_commands=213 total_commands=220
+2026-09-22T04:04:55.363 ISD path=/type=1num=82val=0work=0 http_status=200 response=OK
+2026-09-22T04:04:55.373 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 82 выключен completed_commands=214 total_commands=220
+2026-09-22T04:04:56.488 ISD path=/type=1num=83val=0work=0 http_status=200 response=OK
+2026-09-22T04:04:56.494 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 83 выключен completed_commands=215 total_commands=220
+2026-09-22T04:04:57.598 ISD path=/type=1num=84val=0work=0 http_status=200 response=OK
+2026-09-22T04:04:57.606 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 84 выключен completed_commands=216 total_commands=220
+2026-09-22T04:04:58.709 ISD path=/type=1num=85val=0work=0 http_status=200 response=OK
+2026-09-22T04:04:58.715 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 85 выключен completed_commands=217 total_commands=220
+2026-09-22T04:04:59.819 ISD path=/type=1num=86val=0work=0 http_status=200 response=OK
+2026-09-22T04:04:59.825 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 86 выключен completed_commands=218 total_commands=220
+2026-09-22T04:05:00.931 ISD path=/type=1num=87val=0work=0 http_status=200 response=OK
+2026-09-22T04:05:00.941 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 87 выключен completed_commands=219 total_commands=220
+2026-09-22T04:05:02.056 ISD path=/type=1num=88val=0work=0 http_status=200 response=OK
+2026-09-22T04:05:02.068 EVENT node=isd_startup_baseline stage=ADDRESSED_BASELINE verdict=NOT_RUN message=ИСД type=1, канал 88 выключен completed_commands=220 total_commands=220
+2026-09-22T04:05:02.068 EVENT node=isd_startup_baseline stage=FINISH verdict=OK message=Rigol и используемые маршруты ИСД приведены в исходное состояние адресными командами
+2026-09-22T04:05:02.068 EVENT node=power_off stage=START verdict=NOT_RUN message=Безопасное отключение питания после пробы
+2026-09-22T04:05:02.701 EVENT node=power_off stage=FINISH verdict=OK message=Выход АКИП выключен после испытания
+2026-09-22T04:05:02.849 RUN verdict=OK steps=3

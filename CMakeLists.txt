@@ -143,4 +143,15 @@ if(BUILD_TESTING)
     target_compile_definitions(scenario_engine_test PRIVATE
         TU_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
     add_test(NAME tu.scenario_engine COMMAND scenario_engine_test)
+
+    add_executable(tu_report_test
+        tests/tu_report_test.cpp
+        app/tu_report_writer.cpp
+        app/tu_report_writer.h
+    )
+    target_include_directories(tu_report_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(tu_report_test PRIVATE tu_backend Qt6::Core)
+    add_test(NAME tu.report COMMAND ${CMAKE_COMMAND} -E env
+        "PATH=$<TARGET_FILE_DIR:Qt6::Core>;$ENV{PATH}"
+        $<TARGET_FILE:tu_report_test>)
 endif()

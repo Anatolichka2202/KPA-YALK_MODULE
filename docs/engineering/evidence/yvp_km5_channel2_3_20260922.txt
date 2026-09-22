@@ -1,0 +1,59 @@
+2026-09-22T02:48:10.037 EVENT node=readiness stage=START verdict=NOT_RUN message=Однократная подготовка питания
+2026-09-22T02:48:14.681 EVENT node=readiness stage=SUPPLY verdict=NOT_RUN message=Питание УБСИ amperes=0.151000 duration_s=30 elapsed_s=2 output_enabled=true setpoint_v=27.000000 volts=26.999000
+2026-09-22T02:48:14.681 EVENT node=readiness stage=FINISH verdict=OK message=УБСИ вышел на передачу данных после запуска ROKT ЯЛК
+2026-09-22T02:48:14.681 EVENT node=yvp_km5_channel2_3 stage=START verdict=NOT_RUN message=ЯВП-2/ЯВП-3 · физический эффект линий КУ
+2026-09-22T02:48:14.822 ISD path=/ http_status=200 response=komanda ne vypolnena. Nepravilny format zaprosa: http://192.168.0.99/type=1num=2val=3work=1
+2026-09-22T02:48:15.912 ISD path=/type=2num=34val=1 http_status=200 response=OK
+2026-09-22T02:48:16.990 ISD path=/type=1num=29val=0work=0 http_status=200 response=OK
+2026-09-22T02:48:18.064 ISD path=/type=3num=29val=1 http_status=200 response=OK
+2026-09-22T02:48:19.135 ISD path=/type=2num=6val=1 http_status=200 response=OK
+2026-09-22T02:48:24.936 EVENT node=yvp_km5_channel2_3 stage=YVP_V7_POINT verdict=NOT_RUN message=ЯВП 2: K=1.000000 мВ/пКл, 500.000000 Гц acceptance=evaluated_after_gain_sweep backend=production_isd_v7 calculated_gain_mv_per_pc=0.934461 capacitance_pf=1000.000000 charge_pc_from_commanded_vpp=2000.000000 frequency_verification=v7_diagnostic gain_mv_per_pc=1.000000 measured_frequency_hz=1156.851280 point_count=10 point_index=1 rigol_appl="SIN,5.000000E+02,2.000000E+00,0.000000E+00,0.000000E+00" rigol_frequency=5.000000E+02 rigol_input_vpp=2.000000 rigol_output=ON rigol_output_load=9.900000E+37 rigol_volt=2.000000E+00 rigol_volt_unit=VPP section=YVP set_frequency_hz=500.000000 v7_output_vpp=1.868922 v7_output_vrms=0.660764 yvp_channel=2
+2026-09-22T02:48:25.004 ISD path=/type=2num=6val=0 http_status=200 response=OK
+2026-09-22T02:48:26.073 ISD path=/type=2num=7val=1 http_status=200 response=OK
+2026-09-22T02:48:30.993 EVENT node=yvp_km5_channel2_3 stage=YVP_V7_POINT verdict=NOT_RUN message=ЯВП 2: K=2.000000 мВ/пКл, 500.000000 Гц acceptance=evaluated_after_gain_sweep backend=production_isd_v7 calculated_gain_mv_per_pc=1.872496 capacitance_pf=1000.000000 charge_pc_from_commanded_vpp=1000.000000 frequency_verification=v7_diagnostic gain_mv_per_pc=2.000000 measured_frequency_hz=1430.992480 point_count=10 point_index=2 rigol_appl="SIN,5.000000E+02,1.000000E+00,0.000000E+00,0.000000E+00" rigol_frequency=5.000000E+02 rigol_input_vpp=1.000000 rigol_output=ON rigol_output_load=9.900000E+37 rigol_volt=1.000000E+00 rigol_volt_unit=VPP section=YVP set_frequency_hz=500.000000 v7_output_vpp=1.872496 v7_output_vrms=0.662027 yvp_channel=2
+2026-09-22T02:48:31.058 ISD path=/type=2num=7val=0 http_status=200 response=OK
+2026-09-22T02:48:32.135 ISD path=/type=2num=5val=1 http_status=200 response=OK
+2026-09-22T02:48:33.217 ISD path=/type=2num=7val=1 http_status=200 response=OK
+2026-09-22T02:48:38.130 EVENT node=yvp_km5_channel2_3 stage=YVP_V7_POINT verdict=NOT_RUN message=ЯВП 2: K=4.000000 мВ/пКл, 500.000000 Гц acceptance=evaluated_after_gain_sweep backend=production_isd_v7 calculated_gain_mv_per_pc=3.793465 capacitance_pf=1000.000000 charge_pc_from_commanded_vpp=500.000000 frequency_verification=v7_diagnostic gain_mv_per_pc=4.000000 measured_frequency_hz=1058.713840 point_count=10 point_index=3 rigol_appl="SIN,5.000000E+02,5.000000E-01,0.000000E+00,0.000000E+00" rigol_frequency=5.000000E+02 rigol_input_vpp=0.500000 rigol_output=ON rigol_output_load=9.900000E+37 rigol_volt=5.000000E-01 rigol_volt_unit=VPP section=YVP set_frequency_hz=500.000000 v7_output_vpp=1.896732 v7_output_vrms=0.670596 yvp_channel=2
+2026-09-22T02:48:38.196 ISD path=/type=2num=7val=0 http_status=200 response=OK
+2026-09-22T02:48:39.273 ISD path=/type=2num=5val=0 http_status=200 response=OK
+2026-09-22T02:48:40.370 ISD path=/type=2num=8val=1 http_status=200 response=OK
+2026-09-22T02:48:45.286 EVENT node=yvp_km5_channel2_3 stage=YVP_V7_POINT verdict=NOT_RUN message=ЯВП 2: K=8.000000 мВ/пКл, 500.000000 Гц acceptance=evaluated_after_gain_sweep backend=production_isd_v7 calculated_gain_mv_per_pc=7.969303 capacitance_pf=1000.000000 charge_pc_from_commanded_vpp=250.000000 frequency_verification=v7_diagnostic gain_mv_per_pc=8.000000 measured_frequency_hz=1510.623200 point_count=10 point_index=4 rigol_appl="SIN,5.000000E+02,2.500000E-01,0.000000E+00,0.000000E+00" rigol_frequency=5.000000E+02 rigol_input_vpp=0.250000 rigol_output=ON rigol_output_load=9.900000E+37 rigol_volt=2.500000E-01 rigol_volt_unit=VPP section=YVP set_frequency_hz=500.000000 v7_output_vpp=1.992326 v7_output_vrms=0.704394 yvp_channel=2
+2026-09-22T02:48:45.352 ISD path=/type=2num=8val=0 http_status=200 response=OK
+2026-09-22T02:48:46.429 ISD path=/type=2num=6val=1 http_status=200 response=OK
+2026-09-22T02:48:47.507 ISD path=/type=2num=8val=1 http_status=200 response=OK
+2026-09-22T02:48:52.441 EVENT node=yvp_km5_channel2_3 stage=YVP_V7_POINT verdict=NOT_RUN message=ЯВП 2: K=32.000000 мВ/пКл, 500.000000 Гц acceptance=evaluated_after_gain_sweep backend=production_isd_v7 calculated_gain_mv_per_pc=40.957160 capacitance_pf=1000.000000 charge_pc_from_commanded_vpp=62.500000 frequency_verification=v7_diagnostic gain_mv_per_pc=32.000000 measured_frequency_hz=549.592448 point_count=10 point_index=5 rigol_appl="SIN,5.000000E+02,6.250000E-02,0.000000E+00,0.000000E+00" rigol_frequency=5.000000E+02 rigol_input_vpp=0.062500 rigol_output=ON rigol_output_load=9.900000E+37 rigol_volt=6.250000E-02 rigol_volt_unit=VPP section=YVP set_frequency_hz=500.000000 v7_output_vpp=2.559822 v7_output_vrms=0.905034 yvp_channel=2
+2026-09-22T02:48:52.509 ISD path=/type=2num=8val=0 http_status=200 response=OK
+2026-09-22T02:48:53.587 ISD path=/type=2num=6val=0 http_status=200 response=OK
+2026-09-22T02:48:54.663 ISD path=/type=3num=29val=0 http_status=200 response=OK
+2026-09-22T02:48:55.747 ISD path=/type=1num=29val=0work=0 http_status=200 response=OK
+2026-09-22T02:48:56.830 ISD path=/type=2num=34val=0 http_status=200 response=OK
+2026-09-22T02:48:57.905 ISD path=/type=2num=35val=1 http_status=200 response=OK
+2026-09-22T02:48:58.979 ISD path=/type=1num=30val=0work=0 http_status=200 response=OK
+2026-09-22T02:49:00.053 ISD path=/type=3num=30val=1 http_status=200 response=OK
+2026-09-22T02:49:01.124 ISD path=/type=2num=10val=1 http_status=200 response=OK
+2026-09-22T02:49:06.036 EVENT node=yvp_km5_channel2_3 stage=YVP_V7_POINT verdict=NOT_RUN message=ЯВП 3: K=1.000000 мВ/пКл, 500.000000 Гц acceptance=evaluated_after_gain_sweep backend=production_isd_v7 calculated_gain_mv_per_pc=0.937483 capacitance_pf=1000.000000 charge_pc_from_commanded_vpp=2000.000000 frequency_verification=v7_diagnostic gain_mv_per_pc=1.000000 measured_frequency_hz=1156.594240 point_count=10 point_index=6 rigol_appl="SIN,5.000000E+02,2.000000E+00,0.000000E+00,0.000000E+00" rigol_frequency=5.000000E+02 rigol_input_vpp=2.000000 rigol_output=ON rigol_output_load=9.900000E+37 rigol_volt=2.000000E+00 rigol_volt_unit=VPP section=YVP set_frequency_hz=500.000000 v7_output_vpp=1.874966 v7_output_vrms=0.662901 yvp_channel=3
+2026-09-22T02:49:06.104 ISD path=/type=2num=10val=0 http_status=200 response=OK
+2026-09-22T02:49:07.178 ISD path=/type=2num=11val=1 http_status=200 response=OK
+2026-09-22T02:49:12.996 EVENT node=yvp_km5_channel2_3 stage=YVP_V7_POINT verdict=NOT_RUN message=ЯВП 3: K=2.000000 мВ/пКл, 500.000000 Гц acceptance=evaluated_after_gain_sweep backend=production_isd_v7 calculated_gain_mv_per_pc=9.459630 capacitance_pf=1000.000000 charge_pc_from_commanded_vpp=1000.000000 frequency_verification=v7_diagnostic gain_mv_per_pc=2.000000 measured_frequency_hz=529.385632 point_count=10 point_index=7 rigol_appl="SIN,5.000000E+02,1.000000E+00,0.000000E+00,0.000000E+00" rigol_frequency=5.000000E+02 rigol_input_vpp=1.000000 rigol_output=ON rigol_output_load=9.900000E+37 rigol_volt=1.000000E+00 rigol_volt_unit=VPP section=YVP set_frequency_hz=500.000000 v7_output_vpp=9.459630 v7_output_vrms=3.344484 yvp_channel=3
+2026-09-22T02:49:13.060 ISD path=/type=2num=11val=0 http_status=200 response=OK
+2026-09-22T02:49:14.139 ISD path=/type=2num=9val=1 http_status=200 response=OK
+2026-09-22T02:49:15.218 ISD path=/type=2num=11val=1 http_status=200 response=OK
+2026-09-22T02:49:20.132 EVENT node=yvp_km5_channel2_3 stage=YVP_V7_POINT verdict=NOT_RUN message=ЯВП 3: K=4.000000 мВ/пКл, 500.000000 Гц acceptance=evaluated_after_gain_sweep backend=production_isd_v7 calculated_gain_mv_per_pc=19.611530 capacitance_pf=1000.000000 charge_pc_from_commanded_vpp=500.000000 frequency_verification=v7_diagnostic gain_mv_per_pc=4.000000 measured_frequency_hz=529.358816 point_count=10 point_index=8 rigol_appl="SIN,5.000000E+02,5.000000E-01,0.000000E+00,0.000000E+00" rigol_frequency=5.000000E+02 rigol_input_vpp=0.500000 rigol_output=ON rigol_output_load=9.900000E+37 rigol_volt=5.000000E-01 rigol_volt_unit=VPP section=YVP set_frequency_hz=500.000000 v7_output_vpp=9.805765 v7_output_vrms=3.466861 yvp_channel=3
+2026-09-22T02:49:20.200 ISD path=/type=2num=11val=0 http_status=200 response=OK
+2026-09-22T02:49:21.275 ISD path=/type=2num=9val=0 http_status=200 response=OK
+2026-09-22T02:49:22.347 ISD path=/type=2num=12val=1 http_status=200 response=OK
+2026-09-22T02:49:28.206 EVENT node=yvp_km5_channel2_3 stage=YVP_V7_POINT verdict=NOT_RUN message=ЯВП 3: K=8.000000 мВ/пКл, 500.000000 Гц acceptance=evaluated_after_gain_sweep backend=production_isd_v7 calculated_gain_mv_per_pc=9.630620 capacitance_pf=1000.000000 charge_pc_from_commanded_vpp=250.000000 frequency_verification=v7_diagnostic gain_mv_per_pc=8.000000 measured_frequency_hz=1206.503040 point_count=10 point_index=9 rigol_appl="SIN,5.000000E+02,2.500000E-01,0.000000E+00,0.000000E+00" rigol_frequency=5.000000E+02 rigol_input_vpp=0.250000 rigol_output=ON rigol_output_load=9.900000E+37 rigol_volt=2.500000E-01 rigol_volt_unit=VPP section=YVP set_frequency_hz=500.000000 v7_output_vpp=2.407655 v7_output_vrms=0.851235 yvp_channel=3
+2026-09-22T02:49:28.273 ISD path=/type=2num=12val=0 http_status=200 response=OK
+2026-09-22T02:49:29.353 ISD path=/type=2num=10val=1 http_status=200 response=OK
+2026-09-22T02:49:30.446 ISD path=/type=2num=12val=1 http_status=200 response=OK
+2026-09-22T02:49:35.370 EVENT node=yvp_km5_channel2_3 stage=YVP_V7_POINT verdict=NOT_RUN message=ЯВП 3: K=32.000000 мВ/пКл, 500.000000 Гц acceptance=evaluated_after_gain_sweep backend=production_isd_v7 calculated_gain_mv_per_pc=51.366937 capacitance_pf=1000.000000 charge_pc_from_commanded_vpp=62.500000 frequency_verification=v7_diagnostic gain_mv_per_pc=32.000000 measured_frequency_hz=567.804864 point_count=10 point_index=10 rigol_appl="SIN,5.000000E+02,6.250000E-02,0.000000E+00,0.000000E+00" rigol_frequency=5.000000E+02 rigol_input_vpp=0.062500 rigol_output=ON rigol_output_load=9.900000E+37 rigol_volt=6.250000E-02 rigol_volt_unit=VPP section=YVP set_frequency_hz=500.000000 v7_output_vpp=3.210434 v7_output_vrms=1.135060 yvp_channel=3
+2026-09-22T02:49:35.434 ISD path=/type=2num=12val=0 http_status=200 response=OK
+2026-09-22T02:49:36.511 ISD path=/type=2num=10val=0 http_status=200 response=OK
+2026-09-22T02:49:37.587 ISD path=/type=3num=30val=0 http_status=200 response=OK
+2026-09-22T02:49:38.664 ISD path=/type=1num=30val=0work=0 http_status=200 response=OK
+2026-09-22T02:49:39.737 ISD path=/type=2num=35val=0 http_status=200 response=OK
+2026-09-22T02:49:39.741 EVENT node=yvp_km5_channel2_3 stage=FINISH verdict=OK message=Инженерская проба ЯВП завершена; acceptance verdict не формируется
+2026-09-22T02:49:39.741 EVENT node=power_off stage=START verdict=NOT_RUN message=Отключение питания после точечной пробы
+2026-09-22T02:49:40.369 EVENT node=power_off stage=FINISH verdict=OK message=Выход АКИП выключен после испытания
+2026-09-22T02:49:40.517 RUN verdict=OK steps=3
