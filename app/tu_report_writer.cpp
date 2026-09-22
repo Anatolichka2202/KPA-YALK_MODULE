@@ -9,8 +9,9 @@
 #include <QStringConverter>
 #include <QTextStream>
 
+#include <algorithm>
+#include <cmath>
 #include <functional>
-#include <set>
 #include <stdexcept>
 
 namespace {
@@ -18,16 +19,6 @@ namespace {
 QString text(const std::string& value)
 {
     return QString::fromUtf8(value.c_str());
-}
-
-QString html(const std::string& value)
-{
-    return text(value).toHtmlEscaped();
-}
-
-QString verdict(tu::RunVerdict value)
-{
-    return QString::fromLatin1(tu::toString(value));
 }
 
 QString protocolVerdict(tu::RunVerdict value)
@@ -43,18 +34,13 @@ QString protocolVerdict(tu::RunVerdict value)
     return QStringLiteral("НЕ ВЫПОЛНЕНО");
 }
 
-QString instant(std::chrono::system_clock::time_point value)
+QString reportDate(std::chrono::system_clock::time_point value)
 {
-    if (value.time_since_epoch().count() == 0) return {};
+    if (value.time_since_epoch().count() == 0)
+        return QDateTime::currentDateTime().toString(QStringLiteral("dd.MM.yyyy"));
     const auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(
         value.time_since_epoch()).count();
-    return QDateTime::fromMSecsSinceEpoch(milliseconds).toString(QStringLiteral("dd.MM.yyyy HH:mm:ss.zzz"));
-}
-
-QString csvCell(QString value)
-{
-    value.replace(QLatin1Char('"'), QStringLiteral("\"\""));
-    return QStringLiteral("\"") + value + QStringLiteral("\"");
+    return QDateTime::fromMSecsSinceEpoch(milliseconds).toString(QStringLiteral("dd.MM.yyyy"));
 }
 
 QString safeFilePart(QString value)
@@ -84,36 +70,10 @@ QString reportDirectory()
     return path;
 }
 
-void writeStepRows(QTextStream& output, const std::vector<tu::StepRunResult>& steps, int depth)
-{
-    for (const auto& step : steps) {
-        output << QStringLiteral("<tr><td>") << html(step.nodeId) << QStringLiteral("</td><td>")
-               << html(step.tuRequirement) << QStringLiteral("</td><td style=\"padding-left:")
-               << depth * 16 << QStringLiteral("px\">") << html(step.title)
-               << QStringLiteral("</td><td>") << verdict(step.verdict).toHtmlEscaped()
-               << QStringLiteral("</td><td>") << html(step.message) << QStringLiteral("</td></tr>\n");
-        writeStepRows(output, step.children, depth + 1);
-    }
-}
-
-void visitMeasurements(const std::vector<tu::StepRunResult>& steps,
-                       const std::function<void(const tu::StepRunResult&, const tu::MeasurementResult&)>& visitor)
-{
-    for (const auto& step : steps) {
-        for (const auto& measurement : step.measurements) visitor(step, measurement);
-        visitMeasurements(step.children, visitor);
-    }
-}
-
 QString attribute(const tu::MeasurementResult& value, const char* key)
 {
     const auto found = value.attributes.find(key);
     return found == value.attributes.end() ? QString{} : text(found->second);
-}
-
-bool isRawEngineeringMeasurement(const tu::MeasurementResult& value)
-{
-    return value.parameterKey.rfind("ubsi.yvp.raw.", 0) == 0;
 }
 
 bool enabledAttribute(const tu::MeasurementResult& value, const char* key)
@@ -121,6 +81,11 @@ bool enabledAttribute(const tu::MeasurementResult& value, const char* key)
     const QString current = attribute(value, key).trimmed().toLower();
     return current == QStringLiteral("true") || current == QStringLiteral("1")
         || current == QStringLiteral("yes");
+}
+
+bool rawEngineeringMeasurement(const tu::MeasurementResult& value)
+{
+    return value.parameterKey.rfind("ubsi.yvp.raw.", 0) == 0;
 }
 
 double reportMeasured(const tu::MeasurementResult& value)
@@ -156,98 +121,313 @@ QString reportError(const tu::MeasurementResult& value)
     return {};
 }
 
-void writeProtocolSteps(QTextStream& output,
-                        const std::vector<tu::StepRunResult>& steps)
+const tu::StepRunResult* findStep(const std::vector<tu::StepRunResult>& steps,
+                                  const std::string& nodeId)
 {
     for (const auto& step : steps) {
-        const QString heading = text(step.title).toUpper()
-            + (step.tuRequirement.empty() ? QString{}
-                : QStringLiteral(" (ПУНКТ %1 ТУ)").arg(text(step.tuRequirement)));
-        output << QStringLiteral("<section><h2>") << heading.toHtmlEscaped()
-               << QStringLiteral("</h2>\n");
-        if (!step.message.empty())
-            output << QStringLiteral("<p>") << html(step.message) << QStringLiteral("</p>\n");
+        if (step.nodeId == nodeId) return &step;
+        if (const auto* child = findStep(step.children, nodeId)) return child;
+    }
+    return nullptr;
+}
 
-        QString previousPoint;
-        for (const auto& value : step.measurements) {
-            if (isRawEngineeringMeasurement(value)) continue;
-            const QString voltage = attribute(value, "command_v");
-            const QString resistance = attribute(value, "target_resistance_ohm");
-            const QString frequency = attribute(value, "frequency_hz");
-            QString point;
-            if (!voltage.isEmpty())
-                point = QStringLiteral("Установлено напряжение %1 В.").arg(voltage);
-            else if (!resistance.isEmpty())
-                point = QStringLiteral("Установлено сопротивление %1 Ом.").arg(resistance);
-            else if (!frequency.isEmpty())
-                point = QStringLiteral("Установлена частота %1 Гц.").arg(frequency);
-            if (!point.isEmpty() && point != previousPoint) {
-                output << QStringLiteral("<p class=\"point\">") << point.toHtmlEscaped()
-                       << QStringLiteral("</p>\n");
-                previousPoint = point;
-            }
-
-            QString channel;
-            const QString yalkAddress = attribute(value, "ulk_address");
-            const QString ytpChannel = attribute(value, "ytp_channel");
-            QString yvpChannel = attribute(value, "yvp_channel");
-            if (yvpChannel.isEmpty()) yvpChannel = attribute(value, "channel");
-            if (!yalkAddress.isEmpty())
-                channel = QStringLiteral("Канал № %1").arg(yalkAddress);
-            else if (!ytpChannel.isEmpty())
-                channel = QStringLiteral("Канал № %1").arg(ytpChannel);
-            else if (!yvpChannel.isEmpty())
-                channel = QStringLiteral("Канал № %1").arg(yvpChannel);
-            else
-                channel = text(value.title);
-
-            output << QStringLiteral("<p class=\"measurement\">") << channel.toHtmlEscaped()
-                   << QStringLiteral(": &nbsp; Значение = ") << reportMeasured(value)
-                   << QLatin1Char(' ') << html(value.unit);
-            const QString reference = attribute(value, "report_signal").isEmpty()
-                ? attribute(value, "v7_v") : attribute(value, "command_v");
-            if (!reference.isEmpty())
-                output << (attribute(value, "report_signal").isEmpty()
-                        ? QStringLiteral(" &nbsp; Вольтметр = ")
-                        : QStringLiteral(" &nbsp; Подано = "))
-                       << reference.toHtmlEscaped() << QStringLiteral(" В");
-            const QString error = reportError(value);
-            if (!error.isEmpty())
-                output << QStringLiteral(" &nbsp; Отклонение = ") << error.toHtmlEscaped();
-            output << QStringLiteral(" &nbsp; <strong>")
-                   << protocolVerdict(value.verdict).toHtmlEscaped()
-                   << QStringLiteral("</strong></p>\n");
-        }
-        writeProtocolSteps(output, step.children);
-        output << QStringLiteral("<p class=\"section-result\">")
-               << heading.toHtmlEscaped() << QStringLiteral(" &nbsp; <strong>")
-               << protocolVerdict(step.verdict).toHtmlEscaped()
-               << QStringLiteral("</strong></p></section>\n");
+void visitMeasurements(const std::vector<tu::StepRunResult>& steps,
+                       const std::function<void(const tu::StepRunResult&, const tu::MeasurementResult&)>& visitor)
+{
+    for (const auto& step : steps) {
+        for (const auto& measurement : step.measurements) visitor(step, measurement);
+        visitMeasurements(step.children, visitor);
     }
 }
 
-QString attributes(const tu::MeasurementResult& measurement)
+void section(QTextStream& out, const QString& title, const QString& tu = {})
 {
-    static const std::set<std::string> hidden{
-        "acceptance", "acceptance_verdict", "formal_override",
-        "manual_confirmation_applied", "raw_match", "raw_signal", "raw_verdict",
-        "report_deviation_percent", "report_measured_value", "report_signal",
-        "verdict_policy"};
-    const bool normalizedYvp = measurement.attributes.count("report_measured_value") != 0;
-    const bool normalizedContact = measurement.attributes.count("report_signal") != 0;
-    static const std::set<std::string> yvpEngineering{
-        "calculated_gain_mv_per_pc", "deviation_percent", "reference_gain_mv_per_pc",
-        "v7_output_vrms", "v7_output_vpp"};
-    static const std::set<std::string> contactEngineering{
-        "analog_code", "raw", "signal", "v7_v", "yalk_v"};
-    QStringList parts;
-    for (const auto& [key, value] : measurement.attributes) {
-        if (hidden.count(key) != 0) continue;
-        if (normalizedYvp && yvpEngineering.count(key) != 0) continue;
-        if (normalizedContact && contactEngineering.count(key) != 0) continue;
-        parts << QStringLiteral("%1=%2").arg(text(key), text(value));
+    out << QLatin1Char('\n') << title << QLatin1Char('\n');
+    if (!tu.isEmpty()) out << QStringLiteral("(пункт %1 ТУ)\n").arg(tu);
+    out << QLatin1Char('\n');
+}
+
+QString number(double value, int precision = 4)
+{
+    if (!std::isfinite(value)) return QStringLiteral("—");
+    QString result = QString::number(value, 'f', precision);
+    while (result.contains(QLatin1Char('.')) && result.endsWith(QLatin1Char('0'))) result.chop(1);
+    if (result.endsWith(QLatin1Char('.'))) result.chop(1);
+    return result;
+}
+
+void writeReadiness(QTextStream& out, const tu::ScenarioRunResult& run)
+{
+    const auto* step = findStep(run.steps, "readiness");
+    if (!step) return;
+    section(out, QStringLiteral("ПРОВЕРКА ГОТОВНОСТИ УБСИ ПОСЛЕ ПОДАЧИ НАПРЯЖЕНИЯ"),
+            QStringLiteral("1.1.4.13"));
+    out << QStringLiteral("Признак готовности: получение корректной телеметрической информации УБСИ.\n");
+    if (!step->measurements.empty()) {
+        const auto& value = step->measurements.front();
+        out << QStringLiteral("Признак готовности появился через %1 с. %2\n")
+            .arg(number(reportMeasured(value), 3), protocolVerdict(value.verdict));
     }
-    return parts.join(QStringLiteral("; "));
+    out << QStringLiteral("Допустимое время готовности: не более 30 с.\n")
+        << QStringLiteral("ПРОВЕРКА ГОТОВНОСТИ УБСИ    %1\n").arg(protocolVerdict(step->verdict));
+}
+
+void writePower(QTextStream& out, const tu::ScenarioRunResult& run)
+{
+    const auto* step = findStep(run.steps, "supply_range");
+    if (!step) return;
+
+    section(out, QStringLiteral("ПРОВЕРКА РАБОТОСПОСОБНОСТИ УБСИ ПРИ ИЗМЕНЕНИИ ПИТАЮЩЕГО НАПРЯЖЕНИЯ"),
+            QStringLiteral("1.1.4.3"));
+    for (const auto& value : step->measurements) {
+        const QString key = text(value.parameterKey);
+        const QString setpoint = attribute(value, "setpoint_v");
+        if (key == QStringLiteral("ubsi.supply.voltage")) {
+            out << QStringLiteral("АКИП %1 В    Фактическое напряжение: %2 В    %3\n")
+                .arg(setpoint, number(reportMeasured(value), 3), protocolVerdict(value.verdict));
+        } else if (key == QStringLiteral("ubsi.supply.data_alive")) {
+            out << QStringLiteral("АКИП %1 В    Телеметрическая информация принимается    %2\n")
+                .arg(setpoint, protocolVerdict(value.verdict));
+        } else if (key == QStringLiteral("ubsi.supply.survival_voltage")) {
+            out << QStringLiteral("АКИП %1 В    Фактическое напряжение: %2 В    Выдержка: %3 с    %4\n")
+                .arg(number(value.reference, 1), number(reportMeasured(value), 3),
+                     attribute(value, "duration_s"), protocolVerdict(value.verdict));
+        } else if (key == QStringLiteral("ubsi.supply.survived")) {
+            out << QStringLiteral("Восстановление на 27 В после выдержки    Телеметрическая информация принимается    %1\n")
+                .arg(protocolVerdict(value.verdict));
+        }
+    }
+    out << QStringLiteral("ПРОВЕРКА РАБОТОСПОСОБНОСТИ УБСИ ПРИ ИЗМЕНЕНИИ ПИТАЮЩЕГО НАПРЯЖЕНИЯ    %1\n")
+        .arg(protocolVerdict(step->verdict));
+
+    section(out, QStringLiteral("ПРОВЕРКА ТОКА ПОТРЕБЛЕНИЯ УБСИ"), QStringLiteral("1.1.4.5"));
+    for (const auto& value : step->measurements) {
+        if (value.parameterKey != "ubsi.supply.total_current") continue;
+        out << QStringLiteral("АКИП %1 В    Ток потребления: %2 А    %3\n")
+            .arg(attribute(value, "setpoint_v"), number(reportMeasured(value), 3),
+                 protocolVerdict(value.verdict));
+    }
+    out << QStringLiteral("ТОК ПОТРЕБЛЕНИЯ ПРИ 24...35 В < 0.400 А    %1\n")
+        .arg(protocolVerdict(step->verdict));
+}
+
+void writeYalkAnalog(QTextStream& out, const tu::ScenarioRunResult& run)
+{
+    const auto* step = findStep(run.steps, "yalk_channels");
+    if (!step) return;
+    section(out, QStringLiteral("ПРОВЕРКА ОПРОСА И ПРЕОБРАЗОВАНИЯ ПОТЕНЦИАЛЬНЫХ СИГНАЛОВ"),
+            QStringLiteral("1.1.4.1, 1.1.4.14"));
+    out << QStringLiteral("Оценка погрешности каналов ЯЛК-96.\n\n");
+    for (const auto& value : step->measurements) {
+        if (value.parameterKey.rfind("ubsi.yalk.channel.", 0) != 0) continue;
+        const QString err = reportError(value);
+        out << QStringLiteral("Канал %1   ЯЛК-96: %2 В   Вольтметр: %3 В")
+            .arg(attribute(value, "ulk_address"), number(reportMeasured(value), 4),
+                 attribute(value, "v7_v"));
+        if (!err.isEmpty()) out << QStringLiteral("   Погрешность: ") << err;
+        out << QStringLiteral("   %1\n").arg(protocolVerdict(value.verdict));
+    }
+    out << QStringLiteral("ПРОВЕРКА ПОТЕНЦИАЛЬНЫХ КАНАЛОВ ЯЛК-96    %1\n")
+        .arg(protocolVerdict(step->verdict));
+}
+
+void writeReference(QTextStream& out, const tu::ScenarioRunResult& run)
+{
+    const auto* step = findStep(run.steps, "yalk_reference_voltage");
+    if (!step) return;
+    section(out, QStringLiteral("ПРОВЕРКА ВЫСОКОСТАБИЛЬНОГО ЭТАЛОННОГО НАПРЯЖЕНИЯ"),
+            QStringLiteral("1.1.4.9"));
+    for (const auto& value : step->measurements) {
+        out << QStringLiteral("Эталонное напряжение: %1 В   Допуск: 6.170...6.230 В   %2\n")
+            .arg(number(reportMeasured(value), 4), protocolVerdict(value.verdict));
+    }
+    out << QStringLiteral("ПРОВЕРКА ВЫСОКОСТАБИЛЬНОГО ЭТАЛОННОГО НАПРЯЖЕНИЯ    %1\n")
+        .arg(protocolVerdict(step->verdict));
+}
+
+void writeOpenCircuit(QTextStream& out, const tu::ScenarioRunResult& run)
+{
+    const auto* step = findStep(run.steps, "yalk_initial");
+    if (!step) return;
+    section(out, QStringLiteral("ИДЕНТИФИКАЦИЯ ОБРЫВА АНАЛОГОВОГО ВХОДА НАПРЯЖЕНИЕМ НИЖЕ 0 В"),
+            QStringLiteral("1.1.4.10"));
+    for (const auto& value : step->measurements) {
+        if (value.parameterKey.rfind("ubsi.yalk.initial.", 0) != 0
+            && value.parameterKey.rfind("ubsi.yalk.open_circuit.", 0) != 0) continue;
+        out << QStringLiteral("Канал %1   ЯЛК-96: %2 В   %3\n")
+            .arg(attribute(value, "ulk_address"), number(reportMeasured(value), 4),
+                 protocolVerdict(value.verdict));
+    }
+    out << QStringLiteral("ИДЕНТИФИКАЦИЯ ОБРЫВА АНАЛОГОВЫХ ВХОДОВ    %1\n")
+        .arg(protocolVerdict(step->verdict));
+}
+
+void writeOverload(QTextStream& out, const tu::ScenarioRunResult& run)
+{
+    const auto* step = findStep(run.steps, "yalk_overload");
+    if (!step) return;
+    section(out, QStringLiteral("ПРОВЕРКА ЗАЩИТЫ ОТ ПЕРЕГРУЗОК ±12 В"),
+            QStringLiteral("1.1.4.11"));
+    QString previousTarget;
+    QString previousPolarity;
+    for (const auto& value : step->measurements) {
+        if (value.parameterKey.rfind("ubsi.yalk.overload.", 0) != 0) continue;
+        const QString target = attribute(value, "stressed_channel");
+        const QString polarity = attribute(value, "polarity");
+        if (target != previousTarget || polarity != previousPolarity) {
+            out << QLatin1Char('\n')
+                << QStringLiteral("Перегрузка канала %1, воздействие %2\n").arg(target, polarity);
+            previousTarget = target;
+            previousPolarity = polarity;
+        }
+        out << QStringLiteral("  Канал %1   Код до: %2   Код после: %3   Δкод: %4   %5\n")
+            .arg(attribute(value, "observed_channel"), attribute(value, "baseline_code"),
+                 attribute(value, "current_code"), attribute(value, "delta_code"),
+                 protocolVerdict(value.verdict));
+    }
+    out << QStringLiteral("\nПРОВЕРКА ЗАЩИТЫ ОТ ПЕРЕГРУЗОК ±12 В    %1\n")
+        .arg(protocolVerdict(step->verdict));
+}
+
+void writeContacts(QTextStream& out, const tu::ScenarioRunResult& run)
+{
+    const auto* step = findStep(run.steps, "yalk_channels");
+    if (!step) return;
+    section(out, QStringLiteral("ПРОВЕРКА ОПРОСА И ПРЕОБРАЗОВАНИЯ КОНТАКТНЫХ СИГНАЛОВ"),
+            QStringLiteral("1.1.4.1"));
+    out << QStringLiteral("Проверка контактных каналов ЯЛК-96.\n\n");
+    QString previousPoint;
+    for (const auto& value : step->measurements) {
+        if (value.parameterKey.rfind("ubsi.yalk.signal.", 0) != 0) continue;
+        const QString point = attribute(value, "command_v");
+        const QString expected = attribute(value, "expected_signal");
+        if (point != previousPoint) {
+            out << QStringLiteral("Состояние \"%1\" при %2 В\n").arg(expected, point);
+            previousPoint = point;
+        }
+        out << QStringLiteral("Канал %1   Вольтметр: %2 В   Состояние: %3   Срабатывание: %4\n")
+            .arg(attribute(value, "ulk_address"), attribute(value, "v7_v"),
+                 number(reportMeasured(value), 0), protocolVerdict(value.verdict));
+    }
+    out << QStringLiteral("\nПРОВЕРКА КОНТАКТНЫХ КАНАЛОВ ЯЛК-96    %1\n")
+        .arg(protocolVerdict(step->verdict));
+}
+
+void writeYtp(QTextStream& out, const tu::ScenarioRunResult& run)
+{
+    const auto* step = findStep(run.steps, "ytp_channels");
+    if (!step) return;
+    section(out, QStringLiteral("ПРОВЕРКА ОПРОСА И ПРЕОБРАЗОВАНИЯ ИНФОРМАЦИИ ОТ ТЕРМОМЕТРОВ СОПРОТИВЛЕНИЯ"),
+            QStringLiteral("1.1.4.1, 1.1.4.14"));
+    QString previousPoint;
+    for (const auto& value : step->measurements) {
+        const QString target = attribute(value, "target_resistance_ohm");
+        if (!target.isEmpty() && target != previousPoint) {
+            out << QLatin1Char('\n') << QStringLiteral("Установлено сопротивление Р4831: %1 Ом\n").arg(target);
+            previousPoint = target;
+        }
+        const QString channel = !attribute(value, "ytp_channel").isEmpty()
+            ? attribute(value, "ytp_channel") : attribute(value, "channel");
+        out << QStringLiteral("Канал %1   ЯТП: %2 %3")
+            .arg(channel, number(reportMeasured(value), 4), text(value.unit));
+        const QString err = reportError(value);
+        if (!err.isEmpty()) out << QStringLiteral("   Погрешность: ") << err;
+        out << QStringLiteral("   %1\n").arg(protocolVerdict(value.verdict));
+    }
+    out << QStringLiteral("\nПРОВЕРКА ТЕМПЕРАТУРНЫХ КАНАЛОВ ЯТП    %1\n")
+        .arg(protocolVerdict(step->verdict));
+}
+
+void writeYvp(QTextStream& out, const tu::ScenarioRunResult& run)
+{
+    const auto* step = findStep(run.steps, "yvp_channels");
+    if (!step) return;
+    section(out, QStringLiteral("ПРОВЕРКА ОПРОСА И ПРЕОБРАЗОВАНИЯ ИНФОРМАЦИИ ОТ ВИБРОДАТЧИКОВ"),
+            QStringLiteral("1.1.4.1, 1.1.4.7, 1.1.4.8, 1.1.4.14"));
+
+    out << QStringLiteral("Проверка АЧХ\n\n");
+    QString previousChannel;
+    for (const auto& value : step->measurements) {
+        if (rawEngineeringMeasurement(value)) continue;
+        const QString criterion = attribute(value, "criterion");
+        const QString frequency = attribute(value, "frequency_hz");
+        if (criterion != QStringLiteral("afc") && frequency.isEmpty()) continue;
+        if (criterion == QStringLiteral("gain")) continue;
+        QString channel = attribute(value, "yvp_channel");
+        if (channel.isEmpty()) channel = attribute(value, "channel");
+        if (channel != previousChannel) {
+            out << QStringLiteral("Проверка канала №%1\n").arg(channel);
+            previousChannel = channel;
+        }
+        out << QStringLiteral("Частота = %1 Гц   Значение = %2 %3")
+            .arg(frequency, number(reportMeasured(value), 4), text(value.unit));
+        const QString err = reportError(value);
+        if (!err.isEmpty()) out << QStringLiteral("   Отклонение = ") << err;
+        const QString attenuation = attribute(value, "attenuation_db");
+        if (!attenuation.isEmpty()) out << QStringLiteral("   Затухание = %1 дБ").arg(attenuation);
+        out << QStringLiteral("   %1\n").arg(protocolVerdict(value.verdict));
+    }
+    out << QStringLiteral("Проверка АЧХ каналов ячейки ЯВП    %1\n\n")
+        .arg(protocolVerdict(step->verdict));
+
+    out << QStringLiteral("Проверка коэффициентов усиления\n\n");
+    previousChannel.clear();
+    for (const auto& value : step->measurements) {
+        if (rawEngineeringMeasurement(value)) continue;
+        if (attribute(value, "criterion") != QStringLiteral("gain")
+            && value.parameterKey.rfind("ubsi.yvp.gain.", 0) != 0) continue;
+        QString channel = attribute(value, "yvp_channel");
+        if (channel.isEmpty()) channel = attribute(value, "channel");
+        if (channel != previousChannel) {
+            out << QStringLiteral("Проверка канала №%1\n").arg(channel);
+            previousChannel = channel;
+        }
+        out << QStringLiteral("%1 = %2 %3")
+            .arg(text(value.title), number(reportMeasured(value), 4), text(value.unit));
+        const QString err = reportError(value);
+        if (!err.isEmpty()) out << QStringLiteral("   Отклонение = ") << err;
+        out << QStringLiteral("   %1\n").arg(protocolVerdict(value.verdict));
+    }
+    out << QStringLiteral("ПРОВЕРКА ОПРОСА И ПРЕОБРАЗОВАНИЯ ИНФОРМАЦИИ ОТ ВИБРОДАТЧИКОВ    %1\n")
+        .arg(protocolVerdict(step->verdict));
+}
+
+void writeAccuracySummary(QTextStream& out, const tu::ScenarioRunResult& run)
+{
+    double analogMax = 0.0;
+    double temperatureMax = 0.0;
+    double fastMax = 0.0;
+    bool analogSeen = false;
+    bool temperatureSeen = false;
+    bool fastSeen = false;
+    visitMeasurements(run.steps, [&](const auto&, const auto& value) {
+        if (rawEngineeringMeasurement(value)) return;
+        const QString reduced = attribute(value, "reduced_error_percent");
+        const QString reportDeviation = attribute(value, "report_deviation_percent");
+        bool ok = false;
+        if (value.parameterKey.rfind("ubsi.yalk.channel.", 0) == 0 && !reduced.isEmpty()) {
+            const double current = std::abs(reduced.toDouble(&ok));
+            if (ok) { analogMax = std::max(analogMax, current); analogSeen = true; }
+        } else if (value.parameterKey.rfind("ubsi.ytp.", 0) == 0 && !reduced.isEmpty()) {
+            const double current = std::abs(reduced.toDouble(&ok));
+            if (ok) { temperatureMax = std::max(temperatureMax, current); temperatureSeen = true; }
+        } else if (value.parameterKey.rfind("ubsi.yvp.", 0) == 0 && !reportDeviation.isEmpty()) {
+            const double current = std::abs(reportDeviation.toDouble(&ok));
+            if (ok) { fastMax = std::max(fastMax, current); fastSeen = true; }
+        }
+    });
+
+    section(out, QStringLiteral("ПРОВЕРКА ПОГРЕШНОСТЕЙ ОТ ШКАЛЫ ИЗМЕРЕНИЙ"),
+            QStringLiteral("1.1.4.14"));
+    if (analogSeen)
+        out << QStringLiteral("Аналоговые параметры    максимальная погрешность %1 %    НОРМА\n")
+            .arg(number(analogMax, 3));
+    if (temperatureSeen)
+        out << QStringLiteral("Температурные параметры    максимальная погрешность %1 %    НОРМА\n")
+            .arg(number(temperatureMax, 3));
+    if (fastSeen)
+        out << QStringLiteral("Быстрые параметры    максимальная погрешность %1 %    НОРМА\n")
+            .arg(number(fastMax, 3));
 }
 
 } // namespace
@@ -256,51 +436,34 @@ QString writeTuReport(const tu::ScenarioRunResult& result)
 {
     const QString directory = reportDirectory();
     const QString base = QStringLiteral("TU_%1").arg(safeFilePart(text(result.runId)));
-    const QString htmlPath = QDir(directory).filePath(base + QStringLiteral(".html"));
-    const QString csvPath = QDir(directory).filePath(base + QStringLiteral(".csv"));
+    const QString path = QDir(directory).filePath(base + QStringLiteral(".txt"));
 
-    QSaveFile htmlFile(htmlPath);
-    if (!htmlFile.open(QIODevice::WriteOnly | QIODevice::Text))
-        throw std::runtime_error(QStringLiteral("Не удалось открыть отчёт: %1").arg(htmlPath).toUtf8().toStdString());
-    QTextStream out(&htmlFile);
+    QSaveFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
+        throw std::runtime_error(QStringLiteral("Не удалось открыть отчёт: %1").arg(path).toUtf8().toStdString());
+
+    QTextStream out(&file);
     out.setEncoding(QStringConverter::Utf8);
-    const QString reportTitle = QStringLiteral("Результаты проверки УБСИ №%1 в нормальных условиях")
-        .arg(text(result.objectSerial));
-    out << QStringLiteral("<!doctype html><html lang=\"ru\"><head><meta charset=\"utf-8\"><title>")
-        << reportTitle.toHtmlEscaped()
-        << QStringLiteral("</title><style>@page{size:A4;margin:18mm}body{font-family:'Times New Roman',serif;margin:28px;color:#111;font-size:14px;line-height:1.35}h1{text-align:center;font-size:20px;margin:0 0 24px}h2{font-size:15px;margin:24px 0 10px;text-transform:uppercase}p{margin:4px 0}.point{margin-top:12px}.measurement{padding-left:14px}.section-result{margin-top:10px}.final{font-size:17px;margin-top:30px;text-align:center}@media print{body{margin:0}}</style></head><body><h1>")
-        << reportTitle.toHtmlEscaped() << QStringLiteral("</h1>")
-        << QStringLiteral("<p>Заводской номер: ") << html(result.objectSerial) << QStringLiteral(".</p>")
-        << QStringLiteral("<p>Начало: ") << instant(result.startedAt).toHtmlEscaped()
-        << QStringLiteral(". Окончание: ") << instant(result.finishedAt).toHtmlEscaped()
-        << QStringLiteral(".</p>");
-    writeProtocolSteps(out, result.steps);
-    out << QStringLiteral("<p class=\"final\">") << reportTitle.toHtmlEscaped()
-        << QStringLiteral(" &nbsp; <strong>")
-        << protocolVerdict(result.verdict).toHtmlEscaped()
-        << QStringLiteral("</strong></p></body></html>");
-    if (!htmlFile.commit())
-        throw std::runtime_error(QStringLiteral("Не удалось сохранить отчёт: %1").arg(htmlPath).toUtf8().toStdString());
+    out << QStringLiteral("Дата: ") << reportDate(result.finishedAt) << QLatin1Char('\n')
+        << QStringLiteral("Оператор: __OPERATOR__\n\n")
+        << QStringLiteral("РЕЗУЛЬТАТЫ ПРОВЕРКИ УБСИ В НОРМАЛЬНЫХ УСЛОВИЯХ\n");
 
-    QSaveFile csvFile(csvPath);
-    if (!csvFile.open(QIODevice::WriteOnly | QIODevice::Text))
-        throw std::runtime_error(QStringLiteral("Не удалось открыть CSV: %1").arg(csvPath).toUtf8().toStdString());
-    QTextStream csv(&csvFile);
-    csv.setEncoding(QStringConverter::Utf8);
-    csv << QStringLiteral("Этап;Параметр;Наименование;Измерено;Единица;Нижняя граница;Верхняя граница;Результат;Атрибуты\n");
-    visitMeasurements(result.steps, [&csv](const auto& step, const auto& measurement) {
-        if (isRawEngineeringMeasurement(measurement)) return;
-        csv << csvCell(text(step.nodeId)) << QLatin1Char(';')
-            << csvCell(text(measurement.parameterKey)) << QLatin1Char(';')
-            << csvCell(text(measurement.title)) << QLatin1Char(';')
-            << reportMeasured(measurement) << QLatin1Char(';')
-            << csvCell(text(measurement.unit)) << QLatin1Char(';')
-            << measurement.lowerLimit << QLatin1Char(';') << measurement.upperLimit << QLatin1Char(';')
-            << csvCell(protocolVerdict(measurement.verdict)) << QLatin1Char(';')
-            << csvCell(attributes(measurement)) << QLatin1Char('\n');
-    });
-    if (!csvFile.commit())
-        throw std::runtime_error(QStringLiteral("Не удалось сохранить CSV: %1").arg(csvPath).toUtf8().toStdString());
+    writeReadiness(out, result);
+    writePower(out, result);
+    writeYalkAnalog(out, result);
+    writeReference(out, result);
+    writeOpenCircuit(out, result);
+    writeOverload(out, result);
+    writeAccuracySummary(out, result);
+    writeContacts(out, result);
+    writeYtp(out, result);
+    writeYvp(out, result);
 
-    return htmlPath;
+    out << QLatin1Char('\n')
+        << QStringLiteral("РЕЗУЛЬТАТЫ ПРОВЕРКИ УБСИ В НОРМАЛЬНЫХ УСЛОВИЯХ    ")
+        << protocolVerdict(result.verdict) << QLatin1Char('\n');
+
+    if (!file.commit())
+        throw std::runtime_error(QStringLiteral("Не удалось сохранить отчёт: %1").arg(path).toUtf8().toStdString());
+    return path;
 }
