@@ -129,7 +129,7 @@ QString sectionText(Procedure procedure)
     case Procedure::Preparation: return QStringLiteral("Подготовка");
     case Procedure::Power: return QStringLiteral("Питание");
     case Procedure::YalkInitial: return QStringLiteral("Обрыв / исходное состояние");
-    case Procedure::YalkAnalog: return QStringLiteral("Аналоговые каналы");
+    case Procedure::YalkAnalog: return QStringLiteral("Аналоговые и контактные каналы");
     case Procedure::YalkContact: return QStringLiteral("Контактные сигналы");
     case Procedure::YalkOverload: return QStringLiteral("Перегрузка ±12 В");
     case Procedure::YalkReference: return QStringLiteral("Эталон 6,2 В");
@@ -198,7 +198,8 @@ QString activeStepForNode(const QString& node, Procedure procedure)
         return QStringLiteral("Инициализация потока");
     if (node.contains(QStringLiteral("calibration"))) return QStringLiteral("Калибровка 97 / 99");
     if (node.contains(QStringLiteral("initial"))) return QStringLiteral("Обрыв / исходное состояние");
-    if (node == QStringLiteral("yalk_channels")) return QStringLiteral("Аналоговые каналы");
+    if (node == QStringLiteral("yalk_channels"))
+        return QStringLiteral("Аналоговые + контактные");
     if (node.contains(QStringLiteral("contact"))) return QStringLiteral("Контактные сигналы");
     if (node.contains(QStringLiteral("overload"))) return QStringLiteral("Перегрузка ±12 В");
     if (node.contains(QStringLiteral("reference"))) return QStringLiteral("Эталон 6,2 В");
@@ -846,7 +847,7 @@ struct TestPage::Impl
         analogContext = heading(QStringLiteral("ЯЛК-96 · аналоговые каналы"), 18, analog);
         analogLayout->addWidget(analogContext);
         analogLayout->addWidget(muted(
-            QStringLiteral("Проверяем адреса 1–28, 32–43, 45–70, 74–87 в точках 0 / 3,1 / 6,2 В. Видны В7, измерение ЯЛК, min/max и приведённая погрешность; допуск ±0,5 % диапазона."), analog));
+            QStringLiteral("Единый проход: аналоговые точки 0 / 3,1 / 6,2 В и контактные точки 0 / 0,8 / 2,5 В. Видны В7, ЯЛК, min/max, погрешность и контактный бит 0/1 над каждым столбцом."), analog));
         yalkPlane = new ChannelPlane(ChannelPlane::Kind::Yalk, analog);
         analogLayout->addWidget(yalkPlane, 1);
         legacyAnalogProxy = new QWidget(analog);
@@ -1410,8 +1411,7 @@ struct TestPage::Impl
                 QStringLiteral("Инициализация потока"),
                 QStringLiteral("Калибровка 97 / 99"),
                 QStringLiteral("Обрыв / исходное состояние"),
-                QStringLiteral("Аналоговые каналы"),
-                QStringLiteral("Контактные сигналы"),
+                QStringLiteral("Аналоговые + контактные"),
                 QStringLiteral("Перегрузка ±12 В"),
                 QStringLiteral("Эталон 6,2 В"),
                 QStringLiteral("Безопасное завершение")
@@ -1469,19 +1469,26 @@ struct TestPage::Impl
         legacyAnalogProxy->setProperty("renderedChannelCount", yalkPlane->property("renderedChannelCount"));
         legacyAnalogProxy->setProperty("warningChannelCount", yalkPlane->property("warningChannelCount"));
         double analogError = std::numeric_limits<double>::quiet_NaN();
+        int contactLogic = -1;
+        int expectedContactLogic = -1;
         for (const auto& channel : adapter.yalkAnalog.channels) {
             if (channel.physicalAddress == adapter.yalkAnalog.stimulatedChannel) {
                 analogError = channel.reducedErrorPercent;
+                contactLogic = channel.contactLogic;
+                expectedContactLogic = channel.expectedContactLogic;
                 break;
             }
         }
         const QString analogErrorText = std::isfinite(analogError)
             ? QString::number(analogError, 'f', 3) : QStringLiteral("—");
+        const QString contactText = contactLogic >= 0
+            ? QStringLiteral(" · контакт %1, ожидается %2").arg(contactLogic).arg(expectedContactLogic)
+            : QStringLiteral(" · контакт не проверяется");
         analogContext->setText(QStringLiteral("ЯЛК-96 · точка %1 В · В7 %2 В · канал %3 · погрешность %4 %")
             .arg(adapter.yalkAnalog.pointV, 0, 'f', 2)
             .arg(adapter.yalkAnalog.actualReferenceV7, 0, 'f', 3)
             .arg(adapter.yalkAnalog.stimulatedChannel)
-            .arg(analogErrorText));
+            .arg(analogErrorText) + contactText);
 
         contactPlane->setFrame(adapter.yalkContact, contactMeasurements);
         contactsContext->setText(QStringLiteral("ЯЛК-96 · %1 В · ожидаемая логика %2")
@@ -1966,7 +1973,9 @@ void TestPage::setRunEvent(const tu::RunEvent& event)
     impl_->adapter.apply(event);
     if (stageName == QStringLiteral("START") || stageName == QStringLiteral("RETRY")
         || stageName == QStringLiteral("SKIP") || stageName == QStringLiteral("SKIPPED")
-        || stageName == QStringLiteral("OPERATOR") || stageName == QStringLiteral("FINISH")) {
+        || stageName == QStringLiteral("OPERATOR") || stageName == QStringLiteral("FINISH")
+        || stageName == QStringLiteral("ISD_PAUSE")
+        || stageName == QStringLiteral("ISD_RESUMED")) {
         impl_->adapter.run.progressText = QString::fromStdString(event.message);
     }
 

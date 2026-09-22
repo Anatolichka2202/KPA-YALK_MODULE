@@ -163,6 +163,9 @@ struct AnalogChannel {
     double maximumV = std::numeric_limits<double>::quiet_NaN();
     double reducedErrorPercent = std::numeric_limits<double>::quiet_NaN();
     VerificationState verification = VerificationState::Pending;
+    int contactLogic = -1;
+    int expectedContactLogic = -1;
+    VerificationState contactVerification = VerificationState::Pending;
     bool warning = false;
 };
 
@@ -282,6 +285,16 @@ public:
     {
         const QString node = QString::fromStdString(event.nodeId);
         const QString stage = QString::fromStdString(event.stage);
+        if (stage == QStringLiteral("ISD_PAUSE")) {
+            run.runtimeState = RuntimeState::WaitingOperator;
+            run.progressText = QString::fromStdString(event.message);
+            return;
+        }
+        if (stage == QStringLiteral("ISD_RESUMED")) {
+            run.runtimeState = RuntimeState::Running;
+            run.progressText = QString::fromStdString(event.message);
+            return;
+        }
         run.runtimeState = RuntimeState::Running;
         mapProcedure(node, stage);
 
@@ -305,8 +318,11 @@ public:
         if (node.contains(QStringLiteral("yalk_initial")) || stage == QStringLiteral("YALK_INITIAL"))
             applyYalkInitial(event);
         if (node == QStringLiteral("yalk_channels") && stage == QStringLiteral("MEASUREMENT")) {
-            applyYalkAnalog(event);
-            if (!eventValue(event, "signal").isEmpty()) applyYalkContact(event);
+            if (eventValue(event, "signal").isEmpty()) {
+                applyYalkAnalog(event);
+            } else {
+                applyYalkContact(event);
+            }
         }
         if (node.contains(QStringLiteral("yalk_contact")) && stage == QStringLiteral("MEASUREMENT"))
             applyYalkContact(event);
@@ -478,6 +494,9 @@ private:
         channel.maximumV = maximum;
         channel.verification = verificationFromVerdict(event.verdict);
         channel.reducedErrorPercent = eventDouble(event, "reduced_error_percent");
+        channel.contactLogic = -1;
+        channel.expectedContactLogic = -1;
+        channel.contactVerification = VerificationState::Pending;
         channel.warning = false;
         yalkAnalog.pointV = eventDouble(event, "command_v");
         yalkAnalog.actualReferenceV7 = eventDouble(event, "v7_v");
@@ -509,6 +528,16 @@ private:
         yalkContact.actualReferenceV7 = eventDouble(event, "v7_v");
         yalkContact.expectedLogic = eventInt(event, "expected_signal", yalkContact.pointV >= 2.0 ? 1 : 0);
         yalkContact.stimulatedChannel = address;
+        auto& combined = yalkAnalog.channels[index];
+        combined.currentV = channel.currentV;
+        combined.minimumV = channel.minimumV;
+        combined.maximumV = channel.maximumV;
+        combined.contactLogic = channel.logic;
+        combined.expectedContactLogic = yalkContact.expectedLogic;
+        combined.contactVerification = channel.verification;
+        yalkAnalog.pointV = yalkContact.pointV;
+        yalkAnalog.actualReferenceV7 = yalkContact.actualReferenceV7;
+        yalkAnalog.stimulatedChannel = address;
         run.progressText = QStringLiteral("Точка %1 В · канал %2 / 80")
             .arg(yalkContact.pointV, 0, 'f', 1).arg(index + 1);
     }

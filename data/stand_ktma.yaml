@@ -30,8 +30,10 @@ isd:
   host: 192.168.0.101
   port: 80
   timeout_ms: 1500
-  # type=4 — длинный startup all-off sweep. Только одна попытка.
   service_timeout_ms: 10000
+  # Не более трёх попыток одной команды, затем пауза для перезапуска ИСД.
+  request_attempts: 3
+  retry_delay_ms: 100
 
 v7:
   resource: USB[0-9]*::0x164E::0x0DAD::?*INSTR

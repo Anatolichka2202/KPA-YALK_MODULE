@@ -56,10 +56,14 @@ int main(int argc, char** argv)
 
     auto hardware = std::make_shared<tu::hardware::StandHardware>(
         tu::hardware::loadStandConfig(argv[1]));
-    hardware->isd().setTraceSink([&output](const std::string& path, int status,
-                                            const std::string& response) {
-        writeLine(output, "ISD path=" + path + " http_status=" + std::to_string(status)
-            + " response=" + compact(response));
+    hardware->isd().setTraceSink([&output](const tu::hardware::IsdRequestTrace& trace) {
+        writeLine(output, "ISD request=" + std::to_string(trace.sequence)
+            + " type=" + std::to_string(trace.type)
+            + " num=" + std::to_string(trace.channel)
+            + " latency_ms=" + std::to_string(trace.latencyMilliseconds)
+            + " http_status=" + std::to_string(trace.httpStatus)
+            + " timeout=" + (trace.timeout ? "true" : "false")
+            + " path=" + trace.path + " response=" + compact(trace.response));
     });
 
     tu::ScenarioEngine engine;

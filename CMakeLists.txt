@@ -154,4 +154,20 @@ if(BUILD_TESTING)
     add_test(NAME tu.report COMMAND ${CMAKE_COMMAND} -E env
         "PATH=$<TARGET_FILE_DIR:Qt6::Core>;$ENV{PATH}"
         $<TARGET_FILE:tu_report_test>)
+
+    add_executable(ubsi_ui_model_test tests/ubsi_ui_model_test.cpp)
+    target_include_directories(ubsi_ui_model_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(ubsi_ui_model_test PRIVATE tu_ui Qt6::Core)
+    add_test(NAME tu.ui_model COMMAND ${CMAKE_COMMAND} -E env
+        "PATH=$<TARGET_FILE_DIR:Qt6::Core>;$ENV{PATH}"
+        $<TARGET_FILE:ubsi_ui_model_test>)
+
+    add_executable(isd_recovery_test tests/isd_recovery_test.cpp)
+    target_include_directories(isd_recovery_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(isd_recovery_test PRIVATE tu_hardware Qt6::Core Qt6::Network)
+    target_compile_definitions(isd_recovery_test PRIVATE
+        TU_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+    add_test(NAME tu.isd_recovery COMMAND ${CMAKE_COMMAND} -E env
+        "PATH=$<TARGET_FILE_DIR:Qt6::Network>;$ENV{PATH}"
+        $<TARGET_FILE:isd_recovery_test>)
 endif()

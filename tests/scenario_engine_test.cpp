@@ -109,6 +109,8 @@ int main()
                 "addressed baseline type=3 map changed");
         require(argument(baseline, "analog_type1_contacts") == "1-88",
                 "addressed baseline type=1 map changed");
+        require(argument(baseline, "isd_command_gap_ms") == "30",
+                "addressed baseline must pace ISD commands by 30 ms");
 
         const auto& yalk = stepById(scenario, "yalk_channels");
         require(yalk.procedure == "yalk.combined", "YALK combined procedure changed");

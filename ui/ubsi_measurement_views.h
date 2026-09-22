@@ -448,6 +448,9 @@ protected:
             double maximum;
             double errorPercent;
             VerificationState state;
+            int contactLogic;
+            int expectedContactLogic;
+            VerificationState contactState;
             bool warning;
         };
         QVector<Value> values;
@@ -463,7 +466,9 @@ protected:
                 values.push_back({channel.physicalAddress, channel.currentV,
                                   channel.minimumV, channel.maximumV,
                                   channel.reducedErrorPercent,
-                                  channel.verification, channel.warning});
+                                  channel.verification,
+                                  channel.contactLogic, channel.expectedContactLogic,
+                                  channel.contactVerification, channel.warning});
             }
         } else if (kind_ == Kind::Ytp) {
             unit = QStringLiteral("Ом");
@@ -473,7 +478,8 @@ protected:
                 values.push_back({channel.channel, channel.currentOhm,
                                   channel.minimumOhm, channel.maximumOhm,
                                   std::numeric_limits<double>::quiet_NaN(),
-                                  channel.verification, false});
+                                  channel.verification, -1, -1,
+                                  VerificationState::Pending, false});
             }
         } else {
             unit = QStringLiteral("В");
@@ -485,6 +491,7 @@ protected:
                                   std::numeric_limits<double>::quiet_NaN(),
                                   std::numeric_limits<double>::quiet_NaN(),
                                   std::numeric_limits<double>::quiet_NaN(),
+                                  VerificationState::Pending, -1, -1,
                                   VerificationState::Pending, false});
             }
         }
@@ -577,8 +584,16 @@ protected:
                     p.drawLine(QPointF(x + cell / 2, yFor(value.minimum)),
                                QPointF(x + cell / 2, yFor(value.maximum)));
                 }
+                if (kind_ == Kind::Yalk && value.contactLogic >= 0) {
+                    const bool contactOk = value.contactState != VerificationState::NeNorma
+                        && value.contactState != VerificationState::Error;
+                    p.setPen(contactOk ? palette::green : palette::red);
+                    p.setFont(QFont(QStringLiteral("Segoe UI"), 7, QFont::Bold));
+                    p.drawText(QRectF(x, area.top() + 2, cell, 13), Qt::AlignCenter,
+                               QString::number(value.contactLogic));
+                }
                 hits_.push_back({hit, value.key,
-                    QStringLiteral("Канал %1\n%2 %3\nmin…max %4…%5%6%7")
+                    QStringLiteral("Канал %1\n%2 %3\nmin…max %4…%5%6%7%8")
                         .arg(value.key)
                         .arg(value.value, 0, 'f', unit == QStringLiteral("Ом") ? 2 : 4)
                         .arg(unit)
@@ -586,6 +601,10 @@ protected:
                         .arg(value.maximum, 0, 'f', unit == QStringLiteral("Ом") ? 2 : 4)
                         .arg(std::isfinite(value.errorPercent)
                             ? QStringLiteral("\nПогрешность %1 %").arg(value.errorPercent, 0, 'f', 3)
+                            : QString())
+                        .arg(value.contactLogic >= 0
+                            ? QStringLiteral("\nКонтактный бит %1, ожидается %2")
+                                .arg(value.contactLogic).arg(value.expectedContactLogic)
                             : QString())
                         .arg(pinned ? QStringLiteral("\nзакреплён") : QString())});
             }

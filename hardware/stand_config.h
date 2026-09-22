@@ -33,6 +33,8 @@ struct IsdConfig {
     std::uint16_t port = 80;
     unsigned timeoutMilliseconds = 1500;
     unsigned serviceTimeoutMilliseconds = 10000;
+    unsigned requestAttempts = 3;
+    unsigned retryDelayMilliseconds = 100;
 };
 
 struct V7Config {

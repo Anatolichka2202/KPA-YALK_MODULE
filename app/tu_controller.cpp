@@ -17,8 +17,10 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QInputDialog>
+#include <QMessageBox>
 #include <QMetaObject>
 #include <QPointer>
+#include <QPushButton>
 #include <QThread>
 #include <QWidget>
 
@@ -210,7 +212,15 @@ TuController::~TuController()
         runThread_->wait();
         runThread_ = nullptr;
     }
-    if (hardware_) hardware_->safeStop();
+    if (hardware_) {
+        // StandHardware is destroyed after the controller's telemetry mutexes.
+        // Remove callbacks that capture this before its destructor performs a
+        // final best-effort safeStop.
+        hardware_->isd().setTraceSink({});
+        hardware_->isd().setRecoveryHandler({});
+        hardware_->isd().setRecoveryRestoredSink({});
+        hardware_->safeStop();
+    }
 }
 
 void TuController::registerProcedure(std::string id, tu::ProcedureFunction procedure)
@@ -250,6 +260,98 @@ void TuController::loadHardware()
         page_->setEquipmentConnection(kGeneratorEquipmentCode,
             QString::fromStdString(config.generator.resourceExpressions.front()));
         hardware_ = std::make_shared<tu::hardware::StandHardware>(config);
+
+        hardware_->isd().setTraceSink([this](const tu::hardware::IsdRequestTrace& trace) {
+            std::string node = "isd";
+            {
+                std::lock_guard<std::mutex> lock(liveStateMutex_);
+                if (!liveNode_.empty()) node = liveNode_;
+            }
+            const std::string status = trace.timeout ? "TIMEOUT"
+                : (!trace.accepted ? "ОШИБКА ИСД"
+                    : (trace.httpStatus >= 200 && trace.httpStatus < 300
+                        ? "OK" : "HTTP " + std::to_string(trace.httpStatus)));
+            const tu::RunEvent event{
+                std::chrono::system_clock::now(), node, "ISD_HTTP",
+                "ИСД запрос " + std::to_string(trace.sequence)
+                    + " · type=" + std::to_string(trace.type)
+                    + " · num=" + std::to_string(trace.channel)
+                    + " · " + status
+                    + " · " + std::to_string(trace.latencyMilliseconds) + " мс",
+                tu::RunVerdict::NotRun,
+                {{"sequence", std::to_string(trace.sequence)},
+                 {"type", std::to_string(trace.type)},
+                 {"num", std::to_string(trace.channel)},
+                 {"latency_ms", std::to_string(trace.latencyMilliseconds)},
+                 {"http_status", std::to_string(trace.httpStatus)},
+                 {"timeout", trace.timeout ? "true" : "false"},
+                 {"accepted", trace.accepted ? "true" : "false"},
+                 {"response", trace.response}}};
+            const QPointer<RunJournalOverlay> traceJournal(journal_);
+            QMetaObject::invokeMethod(page_, [traceJournal, event] {
+                if (traceJournal) traceJournal->appendRunEvent(event);
+            }, Qt::QueuedConnection);
+        });
+
+        hardware_->isd().setRecoveryHandler([this](const std::string& reason) {
+            bool continueRun = false;
+            const auto showRecovery = [this, &continueRun, reason] {
+                std::string node = "isd_recovery";
+                {
+                    std::lock_guard<std::mutex> lock(liveStateMutex_);
+                    if (!liveNode_.empty()) node = liveNode_;
+                }
+                const tu::RunEvent event{
+                    std::chrono::system_clock::now(), node, "ISD_PAUSE",
+                    "ИСД не отвечает. Перезапустите ИСД и продолжите проверку.",
+                    tu::RunVerdict::NotRun, {{"reason", reason}}};
+                page_->setEquipmentChecking(kIsdEquipmentCode,
+                    QStringLiteral("Проверка приостановлена: перезапустите ИСД"));
+                page_->setRunEvent(event);
+                if (journal_) journal_->appendRunEvent(event);
+
+                QMessageBox message(
+                    QMessageBox::Critical,
+                    QStringLiteral("ИСД не отвечает"),
+                    QStringLiteral("Перезапустите ИСД, дождитесь его загрузки и нажмите «Продолжить».\n\n"
+                                   "Программа восстановит запомненное адресное состояние. "
+                                   "Полный сброс ИСД не выполняется."),
+                    QMessageBox::NoButton, page_);
+                message.setInformativeText(QString::fromUtf8(reason.c_str()));
+                auto* continueButton = message.addButton(
+                    QStringLiteral("Продолжить"), QMessageBox::AcceptRole);
+                message.addButton(QStringLiteral("Остановить проверку"),
+                                  QMessageBox::RejectRole);
+                message.setDefaultButton(qobject_cast<QPushButton*>(continueButton));
+                message.exec();
+                continueRun = message.clickedButton() == continueButton;
+                if (!continueRun) engine_.requestStop();
+            };
+
+            if (QThread::currentThread() == page_->thread()) showRecovery();
+            else QMetaObject::invokeMethod(page_, showRecovery, Qt::BlockingQueuedConnection);
+            return continueRun;
+        });
+        hardware_->isd().setRecoveryRestoredSink([this] {
+            std::string node = "isd_recovery";
+            {
+                std::lock_guard<std::mutex> lock(liveStateMutex_);
+                if (!liveNode_.empty()) node = liveNode_;
+            }
+            const tu::RunEvent event{
+                std::chrono::system_clock::now(), node, "ISD_RESUMED",
+                "Связь с ИСД восстановлена; адресное состояние восстановлено",
+                tu::RunVerdict::NotRun, {}};
+            const QPointer<TestPage> recoveryPage(page_);
+            const QPointer<RunJournalOverlay> recoveryJournal(journal_);
+            QMetaObject::invokeMethod(page_, [recoveryPage, recoveryJournal, event] {
+                if (!recoveryPage) return;
+                recoveryPage->setEquipmentStatus(kIsdEquipmentCode, true,
+                    QStringLiteral("Связь восстановлена · адресное состояние восстановлено"));
+                recoveryPage->setRunEvent(event);
+                if (recoveryJournal) recoveryJournal->appendRunEvent(event);
+            }, Qt::QueuedConnection);
+        });
 
         // reference204 is received continuously by YalkReferenceLink. The HMI
         // gets a throttled 20 Hz copy, while procedure snapshots use their own

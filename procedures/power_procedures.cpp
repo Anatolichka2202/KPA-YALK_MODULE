@@ -362,8 +362,11 @@ ProcedureResult addressedBaseline(const ScenarioStep& step, ProcedureContext& co
     const auto type2Contacts = addresses(step, "type2_contacts");
     const auto type3Contacts = addresses(step, "type3_contacts");
     const auto analogContacts = addresses(step, "analog_type1_contacts");
+    const unsigned commandGap = natural(step, "isd_command_gap_ms", 30);
     if (type2Contacts.empty() || type3Contacts.empty() || analogContacts.empty())
         throw std::invalid_argument("Для стартовой очистки ИСД должны быть заданы все адресные списки");
+    if (commandGap < 20 || commandGap > 50)
+        throw std::invalid_argument("Пауза между командами ИСД должна быть 20..50 мс");
 
     auto publish = [&](const std::string& action, unsigned completed, unsigned total) {
         if (!context.eventSink) return;
@@ -391,18 +394,21 @@ ProcedureResult addressedBaseline(const ScenarioStep& step, ProcedureContext& co
             stand->isd().setSwitch(3, contact, false);
             publish("ИСД type=3, канал " + std::to_string(contact) + " выключен",
                     ++completed, total);
+            checkedWait(context, std::chrono::milliseconds(commandGap));
         }
         for (const unsigned contact : type2Contacts) {
             context.checkpoint();
             stand->isd().setSwitch(2, contact, false);
             publish("ИСД type=2, канал " + std::to_string(contact) + " выключен",
                     ++completed, total);
+            checkedWait(context, std::chrono::milliseconds(commandGap));
         }
         for (const unsigned contact : analogContacts) {
             context.checkpoint();
             stand->isd().setAnalog(contact, 0, false);
             publish("ИСД type=1, канал " + std::to_string(contact) + " выключен",
                     ++completed, total);
+            checkedWait(context, std::chrono::milliseconds(commandGap));
         }
 
         MeasurementResult value;
@@ -418,6 +424,7 @@ ProcedureResult addressedBaseline(const ScenarioStep& step, ProcedureContext& co
         value.attributes = {{"type2_contacts", argument(step, "type2_contacts")},
             {"type3_contacts", argument(step, "type3_contacts")},
             {"analog_type1_contacts", argument(step, "analog_type1_contacts")},
+            {"isd_command_gap_ms", std::to_string(commandGap)},
             {"global_reset_used", "false"}};
         return {RunVerdict::Ok,
             "Rigol и используемые маршруты ИСД приведены в исходное состояние адресными командами",

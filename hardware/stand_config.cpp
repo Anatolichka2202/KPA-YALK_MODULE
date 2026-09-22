@@ -75,6 +75,8 @@ StandConfig loadStandConfig(const std::filesystem::path& path)
     config.isd.timeoutMilliseconds = optional<unsigned>(isd, "timeout_ms", 1500);
     config.isd.serviceTimeoutMilliseconds = optional<unsigned>(
         isd, "service_timeout_ms", 10000);
+    config.isd.requestAttempts = optional<unsigned>(isd, "request_attempts", 3);
+    config.isd.retryDelayMilliseconds = optional<unsigned>(isd, "retry_delay_ms", 100);
 
     config.v7.resourceExpressions = resources(v7);
     config.v7.timeoutMilliseconds = optional<unsigned>(v7, "timeout_ms", 5000);
@@ -96,6 +98,9 @@ StandConfig loadStandConfig(const std::filesystem::path& path)
     if (config.isd.host.empty() || !config.isd.port || !config.isd.timeoutMilliseconds
         || !config.isd.serviceTimeoutMilliseconds)
         throw std::runtime_error("Некорректная конфигурация ИСД");
+    if (config.isd.requestAttempts < 1 || config.isd.requestAttempts > 3
+        || config.isd.retryDelayMilliseconds > 1000)
+        throw std::runtime_error("Некорректные параметры повторных запросов ИСД");
 
     return config;
 }

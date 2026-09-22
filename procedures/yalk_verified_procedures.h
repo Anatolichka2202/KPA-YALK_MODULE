@@ -8,9 +8,9 @@ namespace tu::hardware { class StandHardware; }
 
 namespace tu::procedures {
 
-// Procedures kept separate from the historical combined YALK/contact path.
-// They contain only checks that are currently supported by the TU and the
-// confirmed 80-channel analog map.
+// Процедуры отделены от исторически сложившегося совмещенного пути YALK/contact.
+// Они содержат только те проверки, которые в настоящее время поддерживаются TU
+// и подтвержденной 80-канальной аналоговой картой.
 void registerVerifiedYalkProcedures(
     ScenarioEngine& engine,
     std::shared_ptr<hardware::StandHardware> hardware);

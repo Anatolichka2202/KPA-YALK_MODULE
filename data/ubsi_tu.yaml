@@ -58,6 +58,8 @@ steps:
       type2_contacts: 1-40
       type3_contacts: 1-88,95-96
       analog_type1_contacts: 1-88
+      # Не перегружаем HTTP-сервис ИСД серией из 218 запросов без пауз.
+      isd_command_gap_ms: 30
 
   - id: yalk_stream
     title: Запуск рабочего потока ЯЛК ROKT reference204

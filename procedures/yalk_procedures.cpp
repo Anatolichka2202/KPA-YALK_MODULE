@@ -542,7 +542,7 @@ ProcedureResult combinedSweep(const ScenarioStep& step, ProcedureContext& contex
                         {"sequence_index",std::to_string(sequenceIndex + 1)}, {"sequence_count",std::to_string(points.size())},
                         {"scan_order","channel_major_combined"}, {"v7_v",std::to_string(reference)},
                         {"yalk_v",std::to_string(volts)}, {"raw",std::to_string(reading.rawMean)},
-                        {"analog_code",std::to_string(reading.codeMean)}, {"signal",reading.contact ? "1" : "0"}};
+                        {"analog_code",std::to_string(reading.codeMean)}};
                 };
                 if (analogPoint) {
                     ++analogIndex;
@@ -570,6 +570,7 @@ ProcedureResult combinedSweep(const ScenarioStep& step, ProcedureContext& contex
                     signal.verdict = decision.acceptanceVerdict;
                     signal.message = signal.verdict == RunVerdict::Ok ? "Норма" : "Значение вне допуска";
                     signal.attributes = attributes(contactIndex, contactPoints.size());
+                    signal.attributes["signal"] = reading.contact ? "1" : "0";
                     signal.attributes["raw_signal"] = decision.rawSignal ? "1" : "0";
                     signal.attributes["expected_signal"] = decision.expectedSignal ? "1" : "0";
                     signal.attributes["raw_match"] = decision.rawMatch ? "true" : "false";
