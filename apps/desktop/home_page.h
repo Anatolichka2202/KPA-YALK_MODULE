@@ -10,6 +10,10 @@ public:
     explicit HomePage(QWidget* parent = nullptr);
 
 signals:
+    // Универсальный контур: свободная проверка не регистрируется в поставке.
+    void genericCheckRequested();
+
+    // Специализированная поставка КТМА.
     void productionRequested();
     void tuRequested();
     void administrationRequested();

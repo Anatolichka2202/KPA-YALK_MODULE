@@ -1,41 +1,41 @@
 #include <QApplication>
-#include "ktma_mainwindow.h"
 #include <QFile>
 #include <QPalette>
+#include <QStatusBar>
 #include <QStyleFactory>
+
+#include "universal_mainwindow.h"
+
 int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
 
-    // Единая Fusion-палитра не даёт системной светлой теме Windows
-    // просачиваться в диалоги и составные виджеты поверх тёмного QSS.
     app.setStyle(QStyleFactory::create(QStringLiteral("Fusion")));
     QPalette palette;
-    palette.setColor(QPalette::Window, QColor("#14171c"));
-    palette.setColor(QPalette::WindowText, QColor("#e6eaf0"));
-    palette.setColor(QPalette::Base, QColor("#0e1115"));
-    palette.setColor(QPalette::AlternateBase, QColor("#1c2128"));
-    palette.setColor(QPalette::ToolTipBase, QColor("#1b2129"));
-    palette.setColor(QPalette::ToolTipText, QColor("#e6eaf0"));
-    palette.setColor(QPalette::Text, QColor("#e6eaf0"));
-    palette.setColor(QPalette::Button, QColor("#1b2129"));
-    palette.setColor(QPalette::ButtonText, QColor("#c2ccd8"));
+    palette.setColor(QPalette::Window, QColor("#08131d"));
+    palette.setColor(QPalette::WindowText, QColor("#eaf4fb"));
+    palette.setColor(QPalette::Base, QColor("#0e1e2c"));
+    palette.setColor(QPalette::AlternateBase, QColor("#102333"));
+    palette.setColor(QPalette::ToolTipBase, QColor("#132a3d"));
+    palette.setColor(QPalette::ToolTipText, QColor("#eaf4fb"));
+    palette.setColor(QPalette::Text, QColor("#eaf4fb"));
+    palette.setColor(QPalette::Button, QColor("#132a3d"));
+    palette.setColor(QPalette::ButtonText, QColor("#eaf4fb"));
     palette.setColor(QPalette::BrightText, QColor("#ffffff"));
-    palette.setColor(QPalette::Highlight, QColor("#2f80ed"));
+    palette.setColor(QPalette::Highlight, QColor("#2e7de9"));
     palette.setColor(QPalette::HighlightedText, QColor("#ffffff"));
-    palette.setColor(QPalette::Disabled, QPalette::Text, QColor("#5b6573"));
-    palette.setColor(QPalette::Disabled, QPalette::ButtonText, QColor("#5b6573"));
+    palette.setColor(QPalette::Disabled, QPalette::Text, QColor("#61788a"));
+    palette.setColor(QPalette::Disabled, QPalette::ButtonText, QColor("#61788a"));
     app.setPalette(palette);
 
     QFile styleFile(":/styles.qss");
-    if (styleFile.open(QFile::ReadOnly)) {
-        QString style = QLatin1String(styleFile.readAll());
-        app.setStyleSheet(style);
-    }
+    if (styleFile.open(QFile::ReadOnly))
+        app.setStyleSheet(QLatin1String(styleFile.readAll()));
 
-    // MainWindow remains the reusable Station/Orbita shell. KtmaMainWindow
-    // composes the current UBSI Production/TU product package on top of it.
-    KtmaMainWindow w;
-    w.show();
+    UniversalMainWindow window;
+    window.setMinimumSize(1600, 900);
+    window.resize(1920, 1080);
+    if (window.statusBar()) window.statusBar()->hide();
+    window.show();
     return app.exec();
 }
