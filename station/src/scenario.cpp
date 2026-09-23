@@ -373,6 +373,15 @@ ScenarioRunResult ScenarioEngine::run(
     bool allowPartial,
     std::function<void(const RunEvent&)> progressSink)
 {
+    bool expected = false;
+    if (!running_.compare_exchange_strong(expected, true)) {
+        throw std::runtime_error("ScenarioEngine already has an active run");
+    }
+    struct RunningGuard final {
+        std::atomic_bool& flag;
+        ~RunningGuard() { flag.store(false); }
+    } runningGuard{running_};
+
     // A ScenarioEngine represents one sequential station runner. A previous
     // operator stop must not poison the next run.
     stopRequested_.store(false);
@@ -460,7 +469,9 @@ void ScenarioEngine::requestStop() noexcept
 
 void ScenarioEngine::resetStop() noexcept
 {
-    stopRequested_.store(false);
+    // Do not allow a second UI/workflow to clear the stop request of the
+    // currently executing run. run() resets the flag after it claims execution.
+    if (!running_.load()) stopRequested_.store(false);
 }
 
 } // namespace orbita::stand
