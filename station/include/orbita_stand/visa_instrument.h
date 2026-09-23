@@ -29,6 +29,13 @@ public:
         const std::string& command,
         std::size_t maximumBytes = 4 * 1024 * 1024,
         unsigned delayMilliseconds = 45);
+
+    // Drop and recreate the VISA RM/instrument session. This is deliberately
+    // explicit: after a read timeout a delayed response may still belong to the
+    // failed query, so an acceptance procedure must be able to discard that
+    // session before retrying the same physical point.
+    void reconnect();
+
     const std::string& resourceName() const;
 
 private:
