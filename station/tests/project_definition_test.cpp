@@ -22,17 +22,33 @@ std::string filename(const std::string& path)
     return std::filesystem::u8path(path).filename().string();
 }
 
-class EmptyEquipment final : public ICapabilityProvider {
+class AuditEquipment final : public ICapabilityProvider {
 public:
-    bool hasCapability(const std::string&) const override { return false; }
-    std::string invoke(
-        const std::string&,
-        const std::string&,
-        const std::map<std::string, std::string>&) override
+    bool hasCapability(const std::string& capability) const override
     {
-        throw std::runtime_error("unexpected equipment invocation");
+        return capability == "test.echo";
     }
-    void safeStopAll() noexcept override {}
+
+    std::string invoke(
+        const std::string& capability,
+        const std::string& operation,
+        const std::map<std::string, std::string>& arguments) override
+    {
+        if (capability != "test.echo" || operation != "ping")
+            throw std::runtime_error("unexpected equipment invocation");
+        const auto found = arguments.find("value");
+        if (found == arguments.end()) throw std::runtime_error("missing value");
+        invoked = true;
+        return "echo=" + found->second + "\n";
+    }
+
+    void safeStopAll() noexcept override
+    {
+        stopped = true;
+    }
+
+    bool invoked = false;
+    bool stopped = false;
 };
 
 ScenarioDefinition freeScenario()
@@ -50,6 +66,7 @@ ScenarioDefinition freeScenario()
     step.title = "OK";
     step.tuRequirement = "free";
     step.procedure = "test.ok";
+    step.requiredCapabilities.insert("test.echo");
     scenario.steps.push_back(std::move(step));
     return scenario;
 }
@@ -109,10 +126,14 @@ int main()
             "KTMA project profile must bind switch_matrix.primary");
 
         ScenarioEngine engine;
-        engine.registerProcedure("test.ok", [](const ScenarioNode&, ProcedureContext&) {
+        engine.registerProcedure("test.ok", [](const ScenarioNode&, ProcedureContext& context) {
+            const auto response = context.equipment.invoke(
+                "test.echo", "ping", {{"value", "42"}});
+            if (response.find("echo=42") == std::string::npos)
+                return ProcedureResult{RunVerdict::Fail, "bad echo", {}};
             return ProcedureResult{RunVerdict::Ok, "ok", {}};
         });
-        EmptyEquipment equipment;
+        AuditEquipment equipment;
         auto dynamicScenario = freeScenario();
         ProjectRunContext freeContext;
         freeContext.dutType = "TEST_CELL";
@@ -131,6 +152,31 @@ int main()
             "Project run context must survive scenario execution");
         require(filename(freeRun.environmentProfile) == "normal.yaml",
             "Workflow environment identity must be retained in the run result");
+        require(equipment.invoked && equipment.stopped,
+            "Project workflow must invoke and safe-stop the underlying equipment");
+
+        require(freeRun.evidence.size() >= 4,
+            "Project workflow must record command, ack and safe-stop evidence");
+        require(freeRun.evidence[0].type == "COMMAND"
+                && freeRun.evidence[0].capability == "test.echo"
+                && freeRun.evidence[0].operation == "ping"
+                && freeRun.evidence[0].data.at("arg.value") == "42",
+            "Equipment command evidence is incomplete");
+        require(freeRun.evidence[1].type == "COMMAND_ACK"
+                && freeRun.evidence[1].verdict == RunVerdict::Ok
+                && freeRun.evidence[1].data.at("response").find("echo=42") != std::string::npos,
+            "Equipment acknowledgement evidence is incomplete");
+        for (std::size_t index = 1; index < freeRun.evidence.size(); ++index) {
+            require(freeRun.evidence[index].sequence
+                        == freeRun.evidence[index - 1].sequence + 1,
+                "Evidence sequence must be contiguous inside one project run");
+            require(freeRun.evidence[index].monotonicNs
+                        >= freeRun.evidence[index - 1].monotonicNs,
+                "Evidence monotonic clock must not move backwards");
+        }
+        require(freeRun.evidence[freeRun.evidence.size() - 2].type == "SAFETY"
+                && freeRun.evidence.back().type == "SAFETY",
+            "Scenario cleanup must be represented in technical evidence");
 
         bool productionRejected = false;
         try {
