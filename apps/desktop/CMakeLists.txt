@@ -124,6 +124,19 @@ add_custom_target(OrbitaRuntimeResources ALL
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_SOURCE_DIR}/data/scenarios
         $<TARGET_FILE_DIR:MilTechStation>/scenarios
+    # Preserve the source package-relative layout as well as the legacy flat
+    # runtime directories above. ProjectDefinition resolves its assets relative
+    # to projects/<id>/project.yaml, so projects/ and data/ travel together.
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+        $<TARGET_FILE_DIR:MilTechStation>/data
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_SOURCE_DIR}/data
+        $<TARGET_FILE_DIR:MilTechStation>/data
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+        $<TARGET_FILE_DIR:MilTechStation>/projects
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_SOURCE_DIR}/projects
+        $<TARGET_FILE_DIR:MilTechStation>/projects
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_BINARY_DIR}/plugins
         $<TARGET_FILE_DIR:MilTechStation>/plugins
@@ -142,7 +155,7 @@ add_custom_target(OrbitaRuntimeResources ALL
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         $<TARGET_FILE:visa_discover>
         $<TARGET_FILE_DIR:MilTechStation>
-    COMMENT "Updating MilTechStation runtime database and address files"
+    COMMENT "Updating MilTechStation runtime database, project packages and address files"
 )
 
 if(WIN32)
