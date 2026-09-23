@@ -151,6 +151,55 @@ void verifyLeaseContract()
             "resource must be acquirable after previous owner released it");
 }
 
+ScenarioDefinition singleStepScenario(
+    const std::string& id,
+    const std::string& procedure)
+{
+    ScenarioDefinition scenario;
+    scenario.id = id;
+    scenario.title = id;
+    scenario.version = "1";
+    scenario.catalogVersion = "1";
+    scenario.objectType = "TEST";
+    scenario.publicationState = PublicationState::Published;
+    ScenarioNode node;
+    node.id = id + ".step";
+    node.title = "step";
+    node.tuRequirement = "test";
+    node.procedure = procedure;
+    scenario.steps.push_back(std::move(node));
+    return scenario;
+}
+
+void verifyScenarioEngineRejectsNestedRun()
+{
+    ScenarioEngine engine;
+    FakeEquipment equipment;
+    const auto inner = singleStepScenario("inner", "test.inner");
+    const auto outer = singleStepScenario("outer", "test.outer");
+
+    engine.registerProcedure("test.inner", [](const ScenarioNode&, ProcedureContext&) {
+        return ProcedureResult{RunVerdict::Ok, "inner", {}};
+    });
+    engine.registerProcedure("test.outer", [&](const ScenarioNode&, ProcedureContext&) {
+        bool rejected = false;
+        try {
+            (void)engine.run(inner, equipment, "profile", "SN", false);
+        } catch (const std::runtime_error& error) {
+            rejected = std::string(error.what()).find("active run") != std::string::npos;
+        }
+        return ProcedureResult{
+            rejected ? RunVerdict::Ok : RunVerdict::Fail,
+            rejected ? "nested run rejected" : "nested run unexpectedly executed",
+            {}};
+    });
+
+    const auto result = engine.run(outer, equipment, "profile", "SN", false);
+    require(result.verdict == RunVerdict::Ok,
+            "ScenarioEngine must reject a second run while one run is active");
+    require(!engine.running(), "ScenarioEngine running flag must clear after completion");
+}
+
 } // namespace
 
 int main(int argc, char** argv)
@@ -214,6 +263,7 @@ int main(int argc, char** argv)
                 "successful run must still safe-stop equipment");
 
         verifyLeaseContract();
+        verifyScenarioEngineRejectsNestedRun();
 
         std::cout << "scenario resource routing contract OK\n";
         return 0;
