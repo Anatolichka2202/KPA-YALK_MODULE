@@ -46,6 +46,27 @@ UniversalMainWindow::UniversalMainWindow(QWidget* parent)
 {
     setWindowTitle(QStringLiteral("MilTechStation · универсальная станция"));
 
+    // Project is the product-level composition root. The KTMA desktop still
+    // inherits its delivery shell during the staged migration, but new generic
+    // runs already acquire their workflow policy and run identity from this
+    // package rather than from hard-coded Free/TU/Production semantics.
+    try {
+        const QDir root(QCoreApplication::applicationDirPath());
+        const QString projectPath = qEnvironmentVariable(
+            "MILTECH_PROJECT",
+            root.filePath(QStringLiteral("projects/ktma/project.yaml")));
+        project_ = orbita::stand::loadProjectPackage(
+            projectPath.toUtf8().toStdString());
+        setWindowTitle(QStringLiteral("MilTechStation · %1")
+            .arg(QString::fromStdString(project_->title)));
+        integrationLog(QStringLiteral("Project package: %1 · v%2")
+            .arg(QString::fromStdString(project_->id),
+                 QString::fromStdString(project_->version)));
+    } catch (const std::exception& error) {
+        integrationLog(QStringLiteral("Project package не загружен: %1")
+            .arg(QString::fromUtf8(error.what())));
+    }
+
     if (auto* home = integrationHomePage()) {
         connect(home, &HomePage::genericCheckRequested,
                 this, &UniversalMainWindow::openGenericCheck);
@@ -165,7 +186,7 @@ void UniversalMainWindow::runGenericScenario(
         const auto errors = engine->validate(scenario);
         if (!errors.empty()) throw std::runtime_error(errors.front());
 
-        // Physical preparation belongs to the selected delivery/profile.  For
+        // Physical preparation belongs to the selected delivery/profile. For
         // KTMA/UBSI this preserves its confirmed power-up order; for another
         // object type only requested devices are probed/bound and no product-
         // specific voltage/current is invented by the universal runner.
@@ -217,13 +238,29 @@ void UniversalMainWindow::runGenericScenario(
     const std::string serial = objectSerial.toStdString();
     genericWatcher_->setFuture(QtConcurrent::run(
         [this, scenario, profileVersion, serial] {
+            const auto progress = [this](const orbita::stand::RunEvent& event) {
+                QMetaObject::invokeMethod(this, [this, event] {
+                    if (genericDialog_) genericDialog_->appendEvent(event);
+                }, Qt::QueuedConnection);
+            };
+
+            if (project_) {
+                orbita::stand::ProjectRunContext context;
+                context.dutType = scenario.objectType;
+                context.operatorName = qEnvironmentVariable(
+                    "USERNAME", qEnvironmentVariable("USER")).toStdString();
+                context.attributes["registration"] = "disabled";
+                return orbita::stand::runProjectWorkflow(
+                    *project_, "free", *integrationScenarioEngine(),
+                    *integrationEquipmentRegistry(), profileVersion, serial, false,
+                    std::move(context), &scenario, progress);
+            }
+
+            // Compatibility fallback for development layouts that do not yet
+            // deploy project packages next to the executable.
             return integrationScenarioEngine()->run(
                 scenario, *integrationEquipmentRegistry(), profileVersion, serial, false,
-                [this](const orbita::stand::RunEvent& event) {
-                    QMetaObject::invokeMethod(this, [this, event] {
-                        if (genericDialog_) genericDialog_->appendEvent(event);
-                    }, Qt::QueuedConnection);
-                });
+                progress);
         }));
 }
 
@@ -254,12 +291,16 @@ QString UniversalMainWindow::renderGenericReport(
     if (html.trimmed().isEmpty()) {
         html = QStringLiteral(
             "<html><body><h1>Отчёт проверки</h1><p>{{description}}</p>"
+            "<p>{{project_id}} · {{workflow_id}}</p>"
             "<p>{{scenario_title}} · {{object_serial}}</p><h2>{{verdict}}</h2>"
             "{{steps}}{{events}}</body></html>");
     }
 
     const QHash<QString, QString> replacements = {
         {QStringLiteral("{{description}}"), genericDescription_.toHtmlEscaped()},
+        {QStringLiteral("{{project_id}}"), QString::fromStdString(result.projectId).toHtmlEscaped()},
+        {QStringLiteral("{{project_version}}"), QString::fromStdString(result.projectVersion).toHtmlEscaped()},
+        {QStringLiteral("{{workflow_id}}"), QString::fromStdString(result.workflowId).toHtmlEscaped()},
         {QStringLiteral("{{object_serial}}"), QString::fromStdString(result.objectSerial).toHtmlEscaped()},
         {QStringLiteral("{{scenario_id}}"), QString::fromStdString(result.scenarioId).toHtmlEscaped()},
         {QStringLiteral("{{scenario_title}}"), QString::fromStdString(result.scenarioTitle).toHtmlEscaped()},
