@@ -12,5 +12,6 @@ void registerRoktUbsiProcedures(ScenarioEngine& engine);
 void registerIsdSafeUbsiProcedures(ScenarioEngine& engine);
 void registerProductionFinalUbsiProcedures(ScenarioEngine& engine);
 void registerV7UbsiProcedures(ScenarioEngine& engine);
+void registerTuScopeUbsiProcedures(ScenarioEngine& engine);
 
 } // namespace orbita::stand
