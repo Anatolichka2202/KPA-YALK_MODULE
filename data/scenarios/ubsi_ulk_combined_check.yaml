@@ -1,7 +1,7 @@
 schema: 1
 id: ubsi.468157.002.ulk.combined.check
 title: УБСИ · полная проверка по ТУ
-version: 2.6.0
+version: 2.6.1
 catalog_version: 2026.08.29-yalk-1
 object_type: UBSI_468157_002
 state: published
@@ -197,12 +197,14 @@ steps:
         capability: stand.switch_matrix
     args:
       mapping_confirmed: true
-      physical_channel_count: 88
-      observed_address_count: 88
+      physical_channels: 1-28,32-43,45-70,74-87
+      stressed_channels: 1-28,32-43,45-70,74-87
+      observed_addresses: 1-28,32-43,45-70,74-87
       positive_overload_route: yalk_overload_positive
       negative_overload_route: yalk_overload_negative
       sample_count: 4
       baseline_settle_ms: 1000
+      dac_off_settle_ms: 300
       overload_settle_ms: 10000
       cleanup_settle_ms: 300
       maximum_code_delta: 2
