@@ -3,6 +3,7 @@
 #include "orbita_stand/component_runtime.h"
 #include "orbita_stand/config.h"
 #include "orbita_stand/equipment_runtime.h"
+#include "orbita_stand/resource_lease.h"
 
 #include <memory>
 #include <set>
@@ -44,6 +45,9 @@ public:
 
     EquipmentPluginManager& equipmentPlugins() noexcept { return equipmentPlugins_; }
     const EquipmentPluginManager& equipmentPlugins() const noexcept { return equipmentPlugins_; }
+
+    ResourceLeaseManager& leases() noexcept { return leases_; }
+    const ResourceLeaseManager& leases() const noexcept { return leases_; }
 
     // Mutable views are intentionally narrow compatibility hooks for the staged
     // desktop migration. Ownership still remains here; callers must not replace
@@ -112,6 +116,7 @@ private:
     StandProfile profile_;
     EquipmentPluginManager equipmentPlugins_;
     EquipmentRegistry equipment_;
+    ResourceLeaseManager leases_;
     std::vector<std::shared_ptr<EquipmentDevice>> equipmentDevices_;
     ComponentRuntime components_;
     bool configured_ = false;
