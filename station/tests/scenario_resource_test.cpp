@@ -1,4 +1,5 @@
 #include "orbita_stand/config.h"
+#include "orbita_stand/resource_lease.h"
 #include "orbita_stand/scenario.h"
 
 #include <QCoreApplication>
@@ -102,6 +103,52 @@ QString writeScenario(QTemporaryDir& directory)
     return path;
 }
 
+void verifyLeaseContract()
+{
+    ResourceLeaseManager leases;
+
+    auto runA = leases.acquire("run-a", {"power.dut", "switch_matrix.primary"});
+    require(runA, "initial resource lease was not created");
+    require(leases.ownerOf("power.dut") == std::optional<std::string>{"run-a"},
+            "resource owner was not recorded");
+    require(leases.busy("switch_matrix.primary"),
+            "leased resource must report busy");
+
+    auto disjoint = leases.acquire("run-b", {"measure.reference"});
+    require(disjoint, "disjoint resource lease must be allowed");
+
+    bool conflict = false;
+    try {
+        (void)leases.acquire("run-b", {"power.dut", "signal.primary"});
+    } catch (const ResourceBusyError& error) {
+        conflict = error.resource() == "power.dut" && error.owner() == "run-a";
+    }
+    require(conflict, "resource conflict must identify the current owner");
+    require(!leases.busy("signal.primary"),
+            "failed multi-resource acquisition must be atomic");
+
+    {
+        auto nested = leases.acquire("run-a", {"power.dut"});
+        require(nested, "same owner must be able to re-enter a lease");
+        nested.reset();
+        require(leases.ownerOf("power.dut") == std::optional<std::string>{"run-a"},
+                "nested lease release must not drop the outer ownership");
+    }
+
+    auto moved = std::move(disjoint);
+    require(moved && !disjoint, "resource lease must be safely movable");
+    moved.reset();
+    require(!leases.busy("measure.reference"),
+            "released disjoint resource must become available");
+
+    runA.reset();
+    require(!leases.busy("power.dut") && !leases.busy("switch_matrix.primary"),
+            "outer lease reset must release all resources");
+
+    auto runB = leases.acquire("run-b", {"power.dut"});
+    require(runB, "resource must be acquirable after previous owner released it");
+}
+
 } // namespace
 
 int main(int argc, char** argv)
@@ -163,6 +210,8 @@ int main(int argc, char** argv)
                 "declared resource must bypass ambiguous global capability routing");
         require(equipment.stopped,
                 "successful run must still safe-stop equipment");
+
+        verifyLeaseContract();
 
         std::cout << "scenario resource routing contract OK\n";
         return 0;
