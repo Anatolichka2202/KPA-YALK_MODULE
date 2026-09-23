@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstdint>
 #include <functional>
 #include <map>
 #include <set>
@@ -87,10 +88,34 @@ struct ScenarioDefinition {
     std::vector<ScenarioNode> steps;
 };
 
+// Legacy/runtime progress event. This remains intentionally lightweight for UI
+// progress rendering while EvidenceEvent below is the durable technical audit
+// envelope. Existing delivery code can keep publishing RunEvent during the
+// staged migration.
 struct RunEvent {
     std::chrono::system_clock::time_point timestamp{};
     std::string nodeId;
     std::string stage;
+    std::string message;
+    RunVerdict verdict = RunVerdict::NotRun;
+    std::map<std::string, std::string> data;
+};
+
+// Durable evidence envelope. `type` is intentionally an extensible string
+// rather than a delivery enum; current platform types include COMMAND,
+// COMMAND_ACK, ERROR, SAFETY and later MEASUREMENT/ENVIRONMENT/OPERATOR_ACTION.
+// sequence is monotonically increasing inside one run. monotonicNs uses a
+// steady-clock domain and therefore establishes ordering independent of wall
+// clock adjustments; timestamp remains the human/audit UTC-capable clock.
+struct EvidenceEvent {
+    std::uint64_t sequence = 0;
+    std::chrono::system_clock::time_point timestamp{};
+    std::int64_t monotonicNs = 0;
+    std::string type;
+    std::string nodeId;
+    std::string resource;
+    std::string capability;
+    std::string operation;
     std::string message;
     RunVerdict verdict = RunVerdict::NotRun;
     std::map<std::string, std::string> data;
@@ -131,6 +156,10 @@ struct ScenarioRunResult {
     std::string operatorName;
     std::string environmentProfile;
     std::map<std::string, std::string> contextAttributes;
+
+    // Primary structured technical evidence. Reports are projections of the
+    // run/evidence data; they are not the sole source of truth.
+    std::vector<EvidenceEvent> evidence;
 };
 
 class ICapabilityProvider {
