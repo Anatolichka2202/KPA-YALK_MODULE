@@ -47,21 +47,22 @@ UniversalMainWindow::UniversalMainWindow(QWidget* parent)
     setWindowTitle(QStringLiteral("MilTechStation · универсальная станция"));
 
     // Project is the product-level composition root. The KTMA desktop still
-    // inherits its delivery shell during the staged migration, but new generic
-    // runs already acquire their workflow policy and run identity from this
-    // package rather than from hard-coded Free/TU/Production semantics.
+    // inherits its delivery shell during the staged migration, but the package
+    // itself now belongs to the shared station shell so all workflow surfaces
+    // can converge on one selected project identity.
     try {
         const QDir root(QCoreApplication::applicationDirPath());
         const QString projectPath = qEnvironmentVariable(
             "MILTECH_PROJECT",
             root.filePath(QStringLiteral("projects/ktma/project.yaml")));
-        project_ = orbita::stand::loadProjectPackage(
+        auto project = orbita::stand::loadProjectPackage(
             projectPath.toUtf8().toStdString());
         setWindowTitle(QStringLiteral("MilTechStation · %1")
-            .arg(QString::fromStdString(project_->title)));
+            .arg(QString::fromStdString(project.title)));
         integrationLog(QStringLiteral("Project package: %1 · v%2")
-            .arg(QString::fromStdString(project_->id),
-                 QString::fromStdString(project_->version)));
+            .arg(QString::fromStdString(project.id),
+                 QString::fromStdString(project.version)));
+        integrationConfigureProject(std::move(project));
     } catch (const std::exception& error) {
         integrationLog(QStringLiteral("Project package не загружен: %1")
             .arg(QString::fromUtf8(error.what())));
@@ -244,14 +245,14 @@ void UniversalMainWindow::runGenericScenario(
                 }, Qt::QueuedConnection);
             };
 
-            if (project_) {
+            if (const auto* project = integrationProject()) {
                 orbita::stand::ProjectRunContext context;
                 context.dutType = scenario.objectType;
                 context.operatorName = qEnvironmentVariable(
                     "USERNAME", qEnvironmentVariable("USER")).toStdString();
                 context.attributes["registration"] = "disabled";
                 return orbita::stand::runProjectWorkflow(
-                    *project_, "free", *integrationScenarioEngine(),
+                    *project, "free", *integrationScenarioEngine(),
                     *integrationEquipmentRegistry(), profileVersion, serial, false,
                     std::move(context), &scenario, progress);
             }
