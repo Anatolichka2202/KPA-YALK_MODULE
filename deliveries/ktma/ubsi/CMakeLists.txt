@@ -24,6 +24,7 @@ add_library(ktma_ubsi_procedures STATIC
     src/procedures/registration_layers.h
     src/procedures/tu_scope_procedures.cpp
     src/procedures/yalk_analog_procedure.cpp
+    src/procedures/yalk_initial_physical.cpp
     src/procedures/yalk_overload_physical.cpp
     src/procedures/ubsi_procedures.cpp
     src/procedures/ubsi_procedures_current.cpp
@@ -88,6 +89,10 @@ if(BUILD_TESTING)
     add_executable(yalk_analog_procedure_test tests/yalk_analog_procedure_test.cpp)
     target_link_libraries(yalk_analog_procedure_test PRIVATE ktma_ubsi_procedures)
     add_test(NAME ktma.ubsi.yalk_analog_procedure COMMAND yalk_analog_procedure_test)
+
+    add_executable(yalk_initial_physical_test tests/yalk_initial_physical_test.cpp)
+    target_link_libraries(yalk_initial_physical_test PRIVATE ktma_ubsi_procedures)
+    add_test(NAME ktma.ubsi.yalk_initial_physical COMMAND yalk_initial_physical_test)
 
     add_executable(yalk_overload_physical_test tests/yalk_overload_physical_test.cpp)
     target_link_libraries(yalk_overload_physical_test PRIVATE ktma_ubsi_procedures)
