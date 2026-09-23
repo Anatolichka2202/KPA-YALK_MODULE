@@ -1,5 +1,9 @@
 #pragma once
 
+#include "orbita_stand/scenario.h"
+
+#include <functional>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -53,10 +57,37 @@ struct ProjectDefinition {
     std::vector<std::string> scriptPaths;
 };
 
+// Runtime identity supplied by application/delivery composition. `dutRegistered`
+// only expresses whether the caller has resolved the object in its lifecycle
+// domain; the common runtime never opens or mutates a registrar database.
+struct ProjectRunContext {
+    std::string dutType;
+    std::string dutId;
+    std::string operatorName;
+    bool dutRegistered = false;
+    std::map<std::string, std::string> attributes;
+};
+
 ProjectDefinition loadProjectPackage(const std::string& projectFile);
 std::vector<std::string> validateProjectPackage(const ProjectDefinition& project);
 
 const WorkflowDefinition* findWorkflow(
     const ProjectDefinition& project, const std::string& id) noexcept;
+
+// Execute one workflow through the ordinary ScenarioEngine and attach the
+// project/workflow identity to ScenarioRunResult. A fixed workflow loads its
+// scenario from the package. A caller-supplied scenario is accepted only by a
+// dynamic workflow or by a workflow that explicitly permits overrides.
+ScenarioRunResult runProjectWorkflow(
+    const ProjectDefinition& project,
+    const std::string& workflowId,
+    ScenarioEngine& engine,
+    ICapabilityProvider& equipment,
+    std::string profileVersion,
+    std::string objectSerial,
+    bool allowPartial,
+    ProjectRunContext context = {},
+    const ScenarioDefinition* scenarioOverride = nullptr,
+    std::function<void(const RunEvent&)> progressSink = {});
 
 } // namespace orbita::stand
