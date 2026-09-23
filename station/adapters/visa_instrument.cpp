@@ -74,6 +74,7 @@ struct VisaInstrument::Impl {
     void open()
     {
         if (config.resourceExpressions.empty()) throw std::invalid_argument("VISA resource list is empty");
+        resource.clear();
         library = LoadLibraryExW(L"visa64.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
         if (!library) library = LoadLibraryExW(L"visa32.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
         if (!library) throw std::runtime_error("NI-VISA runtime DLL was not found in Windows System32");
@@ -117,6 +118,18 @@ struct VisaInstrument::Impl {
         instrument = resourceManager = findList = 0;
         if (library) FreeLibrary(library);
         library = nullptr;
+        viOpenDefaultRM = nullptr;
+        viFindRsrc = nullptr;
+        viOpen = nullptr;
+        viClose = nullptr;
+        viSetAttribute = nullptr;
+        viWrite = nullptr;
+        viRead = nullptr;
+    }
+    void reconnect()
+    {
+        close();
+        open();
     }
     void write(const std::string& command)
     {
@@ -179,6 +192,13 @@ std::vector<std::uint8_t> VisaInstrument::queryRaw(
     return impl_->readRaw(maximumBytes);
 #else
     (void)command; (void)maximumBytes; (void)delayMilliseconds;
+    throw std::runtime_error("VISA adapter is available only on Windows");
+#endif
+}
+void VisaInstrument::reconnect() {
+#ifdef _WIN32
+    impl_->reconnect();
+#else
     throw std::runtime_error("VISA adapter is available only on Windows");
 #endif
 }
