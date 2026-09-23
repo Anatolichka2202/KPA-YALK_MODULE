@@ -1,0 +1,14 @@
+schema: 1
+id: tu_climate
+title: УБСИ · проверка по ТУ · климатические условия
+kind: tu
+
+scenario: ../../data/scenarios/ubsi_ulk_combined_check.yaml
+environment: environments/climate.yaml
+
+allow_dynamic_scenario: false
+allow_scenario_overrides: false
+
+registration:
+  required: false
+  attach_if_found: true
