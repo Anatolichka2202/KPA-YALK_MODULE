@@ -38,7 +38,7 @@ Evidence / result
 
 ## Этап 1 — Project package contract
 
-Статус: **IMPLEMENTED / CI PENDING**
+Статус: **IMPLEMENTED / GREEN**
 
 Сделано:
 
@@ -57,11 +57,8 @@ Evidence / result
 - [x] workflow `production_climate`;
 - [x] environment placeholders без выдуманных setpoints;
 - [x] contract test `stand.project_definition`;
-- [x] canonical product/reference documentation updated.
-
-Остаётся:
-
-- [ ] получить зелёный Windows CI на текущем master.
+- [x] canonical product/reference documentation updated;
+- [x] Windows CI после project/runtime slice прошёл полностью.
 
 ## Этап 2 — Run Context и Evidence foundation
 
@@ -78,24 +75,34 @@ Evidence / result
 - [x] сохранение project/workflow context и attributes в `test_runs`;
 - [x] regression `stand.run_store_context`;
 - [x] legacy raw scenario API остаётся совместимым: новые поля у таких run пустые;
-- [x] registrar lifecycle не перенесён в station core.
+- [x] registrar lifecycle не перенесён в station core;
+- [x] общий audited scenario runner пишет COMMAND / COMMAND_ACK / ERROR / SAFETY на equipment boundary;
+- [x] project/free и raw scenario path используют один механизм исполнения, без отдельного FreeModeEngine.
 
 Остаётся:
 
-- [ ] получить зелёный CI после persistence migration;
-- [ ] базовый Evidence event envelope: sequence/time/type/resource/capability/operation/data;
-- [ ] автоматический command/ack audit на EquipmentRegistry boundary;
 - [ ] resource/device/quality identity для measurement evidence;
-- [ ] связать execution runtime с общим run/evidence lifecycle.
+- [ ] связать delivery readiness с общим run/evidence lifecycle;
+- [ ] хранение high-rate/raw artifacts привязать к Evidence metadata.
 
 ## Этап 3 — Resource ownership / safety
+
+Статус: **PARTIAL / ACTIVE**
+
+Сделано:
+
+- [x] ISD driver поддерживает owner-scoped mutations и `release_owner`;
+- [x] generic ISD safe-stop не использует firmware type=4;
+- [x] YALK overload использует отдельные ownership domains для background DAC и transient ±12 V impact;
+- [x] аварийный cleanup перегрузки адресный и не требует global reset.
+
+Остаётся:
 
 - [ ] ResourceLease для concurrent runs;
 - [ ] симметричная блокировка Free/TU/Production при пересечении ресурсов;
 - [ ] resource states READY/ACTIVE/SAFE/ERROR/INDETERMINATE;
-- [ ] ISD timeout -> indeterminate semantics;
+- [ ] ISD timeout -> indeterminate semantics в общем resource state;
 - [ ] operator recovery/restart UX;
-- [ ] platform-level best-effort `safeStopAll`;
 - [ ] equipment safety limits metadata.
 
 ## Этап 4 — KTMA project composition
@@ -123,10 +130,42 @@ Evidence / result
 
 Не менять нормативную методику ради архитектурного refactor.
 
-- [ ] equipment readiness;
+### ЯЛК / перегрузка — текущий slice
+
+Статус: **CODED / CI PENDING / LIVE RUN REQUIRED**
+
+Сделано:
+
+- [x] frozen donor прочитан только как read-only физический reference;
+- [x] подтверждённая безопасная карта ЯЛК: `1-28,32-43,45-70,74-87`;
+- [x] линии `29/30/31/44/71/72/73/88`, занятые ЯВП, исключаются из полного overload routing;
+- [x] legacy `physical_channel_count=88` больше не означает физическое воздействие на все линии 1..88: runtime переводит полный проход на безопасную 80-канальную карту;
+- [x] baseline строится на безопасных 80 DAC routes;
+- [x] background не пересоздаётся для каждого воздействия;
+- [x] перед ±12 В отключается только DAC целевого канала;
+- [x] после `dac_off_settle` включается общий источник `+12`/`-12` и type=3 target;
+- [x] после выдержки читается только fresh snapshot, anchored after live `last_sequence`;
+- [x] сравниваются только остальные safe observed addresses;
+- [x] после воздействия target/common type=3 снимаются адресно, DAC цели восстанавливается;
+- [x] transient impact и background имеют разные ISD owners;
+- [x] firmware type=4/global reset внутри overload sequence не используется;
+- [x] сохранён текущий master criterion `abs(delta) <= 2 code`;
+- [x] сохранён текущий master `overload_settle_ms=10000`; donor `1000 ms` не переносится без нового подтверждения;
+- [x] добавлен отдельный regression `ktma.ubsi.yalk_overload_physical`, фиксирующий порядок команд и freshness.
+
+Остаётся:
+
+- [ ] получить зелёный CI этого slice;
+- [ ] сделать explicit safe-address args в canonical scenario вместо compatibility `*_count=88`;
+- [ ] синхронизировать canonical testing/memory после зелёного CI;
+- [ ] выполнить новый полный живой overload run актуального master;
+- [ ] по результату живого прогона отдельно решить timing/criterion, не копируя donor автоматически.
+
+### Остальной TU NORMAL
+
+- [ ] equipment readiness end-to-end evidence;
 - [ ] power/readiness;
-- [ ] ЯЛК полный тракт;
-- [ ] overload ±12 V;
+- [ ] ЯЛК полный analog/contact/open/reference тракт проверить на master после overload merge;
 - [ ] ЯТП;
 - [ ] ЯВП commissioning/physical path;
 - [ ] TU coverage gate;
@@ -135,7 +174,7 @@ Evidence / result
 
 ## Этап 6 — Production
 
-- [ ] registered DUT required;
+- [ ] registered DUT required через project workflow;
 - [ ] scopes/packages;
 - [ ] production evidence;
 - [ ] final TU reference run;
@@ -187,6 +226,8 @@ Evidence / result
 
 ## Изменённый код / данные на текущем этапе
 
+Platform/project slice:
+
 - `station/include/orbita_stand/project.h`
 - `station/src/project.cpp`
 - `station/include/orbita_stand/scenario.h`
@@ -200,6 +241,14 @@ Evidence / result
 - `projects/ktma/project.yaml`
 - `projects/ktma/workflows/*.yaml`
 - `projects/ktma/environments/*.yaml`
+
+Current YALK physical slice:
+
+- `deliveries/ktma/ubsi/src/procedures/yalk_overload_physical.cpp`
+- `deliveries/ktma/ubsi/src/procedures/registration_layers.h`
+- `deliveries/ktma/ubsi/src/procedures/procedure_registry.cpp`
+- `deliveries/ktma/ubsi/tests/yalk_overload_physical_test.cpp`
+- `deliveries/ktma/ubsi/CMakeLists.txt`
 
 ## Изменённые документы
 
