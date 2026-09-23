@@ -1,4 +1,5 @@
 #include "orbita_stand/project.h"
+#include "orbita_stand/config.h"
 #include "orbita_stand/yaml_lite.h"
 
 #include <algorithm>
@@ -190,6 +191,59 @@ const WorkflowDefinition* findWorkflow(
     const auto iterator = std::find_if(project.workflows.begin(), project.workflows.end(),
         [&](const WorkflowDefinition& workflow) { return workflow.id == id; });
     return iterator == project.workflows.end() ? nullptr : &*iterator;
+}
+
+ScenarioRunResult runProjectWorkflow(
+    const ProjectDefinition& project,
+    const std::string& workflowId,
+    ScenarioEngine& engine,
+    ICapabilityProvider& equipment,
+    std::string profileVersion,
+    std::string objectSerial,
+    bool allowPartial,
+    ProjectRunContext context,
+    const ScenarioDefinition* scenarioOverride,
+    std::function<void(const RunEvent&)> progressSink)
+{
+    const auto* workflow = findWorkflow(project, workflowId);
+    if (!workflow) throw std::invalid_argument("Project workflow not found: " + workflowId);
+
+    if (workflow->registration.required && !context.dutRegistered) {
+        throw std::runtime_error(
+            "Workflow " + workflowId + " requires a registered DUT");
+    }
+
+    ScenarioDefinition loadedScenario;
+    const ScenarioDefinition* scenario = scenarioOverride;
+    if (scenarioOverride) {
+        if (!workflow->allowDynamicScenario && !workflow->allowScenarioOverrides) {
+            throw std::runtime_error(
+                "Workflow " + workflowId + " does not allow a scenario override");
+        }
+    } else {
+        if (workflow->scenarioPath.empty()) {
+            if (workflow->allowDynamicScenario) {
+                throw std::runtime_error(
+                    "Workflow " + workflowId + " requires a caller-supplied dynamic scenario");
+            }
+            throw std::runtime_error("Workflow " + workflowId + " has no scenario");
+        }
+        loadedScenario = loadScenarioYaml(workflow->scenarioPath);
+        scenario = &loadedScenario;
+    }
+
+    auto result = engine.run(
+        *scenario, equipment, std::move(profileVersion), std::move(objectSerial),
+        allowPartial, std::move(progressSink));
+    result.projectId = project.id;
+    result.projectVersion = project.version;
+    result.workflowId = workflow->id;
+    result.dutType = std::move(context.dutType);
+    result.dutId = std::move(context.dutId);
+    result.operatorName = std::move(context.operatorName);
+    result.environmentProfile = workflow->environmentPath;
+    result.contextAttributes = std::move(context.attributes);
+    return result;
 }
 
 } // namespace orbita::stand
