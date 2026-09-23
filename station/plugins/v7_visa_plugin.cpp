@@ -40,8 +40,14 @@ orbita_plugin_status_v1 invoke(void* value, const char* capability, const char* 
             && std::string(capability) != "measure.reference_frequency")) throw std::invalid_argument("Unsupported capability");
         const std::string command = operation ? operation : "";
         if (command != "probe" && command != "read_voltage" && command != "read_current"
-            && command != "read_ac_voltage" && command != "read_frequency") {
+            && command != "read_ac_voltage" && command != "read_frequency"
+            && command != "reconnect") {
             throw std::invalid_argument("Unsupported V7 operation");
+        }
+        if (command == "reconnect") {
+            instance.meter->reconnect();
+            return std::string("status=ready\noperation=reconnect\nresource=")
+                + instance.meter->resourceName() + "\n";
         }
         std::ostringstream result;
         result << std::setprecision(15) << "resource=" << instance.meter->resourceName();
