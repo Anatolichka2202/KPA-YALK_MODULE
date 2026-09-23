@@ -65,6 +65,11 @@ double V7VisaVoltmeter::readFrequency()
         impl_->readDelayMilliseconds, "V7-78/1 returned an invalid frequency");
 }
 
+void V7VisaVoltmeter::reconnect()
+{
+    impl_->instrument.reconnect();
+}
+
 const std::string& V7VisaVoltmeter::resourceName() const
 {
     return impl_->instrument.resourceName();
