@@ -76,6 +76,13 @@ public:
         const std::string& operation,
         const std::map<std::string, std::string>& arguments)>;
     using SafeStopFunction = std::function<void()>;
+    using ResourceInvokeNext = std::function<std::string()>;
+    using ResourceInvokeInterceptor = std::function<std::string(
+        const std::string& resourceId,
+        const std::string& capability,
+        const std::string& operation,
+        const std::map<std::string, std::string>& arguments,
+        const ResourceInvokeNext& next)>;
 
     // Compatibility routing while old procedures still address a capability
     // without a delivery role. New physical scenarios must use resources.
@@ -105,6 +112,16 @@ public:
         const std::map<std::string, std::string>& arguments = {}) override;
     std::vector<EquipmentResourceDescriptor> resources() const;
 
+    // Product/delivery code may wrap one logical resource without teaching the
+    // generic registry about a concrete protocol. Typical uses are operator
+    // recovery, audit/evidence hooks and delivery-specific safety policy.
+    // The interceptor receives `next`, which performs the original provider
+    // invocation exactly once when called.
+    void setResourceInvokeInterceptor(
+        std::string resourceId,
+        ResourceInvokeInterceptor interceptor);
+    void clearResourceInvokeInterceptor(const std::string& resourceId) noexcept;
+
     // Readiness can rebuild physical bindings without discarding station-level
     // services such as catalog/manual input/protocol facades.
     void clearPhysical() noexcept;
@@ -132,6 +149,7 @@ private:
 
     std::map<std::string, DefaultBinding> defaults_;
     std::map<std::string, ResourceBinding> resources_;
+    std::map<std::string, ResourceInvokeInterceptor> resourceInterceptors_;
 };
 
 std::string encodePluginArguments(const std::map<std::string, std::string>& arguments);
