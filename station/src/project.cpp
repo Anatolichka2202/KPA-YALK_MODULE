@@ -109,10 +109,9 @@ std::string bounded(std::string value, std::size_t limit = 4096)
     return value;
 }
 
-// Project workflow audit wrapper. It records the actual calls crossing the
-// scenario -> equipment boundary without teaching procedures how to write an
-// audit log. Readiness will join the same Evidence model when its physical
-// preparation lifecycle is moved under project execution.
+// Common equipment-boundary audit wrapper. It is independent of Project so
+// delivery compatibility runners can already produce evidence while they are
+// being migrated to immutable workflow definitions.
 class EvidenceProvider final : public ICapabilityProvider {
 public:
     EvidenceProvider(ICapabilityProvider& upstream, std::vector<EvidenceEvent>& evidence)
@@ -361,6 +360,25 @@ const WorkflowDefinition* findWorkflow(
     return iterator == project.workflows.end() ? nullptr : &*iterator;
 }
 
+ScenarioRunResult runScenarioWithEvidence(
+    ScenarioEngine& engine,
+    ICapabilityProvider& equipment,
+    const ScenarioDefinition& scenario,
+    std::string profileVersion,
+    std::string objectSerial,
+    bool allowPartial,
+    std::function<void(const RunEvent&)> progressSink)
+{
+    std::vector<EvidenceEvent> evidence;
+    evidence.reserve(64);
+    EvidenceProvider auditedEquipment(equipment, evidence);
+    auto result = engine.run(
+        scenario, auditedEquipment, std::move(profileVersion), std::move(objectSerial),
+        allowPartial, std::move(progressSink));
+    result.evidence = std::move(evidence);
+    return result;
+}
+
 ScenarioRunResult runProjectWorkflow(
     const ProjectDefinition& project,
     const std::string& workflowId,
@@ -400,11 +418,8 @@ ScenarioRunResult runProjectWorkflow(
         scenario = &loadedScenario;
     }
 
-    std::vector<EvidenceEvent> evidence;
-    evidence.reserve(64);
-    EvidenceProvider auditedEquipment(equipment, evidence);
-    auto result = engine.run(
-        *scenario, auditedEquipment, std::move(profileVersion), std::move(objectSerial),
+    auto result = runScenarioWithEvidence(
+        engine, equipment, *scenario, std::move(profileVersion), std::move(objectSerial),
         allowPartial, std::move(progressSink));
     result.projectId = project.id;
     result.projectVersion = project.version;
@@ -414,7 +429,6 @@ ScenarioRunResult runProjectWorkflow(
     result.operatorName = std::move(context.operatorName);
     result.environmentProfile = workflow->environmentPath;
     result.contextAttributes = std::move(context.attributes);
-    result.evidence = std::move(evidence);
     return result;
 }
 
