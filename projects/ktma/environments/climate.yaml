@@ -1,0 +1,7 @@
+schema: 1
+id: climate
+title: Климатические испытания
+mode: manual_or_controlled
+
+# Setpoints/stabilization are intentionally not guessed here. The environment
+# runtime will consume the dedicated climate TU/methodology once it is wired.
