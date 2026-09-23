@@ -77,28 +77,44 @@ void yvpScenarioContract()
 void scenarioContract()
 {
     const auto combined = readFile("data/scenarios/ubsi_ulk_combined_check.yaml");
-    require(!tuReferences(combined, "1.1.4.6"),
-        "1.1.4.6/50 m must not be a current TU step");
+
+    // Exact normative scope of method 5.6 in the supplied TU is
+    // 1.1.4.1-1.1.4.3, 1.1.4.5-1.1.4.11, 1.1.4.13, 1.1.4.14.
+    require(tuReferences(combined, "1.1.4.2"),
+        "1.1.4.2 is mandatory in TU 5.6 and must remain explicitly traceable");
+    require(tuReferences(combined, "1.1.4.6"),
+        "1.1.4.6/50 m is mandatory in TU 5.6 and must remain explicitly traceable");
     require(!tuReferences(combined, "1.1.4.4"),
-        "1.1.4.4 must not be a current TU step");
-    require(!contains(combined, "ubsi.sensor_supply"),
-        "350/450 mA sensor-supply procedure must not be in current TU scenario");
-    require(!contains(combined, "ubsi.external_evidence"),
-        "excluded checks must not return as external-evidence gates");
+        "1.1.4.4 belongs to method 5.5 and must not be a TU 5.6 step");
+    require(!tuReferences(combined, "1.1.4.12"),
+        "1.1.4.12 belongs to method 5.5 and must not be a TU 5.6 step");
+
+    require(contains(combined, "procedure: ubsi.tu_scope_gate"),
+        "published TU run must have an explicit acceptance-coverage gate");
+    require(contains(combined, "1.1.4.2 (питание датчиков")
+            && contains(combined, "1.1.4.6 (линия термодатчик")
+            && contains(combined, "входной ток каналов не более 2 мкА"),
+        "unresolved mandatory requirements must block a false normative OK");
+    require(contains(combined, "channel_count: 8"),
+        "current YVP physical path is eight channels and must not be disguised as sixteen");
+    require(contains(combined, "ТУ требует не менее 16"),
+        "published TU run must disclose the unresolved 16-channel piezo requirement");
+
     require(contains(combined, "maximum_total_current_a: 0.4"),
         "whole-UBSI current criterion must be 0.4 A");
     require(contains(combined, "supply_current_limit_a: 0.6"),
         "hardware current limit must remain separate from the 0.4 A criterion");
 
-    const auto legacy = readFile("data/scenarios/ubsi_tu_5_6.yaml");
-    require(!tuReferences(legacy, "1.1.4.6"),
-        "legacy trace scenario must not reintroduce the 50 m check");
-    require(!contains(legacy, "procedure: ubsi.sensor_supply"),
-        "legacy trace scenario must not reintroduce 350/450 mA automation");
-
     const auto traceability = readFile("data/scenarios/ubsi_tu_5_6_traceability.csv");
-    require(contains(traceability, "1.1.4.6;5.6;нет;50-метровая линия"),
-        "traceability must explicitly record 1.1.4.6 as not checked");
+    require(contains(traceability, "1.1.4.2;5.6;нет подтверждённой процедуры"),
+        "traceability must keep 1.1.4.2 as an unresolved mandatory 5.6 requirement");
+    require(contains(traceability, "1.1.4.6;5.6;ubsi.tu_scope_gate"),
+        "traceability must keep 1.1.4.6 as an unresolved mandatory 5.6 requirement");
+    require(contains(traceability, "1.1.4.4;5.5;")
+            && contains(traceability, "1.1.4.12;5.5;"),
+        "5.5 insulation requirements must remain separated from the 5.6 run");
+    require(!contains(traceability, "1.1.4.4;5.6;"),
+        "traceability must not assign 1.1.4.4 to method 5.6");
 }
 
 void yvpMathContract()
@@ -189,6 +205,15 @@ void procedureRuntimeContract()
 {
     ScenarioEngine engine;
     registerUbsiProcedures(engine);
+
+    ContractEquipment gapEquipment;
+    const auto gapRun = engine.run(oneStep("ubsi.tu_scope_gate", {
+        {"unresolved", "1.1.4.6"},
+        {"reason", "method is not confirmed"}}), gapEquipment, "p", "", false);
+    require(gapRun.verdict == RunVerdict::Incomplete,
+        "TU scope gate must block OK while a mandatory requirement is unresolved");
+    require(gapEquipment.operations.empty(),
+        "TU scope gate must not invent or execute a physical operation");
 
     ContractEquipment yvpEquipment;
     const auto yvpRun = engine.run(oneStep("ubsi.yvp", {
