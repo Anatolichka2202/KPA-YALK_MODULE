@@ -119,7 +119,7 @@ int main()
         freeContext.operatorName = "operator";
         freeContext.attributes["mode"] = "live";
         const auto freeRun = runProjectWorkflow(
-            project, "free", engine, equipment, profile.version, "SN-FREE", true,
+            project, "free", engine, equipment, profile.version, "SN-FREE", false,
             freeContext, &dynamicScenario);
         require(freeRun.verdict == RunVerdict::Ok,
             "Dynamic free workflow must execute through the common ScenarioEngine");
