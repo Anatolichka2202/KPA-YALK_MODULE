@@ -1,0 +1,15 @@
+schema: 1
+id: production_climate
+title: УБСИ · производственная проверка · климатические условия
+kind: production
+
+scenario: ../../data/scenarios/ubsi_production_full.yaml
+environment: environments/climate.yaml
+reference_workflow: tu_climate
+
+allow_dynamic_scenario: false
+allow_scenario_overrides: false
+
+registration:
+  required: true
+  attach_if_found: true
