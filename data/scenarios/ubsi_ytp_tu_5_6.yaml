@@ -1,7 +1,7 @@
 schema: 1
 id: ubsi.468157.002.ytp.tu5_6
 title: УБСИ · полная проверка ЯТП по ТУ 5.6
-version: 1.1.1
+version: 1.2.0
 catalog_version: 2026.08.29-yalk-1
 object_type: UBSI_468157_002
 state: published
@@ -15,30 +15,33 @@ state: published
 # Пункт 1.1.4.6 (50-метровая линия) в current backend НЕ ПРОВЕРЯЕТСЯ и к
 # этой ЯТП-процедуре не привязывается.
 steps:
-  - id: isd_baseline
-    title: Исходное состояние ИСД перед новым прогоном
-    tu: 5.6 / ИСД · исходное состояние
-    procedure: ubsi.isd_baseline
-    requires:
-      - stand.switch_matrix
-    resources:
-      - resource: switch_matrix.primary
-        capability: stand.switch_matrix
+  - id: startup
+    title: Подготовка стенда и питание УБСИ
+    steps:
+      - id: isd_baseline
+        title: Исходное состояние ИСД перед новым прогоном
+        tu: 5.6 / ИСД · исходное состояние
+        procedure: ubsi.isd_baseline
+        requires:
+          - stand.switch_matrix
+        resources:
+          - resource: switch_matrix.primary
+            capability: stand.switch_matrix
 
-  - id: supply_status
-    title: Включение и контроль питания УБСИ перед проверкой
-    tu: 1.1.4.3, 1.1.4.5
-    procedure: ubsi.supply_status
-    resources:
-      - resource: power.dut
-        capability: power.dc_supply
-    args:
-      nominal_voltage_v: 27
-      minimum_voltage_v: 24
-      maximum_voltage_v: 35
-      maximum_current_a: 0.4
-      startup_current_limit_a: 0.6
-      startup_settle_ms: 500
+      - id: supply_status
+        title: Включение и контроль питания УБСИ перед проверкой
+        tu: 1.1.4.3, 1.1.4.5
+        procedure: ubsi.supply_status
+        resources:
+          - resource: power.dut
+            capability: power.dc_supply
+        args:
+          nominal_voltage_v: 27
+          minimum_voltage_v: 24
+          maximum_voltage_v: 35
+          maximum_current_a: 0.4
+          startup_current_limit_a: 0.6
+          startup_settle_ms: 500
 
   - id: ytp_stream
     title: Активный запуск ROKT и запись сырого потока ЯТП
