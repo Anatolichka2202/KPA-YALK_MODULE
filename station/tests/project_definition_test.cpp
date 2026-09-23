@@ -3,6 +3,8 @@
 
 #include <filesystem>
 #include <iostream>
+#include <map>
+#include <set>
 #include <stdexcept>
 #include <string>
 
@@ -18,6 +20,38 @@ void require(bool condition, const char* message)
 std::string filename(const std::string& path)
 {
     return std::filesystem::u8path(path).filename().string();
+}
+
+class EmptyEquipment final : public ICapabilityProvider {
+public:
+    bool hasCapability(const std::string&) const override { return false; }
+    std::string invoke(
+        const std::string&,
+        const std::string&,
+        const std::map<std::string, std::string>&) override
+    {
+        throw std::runtime_error("unexpected equipment invocation");
+    }
+    void safeStopAll() noexcept override {}
+};
+
+ScenarioDefinition freeScenario()
+{
+    ScenarioDefinition scenario;
+    scenario.id = "free.contract";
+    scenario.title = "Free project contract";
+    scenario.version = "1";
+    scenario.catalogVersion = "test";
+    scenario.objectType = "TEST";
+    scenario.publicationState = PublicationState::Published;
+
+    ScenarioNode step;
+    step.id = "ok";
+    step.title = "OK";
+    step.tuRequirement = "free";
+    step.procedure = "test.ok";
+    scenario.steps.push_back(std::move(step));
+    return scenario;
 }
 
 } // namespace
@@ -73,6 +107,41 @@ int main()
             "KTMA project profile must bind measure.reference");
         require(findComponentByBinding(profile, "switch_matrix.primary") != nullptr,
             "KTMA project profile must bind switch_matrix.primary");
+
+        ScenarioEngine engine;
+        engine.registerProcedure("test.ok", [](const ScenarioNode&, ProcedureContext&) {
+            return ProcedureResult{RunVerdict::Ok, "ok", {}};
+        });
+        EmptyEquipment equipment;
+        auto dynamicScenario = freeScenario();
+        ProjectRunContext freeContext;
+        freeContext.dutType = "TEST_CELL";
+        freeContext.operatorName = "operator";
+        freeContext.attributes["mode"] = "live";
+        const auto freeRun = runProjectWorkflow(
+            project, "free", engine, equipment, profile.version, "SN-FREE", true,
+            freeContext, &dynamicScenario);
+        require(freeRun.verdict == RunVerdict::Ok,
+            "Dynamic free workflow must execute through the common ScenarioEngine");
+        require(freeRun.projectId == "ktma" && freeRun.projectVersion == "1.0.0"
+                && freeRun.workflowId == "free",
+            "Project/workflow identity must be attached to the run result");
+        require(freeRun.dutType == "TEST_CELL" && freeRun.operatorName == "operator"
+                && freeRun.contextAttributes.at("mode") == "live",
+            "Project run context must survive scenario execution");
+        require(filename(freeRun.environmentProfile) == "normal.yaml",
+            "Workflow environment identity must be retained in the run result");
+
+        bool productionRejected = false;
+        try {
+            (void)runProjectWorkflow(
+                project, "production", engine, equipment, profile.version, "SN-PROD", false);
+        } catch (const std::runtime_error& error) {
+            productionRejected = std::string(error.what()).find("registered DUT")
+                != std::string::npos;
+        }
+        require(productionRejected,
+            "A registration-required workflow must reject an unresolved DUT before execution");
 
         std::cout << "Project package contract OK\n";
         return 0;
