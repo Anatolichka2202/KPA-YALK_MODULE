@@ -61,8 +61,7 @@ Evidence / result
 
 Остаётся:
 
-- [ ] получить зелёный Windows CI на текущем master;
-- [ ] подключить selected Project к desktop composition вместо прямого выбора KTMA profile.
+- [ ] получить зелёный Windows CI на текущем master.
 
 ## Этап 2 — Run Context и Evidence foundation
 
@@ -101,12 +100,24 @@ Evidence / result
 
 ## Этап 4 — KTMA project composition
 
-- [ ] desktop выбирает/загружает project package;
-- [ ] `equipment_profile` берётся из project package;
-- [ ] workflow selector использует project workflows;
-- [ ] current TU/Production behaviour сохраняется без big-bang rewrite;
-- [ ] Free mode остаётся вне registrar;
-- [ ] current KTMA readiness остаётся delivery-owned.
+Статус: **PARTIAL / ACTIVE**
+
+Сделано:
+
+- [x] build runtime сохраняет `projects/` и package-relative `data/` рядом с приложением;
+- [x] `UniversalMainWindow` загружает `ProjectDefinition` из `MILTECH_PROJECT` либо `projects/ktma/project.yaml`;
+- [x] заголовок и log получают identity выбранного project package;
+- [x] Free workflow выполняется через `runProjectWorkflow()` и получает project/workflow context;
+- [x] Free mode остаётся вне registrar;
+- [x] отсутствие package имеет compatibility fallback на старый raw ScenarioEngine path.
+
+Остаётся:
+
+- [ ] базовый desktop composition больше не должен наследовать project selection от `KtmaMainWindow`;
+- [ ] `equipment_profile` основной KTMA runtime должен браться из project package, а не из legacy `profiles/stand_ktma.yaml` выбора;
+- [ ] TU/Production launcher перевести на project workflows с сохранением текущего UX;
+- [ ] current KTMA readiness оставить delivery-owned;
+- [ ] workflow selector сделать project-driven вместо hard-coded codes.
 
 ## Этап 5 — УБСИ TU NORMAL
 
@@ -183,6 +194,9 @@ Evidence / result
 - `station/tests/project_definition_test.cpp`
 - `station/tests/run_store_context_test.cpp`
 - `station/CMakeLists.txt`
+- `apps/desktop/CMakeLists.txt`
+- `apps/desktop/universal_mainwindow.h`
+- `apps/desktop/universal_mainwindow.cpp`
 - `projects/ktma/project.yaml`
 - `projects/ktma/workflows/*.yaml`
 - `projects/ktma/environments/*.yaml`
