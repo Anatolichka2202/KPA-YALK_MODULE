@@ -74,6 +74,19 @@ std::vector<std::string> validateProjectPackage(const ProjectDefinition& project
 const WorkflowDefinition* findWorkflow(
     const ProjectDefinition& project, const std::string& id) noexcept;
 
+// Common audited scenario entry point. It preserves ScenarioEngine semantics
+// while recording command/ack/error/safe-stop evidence at the equipment
+// boundary. Delivery compatibility runners can use this before they are fully
+// expressed as immutable Project workflows.
+ScenarioRunResult runScenarioWithEvidence(
+    ScenarioEngine& engine,
+    ICapabilityProvider& equipment,
+    const ScenarioDefinition& scenario,
+    std::string profileVersion,
+    std::string objectSerial,
+    bool allowPartial,
+    std::function<void(const RunEvent&)> progressSink = {});
+
 // Execute one workflow through the ordinary ScenarioEngine and attach the
 // project/workflow identity to ScenarioRunResult. A fixed workflow loads its
 // scenario from the package. A caller-supplied scenario is accepted only by a
