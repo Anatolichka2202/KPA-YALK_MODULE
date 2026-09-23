@@ -207,6 +207,13 @@ steps:
         title: ЯВП-8 · Rigol, ИСД и измерение В7
         tu: 1.1.4.1, 1.1.4.7, 1.1.4.8, 1.1.4.14
         procedure: ubsi.yvp
+        # Legacy preflight view retained for the trace-only draft while
+        # execution is resource-routed by the same step below.
+        requires:
+          - stand.switch_matrix
+          - measure.reference_ac_voltage
+          - measure.reference_frequency
+          - signal.generator
         resources:
           - resource: switch_matrix.primary
             capability: stand.switch_matrix
