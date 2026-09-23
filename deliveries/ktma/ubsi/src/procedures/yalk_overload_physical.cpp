@@ -64,8 +64,8 @@ std::vector<unsigned> legacyCountOrSafeMap(
 
     // Compatibility with the current published scenario and small unit fixtures.
     // The historical value 88 never means "drive every ISD line": eight of those
-    // lines (29/30/31/44/71/72/73/88) belong to the YVP wiring.  Small synthetic
-    // counts are retained so regression tests can exercise the algorithm cheaply.
+    // lines (29/30/31/44/71/72/73/88) belong to the YVP wiring. Small synthetic
+    // counts remain available so regression tests can exercise the algorithm.
     const unsigned legacyCount = natural(node, countKey, 88);
     if (legacyCount < 80) {
         std::vector<unsigned> result;
@@ -212,19 +212,20 @@ ProcedureResult yalkOverloadPhysical(const ScenarioNode& node, ProcedureContext&
             "Маршруты ±12 В не подтверждены; опасное воздействие не выполнялось", {}};
     }
 
+    const auto safeMap = addressList(kSafeYalkAddresses);
     const auto physical = legacyCountOrSafeMap(
         node, "physical_channels", "physical_channel_count");
-    auto stressed = argument(node, "stressed_channels").empty()
+    const auto stressed = argument(node, "stressed_channels").empty()
         ? physical : addressList(argument(node, "stressed_channels"));
     const auto observed = legacyCountOrSafeMap(
         node, "observed_addresses", "observed_address_count");
 
     if (physical.empty() || stressed.empty() || observed.empty())
         throw std::invalid_argument("Карта перегрузки ЯЛК не может быть пустой");
-    if (physical.size() >= 80 && physical != addressList(kSafeYalkAddresses))
+    if (physical.size() >= 80 && physical != safeMap)
         throw std::invalid_argument(
             "Полная перегрузка ЯЛК разрешена только для подтверждённой безопасной карты 80 каналов");
-    if (observed.size() >= 80 && observed != addressList(kSafeYalkAddresses))
+    if (observed.size() >= 80 && observed != safeMap)
         throw std::invalid_argument(
             "Полное наблюдение ЯЛК разрешено только для подтверждённой безопасной карты 80 адресов");
     for (const unsigned target : stressed) {
@@ -242,7 +243,8 @@ ProcedureResult yalkOverloadPhysical(const ScenarioNode& node, ProcedureContext&
         node, "positive_overload_route", "yalk_overload_positive");
     const std::string negativeRoute = argument(
         node, "negative_overload_route", "yalk_overload_negative");
-    const std::string owner = "run:" + context.runId + ":yalk-overload:" + node.id;
+    const std::string backgroundOwner = "run:" + context.runId + ":yalk-overload-bg:" + node.id;
+    const std::string impactOwner = "run:" + context.runId + ":yalk-overload-impact:" + node.id;
 
     const auto analogCode = [](unsigned channel) {
         return channel <= 10 ? 780u + (channel - 1) * 30u
@@ -253,17 +255,18 @@ ProcedureResult yalkOverloadPhysical(const ScenarioNode& node, ProcedureContext&
             {"channel", std::to_string(channel)},
             {"code", std::to_string(code)},
             {"enabled", enabled ? "true" : "false"},
-            {"owner", owner}});
+            {"owner", backgroundOwner}});
     };
     const auto setSwitch = [&](std::map<std::string, std::string> arguments) {
         arguments["type"] = "3";
-        arguments["owner"] = owner;
+        arguments["owner"] = impactOwner;
         context.equipment.invoke("stand.switch_matrix", "switch", arguments);
     };
-    const auto releaseOwner = [&] {
+    const auto release = [&](const std::string& owner) {
         context.equipment.invoke("stand.switch_matrix", "release_owner", {
             {"owner", owner}});
     };
+    const auto releaseImpact = [&] { release(impactOwner); };
     const auto sourceOff = [&](const std::string& route) {
         try { setSwitch({{"route", route}, {"enabled", "false"}}); } catch (...) {}
     };
@@ -277,10 +280,11 @@ ProcedureResult yalkOverloadPhysical(const ScenarioNode& node, ProcedureContext&
         }
     };
     const auto finalCleanup = [&] {
+        try { releaseImpact(); } catch (...) {}
         sourceOff(positiveRoute);
         sourceOff(negativeRoute);
         staircaseOff();
-        try { releaseOwner(); } catch (...) {}
+        try { release(backgroundOwner); } catch (...) {}
     };
 
     ProcedureResult result{RunVerdict::Ok,
@@ -289,9 +293,10 @@ ProcedureResult yalkOverloadPhysical(const ScenarioNode& node, ProcedureContext&
             : "Проверена выборочная перегрузка ЯЛК ±12 В", {}};
 
     try {
-        // Clear only mutations previously recorded for this overload owner. No
-        // firmware type=4 reset is used inside the measurement sequence.
-        releaseOwner();
+        // Separate owners let us clear transient ±12 V switches after every
+        // impact while keeping all unaffected DAC background outputs alive.
+        release(backgroundOwner);
+        releaseImpact();
         staircaseOn();
         waitScaled(context, baselineSettle);
         const auto baseline = readFreshSnapshot(context, samples);
@@ -324,8 +329,8 @@ ProcedureResult yalkOverloadPhysical(const ScenarioNode& node, ProcedureContext&
                 bool commonEnabled = false;
                 bool targetConnected = false;
                 try {
-                    // Confirmed donor order: leave the 79-channel background in
-                    // place, remove only the target DAC, then connect ±12 V.
+                    // Confirmed donor order: leave the other background DACs
+                    // active, remove only the target DAC, then connect ±12 V.
                     setAnalog(target, 0, false);
                     targetDacRemoved = true;
                     waitScaled(context, dacOffSettle);
@@ -366,12 +371,13 @@ ProcedureResult yalkOverloadPhysical(const ScenarioNode& node, ProcedureContext&
                         append(result, std::move(value));
                     }
 
-                    // Targeted transition only. Other 79 DAC background outputs
-                    // stay active, exactly as in the frozen proven donor.
+                    // Explicit reverse transition is retained in evidence;
+                    // releaseImpact is the ownership/failure-safety barrier.
                     setSwitch({{"channel", std::to_string(target)}, {"enabled", "false"}});
                     targetConnected = false;
                     setSwitch({{"route", polarity.first}, {"enabled", "false"}});
                     commonEnabled = false;
+                    releaseImpact();
                     setAnalog(target, analogCode(target), true);
                     targetDacRemoved = false;
                     waitScaled(context, cleanupSettle);
@@ -381,6 +387,7 @@ ProcedureResult yalkOverloadPhysical(const ScenarioNode& node, ProcedureContext&
                         catch (...) {}
                     }
                     if (commonEnabled) sourceOff(polarity.first);
+                    try { releaseImpact(); } catch (...) {}
                     if (targetDacRemoved) {
                         try { setAnalog(target, analogCode(target), true); } catch (...) {}
                     }
