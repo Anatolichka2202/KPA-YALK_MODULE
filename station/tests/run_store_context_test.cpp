@@ -1,5 +1,6 @@
 #include "orbita_stand/run_store.h"
 
+#include <QCoreApplication>
 #include <QSqlDatabase>
 #include <QSqlQuery>
 #include <QTemporaryDir>
@@ -17,8 +18,10 @@ void require(bool value, const char* message)
 }
 }
 
-int main()
+int main(int argc, char** argv)
 {
+    QCoreApplication app(argc, argv);
+
     try {
         QTemporaryDir directory;
         require(directory.isValid(), "temporary directory unavailable");
