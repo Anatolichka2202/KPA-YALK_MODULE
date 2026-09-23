@@ -1,0 +1,15 @@
+schema: 1
+id: production
+title: УБСИ · производственная проверка · нормальные условия
+kind: production
+
+scenario: ../../data/scenarios/ubsi_production_full.yaml
+environment: environments/normal.yaml
+reference_workflow: tu_normal
+
+allow_dynamic_scenario: false
+allow_scenario_overrides: false
+
+registration:
+  required: true
+  attach_if_found: true
