@@ -443,6 +443,7 @@ protected:
 
         struct Value {
             int key;
+            double rawCode;
             double value;
             double minimum;
             double maximum;
@@ -463,7 +464,7 @@ protected:
             nominalTop = 6.2;
             activeChannel = yalk_.stimulatedChannel;
             for (const auto& channel : yalk_.channels) {
-                values.push_back({channel.physicalAddress, channel.currentV,
+                values.push_back({channel.physicalAddress, channel.rawCode, channel.currentV,
                                   channel.minimumV, channel.maximumV,
                                   channel.reducedErrorPercent,
                                   channel.verification,
@@ -475,7 +476,7 @@ protected:
             nominalTop = 240.0;
             activeChannel = ytp_.testedChannel;
             for (const auto& channel : ytp_.channels) {
-                values.push_back({channel.channel, channel.currentOhm,
+                values.push_back({channel.channel, std::numeric_limits<double>::quiet_NaN(), channel.currentOhm,
                                   channel.minimumOhm, channel.maximumOhm,
                                   std::numeric_limits<double>::quiet_NaN(),
                                   channel.verification, -1, -1,
@@ -486,7 +487,7 @@ protected:
             nominalTop = 6.2;
             const auto keys = yalkPhysicalAddresses();
             for (int i = 0; i < keys.size(); ++i) {
-                values.push_back({keys[i], i < passive_.size() ? passive_[i]
+                values.push_back({keys[i], std::numeric_limits<double>::quiet_NaN(), i < passive_.size() ? passive_[i]
                                     : std::numeric_limits<double>::quiet_NaN(),
                                   std::numeric_limits<double>::quiet_NaN(),
                                   std::numeric_limits<double>::quiet_NaN(),
@@ -509,8 +510,12 @@ protected:
         double baseHi = nominalTop;
         if (kind_ == Kind::Yalk && !fullScale_ && std::isfinite(yalk_.pointV)) {
             const double center = detail::finiteOr(yalk_.actualReferenceV7, yalk_.pointV);
-            const double observedSpan = std::isfinite(observedMin) && std::isfinite(observedMax)
-                ? observedMax - observedMin : 0.0;
+            double observedSpan = 0.0;
+            const auto active = std::find_if(values.begin(), values.end(),
+                [activeChannel](const Value& value) { return value.key == activeChannel; });
+            if (active != values.end() && std::isfinite(active->minimum)
+                && std::isfinite(active->maximum))
+                observedSpan = active->maximum - active->minimum;
             const double half = std::max(.06, observedSpan * 1.15);
             baseLo = center - half;
             baseHi = center + half;
@@ -579,6 +584,13 @@ protected:
                 const double top = yFor(value.value);
                 p.fillRect(QRectF(x + cell * .20, top,
                                   std::max(2.0, cell * .60), area.bottom() - top), color);
+                if (kind_ == Kind::Yalk && active
+                    && std::isfinite(yalk_.actualReferenceV7)) {
+                    const double referenceTop = yFor(yalk_.actualReferenceV7);
+                    p.fillRect(QRectF(x + cell * .63, referenceTop,
+                        std::max(2.0, cell * .28), area.bottom() - referenceTop),
+                        detail::translucent(palette::text, 125));
+                }
                 if (std::isfinite(value.minimum) && std::isfinite(value.maximum)) {
                     p.setPen(QPen(palette::text, 1));
                     p.drawLine(QPointF(x + cell / 2, yFor(value.minimum)),
@@ -589,8 +601,14 @@ protected:
                         && value.contactState != VerificationState::Error;
                     p.setPen(contactOk ? palette::green : palette::red);
                     p.setFont(QFont(QStringLiteral("Segoe UI"), 7, QFont::Bold));
-                    p.drawText(QRectF(x, area.top() + 2, cell, 13), Qt::AlignCenter,
+                    p.drawText(QRectF(x, area.top() + 15, cell, 13), Qt::AlignCenter,
                                QString::number(value.contactLogic));
+                }
+                if (kind_ == Kind::Yalk && std::isfinite(value.rawCode)) {
+                    p.setPen(palette::text);
+                    p.setFont(QFont(QStringLiteral("Segoe UI"), 5));
+                    p.drawText(QRectF(x - 1, area.top() + 1, cell + 2, 13), Qt::AlignCenter,
+                        QString::number(std::lround(value.rawCode)));
                 }
                 hits_.push_back({hit, value.key,
                     QStringLiteral("Канал %1\n%2 %3\nmin…max %4…%5%6%7%8")
@@ -609,10 +627,10 @@ protected:
                         .arg(pinned ? QStringLiteral("\nзакреплён") : QString())});
             }
 
-            if (i == 0 || i == values.size() - 1
+            if (kind_ == Kind::Yalk || i == 0 || i == values.size() - 1
                 || (i + 1) % (values.size() > 40 ? 5 : 2) == 0) {
                 p.setPen(palette::muted);
-                p.setFont(QFont(QStringLiteral("Segoe UI"), 7));
+                p.setFont(QFont(QStringLiteral("Segoe UI"), kind_ == Kind::Yalk ? 5 : 7));
                 p.drawText(QRectF(x - cell, area.bottom() + 4, cell * 3, 15),
                            Qt::AlignCenter, QString::number(value.key));
             }

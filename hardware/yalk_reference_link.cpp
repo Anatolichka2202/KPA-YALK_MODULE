@@ -88,6 +88,25 @@ std::vector<YalkChannelReading> decodeYalkFrame(const std::vector<std::uint8_t>&
     return result;
 }
 
+YtpSnapshot decodeYtpFrame(const std::vector<std::uint8_t>& frame)
+{
+    if (frame.size() != 68 || frame[0] != 0x01 || frame[1] != 0x00
+        || frame[2] != 0x34 || frame[3] != 0x00)
+        throw std::invalid_argument("Кадр ЯТП ROKT имеет неверный формат");
+    YtpSnapshot result;
+    for (std::size_t index = 0; index < 32; ++index) {
+        const std::size_t offset = 4 + index * 2;
+        const auto word = static_cast<std::uint16_t>(frame[offset])
+            | (static_cast<std::uint16_t>(frame[offset + 1]) << 8);
+        const double value = word == 0x8000 ? 32768.0 : static_cast<double>(word);
+        if (word != 0x8000) ++result.validWordCount;
+        if (index < 30) result.channels[index] = value;
+        else if (index == 30) result.calibration31 = value;
+        else result.calibration32 = value;
+    }
+    return result;
+}
+
 } // namespace
 
 struct YalkReferenceLink::Impl
@@ -124,6 +143,12 @@ struct YalkReferenceLink::Impl
         liveSink = std::move(sink);
     }
 
+    void setLiveYtpSink(LiveYtpSink sink)
+    {
+        std::lock_guard<std::mutex> lock(frameMutex);
+        liveYtpSink = std::move(sink);
+    }
+
     void stop() noexcept
     {
         stopping.store(true);
@@ -147,6 +172,7 @@ struct YalkReferenceLink::Impl
             frames.clear();
             sequence = 0;
             lastLivePublish = {};
+            lastYtpLivePublish = {};
         }
     }
 
@@ -180,7 +206,9 @@ struct YalkReferenceLink::Impl
             QueuedFrame queued;
             queued.bytes.assign(bytes.begin(), bytes.begin() + count);
             LiveYalkSink sink;
+            LiveYtpSink ytpSink;
             bool publishLive = false;
+            bool publishYtpLive = false;
             {
                 std::lock_guard<std::mutex> lock(frameMutex);
                 queued.sequence = ++sequence;
@@ -195,11 +223,22 @@ struct YalkReferenceLink::Impl
                     lastLivePublish = now;
                     publishLive = true;
                 }
+                if (count == 68 && liveYtpSink
+                    && (lastYtpLivePublish.time_since_epoch().count() == 0
+                        || now - lastYtpLivePublish >= std::chrono::milliseconds(50))) {
+                    ytpSink = liveYtpSink;
+                    lastYtpLivePublish = now;
+                    publishYtpLive = true;
+                }
             }
             frameCv.notify_all();
 
             if (publishLive) {
                 try { sink(decodeYalkFrame(queued.bytes), queued.sequence); }
+                catch (...) {}
+            }
+            if (publishYtpLive) {
+                try { ytpSink(decodeYtpFrame(queued.bytes), queued.sequence); }
                 catch (...) {}
             }
         }
@@ -225,6 +264,7 @@ struct YalkReferenceLink::Impl
             frames.clear();
             sequence = 0;
             lastLivePublish = {};
+            lastYtpLivePublish = {};
         }
         receiver = value;
         stopping.store(false);
@@ -508,7 +548,9 @@ struct YalkReferenceLink::Impl
     std::deque<QueuedFrame> frames;
     std::uint64_t sequence = 0;
     LiveYalkSink liveSink;
+    LiveYtpSink liveYtpSink;
     std::chrono::steady_clock::time_point lastLivePublish{};
+    std::chrono::steady_clock::time_point lastYtpLivePublish{};
 #ifdef _WIN32
     bool winsockStarted = false;
 #endif
@@ -602,6 +644,11 @@ YtpSnapshot YalkReferenceLink::readYtpSnapshotSince(
 void YalkReferenceLink::setLiveYalkSink(LiveYalkSink sink)
 {
     impl_->setLiveSink(std::move(sink));
+}
+
+void YalkReferenceLink::setLiveYtpSink(LiveYtpSink sink)
+{
+    impl_->setLiveYtpSink(std::move(sink));
 }
 
 void YalkReferenceLink::stop() noexcept { impl_->stop(); }

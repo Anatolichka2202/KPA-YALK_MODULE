@@ -73,6 +73,12 @@ int main()
         config.localHost = "127.0.0.1";
         config.port = port;
         tu::hardware::YalkReferenceLink link(config);
+        std::atomic<unsigned> liveFrames{0};
+        std::atomic<double> liveChannel1{0.0};
+        link.setLiveYtpSink([&](const tu::hardware::YtpSnapshot& frame, std::uint64_t) {
+            liveChannel1.store(frame.channels[0]);
+            ++liveFrames;
+        });
         require(link.startYtp(1, std::chrono::milliseconds(0), std::chrono::milliseconds(0),
                               std::chrono::milliseconds(300), {}),
                 "simulated YTP stream did not start");
@@ -82,6 +88,8 @@ int main()
         const auto marker = link.markYtpFrames();
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         sender.join(); // No frame will arrive after the simulated "OK".
+        require(liveFrames.load() > 0 && liveChannel1.load() == 2171.0,
+                "YTP live sink must receive frames while operator dialog is open");
 
         const auto snapshot = link.readYtpSnapshotSince(
             marker, 16, std::chrono::milliseconds(100), {});

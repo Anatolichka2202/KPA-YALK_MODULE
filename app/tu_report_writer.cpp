@@ -282,6 +282,21 @@ void writePower(QString& output, const tu::StepRunResult& step)
     sectionResult(output, QStringLiteral("ПРОВЕРКА ТОКА ПОТРЕБЛЕНИЯ УБСИ"), step.verdict);
 }
 
+void writeSensorSupply(QString& output, const tu::StepRunResult& step)
+{
+    section(output, QStringLiteral("ПРОВЕРКА НАПРЯЖЕНИЯ ПИТАНИЯ ДАТЧИКОВ БЕЗ НАГРУЗКИ"),
+            QStringLiteral("1.1.4.2"));
+    output += QStringLiteral("В7 через измерительную шину ИСД; допустимый диапазон 6,0...6,4 В.\n");
+    for (const auto& value : step.measurements) {
+        if (!hasKey(value, "ubsi.sensor_supply_unloaded.")) continue;
+        output += QStringLiteral("%1, контакт %2    ИСД type=3, канал %3    В7: %4 В    %5\n")
+            .arg(attribute(value, "connector"), attribute(value, "pin"),
+                 attribute(value, "isd_channel"), reportValue(value, 3),
+                 protocolVerdict(value.verdict));
+    }
+    sectionResult(output, QStringLiteral("ПРОВЕРКА НАПРЯЖЕНИЯ ПИТАНИЯ ДАТЧИКОВ"), step.verdict);
+}
+
 using MeasurementsByChannel = std::map<int, std::vector<const tu::MeasurementResult*>>;
 
 MeasurementsByChannel byChannel(const tu::StepRunResult& step, const char* prefix,
@@ -328,32 +343,41 @@ void writeYalkAnalog(QString& output, const tu::StepRunResult& step)
                   analog.empty() ? tu::RunVerdict::NotRun : analogVerdict);
 }
 
-void writeYalkContact(QString& output, const tu::StepRunResult& step)
+void writeYalkContact(QString& output, const tu::StepRunResult& step,
+                      const tu::StepRunResult* initial)
 {
     section(output, QStringLiteral("ПРОВЕРКА ОПРОСА И ПРЕОБРАЗОВАНИЯ КОНТАКТНЫХ СИГНАЛОВ"),
             QStringLiteral("1.1.4.1"));
     output += QStringLiteral("Проверка контактного признака 80 рабочих каналов ЯЛК-96.\n");
-    std::map<double, std::vector<const tu::MeasurementResult*>> byPoint;
-    for (const auto& value : step.measurements) {
-        if (!hasKey(value, "ubsi.yalk.signal.")) continue;
-        const double volts = numberAttribute(value, "command_v");
-        if (std::isfinite(volts)) byPoint[volts].push_back(&value);
-    }
+    std::map<unsigned, std::vector<const tu::MeasurementResult*>> byChannel;
+    const auto collect = [&](const tu::StepRunResult& source) {
+        for (const auto& value : source.measurements) {
+            if (!hasKey(value, "ubsi.yalk.signal.")) continue;
+            bool ok = false;
+            const unsigned channel = attribute(value, "ulk_address").toUInt(&ok);
+            if (ok) byChannel[channel].push_back(&value);
+        }
+    };
+    if (initial) collect(*initial);
+    collect(step);
     tu::RunVerdict contactVerdict = tu::RunVerdict::Ok;
-    for (const auto& [volts, values] : byPoint) {
+    for (const auto& [channel, values] : byChannel) {
         if (values.empty()) continue;
-        output += QStringLiteral("\nСостояние \"%1\" при входном напряжении %2 В\n")
-            .arg(number(values.front()->reference, 0), number(volts, 1));
+        output += QStringLiteral("Канал %1").arg(channel, 2);
+        tu::RunVerdict channelVerdict = tu::RunVerdict::Ok;
         for (const auto* value : values) {
-            const QString channel = attribute(*value, "ulk_address").rightJustified(2, QLatin1Char(' '));
-            output += QStringLiteral("Канал %1    Вольтметр: %2 В    Состояние: %3    Срабатывание: %4\n")
-                .arg(channel, number(numberAttribute(*value, "v7_v")),
-                     reportValue(*value, 0), protocolVerdict(value->verdict));
+            const QString mode = attribute(*value, "contact_mode");
+            const double volts = numberAttribute(*value, "command_v");
+            output += QStringLiteral("    %1: %2")
+                .arg(mode.isEmpty() ? QStringLiteral("%1 В").arg(number(volts, 1)) : mode,
+                     reportValue(*value, 0));
+            channelVerdict = tu::combineVerdicts(channelVerdict, value->verdict);
             contactVerdict = tu::combineVerdicts(contactVerdict, value->verdict);
         }
+        output += QStringLiteral("    %1\n").arg(protocolVerdict(channelVerdict));
     }
     sectionResult(output, QStringLiteral("ПРОВЕРКА КОНТАКТНЫХ КАНАЛОВ ЯЛК-96"),
-                  byPoint.empty() ? tu::RunVerdict::NotRun : contactVerdict);
+                  byChannel.empty() ? tu::RunVerdict::NotRun : contactVerdict);
 }
 
 void writeYtp(QString& output, const tu::StepRunResult& step)
@@ -405,26 +429,31 @@ void writeYalkOverload(QString& output, const tu::StepRunResult& step)
             QStringLiteral("1.1.4.11"));
     output += QStringLiteral("Для каждого перегружаемого канала контролируются остальные 79 рабочих каналов.\n"
                              "Критерий: изменение кода остальных каналов не более 5 единиц.\n");
-    using Impact = std::pair<QString, unsigned>;
-    std::map<Impact, std::vector<const tu::MeasurementResult*>> impacts;
+    std::map<unsigned, std::map<QString, std::vector<const tu::MeasurementResult*>>> impacts;
     for (const auto& value : step.measurements) {
         if (!hasKey(value, "ubsi.yalk.overload.")) continue;
         bool ok = false;
         const unsigned target = attribute(value, "stressed_channel").toUInt(&ok);
-        if (ok) impacts[{attribute(value, "polarity"), target}].push_back(&value);
+        if (ok) impacts[target][attribute(value, "polarity")].push_back(&value);
     }
-    for (const auto& [impact, values] : impacts) {
-        output += QStringLiteral("\nПерегрузка канала %1, воздействие %2\n")
-            .arg(impact.second).arg(impact.first);
-        for (const auto* value : values) {
-            const double delta = numberAttribute(*value, "delta_code");
-            output += QStringLiteral("  Канал %1    Код до: %2    Код после: %3    Δкод: %4    %5\n")
-                .arg(attribute(*value, "observed_channel").rightJustified(2, QLatin1Char(' ')),
-                     number(numberAttribute(*value, "baseline_code"), 2),
-                     number(numberAttribute(*value, "current_code"), 2),
-                     signedNumber(delta, 2),
-                     protocolVerdict(value->verdict));
+    for (const auto& [target, polarities] : impacts) {
+        double maximum = 0.0;
+        tu::RunVerdict targetVerdict = tu::RunVerdict::Ok;
+        for (const auto& [polarity, values] : polarities) {
+            (void)polarity;
+            for (const auto* value : values) {
+                maximum = std::max(maximum, std::abs(numberAttribute(*value, "delta_code")));
+                targetVerdict = tu::combineVerdicts(targetVerdict, value->verdict);
+            }
         }
+        const bool hasPositive = polarities.count(QStringLiteral("+12 В")) > 0;
+        const bool hasNegative = polarities.count(QStringLiteral("-12 В")) > 0;
+        if (!hasPositive || !hasNegative) targetVerdict = tu::RunVerdict::NotRun;
+        const QString performed = hasPositive && hasNegative ? QStringLiteral("+12 / -12 В")
+            : hasPositive ? QStringLiteral("только +12 В")
+            : hasNegative ? QStringLiteral("только -12 В") : QStringLiteral("нет данных");
+        output += QStringLiteral("Канал %1    Перегрузка %2    Максимальная |Δкод|: %3    %4\n")
+            .arg(target, 2).arg(performed, number(maximum, 2), protocolVerdict(targetVerdict));
     }
     sectionResult(output, QStringLiteral("ПРОВЕРКА ЗАЩИТЫ АНАЛОГОВЫХ ВХОДОВ ОТ ПЕРЕГРУЗОК ±12 В"),
                   impacts.empty() ? tu::RunVerdict::NotRun : step.verdict);
@@ -469,12 +498,15 @@ void writeYvp(QString& output, const tu::StepRunResult& step)
         hasAfc = true;
         output += QStringLiteral("\nПроверка канала №%1\n").arg(channel);
         tu::RunVerdict channelVerdict = tu::RunVerdict::Ok;
-        if (!afc.empty())
-            output += QStringLiteral("Частота =  500 Гц    Амплитуда = 1.0000    Отклонение = +0.00 %    НОРМА\n");
         std::sort(afc.begin(), afc.end(), [](const auto* lhs, const auto* rhs) {
             return numberAttribute(*lhs, "set_frequency_hz") < numberAttribute(*rhs, "set_frequency_hz");
         });
+        bool referencePrinted = false;
         for (const auto* value : afc) {
+            if (!referencePrinted && numberAttribute(*value, "set_frequency_hz") > 500.0) {
+                output += QStringLiteral("Частота =  500 Гц    Амплитуда = 1.0000    Отклонение = +0.00 %    НОРМА\n");
+                referencePrinted = true;
+            }
             const double deviation = reportMeasured(*value);
             output += QStringLiteral("Частота = %1 Гц    Амплитуда = %2    Отклонение = %3 %    %4\n")
                 .arg(number(numberAttribute(*value, "set_frequency_hz"), 0).rightJustified(4, QLatin1Char(' ')),
@@ -482,6 +514,8 @@ void writeYvp(QString& output, const tu::StepRunResult& step)
                      protocolVerdict(value->verdict));
             channelVerdict = tu::combineVerdicts(channelVerdict, value->verdict);
         }
+        if (!referencePrinted)
+            output += QStringLiteral("Частота =  500 Гц    Амплитуда = 1.0000    Отклонение = +0.00 %    НОРМА\n");
         if (attenuation) {
             const double attenuationDb = reportMeasured(*attenuation);
             const double ratio = std::pow(10.0, -attenuationDb / 20.0);
@@ -580,14 +614,15 @@ QString makeProtocolText(const tu::ScenarioRunResult& result)
 
     if (const auto* step = findStep(result.steps, "readiness")) writeReadiness(output, *step);
     if (const auto* step = findStep(result.steps, "supply_range")) writePower(output, *step);
+    if (const auto* step = findStep(result.steps, "sensor_supply_unloaded")) writeSensorSupply(output, *step);
     if (const auto* step = findStep(result.steps, "yalk_channels")) writeYalkAnalog(output, *step);
     if (const auto* step = findStep(result.steps, "yalk_reference_voltage")) writeYalkReference(output, *step);
     if (const auto* step = findStep(result.steps, "yalk_initial")) writeYalkInitial(output, *step);
     if (const auto* step = findStep(result.steps, "yalk_overload")) writeYalkOverload(output, *step);
-    if (const auto* step = findStep(result.steps, "yalk_channels")) writeYalkContact(output, *step);
+    if (const auto* step = findStep(result.steps, "yalk_channels"))
+        writeYalkContact(output, *step, findStep(result.steps, "yalk_initial"));
     if (const auto* step = findStep(result.steps, "ytp_channels")) writeYtp(output, *step);
     if (const auto* step = findStep(result.steps, "yvp_channels")) writeYvp(output, *step);
-    writeAccuracy(output, result);
 
     divider(output);
     output += QStringLiteral("РЕЗУЛЬТАТЫ ПРОВЕРКИ УБСИ В НОРМАЛЬНЫХ УСЛОВИЯХ    %1\n")

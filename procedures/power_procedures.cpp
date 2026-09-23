@@ -3,6 +3,7 @@
 #include "hardware/stand_hardware.h"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <set>
@@ -437,6 +438,60 @@ ProcedureResult addressedBaseline(const ScenarioStep& step, ProcedureContext& co
     }
 }
 
+ProcedureResult sensorSupplyUnloaded(const ScenarioStep& step, ProcedureContext& context,
+                                     const std::shared_ptr<hardware::StandHardware>& stand)
+{
+    struct Route { const char* connector; unsigned pin; unsigned isdChannel; };
+    // Подтверждённая владельцем карта: X1/36,37 -> 89,90;
+    // X2/36,37 -> 91,92; X3/36,37 -> 93,94. Контакт 38 = 0 В, не коммутировать.
+    constexpr std::array<Route, 6> routes{{
+        {"X1",36,89}, {"X1",37,90}, {"X2",36,91},
+        {"X2",37,92}, {"X3",36,93}, {"X3",37,94}}};
+    const unsigned settleMs = natural(step, "settle_ms", 250);
+    const double nominal = number(step, "nominal_v", 6.2);
+    const double tolerance = number(step, "tolerance_v", 0.2);
+    if (settleMs > 5000 || nominal != 6.2 || tolerance != 0.2)
+        throw std::invalid_argument("Некорректные условия измерения питания датчиков");
+    const auto power = stand->supply().readState();
+    if (!power.outputEnabled || power.measuredVoltageV < 24.0
+        || power.measuredVoltageV > 35.0)
+        throw std::runtime_error("Для контроля питания датчиков нужны включённые 24...35 В");
+
+    ProcedureResult result{RunVerdict::Ok,
+        "Напряжение питания датчиков измерено без нагрузки на шести выводах", {}};
+    for (const auto& route : routes) {
+        context.checkpoint();
+        bool connected = false;
+        try {
+            stand->isd().setSwitch(3, route.isdChannel, true);
+            connected = true;
+            checkedWait(context, std::chrono::milliseconds(settleMs));
+            const double volts = stand->v7().readDcVoltage();
+            stand->isd().setSwitch(3, route.isdChannel, false);
+            connected = false;
+            auto value = measurement("ubsi.sensor_supply_unloaded."
+                    + std::to_string(route.isdChannel),
+                std::string("Питание датчиков ") + route.connector + "/"
+                    + std::to_string(route.pin),
+                nominal, volts, nominal - tolerance, nominal + tolerance, "В");
+            value.attributes = {{"connector",route.connector},
+                {"pin",std::to_string(route.pin)},
+                {"isd_type","3"}, {"isd_channel",std::to_string(route.isdChannel)},
+                {"load","none"}, {"v7_v",std::to_string(volts)}};
+            if (context.eventSink) context.eventSink({std::chrono::system_clock::now(),
+                step.id, "MEASUREMENT", value.title, value.verdict, value.attributes});
+            append(result, std::move(value));
+        } catch (...) {
+            if (connected) {
+                try { stand->isd().setSwitch(3, route.isdChannel, false); } catch (...) {}
+            }
+            stand->safeStop();
+            throw;
+        }
+    }
+    return result;
+}
+
 ProcedureResult unavailable(const ScenarioStep& step, ProcedureContext&)
 {
     return {RunVerdict::Incomplete,
@@ -466,6 +521,10 @@ void registerPowerProcedures(ScenarioEngine& engine,
     engine.registerProcedure("stand.addressed_baseline",
         [hardware](const ScenarioStep& step, ProcedureContext& context) {
             return addressedBaseline(step, context, hardware);
+        });
+    engine.registerProcedure("power.sensor_supply_unloaded",
+        [hardware](const ScenarioStep& step, ProcedureContext& context) {
+            return sensorSupplyUnloaded(step, context, hardware);
         });
 }
 

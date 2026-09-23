@@ -61,4 +61,8 @@ private:
     // Последние кадры ROKT для живого min/max на графиках ЯЛК. Это не
     // приёмочные samples процедуры, а видимый оператору разброс телеметрии.
     std::vector<std::deque<double>> yalkLiveWindow_;
+    double ytpZeroCode_ = 0.0;
+    double ytpFullCode_ = 0.0;
+    bool ytpCalibrationValid_ = false;
+    std::vector<std::deque<double>> ytpLiveWindow_;
 };

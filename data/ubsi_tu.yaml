@@ -11,7 +11,7 @@ version: 1.3.0
 # 1.1.4.14 не является отдельным этапом: погрешность вычисляется в результатах
 # соответствующих измерений ЯЛК, ЯТП и ЯВП.
 # Не включены 1.1.4.4/1.1.4.12 (изоляция, метод 5.5), 1.1.4.6 (линия 50 м).
-# 1.1.4.2 отдельно не автоматизирован: общий ток контролируется по 1.1.4.5.
+# 1.1.4.2: напряжение шести выводов питания датчиков без нагрузки, через ИСД type=3 и В7.
 #
 # ПОДТВЕРЖДЁННАЯ КОММУТАЦИЯ ИСД / ЯЛК:
 # - рабочие адреса ЯЛК: 1-28, 32-43, 45-70, 74-87 — ровно 80 каналов;
@@ -56,10 +56,21 @@ steps:
     args:
       # type=4 не используется. Каждый адресный OFF подтверждается ответом ИСД.
       type2_contacts: 1-40
-      type3_contacts: 1-88,95-96
-      analog_type1_contacts: 1-88
-      # Не перегружаем HTTP-сервис ИСД серией из 218 запросов без пауз.
+      type3_contacts: 1-96
+      analog_type1_contacts: 1-96
+      # Не перегружаем HTTP-сервис ИСД серией адресных запросов без пауз.
       isd_command_gap_ms: 30
+
+  - id: sensor_supply_unloaded
+    title: Питание датчиков 6,2 ±0,2 В без нагрузки · X1/X2/X3, выводы 36/37
+    tu: 1.1.4.2
+    procedure: power.sensor_supply_unloaded
+    args:
+      # ИСД X4: X1/36,37 -> CH89,90; X2/36,37 -> CH91,92;
+      # X3/36,37 -> CH93,94. Выводы 38 = 0 В, не подключать.
+      nominal_v: 6.2
+      tolerance_v: 0.2
+      settle_ms: 250
 
   - id: yalk_stream
     title: Запуск рабочего потока ЯЛК ROKT reference204
@@ -81,23 +92,24 @@ steps:
 
   - id: yalk_initial
     title: Обрыв 80 входов ЯЛК и исходный сигнальный признак
-    tu: 1.1.4.10
+    tu: 1.1.4.1, 1.1.4.10
     procedure: yalk.initial
     args:
       addresses: 1-28,32-43,45-70,74-87
       sample_count: 4
       full_scale_v: 6.2
+      verdict_policy: formal_norma
 
   - id: yalk_channels
-    title: Аналоговые и контактные каналы ЯЛК · единый проход 0 / 0,8 / 2,5 / 3,1 / 6,2 В
+    title: Аналоговые и контактные каналы ЯЛК · единый проход 0 / 3,1 / 4 / 6,2 В
     tu: 1.1.4.1, 1.1.4.14
     procedure: yalk.combined
     args:
       addresses: 1-28,32-43,45-70,74-87
-      combined_points_v: 0,0.8,2.5,3.1,6.2
+      combined_points_v: 0,3.1,4,6.2
       point_volts: 0,3.1,6.2
-      contact_points_v: 0,0.8,2.5
-      signal_expectations: 0,0,1
+      contact_points_v: 0,4
+      signal_expectations: 0,1
       verdict_policy: formal_norma
       sample_count: 16
       settle_ms: 150
@@ -180,7 +192,7 @@ steps:
     args:
       channel_count: 8
       gains_mv_per_pcl: 0.25,0.5,1,2,4,8,32
-      frequencies_hz: 2,6,20,500,1800,2000,4000
+      frequencies_hz: 5,10,20,40,100,250,500,1000,1400,1800,2000,4000
       # АЧХ снимается на подтверждённом K=1; остальные КУ — только при 500 Гц.
       afc_gain_mv_per_pcl: 1
       coupling_capacitance_pf: 1000

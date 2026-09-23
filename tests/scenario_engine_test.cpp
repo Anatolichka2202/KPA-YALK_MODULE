@@ -1,5 +1,6 @@
 #include "backend/scenario_engine.h"
 #include "backend/scenario_yaml.h"
+#include "hardware/isd_dac_table.h"
 #include "procedures/yalk_contact_verdict.h"
 #include "procedures/yalk_initial_verdict.h"
 #include "procedures/yvp_verdict.h"
@@ -58,6 +59,7 @@ int main()
             "readiness",
             "supply_range",
             "isd_startup_baseline",
+            "sensor_supply_unloaded",
             "yalk_stream",
             "yalk_calibration",
             "yalk_initial",
@@ -105,12 +107,18 @@ int main()
                 "stand preparation must use the addressed baseline");
         require(argument(baseline, "type2_contacts") == "1-40",
                 "addressed baseline type=2 map changed");
-        require(argument(baseline, "type3_contacts") == "1-88,95-96",
+        require(argument(baseline, "type3_contacts") == "1-96",
                 "addressed baseline type=3 map changed");
-        require(argument(baseline, "analog_type1_contacts") == "1-88",
+        require(argument(baseline, "analog_type1_contacts") == "1-96",
                 "addressed baseline type=1 map changed");
         require(argument(baseline, "isd_command_gap_ms") == "30",
                 "addressed baseline must pace ISD commands by 30 ms");
+
+        const auto& sensorSupply = stepById(scenario, "sensor_supply_unloaded");
+        require(sensorSupply.procedure == "power.sensor_supply_unloaded"
+                    && argument(sensorSupply, "nominal_v") == "6.2"
+                    && argument(sensorSupply, "tolerance_v") == "0.2",
+                "TU 1.1.4.2 must read six unloaded sensor supplies through ISD/V7");
 
         const auto& yalk = stepById(scenario, "yalk_channels");
         require(yalk.procedure == "yalk.combined", "YALK combined procedure changed");
@@ -118,14 +126,19 @@ int main()
                 "YALK verified address map changed");
         require(argument(yalk, "point_volts") == "0,3.1,6.2",
             "YALK analog points changed");
-        require(argument(yalk, "combined_points_v") == "0,0.8,2.5,3.1,6.2",
+        require(argument(yalk, "combined_points_v") == "0,3.1,4,6.2",
                 "YALK combined point order changed");
-        require(argument(yalk, "contact_points_v") == "0,0.8,2.5",
+        require(argument(yalk, "contact_points_v") == "0,4",
                 "YALK contact threshold points changed");
-        require(argument(yalk, "signal_expectations") == "0,0,1",
+        require(argument(yalk, "signal_expectations") == "0,1",
                 "YALK signal truth table changed");
         require(argument(yalk, "verdict_policy") == "formal_norma",
                 "YALK production contact policy must preserve formal NORMA");
+        require(tu::hardware::isdDacCode(0.0) == 819
+                    && tu::hardware::isdDacCode(3.1) == 2089
+                    && tu::hardware::isdDacCode(4.0) == 2457
+                    && tu::hardware::isdDacCode(6.2) == 3358,
+                "ISD DAC table interpolation changed");
 
         const auto strictContact = tu::procedures::detail::yalkContactVerdict(
             tu::procedures::detail::YalkContactVerdictPolicy::Strict, false, true);
@@ -175,7 +188,7 @@ int main()
         const auto& yvp = stepById(scenario, "yvp_channels");
         require(argument(yvp, "gains_mv_per_pcl") == "0.25,0.5,1,2,4,8,32",
                 "YVP gain matrix changed");
-        require(argument(yvp, "frequencies_hz") == "2,6,20,500,1800,2000,4000",
+        require(argument(yvp, "frequencies_hz") == "5,10,20,40,100,250,500,1000,1400,1800,2000,4000",
                 "YVP frequency matrix changed");
         require(argument(yvp, "coupling_capacitance_pf") == "1000",
                 "YVP coupling capacitor changed");

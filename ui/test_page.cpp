@@ -211,6 +211,8 @@ QString tuStageTitle(const QString& node, const QString& fallback)
         return QStringLiteral("Готовность УБСИ ≤ 30 с после включения 27 В");
     if (node == QStringLiteral("supply_range"))
         return QStringLiteral("Питание 24 / 27 / 35 В · выдержки 19 / 37 В · ток ≤ 0,4 А");
+    if (node == QStringLiteral("sensor_supply_unloaded"))
+        return QStringLiteral("Питание датчиков · X1/X2/X3, контакты 36/37 · В7");
     if (node == QStringLiteral("yalk_stream"))
         return QStringLiteral("ЯЛК · запуск свежего потока данных");
     if (node == QStringLiteral("yalk_calibration"))
@@ -234,7 +236,7 @@ QString tuStageTitle(const QString& node, const QString& fallback)
     if (node == QStringLiteral("ytp_cleanup"))
         return QStringLiteral("ЯТП · безопасная остановка потока");
     if (node == QStringLiteral("yvp_channels"))
-        return QStringLiteral("ЯВП-8 · 8 каналов · 13 точек на канал · 104 точки");
+        return QStringLiteral("ЯВП-8 · 8 каналов · 18 точек на канал · 144 точки");
     if (node == QStringLiteral("power_off"))
         return QStringLiteral("Безопасное отключение питания и снятие воздействий");
     return fallback;
@@ -845,7 +847,7 @@ struct TestPage::Impl
         analogContext = heading(QStringLiteral("ЯЛК-96 · аналоговые каналы"), 18, analog);
         analogLayout->addWidget(analogContext);
         analogLayout->addWidget(muted(
-            QStringLiteral("Единый проход: аналоговые точки 0 / 3,1 / 6,2 В и контактные точки 0 / 0,8 / 2,5 В. Видны В7, ЯЛК, min/max, погрешность и контактный бит 0/1 над каждым столбцом."), analog));
+            QStringLiteral("Единый проход: аналоговые точки 0 / 3,1 / 4 / 6,2 В и контактные состояния разомкнуто / 0 / 4 В. Над каждым столбцом показаны текущий код ROKT и контактный бит, снизу — адрес канала; у выбранного канала показано измерение В7."), analog));
         yalkPlane = new ChannelPlane(ChannelPlane::Kind::Yalk, analog);
         analogLayout->addWidget(yalkPlane, 1);
         legacyAnalogProxy = new QWidget(analog);
@@ -871,8 +873,8 @@ struct TestPage::Impl
         referenceLayout->setContentsMargins(70, 42, 70, 42);
         referenceLayout->addWidget(heading(QStringLiteral("Эталонное напряжение 6,20 ± 0,03 В"), 20, reference));
         referenceLayout->addWidget(muted(
-            QStringLiteral("Сравниваем независимое измерение В7 с адресом ЯЛК. На экране показано фактическое значение В7 и итог попадания в диапазон 6,17–6,23 В."), reference));
-        referenceText = heading(QStringLiteral("Ожидание измерения В7"), 25, reference);
+            QStringLiteral("По двум воздействиям 4 В измеряем В7 и коды каналов 1/25, 97 и 99. Обратным пересчётом оцениваем внутренний эталон; допустимый диапазон 6,17–6,23 В."), reference));
+        referenceText = heading(QStringLiteral("Ожидание расчёта эталона"), 25, reference);
         referenceText->setAlignment(Qt::AlignCenter);
         referenceLayout->addStretch();
         referenceLayout->addWidget(referenceText);
@@ -903,7 +905,7 @@ struct TestPage::Impl
         yvpContext = heading(QStringLiteral("ЯВП-8"), 18, yvp);
         yvpLayout->addWidget(yvpContext);
         yvpLayout->addWidget(muted(
-            QStringLiteral("Проверяем 8 каналов: семь коэффициентов при 500 Гц и АЧХ при Kу=1 на семи частотах 2–4000 Гц. Общая точка 500 Гц учитывается один раз: 13 точек на канал, всего 104. Видны В7, рассчитанный Kу, АЧХ и затухание; Kу при 500 Гц — ±7 %, 4000 Гц — не менее 20 дБ."), yvp));
+            QStringLiteral("Проверяем 8 каналов: семь коэффициентов при 500 Гц и АЧХ при Kу=1 на двенадцати частотах 5–4000 Гц. Общая точка 500 Гц учитывается один раз: 18 точек на канал, всего 144. Видны В7, рассчитанный Kу, АЧХ и затухание; Kу при 500 Гц — ±7 %, 4000 Гц — не менее 20 дБ."), yvp));
         auto* yvpMetrics = new QHBoxLayout;
         yvpMetrics->setSpacing(10);
         auto yvpMetric = [yvp, yvpMetrics](const QString& name, QLabel*& target) {
@@ -989,18 +991,20 @@ struct TestPage::Impl
     void buildTuRequirementRail()
     {
         // Only requirements that belong to the current automated TU route are
-        // present here. 1.4.2/.4/.6/.12 and the non-automated input-current
+        // present here. 1.1.4.4/.6/.12 and the non-automated input-current
         // part of 1.4.14 are intentionally not rendered as pending checks.
-        addTuRequirement(QStringLiteral("readiness"), QStringLiteral("1.4.13"), QStringLiteral("Подготовка · готовность"));
-        addTuRequirement(QStringLiteral("supply"), QStringLiteral("1.4.3"), QStringLiteral("Питание · 24 / 27 / 35 В"));
-        addTuRequirement(QStringLiteral("current"), QStringLiteral("1.4.5"), QStringLiteral("Питание · общий ток"));
-        addTuRequirement(QStringLiteral("yalk_initial"), QStringLiteral("1.4.10"), QStringLiteral("ЯЛК · обрыв"));
-        addTuRequirement(QStringLiteral("yalk_channels"), QStringLiteral("1.4.1, 1.4.14"),
-                         QStringLiteral("ЯЛК · аналоговые и контактные сигналы · 0 / 0,8 / 2,5 / 3,1 / 6,2 В"));
-        addTuRequirement(QStringLiteral("yalk_overload"), QStringLiteral("1.4.11"), QStringLiteral("ЯЛК · перегрузка ±12 В"));
-        addTuRequirement(QStringLiteral("yalk_reference"), QStringLiteral("1.4.9"), QStringLiteral("ЯЛК · эталон 6,20 В"));
-        addTuRequirement(QStringLiteral("ytp"), QStringLiteral("1.4.1"), QStringLiteral("ЯТП · 30 каналов"));
-        addTuRequirement(QStringLiteral("yvp_afc"), QStringLiteral("1.1.4.7, 1.1.4.8"), QStringLiteral("ЯВП · коэффициенты и АЧХ · 8 × 13"));
+        addTuRequirement(QStringLiteral("readiness"), QStringLiteral("1.1.4.13"), QStringLiteral("Подготовка · готовность"));
+        addTuRequirement(QStringLiteral("supply"), QStringLiteral("1.1.4.3"), QStringLiteral("Питание · 24 / 27 / 35 В"));
+        addTuRequirement(QStringLiteral("current"), QStringLiteral("1.1.4.5"), QStringLiteral("Питание · общий ток"));
+        addTuRequirement(QStringLiteral("sensor_supply_unloaded"), QStringLiteral("1.1.4.2"),
+                         QStringLiteral("Питание датчиков · 6 выводов без нагрузки"));
+        addTuRequirement(QStringLiteral("yalk_initial"), QStringLiteral("1.1.4.10"), QStringLiteral("ЯЛК · обрыв"));
+        addTuRequirement(QStringLiteral("yalk_channels"), QStringLiteral("1.1.4.1"),
+                         QStringLiteral("ЯЛК · аналоговые и контактные сигналы · разомкнуто / 0 / 3,1 / 4 / 6,2 В"));
+        addTuRequirement(QStringLiteral("yalk_overload"), QStringLiteral("1.1.4.11"), QStringLiteral("ЯЛК · перегрузка ±12 В"));
+        addTuRequirement(QStringLiteral("yalk_reference"), QStringLiteral("1.1.4.9"), QStringLiteral("ЯЛК · эталон 6,20 В"));
+        addTuRequirement(QStringLiteral("ytp"), QStringLiteral("1.1.4.1"), QStringLiteral("ЯТП · 30 каналов"));
+        addTuRequirement(QStringLiteral("yvp_afc"), QStringLiteral("1.1.4.7, 1.1.4.8"), QStringLiteral("ЯВП · коэффициенты и АЧХ · 8 × 18"));
         addTuRequirement(QStringLiteral("yvp_gain"), QStringLiteral("1.1.4.8"), QStringLiteral("ЯВП · коэффициент передачи"));
     }
 
@@ -1188,6 +1192,7 @@ struct TestPage::Impl
         overloadPlane->setFrame(adapter.yalkOverload);
         ytpPlane->setYtpFrame(adapter.ytp);
         yvpPlane->setFrame(adapter.yvp, 0);
+        referenceText->setText(QStringLiteral("Ожидание расчёта эталона"));
         progressText->setText(QStringLiteral("—"));
         skipButton->hide();
         resetTuRail();
@@ -1251,6 +1256,8 @@ struct TestPage::Impl
     {
         if (node == QStringLiteral("readiness") || node.contains(QStringLiteral("readiness")))
             return {QStringLiteral("readiness")};
+        if (node == QStringLiteral("sensor_supply_unloaded"))
+            return {QStringLiteral("sensor_supply_unloaded")};
         if (node == QStringLiteral("supply_range") || node.startsWith(QStringLiteral("supply_")))
             return {QStringLiteral("supply"), QStringLiteral("current")};
         if (node.contains(QStringLiteral("yalk_initial")))
@@ -1403,7 +1410,7 @@ struct TestPage::Impl
             steps = {QStringLiteral("Инициализация"), QStringLiteral("Калибровка"),
                      QStringLiteral("30 каналов"), QStringLiteral("Безопасное завершение")};
         } else if (procedure == Procedure::Yvp) {
-            steps = {QStringLiteral("8 каналов · 7 Kу · 7 частот"),
+            steps = {QStringLiteral("8 каналов · 7 Kу · 12 частот"),
                      QStringLiteral("Kу @ 500 Гц"), QStringLiteral("АЧХ"),
                      QStringLiteral("Затухание 4000 Гц"), QStringLiteral("Безопасное завершение")};
         } else {
@@ -1968,6 +1975,16 @@ void TestPage::setRunEvent(const tu::RunEvent& event)
     impl_->renderModel(node);
     impl_->updateTuForEvent(event);
 
+    if (node == QStringLiteral("yalk_reference_voltage")
+        && stageName == QStringLiteral("MEASUREMENT")) {
+        const QString estimate = eventValue(event, "yalk_v");
+        if (!estimate.isEmpty())
+            impl_->referenceText->setText(QStringLiteral("Эталон: %1 В · %2")
+                .arg(estimate.toDouble(), 0, 'f', 4)
+                .arg(event.verdict == tu::RunVerdict::Ok
+                    ? QStringLiteral("НОРМА") : QStringLiteral("НЕ НОРМА")));
+    }
+
     if (stageName == QStringLiteral("POWER_YALK")) {
         const bool fresh = eventValue(event, "fresh") == QStringLiteral("true");
         impl_->powerYalkStatus->setText(fresh
@@ -1978,6 +1995,15 @@ void TestPage::setRunEvent(const tu::RunEvent& event)
         impl_->powerYalkStatus->setStyleSheet(fresh
             ? QStringLiteral("color:#35cf79;")
             : QStringLiteral("color:#e1ad46;font-weight:700;"));
+    }
+
+    if (node == QStringLiteral("sensor_supply_unloaded")
+        && stageName == QStringLiteral("MEASUREMENT")) {
+        impl_->progressText->setText(QStringLiteral("%1, контакт %2 · ИСД %3 · В7 %4 В · %5")
+            .arg(eventValue(event, "connector"), eventValue(event, "pin"),
+                 eventValue(event, "isd_channel"), eventValue(event, "v7_v"),
+                 event.verdict == tu::RunVerdict::Ok
+                     ? QStringLiteral("НОРМА") : QStringLiteral("НЕ НОРМА")));
     }
 
     if (impl_->productionMode && stageName == QStringLiteral("YVP_V7_POINT")) {

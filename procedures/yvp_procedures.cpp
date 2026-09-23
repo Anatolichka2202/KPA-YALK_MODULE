@@ -469,8 +469,13 @@ ProcedureResult run(const ScenarioStep& step, ProcedureContext& context,
                 if (reducedSweep && std::abs(gain - afcGain) > 1e-9)
                     continue;
 
-                for (const auto& [frequency,tolerance] :
-                    std::vector<std::pair<double,double>>{{2,10},{6,5},{20,5},{1800,5},{2000,10}}) {
+                for (const double frequency : frequencies) {
+                    if (std::abs(frequency - referenceFrequency) < 1e-9 || frequency == 4000.0)
+                        continue;
+                    if (frequency < 2.0 || frequency > 2000.0)
+                        throw std::invalid_argument("ЯВП: частота АЧХ вне диапазона ТУ 2...2000 Гц");
+                    const double tolerance = frequency < 6.0 || frequency > 1800.0
+                        ? 10.0 : 5.0;
                     const auto point = measuredGain.find(frequency);
                     if (point == measuredGain.end())
                         throw std::invalid_argument("ЯВП: отсутствует обязательная точка АЧХ");

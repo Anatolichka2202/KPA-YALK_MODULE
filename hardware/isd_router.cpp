@@ -1,4 +1,5 @@
 #include "hardware/isd_router.h"
+#include "hardware/isd_dac_table.h"
 
 #include <QByteArray>
 #include <QElapsedTimer>
@@ -257,9 +258,8 @@ struct IsdRouter::Impl
                     .arg(action.channel).arg(action.value), true);
                 break;
             case ActionKind::YalkOutput:
-                getWithRetries(QString::fromStdString("/type=5num="
-                    + std::to_string(action.channel) + "val=" + fixed2(action.volts)
-                    + "work=1bus=1"), true);
+                getWithRetries(QStringLiteral("/type=1num=%1val=%2work=1bus=1")
+                    .arg(action.channel).arg(isdDacCode(action.volts)), true);
                 break;
             }
         }
@@ -322,17 +322,19 @@ struct IsdRouter::Impl
 
     void yalkOnRaw(unsigned channel, double volts)
     {
-        get(QString::fromStdString("/type=5num=" + std::to_string(channel)
-            + "val=" + fixed2(volts) + "work=1bus=1"), true);
+        get(QStringLiteral("/type=1num=%1val=%2work=1bus=1")
+            .arg(channel).arg(isdDacCode(volts)), true);
     }
 
     void yalkOffRaw(unsigned channel)
     {
-        get(QString::fromStdString("/type=1num=" + std::to_string(channel)
-            + "val=0work=1bus=0"), true);
+        // Код 0 соответствует -2 В по таблице ИСД; перед OFF не подаём его
+        // на рабочий вход. Сначала разрываем измерительную шину при 0 В.
+        get(QStringLiteral("/type=1num=%1val=%2work=1bus=0")
+            .arg(channel).arg(isdDacCode(0.0)), true);
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        get(QString::fromStdString("/type=1num=" + std::to_string(channel)
-            + "val=0work=0"), true);
+        get(QStringLiteral("/type=1num=%1val=%2work=0")
+            .arg(channel).arg(isdDacCode(0.0)), true);
     }
 
     void safeStop() noexcept
@@ -419,7 +421,7 @@ void IsdRouter::setYalkVoltage(unsigned channel, double volts)
     if (!channel) throw std::invalid_argument("Канал ЯЛК начинается с 1");
     if (!std::isfinite(volts) || volts < 0.0 || volts > 6.2)
         throw std::invalid_argument("Напряжение ЯЛК должно быть 0.00..6.20 В");
-    const ActiveAction action{ActionKind::YalkOutput, 5, channel, 0, volts};
+    const ActiveAction action{ActionKind::YalkOutput, 1, channel, 0, volts};
     try {
         impl_->yalkOnRaw(channel, volts);
         impl_->remember(action);
@@ -433,7 +435,7 @@ void IsdRouter::disableYalkOutput(unsigned channel)
 {
     const std::lock_guard<std::recursive_mutex> lock(impl_->requestMutex);
     if (!channel) throw std::invalid_argument("Канал ЯЛК начинается с 1");
-    const ActiveAction action{ActionKind::YalkOutput, 5, channel, 0, 0.0};
+    const ActiveAction action{ActionKind::YalkOutput, 1, channel, 0, 0.0};
     impl_->yalkOffRaw(channel);
     impl_->forget(action);
 }

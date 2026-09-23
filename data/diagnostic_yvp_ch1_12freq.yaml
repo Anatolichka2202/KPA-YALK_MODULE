@@ -1,0 +1,52 @@
+schema: 1
+id: ubsi.yvp.ch1.frequency-probe
+title: Диагностическая проба ЯВП-8, канал 1, К=1, 12 частот
+version: 1.0.0
+steps:
+  - id: yvp_ch1_frequencies
+    title: ЯВП-8 · канал 1 · К=1 · 12 частот
+    tu: 1.1.4.7, 1.1.4.8
+    procedure: yvp.run
+    args:
+      channel_count: 8
+      tested_channels: 1
+      gains_mv_per_pcl: 1
+      frequencies_hz: 5,10,20,40,100,250,500,1000,1400,1800,2000,4000
+      afc_gain_mv_per_pcl: 1
+      coupling_capacitance_pf: 1000
+      settle_ms: 2000
+      v7_read_retries: 2
+      v7_retry_delay_ms: 250
+      reference_frequency_hz: 500
+      gain_tolerance_percent: 7
+      attenuation_min_db: 20
+      verdict_policy: strict
+      input_switch_type: 2
+      gain_switch_type: 2
+      measurement_analog_type: 1
+      measurement_switch_type: 3
+      input_1_contacts: 33
+      input_2_contacts: 34
+      input_3_contacts: 35
+      input_4_contacts: 36
+      input_5_contacts: 37
+      input_6_contacts: 38
+      input_7_contacts: 39
+      input_8_contacts: 40
+      measurement_1_contacts: 44
+      measurement_2_contacts: 29
+      measurement_3_contacts: 30
+      measurement_4_contacts: 31
+      measurement_5_contacts: 71
+      measurement_6_contacts: 72
+      measurement_7_contacts: 88
+      measurement_8_contacts: 73
+      channel_1_gain_contacts: 1,2,3,4
+      channel_2_gain_contacts: 5,6,7,8
+      channel_3_gain_contacts: 9,10,11,12
+      channel_4_gain_contacts: 13,14,15,16
+      channel_5_gain_contacts: 17,18,19,20
+      channel_6_gain_contacts: 21,22,23,24
+      channel_7_gain_contacts: 25,26,27,28
+      channel_8_gain_contacts: 29,30,31,32
+      gain_1_bits: 2

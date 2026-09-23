@@ -106,6 +106,12 @@ target_link_libraries(tu_ui_smoke PRIVATE tu_ui)
 add_executable(yalk_channel_probe tools/yalk_channel_probe.cpp)
 target_link_libraries(yalk_channel_probe PRIVATE tu_hardware)
 
+add_executable(tu_point_probe tools/tu_point_probe.cpp)
+target_link_libraries(tu_point_probe PRIVATE tu_hardware Qt6::Core)
+
+add_executable(yvp_band_probe tools/yvp_band_probe.cpp)
+target_link_libraries(yvp_band_probe PRIVATE tu_hardware Qt6::Core)
+
 add_executable(yalk_overload_probe tools/yalk_overload_probe.cpp)
 target_link_libraries(yalk_overload_probe PRIVATE tu_hardware)
 

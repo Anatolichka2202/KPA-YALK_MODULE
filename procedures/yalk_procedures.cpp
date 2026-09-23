@@ -282,6 +282,8 @@ ProcedureResult initial(const ScenarioStep& step, ProcedureContext& context,
         [&context] { context.checkpoint(); });
     publishLiveFrame(context, step, frame, "Исходный reference204 ЯЛК");
     ProcedureResult result{RunVerdict::Ok, "Проверено отключённое состояние 80 входов ЯЛК", {}};
+    const auto contactPolicy = detail::yalkContactVerdictPolicy(
+        argument(step, "verdict_policy", "strict"));
 
     for (std::size_t channelIndex = 0; channelIndex < addresses.size(); ++channelIndex) {
         context.checkpoint();
@@ -312,6 +314,20 @@ ProcedureResult initial(const ScenarioStep& step, ProcedureContext& context,
         publish(context, step, "YALK_INITIAL", analog.title, analog.verdict, std::move(eventData));
 
         append(result, std::move(analog));
+        const auto decision = detail::yalkContactVerdict(contactPolicy, true, reading.contact);
+        auto signal = measurement("ubsi.yalk.signal." + std::to_string(address) + ".open",
+            "ЯЛК адрес " + std::to_string(address) + ": сухой контакт разомкнут",
+            1.0, reading.contact ? 1.0 : 0.0, 1.0, 1.0, "лог.");
+        signal.verdict = decision.acceptanceVerdict;
+        signal.attributes = {{"section","YALK"}, {"ulk_address",std::to_string(address)},
+            {"contact_mode","Разомкнуто"}, {"signal",reading.contact ? "1" : "0"},
+            {"expected_signal","1"}, {"raw_match",decision.rawMatch ? "true" : "false"}};
+        if (contactPolicy == detail::YalkContactVerdictPolicy::FormalNorma) {
+            signal.attributes["verdict_policy"] = "formal_norma";
+            signal.attributes["report_signal"] = "1";
+        }
+        publishMeasurement(context, step, signal);
+        append(result, std::move(signal));
     }
     return result;
 }
@@ -552,8 +568,40 @@ ProcedureResult combinedSweep(const ScenarioStep& step, ProcedureContext& contex
                     analog.attributes = attributes(analogIndex, analogPoints.size());
                     analog.attributes["absolute_error_v"] = std::to_string(absolute);
                     analog.attributes["reduced_error_percent"] = std::to_string(absolute / fullScale * 100.0);
+                    if (analog.verdict != RunVerdict::Ok)
+                        journal(context, step, "ЯЛК адрес " + std::to_string(address)
+                            + ": вне допуска при " + std::to_string(command) + " В; В7="
+                            + std::to_string(reference) + " В, ЯЛК=" + std::to_string(volts) + " В");
                     publishMeasurement(context, step, analog);
                     append(result, std::move(analog));
+                }
+                if (std::abs(command - 4.0) < 1e-9) {
+                    auto diagnostic = measurement("ubsi.yalk.diagnostic4." + std::to_string(address),
+                        "ЯЛК адрес " + std::to_string(address) + " · 4 В",
+                        reference, volts, reference - tolerance, reference + tolerance, "В");
+                    diagnostic.attributes = attributes(sequenceIndex + 1, points.size());
+                    diagnostic.attributes["criterion"] = "analog_4v";
+                    journal(context, step, "ЯЛК адрес " + std::to_string(address)
+                        + ": 4 В; В7=" + std::to_string(reference)
+                        + " В, ЯЛК=" + std::to_string(volts)
+                        + " В, код=" + std::to_string(reading.codeMean));
+                    publishMeasurement(context, step, diagnostic);
+                    append(result, std::move(diagnostic));
+
+                    if (address == 1 || address == 25) {
+                        const double zeroCode = frame.at(96).codeMean;
+                        const double fullCode = frame.at(98).codeMean;
+                        const double stimulusCode = reading.codeMean;
+                        if (!(fullCode > zeroCode) || !(stimulusCode > zeroCode))
+                            throw std::runtime_error("ЯЛК: невозможно независимо рассчитать эталон 97/99");
+                        const double estimatedReference = reference * (fullCode - zeroCode)
+                            / (stimulusCode - zeroCode);
+                        context.state["yalk.reference_from_" + std::to_string(address)]
+                            = std::to_string(estimatedReference);
+                        journal(context, step, "ЯЛК: оценка эталона по адресу "
+                            + std::to_string(address) + "=" + std::to_string(estimatedReference)
+                            + " В (В7, код канала, коды 97/99)");
+                    }
                 }
                 if (contactPoint) {
                     const auto position = std::find_if(contactPoints.begin(), contactPoints.end(), [command](double candidate) {
@@ -570,6 +618,7 @@ ProcedureResult combinedSweep(const ScenarioStep& step, ProcedureContext& contex
                     signal.verdict = decision.acceptanceVerdict;
                     signal.message = signal.verdict == RunVerdict::Ok ? "Норма" : "Значение вне допуска";
                     signal.attributes = attributes(contactIndex, contactPoints.size());
+                    signal.attributes["contact_mode"] = command == 0.0 ? "Замкнуто, 0 В" : "4 В";
                     signal.attributes["signal"] = reading.contact ? "1" : "0";
                     signal.attributes["raw_signal"] = decision.rawSignal ? "1" : "0";
                     signal.attributes["expected_signal"] = decision.expectedSignal ? "1" : "0";
@@ -786,24 +835,28 @@ ProcedureResult reference(const ScenarioStep& step, ProcedureContext& context,
     const double nominal = number(step, "nominal_v", 6.2);
     const double tolerance = number(step, "tolerance_v", 0.03);
     context.checkpoint();
-    journal(context, step, "ЯЛК: контролирую служебный эталон полной шкалы, адрес 99");
+    journal(context, step, "ЯЛК: сверяю эталон 97/99 по двум независимым точкам В7");
     const auto frame = stand->yalk().readYalkSnapshot(
         natural(step, "sample_count", 16), std::chrono::milliseconds(3000),
         [&context] { context.checkpoint(); });
     publishLiveFrame(context, step, frame, "reference204 со служебным эталоном ЯЛК");
     const auto& fullScaleReference = frame.at(98);
-    const double volts = yalkVolts(fullScaleReference.codeMean, context);
+    const double first = stateNumber(context, "yalk.reference_from_1");
+    const double second = stateNumber(context, "yalk.reference_from_25");
+    const double volts = (first + second) / 2.0;
 
     ProcedureResult result{RunVerdict::Ok,
-        "Проверен служебный эталон полной шкалы ЯЛК по адресу 99", {}};
+        "Эталон ЯЛК оценён по В7 и кодам 1/25/97/99", {}};
     auto value = measurement("ubsi.reference_6v2", "Эталон полной шкалы ЯЛК, адрес 99",
         nominal, volts, nominal - tolerance, nominal + tolerance, "В");
     value.attributes = {{"ulk_address","99"},
                         {"raw",std::to_string(fullScaleReference.rawMean)},
                         {"analog_code",std::to_string(fullScaleReference.codeMean)},
                         {"yalk_v",std::to_string(volts)},
+                        {"estimate_channel_1_v",std::to_string(first)},
+                        {"estimate_channel_25_v",std::to_string(second)},
                         {"nominal_v",std::to_string(nominal)},
-                        {"source","yalk_internal_full_scale_reference"}};
+                        {"source","inverse_v7_and_reference204"}};
     publishMeasurement(context, step, value);
     append(result, std::move(value));
     journal(context, step, "ЯЛК: эталон адреса 99=" + std::to_string(volts) + " В");

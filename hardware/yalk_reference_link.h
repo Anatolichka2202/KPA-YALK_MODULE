@@ -29,6 +29,7 @@ public:
     using Checkpoint = std::function<void()>;
     using LiveYalkSink = std::function<void(
         const std::vector<YalkChannelReading>&, std::uint64_t)>;
+    using LiveYtpSink = std::function<void(const YtpSnapshot&, std::uint64_t)>;
 
     explicit YalkReferenceLink(YalkUdpConfig config);
     ~YalkReferenceLink();
@@ -69,6 +70,7 @@ public:
     // throttled copy of fresh reference204 frames while procedure sampling
     // independently waits for frames newer than its own freshness barrier.
     void setLiveYalkSink(LiveYalkSink sink);
+    void setLiveYtpSink(LiveYtpSink sink);
 
     void stop() noexcept;
 

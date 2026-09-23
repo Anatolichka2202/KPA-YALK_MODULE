@@ -158,6 +158,7 @@ struct InitialChannel {
 
 struct AnalogChannel {
     int physicalAddress = 0;
+    double rawCode = std::numeric_limits<double>::quiet_NaN();
     double currentV = std::numeric_limits<double>::quiet_NaN();
     double minimumV = std::numeric_limits<double>::quiet_NaN();
     double maximumV = std::numeric_limits<double>::quiet_NaN();
@@ -237,7 +238,7 @@ struct YvpFrame {
     double gain = std::numeric_limits<double>::quiet_NaN();
     double frequencyHz = std::numeric_limits<double>::quiet_NaN();
     int pointIndex = 0;
-    int pointCount = 104;
+    int pointCount = 144;
     bool acceptanceApplied = false;
     QVector<YvpChannel> channels;
 };
@@ -295,7 +296,9 @@ public:
             run.progressText = QString::fromStdString(event.message);
             return;
         }
-        run.runtimeState = RuntimeState::Running;
+        if (stage != QStringLiteral("BACKGROUND")
+            || run.runtimeState != RuntimeState::WaitingOperator)
+            run.runtimeState = RuntimeState::Running;
         mapProcedure(node, stage);
 
         const double current = eventDouble(event, "amperes");
@@ -426,6 +429,8 @@ private:
         const auto mean = csvNumbersWithGaps(eventValue(event, "background_mean"));
         const auto minimum = csvNumbersWithGaps(eventValue(event, "background_min"));
         const auto maximum = csvNumbersWithGaps(eventValue(event, "background_max"));
+        const auto codes = csvNumbersWithGaps(eventValue(event, "background_codes"));
+        const auto contacts = csvNumbersWithGaps(eventValue(event, "background_contacts"));
         const auto addresses = yalkPhysicalAddresses();
         for (int i = 0; i < addresses.size(); ++i) {
             const int source = addresses[i] - 1;
@@ -441,6 +446,10 @@ private:
                 yalkAnalog.channels[i].maximumV = maximum[source];
                 yalkContact.channels[i].maximumV = maximum[source];
             }
+            if (source < codes.size() && std::isfinite(codes[source]))
+                yalkAnalog.channels[i].rawCode = codes[source];
+            if (source < contacts.size() && std::isfinite(contacts[source]))
+                yalkAnalog.channels[i].contactLogic = contacts[source] >= 0.5 ? 1 : 0;
         }
     }
 
@@ -459,6 +468,15 @@ private:
     void applyYalkInitial(const tu::RunEvent& event)
     {
         const int address = eventInt(event, "ulk_address");
+        if (eventValue(event, "contact_mode") == QStringLiteral("Разомкнуто")) {
+            const int index = findAddress(yalkAnalog.channels, address);
+            if (index >= 0) {
+                yalkAnalog.channels[index].contactLogic = eventInt(event, "signal", -1);
+                yalkAnalog.channels[index].expectedContactLogic = 1;
+                yalkAnalog.channels[index].contactVerification = verificationFromVerdict(event.verdict);
+            }
+            return;
+        }
         for (auto& channel : initial) {
             if (channel.physicalAddress != address) continue;
             channel.analogV = eventDouble(event, "yalk_v");
@@ -492,9 +510,7 @@ private:
         channel.maximumV = maximum;
         channel.verification = verificationFromVerdict(event.verdict);
         channel.reducedErrorPercent = eventDouble(event, "reduced_error_percent");
-        channel.contactLogic = -1;
-        channel.expectedContactLogic = -1;
-        channel.contactVerification = VerificationState::Pending;
+        channel.rawCode = eventDouble(event, "analog_code");
         channel.warning = false;
         yalkAnalog.pointV = eventDouble(event, "command_v");
         yalkAnalog.actualReferenceV7 = eventDouble(event, "v7_v");
@@ -623,7 +639,7 @@ private:
         channel.verification = verificationFromVerdict(event.verdict);
         yvp.acceptanceApplied = eventValue(event, "acceptance") != QStringLiteral("not_applied");
         yvp.pointIndex = std::max(yvp.pointIndex, eventInt(event, "point_index"));
-        yvp.pointCount = std::max(yvp.pointCount, eventInt(event, "point_count", 104));
+        yvp.pointCount = std::max(yvp.pointCount, eventInt(event, "point_count", 144));
         run.progressText = QStringLiteral("Канал %1 / 8 · Kу %2 · %3 Гц")
             .arg(channelNumber)
             .arg(yvp.gain, 0, 'g', 6)

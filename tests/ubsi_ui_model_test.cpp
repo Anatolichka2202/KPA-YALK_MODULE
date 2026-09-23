@@ -28,7 +28,7 @@ int main()
         ubsi::ui::UiAdapter ui;
 
         ui.apply(event("yalk_channels", "MEASUREMENT", tu::RunVerdict::Ok,
-            {{"ulk_address", "1"}, {"command_v", "0.8"}, {"signal", "1"},
+            {{"ulk_address", "1"}, {"command_v", "4"}, {"signal", "1"},
              {"expected_signal", "0"}, {"raw_match", "false"},
              {"verdict_policy", "formal_norma"}}));
         require(ui.yalkContact.channels[0].verification == ubsi::ui::VerificationState::Norma,
@@ -43,12 +43,31 @@ int main()
                 "Формально принятый контактный бит должен быть зелёным на комбинированном экране");
         require(ui.run.currentProcedure == ubsi::ui::Procedure::YalkAnalog,
                 "Контактная точка объединённого прохода не должна переключать отдельный экран");
+        ui.apply(event("yalk_channels", "BACKGROUND", tu::RunVerdict::NotRun,
+            {{"section", "YALK"}, {"background_mean", "4.01,4.02"},
+             {"background_min", "4.00,4.01"}, {"background_max", "4.02,4.03"},
+             {"background_codes", "512,513"}, {"background_contacts", "1,0"}}));
+        require(ui.yalkAnalog.channels[0].rawCode == 512
+                    && ui.yalkAnalog.channels[1].rawCode == 513
+                    && ui.yalkAnalog.channels[1].contactLogic == 0,
+                "Все подписи кодов и контактные биты должны обновляться свежей телеметрией");
+
+        ui.apply(event("ytp_channels", "OPERATOR", tu::RunVerdict::NotRun,
+            {{"target_resistance_ohm", "120"}, {"point_index", "2"}, {"point_count", "3"}}));
+        ui.apply(event("ytp_channels", "BACKGROUND", tu::RunVerdict::NotRun,
+            {{"section", "YTP"}, {"background_mean", "120.25,120.31"},
+             {"background_min", "120.20,120.28"},
+             {"background_max", "120.30,120.34"}}));
+        require(ui.run.runtimeState == ubsi::ui::RuntimeState::WaitingOperator
+                    && ui.ytp.channels[0].currentOhm == 120.25
+                    && ui.ytp.channels[1].currentOhm == 120.31,
+                "Живой график ЯТП должен обновляться во время ожидания Р4831");
 
         ui.apply(event("yvp_channels", "YVP_V7_POINT", tu::RunVerdict::NotRun,
             {{"yvp_channel", "3"}, {"gain_mv_per_pc", "2"},
              {"set_frequency_hz", "500"}, {"v7_output_vrms", "1.23"},
              {"calculated_gain_mv_per_pc", "9.45"}, {"point_index", "27"},
-             {"point_count", "104"}}));
+             {"point_count", "144"}}));
         require(ui.yvp.channels[2].verification == ubsi::ui::VerificationState::Pending,
                 "Сырое измерение ЯВП не должно окрашиваться в НЕ НОРМА");
 

@@ -183,6 +183,12 @@ int main(int argc, char** argv)
         isd.setRecoveryRestoredSink([&restoredCount] { ++restoredCount; });
 
         isd.setAnalog(7, 321, true);
+        isd.setYalkVoltage(25, 4.0);
+        isd.disableYalkOutput(25);
+        require(countPath(server.paths(), "/type=1num=25val=2457work=1bus=1") == 1,
+                "ЯЛК должен включаться кодом type=1 из экспериментальной таблицы, не type=5");
+        require(countPath(server.paths(), "/type=1num=25val=819work=0") == 1,
+                "ЯЛК должен адресно отключаться после измерения");
         isd.setSwitch(2, 1, false);
         isd.setSwitch(2, 2, false);
         require(server.connectionCount() < 3,

@@ -29,6 +29,7 @@
 #include <deque>
 #include <filesystem>
 #include <iomanip>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -362,6 +363,8 @@ void TuController::loadHardware()
                 std::vector<double> mean;
                 std::vector<double> minimum;
                 std::vector<double> maximum;
+                std::vector<double> codes;
+                std::vector<double> contacts;
                 {
                     std::lock_guard<std::mutex> lock(liveStateMutex_);
                     if (!yalkCalibrationValid_ || liveNode_.empty()) return;
@@ -376,6 +379,8 @@ void TuController::loadHardware()
                     mean.reserve(frame.size());
                     minimum.reserve(frame.size());
                     maximum.reserve(frame.size());
+                    codes.reserve(frame.size());
+                    contacts.reserve(frame.size());
                     for (std::size_t index = 0; index < frame.size(); ++index) {
                         const double volts = (frame[index].codeMean - zero)
                             * fullVoltage / (full - zero);
@@ -387,6 +392,8 @@ void TuController::loadHardware()
                         mean.push_back(volts);
                         minimum.push_back(*bounds.first);
                         maximum.push_back(*bounds.second);
+                        codes.push_back(frame[index].codeMean);
+                        contacts.push_back(frame[index].contact ? 1.0 : 0.0);
                     }
                 }
                 const auto csv = [](const std::vector<double>& values) {
@@ -406,9 +413,63 @@ void TuController::loadHardware()
                      {"background_mean", csv(mean)},
                      {"background_min", csv(minimum)},
                      {"background_max", csv(maximum)},
+                     {"background_codes", csv(codes)},
+                     {"background_contacts", csv(contacts)},
                      {"fresh", "true"},
                      {"frame_sequence", std::to_string(sequence)}}};
 
+                QMetaObject::invokeMethod(livePage, [livePage, liveEvent = std::move(liveEvent)] {
+                    if (livePage) livePage->setRunEvent(liveEvent);
+                }, Qt::QueuedConnection);
+            });
+
+        hardware_->yalk().setLiveYtpSink(
+            [this, livePage](const tu::hardware::YtpSnapshot& frame,
+                             std::uint64_t sequence) {
+                if (!livePage) return;
+                std::string node;
+                std::vector<double> mean, minimum, maximum;
+                {
+                    std::lock_guard<std::mutex> lock(liveStateMutex_);
+                    if (!ytpCalibrationValid_ || liveNode_.rfind("ytp_", 0) != 0
+                        || !(ytpFullCode_ > ytpZeroCode_)) return;
+                    node = liveNode_;
+                    if (ytpLiveWindow_.size() != 30) ytpLiveWindow_.assign(30, {});
+                    for (std::size_t index = 0; index < 30; ++index) {
+                        const double raw = frame.channels[index];
+                        const double ohms = raw == 32768.0
+                            ? std::numeric_limits<double>::quiet_NaN()
+                            : (raw - ytpZeroCode_) * 240.0 / (ytpFullCode_ - ytpZeroCode_);
+                        mean.push_back(ohms);
+                        auto& samples = ytpLiveWindow_[index];
+                        if (std::isfinite(ohms)) {
+                            samples.push_back(ohms);
+                            while (samples.size() > 20) samples.pop_front();
+                        }
+                        if (samples.empty()) {
+                            minimum.push_back(std::numeric_limits<double>::quiet_NaN());
+                            maximum.push_back(std::numeric_limits<double>::quiet_NaN());
+                        } else {
+                            const auto bounds = std::minmax_element(samples.begin(), samples.end());
+                            minimum.push_back(*bounds.first);
+                            maximum.push_back(*bounds.second);
+                        }
+                    }
+                }
+                const auto csv = [](const std::vector<double>& values) {
+                    std::ostringstream text;
+                    text << std::setprecision(10);
+                    for (std::size_t index = 0; index < values.size(); ++index) {
+                        if (index) text << ',';
+                        text << values[index];
+                    }
+                    return text.str();
+                };
+                tu::RunEvent liveEvent{std::chrono::system_clock::now(), node, "BACKGROUND",
+                    "Живая телеметрия ЯТП 68 байт", tu::RunVerdict::NotRun,
+                    {{"section", "YTP"}, {"background_mean", csv(mean)},
+                     {"background_min", csv(minimum)}, {"background_max", csv(maximum)},
+                     {"fresh", "true"}, {"frame_sequence", std::to_string(sequence)}}};
                 QMetaObject::invokeMethod(livePage, [livePage, liveEvent = std::move(liveEvent)] {
                     if (livePage) livePage->setRunEvent(liveEvent);
                 }, Qt::QueuedConnection);
@@ -564,6 +625,8 @@ void TuController::startRun(const QString& scenarioCode,
         yalkFullVoltage_ = 6.2;
         yalkCalibrationValid_ = false;
         yalkLiveWindow_.clear();
+        ytpCalibrationValid_ = false;
+        ytpLiveWindow_.clear();
     }
 
     page_->setRunInProgress(true, QStringLiteral("Запуск полной проверки УБСИ"));
@@ -590,6 +653,15 @@ void TuController::startRun(const QString& scenarioCode,
                             yalkCalibrationValid_ = true;
                         }
                     }
+                    if (event.nodeId == "ytp_calibration" && event.stage == "MEASUREMENT") {
+                        const auto zero = eventNumber(event, "zero_raw");
+                        const auto full = eventNumber(event, "full_raw");
+                        if (zero && full && *full > *zero) {
+                            ytpZeroCode_ = *zero;
+                            ytpFullCode_ = *full;
+                            ytpCalibrationValid_ = true;
+                        }
+                    }
                 }
 
                 if (!page) return;
@@ -607,6 +679,8 @@ void TuController::startRun(const QString& scenarioCode,
             liveNode_.clear();
             yalkCalibrationValid_ = false;
             yalkLiveWindow_.clear();
+            ytpCalibrationValid_ = false;
+            ytpLiveWindow_.clear();
         }
 
         QString reportPath;

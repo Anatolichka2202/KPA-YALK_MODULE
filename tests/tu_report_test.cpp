@@ -53,17 +53,25 @@ int main(int argc, char** argv)
         yalk.verdict = tu::RunVerdict::Ok;
         tu::MeasurementResult contact;
         contact.parameterKey = "ubsi.yalk.signal.25.1";
-        contact.title = "ЯЛК адрес 25: контакт при 0,8 В";
+        contact.title = "ЯЛК адрес 25: контакт при 0 В";
         contact.reference = 0.0;
         contact.measured = 1.0;
         contact.unit = "лог.";
         contact.verdict = tu::RunVerdict::Ok;
-        contact.attributes = {{"ulk_address","25"}, {"command_v","0.8"},
-            {"v7_v","0.805"},
+        contact.attributes = {{"ulk_address","25"}, {"command_v","0"},
+            {"contact_mode","Замкнуто, 0 В"}, {"v7_v","0.005"},
             {"raw_signal","1"}, {"expected_signal","0"}, {"raw_match","false"},
             {"formal_override","true"}, {"verdict_policy","formal_norma"},
             {"report_signal","0"}};
         yalk.measurements.push_back(contact);
+        auto highContact = contact;
+        highContact.parameterKey = "ubsi.yalk.signal.25.2";
+        highContact.reference = 1.0;
+        highContact.measured = 1.0;
+        highContact.attributes["command_v"] = "4";
+        highContact.attributes["contact_mode"] = "4 В";
+        highContact.attributes["report_signal"] = "1";
+        yalk.measurements.push_back(highContact);
         tu::MeasurementResult analog;
         analog.parameterKey = "ubsi.yalk.channel.25.1";
         analog.reference = 3.1;
@@ -73,6 +81,24 @@ int main(int argc, char** argv)
         analog.attributes = {{"ulk_address","25"}, {"command_v","3.1"},
             {"v7_v","3.100"}, {"reduced_error_percent","-0.03"}};
         yalk.measurements.push_back(analog);
+
+        tu::StepRunResult sensorSupply;
+        sensorSupply.nodeId = "sensor_supply_unloaded";
+        sensorSupply.verdict = tu::RunVerdict::Ok;
+        for (unsigned i = 0; i < 6; ++i) {
+            tu::MeasurementResult sensor;
+            sensor.parameterKey = "ubsi.sensor_supply_unloaded." + std::to_string(89 + i);
+            sensor.reference = 6.2;
+            sensor.measured = 6.20 + static_cast<double>(i) * 0.01;
+            sensor.lowerLimit = 6.0;
+            sensor.upperLimit = 6.4;
+            sensor.unit = "В";
+            sensor.verdict = tu::RunVerdict::Ok;
+            sensor.attributes = {{"connector", "X" + std::to_string(i / 2 + 1)},
+                {"pin", i % 2 == 0 ? "36" : "37"},
+                {"isd_channel", std::to_string(89 + i)}};
+            sensorSupply.measurements.push_back(std::move(sensor));
+        }
 
         tu::StepRunResult overload;
         overload.nodeId = "yalk_overload";
@@ -84,6 +110,11 @@ int main(int argc, char** argv)
         observed.attributes = {{"polarity","+12 В"}, {"stressed_channel","25"},
             {"observed_channel","26"}, {"baseline_code","100"},
             {"current_code","102"}, {"delta_code","2"}};
+        overload.measurements.push_back(observed);
+        observed.parameterKey = "ubsi.yalk.overload.25.27";
+        observed.attributes = {{"polarity","-12 В"}, {"stressed_channel","25"},
+            {"observed_channel","27"}, {"baseline_code","100"},
+            {"current_code","101"}, {"delta_code","1"}};
         overload.measurements.push_back(observed);
 
         tu::StepRunResult ytp;
@@ -130,15 +161,19 @@ int main(int argc, char** argv)
             {"report_measured_value","2.048"}, {"tolerance_percent","7"}};
         yvp.measurements.push_back(gain);
         tu::MeasurementResult afc;
-        afc.parameterKey = "ubsi.yvp.afc.3.2";
+        afc.parameterKey = "ubsi.yvp.afc.3.5";
         afc.reference = 0.0;
         afc.measured = 34.0;
         afc.unit = "%";
         afc.verdict = tu::RunVerdict::Ok;
         afc.attributes = {{"yvp_channel","3"}, {"criterion","afc"},
-            {"set_frequency_hz","2"}, {"report_deviation_percent","1.5"},
+            {"set_frequency_hz","5"}, {"report_deviation_percent","1.5"},
             {"report_measured_value","1.5"}};
         yvp.measurements.push_back(afc);
+        auto upperAfc = afc;
+        upperAfc.parameterKey = "ubsi.yvp.afc.3.1000";
+        upperAfc.attributes["set_frequency_hz"] = "1000";
+        yvp.measurements.push_back(upperAfc);
         tu::MeasurementResult attenuation;
         attenuation.parameterKey = "ubsi.yvp.attenuation.3.1";
         attenuation.measured = 4.0;
@@ -147,7 +182,7 @@ int main(int argc, char** argv)
         attenuation.attributes = {{"yvp_channel","3"}, {"criterion","attenuation"},
             {"report_measured_value","22.7"}};
         yvp.measurements.push_back(attenuation);
-        run.steps = {yalk, overload, ytp, yvp};
+        run.steps = {sensorSupply, yalk, overload, ytp, yvp};
 
         const QString htmlPath = writeTuReport(run);
         const QString csvPath = QFileInfo(htmlPath).dir().filePath(
@@ -163,24 +198,34 @@ int main(int argc, char** argv)
         require(protocol.contains(QStringLiteral("ПРОВЕРКА ОПРОСА И ПРЕОБРАЗОВАНИЯ АНАЛОГОВЫХ СИГНАЛОВ"))
                     && !protocol.contains(QStringLiteral("ПОТЕНЦИАЛЬНЫХ СИГНАЛОВ")),
                 "production TXT must use the operator term for YALK analog signals");
-        require(protocol.contains(QStringLiteral("Вольтметр: 0.805 В    Состояние: 0")),
+        require(protocol.contains(QStringLiteral("Замкнуто, 0 В: 0")),
                 "formal YALK contact value was not normalized");
-        require(protocol.contains(QStringLiteral("Код до: 100.00    Код после: 102.00    Δкод: +2.00")),
+        require(protocol.contains(QStringLiteral("Замкнуто, 0 В: 0    4 В: 1")),
+                "YALK contact conditions must share one channel row");
+        require(protocol.contains(QStringLiteral("Максимальная |Δкод|: 2.00")),
                 "YALK overload per-channel measurements are absent from the TXT layout");
         require(protocol.contains(QStringLiteral("Установлено сопротивление Р4831: 120.00 Ом"))
                     && protocol.contains(QStringLiteral("ЯТП: 120.25 Ом")),
                 "YTP point grouping is absent from the TXT layout");
-        require(protocol.contains(QStringLiteral("Быстроменяющиеся параметры: максимальное отклонение 2.40 %"))
+        require(!protocol.contains(QStringLiteral("ПРОВЕРКА ПОГРЕШНОСТЕЙ ОТ ШКАЛЫ ИЗМЕРЕНИЙ"))
                     && !protocol.contains(QStringLiteral("372.98 %")),
-                "raw YVP deviation leaked into the TU accuracy summary");
-        require(!protocol.contains(QStringLiteral("1.1.4.2"))
-                    && !protocol.contains(QStringLiteral("НЕ ВЫПОЛНЕНО")),
-                "formal TXT must not contain an unperformed sensor-supply section");
+                "1.1.4.14 must not be a separate section in the TU protocol");
+        require(protocol.contains(QStringLiteral("1.1.4.2"))
+                    && protocol.contains(QStringLiteral("X1, контакт 36"))
+                    && protocol.contains(QStringLiteral("X3, контакт 37"))
+                    && csv.contains(QStringLiteral("ubsi.sensor_supply_unloaded.94"))
+                    && html.contains(QStringLiteral("ПРОВЕРКА НАПРЯЖЕНИЯ ПИТАНИЯ ДАТЧИКОВ")),
+                "formal TXT must print all six measured sensor-supply pins");
         require(protocol.contains(QStringLiteral("Коэффициент усиления 2.00 мВ/пКл = 2.0480 мВ/пКл")),
                 "formal YVP value was not normalized");
         require(protocol.contains(QStringLiteral("Частота =  500 Гц    Амплитуда = 1.0000"))
                     && protocol.contains(QStringLiteral("Частота = 4000 Гц    Амплитуда = 0.0733")),
                 "YVP AFC reference or attenuation amplitude is missing from the template layout");
+        require(protocol.indexOf(QStringLiteral("Частота =    5 Гц"))
+                    < protocol.indexOf(QStringLiteral("Частота =  500 Гц"))
+                    && protocol.indexOf(QStringLiteral("Частота =  500 Гц"))
+                        < protocol.indexOf(QStringLiteral("Частота = 1000 Гц")),
+                "YVP reference frequency must appear in frequency order");
         require(protocol.contains(QStringLiteral("Отклонение = 2.4 %")),
                 "formal YVP deviation was not normalized");
         require(protocol.contains(QStringLiteral("РЕЗУЛЬТАТЫ ПРОВЕРКИ УБСИ №TEST-001 В НОРМАЛЬНЫХ УСЛОВИЯХ")),
