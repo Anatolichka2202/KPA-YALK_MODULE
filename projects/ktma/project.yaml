@@ -1,0 +1,19 @@
+schema: 1
+id: ktma
+title: КТМА
+version: 1.0.0
+
+# Project package composes the existing delivery-owned station profile and
+# scenarios. The referenced data remains single-source in data/ during the
+# migration; no physical mappings are duplicated here.
+equipment_profile: ../../data/profiles/stand_ktma.yaml
+
+dut_types:
+  - UBSI_468157_002
+
+workflows:
+  - workflows/free.yaml
+  - workflows/tu_normal.yaml
+  - workflows/tu_climate.yaml
+  - workflows/production.yaml
+  - workflows/production_climate.yaml
