@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <filesystem>
 #include <set>
 #include <sstream>
@@ -93,6 +94,173 @@ void appendMissingFile(
     if (!path.empty() && !regularFile(path))
         errors.push_back(label + " not found: " + path);
 }
+
+std::int64_t monotonicNowNs()
+{
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
+std::string bounded(std::string value, std::size_t limit = 4096)
+{
+    if (value.size() <= limit) return value;
+    value.resize(limit);
+    value += "...[truncated]";
+    return value;
+}
+
+// Project workflow audit wrapper. It records the actual calls crossing the
+// scenario -> equipment boundary without teaching procedures how to write an
+// audit log. Readiness will join the same Evidence model when its physical
+// preparation lifecycle is moved under project execution.
+class EvidenceProvider final : public ICapabilityProvider {
+public:
+    EvidenceProvider(ICapabilityProvider& upstream, std::vector<EvidenceEvent>& evidence)
+        : upstream_(upstream), evidence_(evidence)
+    {
+    }
+
+    bool hasCapability(const std::string& capability) const override
+    {
+        return upstream_.hasCapability(capability);
+    }
+
+    bool resourceHasCapability(
+        const std::string& resource,
+        const std::string& capability) const override
+    {
+        return upstream_.resourceHasCapability(resource, capability);
+    }
+
+    std::string invoke(
+        const std::string& capability,
+        const std::string& operation,
+        const std::map<std::string, std::string>& arguments) override
+    {
+        recordCommand({}, capability, operation, arguments);
+        try {
+            auto response = upstream_.invoke(capability, operation, arguments);
+            recordAck({}, capability, operation, response);
+            return response;
+        } catch (const std::exception& error) {
+            recordError({}, capability, operation, error.what());
+            throw;
+        } catch (...) {
+            recordError({}, capability, operation, "unknown equipment exception");
+            throw;
+        }
+    }
+
+    std::string invokeResource(
+        const std::string& resource,
+        const std::string& capability,
+        const std::string& operation,
+        const std::map<std::string, std::string>& arguments) override
+    {
+        recordCommand(resource, capability, operation, arguments);
+        try {
+            auto response = upstream_.invokeResource(resource, capability, operation, arguments);
+            recordAck(resource, capability, operation, response);
+            return response;
+        } catch (const std::exception& error) {
+            recordError(resource, capability, operation, error.what());
+            throw;
+        } catch (...) {
+            recordError(resource, capability, operation, "unknown equipment exception");
+            throw;
+        }
+    }
+
+    void safeStopAll() noexcept override
+    {
+        try {
+            EvidenceEvent request;
+            stamp(request, "SAFETY");
+            request.operation = "safe_stop_all";
+            request.message = "Best-effort safe stop requested";
+            request.data["phase"] = "request";
+            evidence_.push_back(std::move(request));
+        } catch (...) {
+            // Evidence allocation must never prevent physical safe-stop.
+        }
+
+        upstream_.safeStopAll();
+
+        try {
+            EvidenceEvent complete;
+            stamp(complete, "SAFETY");
+            complete.operation = "safe_stop_all";
+            complete.message = "Best-effort safe stop completed";
+            complete.data["phase"] = "complete";
+            evidence_.push_back(std::move(complete));
+        } catch (...) {
+        }
+    }
+
+private:
+    void stamp(EvidenceEvent& event, const std::string& type)
+    {
+        event.sequence = ++sequence_;
+        event.timestamp = std::chrono::system_clock::now();
+        event.monotonicNs = monotonicNowNs();
+        event.type = type;
+    }
+
+    void recordCommand(
+        const std::string& resource,
+        const std::string& capability,
+        const std::string& operation,
+        const std::map<std::string, std::string>& arguments)
+    {
+        EvidenceEvent event;
+        stamp(event, "COMMAND");
+        event.resource = resource;
+        event.capability = capability;
+        event.operation = operation;
+        event.message = "Equipment command";
+        for (const auto& [key, value] : arguments)
+            event.data["arg." + key] = bounded(value);
+        evidence_.push_back(std::move(event));
+    }
+
+    void recordAck(
+        const std::string& resource,
+        const std::string& capability,
+        const std::string& operation,
+        const std::string& response)
+    {
+        EvidenceEvent event;
+        stamp(event, "COMMAND_ACK");
+        event.resource = resource;
+        event.capability = capability;
+        event.operation = operation;
+        event.message = "Equipment command completed";
+        event.verdict = RunVerdict::Ok;
+        event.data["response"] = bounded(response);
+        evidence_.push_back(std::move(event));
+    }
+
+    void recordError(
+        const std::string& resource,
+        const std::string& capability,
+        const std::string& operation,
+        const std::string& error)
+    {
+        EvidenceEvent event;
+        stamp(event, "ERROR");
+        event.resource = resource;
+        event.capability = capability;
+        event.operation = operation;
+        event.message = "Equipment command failed";
+        event.verdict = RunVerdict::Error;
+        event.data["error"] = bounded(error);
+        evidence_.push_back(std::move(event));
+    }
+
+    ICapabilityProvider& upstream_;
+    std::vector<EvidenceEvent>& evidence_;
+    std::uint64_t sequence_ = 0;
+};
 
 } // namespace
 
@@ -232,8 +400,11 @@ ScenarioRunResult runProjectWorkflow(
         scenario = &loadedScenario;
     }
 
+    std::vector<EvidenceEvent> evidence;
+    evidence.reserve(64);
+    EvidenceProvider auditedEquipment(equipment, evidence);
     auto result = engine.run(
-        *scenario, equipment, std::move(profileVersion), std::move(objectSerial),
+        *scenario, auditedEquipment, std::move(profileVersion), std::move(objectSerial),
         allowPartial, std::move(progressSink));
     result.projectId = project.id;
     result.projectVersion = project.version;
@@ -243,6 +414,7 @@ ScenarioRunResult runProjectWorkflow(
     result.operatorName = std::move(context.operatorName);
     result.environmentProfile = workflow->environmentPath;
     result.contextAttributes = std::move(context.attributes);
+    result.evidence = std::move(evidence);
     return result;
 }
 
