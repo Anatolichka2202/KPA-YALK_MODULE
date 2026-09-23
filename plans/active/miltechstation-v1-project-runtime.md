@@ -61,21 +61,33 @@ Evidence / result
 
 Остаётся:
 
-- [ ] дождаться зелёного Windows CI;
-- [ ] подключить selected Project к desktop composition вместо прямого выбора KTMA profile;
-- [ ] добавить project identity в Run Context/Evidence.
+- [ ] получить зелёный Windows CI на текущем master;
+- [ ] подключить selected Project к desktop composition вместо прямого выбора KTMA profile.
 
 ## Этап 2 — Run Context и Evidence foundation
 
-Статус: **NEXT**
+Статус: **PARTIAL / ACTIVE**
 
-- [ ] универсальный `RunContext`: project/workflow/DUT/operator/environment;
-- [ ] backward-compatible ScenarioEngine entry point с RunContext;
-- [ ] project/workflow identity в `ScenarioRunResult`;
-- [ ] persistence в RunStore;
+Сделано:
+
+- [x] `ProjectRunContext` для DUT/operator/project-level attributes;
+- [x] `runProjectWorkflow()` поверх существующего `ScenarioEngine` без второго движка;
+- [x] workflow registration gate до физического запуска;
+- [x] dynamic scenario разрешён только соответствующим workflow;
+- [x] project/workflow/DUT/operator/environment identity в `ScenarioRunResult`;
+- [x] additive SQLite migration `RunStore` для project/workflow context;
+- [x] сохранение project/workflow context и attributes в `test_runs`;
+- [x] regression `stand.run_store_context`;
+- [x] legacy raw scenario API остаётся совместимым: новые поля у таких run пустые;
+- [x] registrar lifecycle не перенесён в station core.
+
+Остаётся:
+
+- [ ] получить зелёный CI после persistence migration;
 - [ ] базовый Evidence event envelope: sequence/time/type/resource/capability/operation/data;
 - [ ] автоматический command/ack audit на EquipmentRegistry boundary;
-- [ ] не смешивать registrar lifecycle и измерительный Evidence.
+- [ ] resource/device/quality identity для measurement evidence;
+- [ ] связать execution runtime с общим run/evidence lifecycle.
 
 ## Этап 3 — Resource ownership / safety
 
@@ -166,7 +178,10 @@ Evidence / result
 
 - `station/include/orbita_stand/project.h`
 - `station/src/project.cpp`
+- `station/include/orbita_stand/scenario.h`
+- `station/src/run_store.cpp`
 - `station/tests/project_definition_test.cpp`
+- `station/tests/run_store_context_test.cpp`
 - `station/CMakeLists.txt`
 - `projects/ktma/project.yaml`
 - `projects/ktma/workflows/*.yaml`
@@ -175,6 +190,7 @@ Evidence / result
 ## Изменённые документы
 
 - `docs/product/miltechstation.md`
+- `docs/product/data.md`
 - `docs/reference/components/project-package.md`
 - `docs/reference/INDEX.md`
 - этот план.
