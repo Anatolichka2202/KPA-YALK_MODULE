@@ -98,9 +98,10 @@ public:
                     throw std::runtime_error("synthetic VISA timeout");
                 }
                 // For K=1 and C=1000 pF the verified procedure drives 2 Vpp.
-                // A flat 2 Vpp output means Kmeas=1 mV/pC. At 4000 Hz use
-                // exactly 20 dB attenuation to exercise the normative edge.
-                const double outputVpp = std::abs(frequency - 4000.0) < 1e-9 ? 0.2 : 2.0;
+                // A flat 2 Vpp output means Kmeas=1 mV/pC. Keep the synthetic
+                // 4000 Hz point safely beyond the 20 dB boundary so decimal
+                // serialization of Vrms cannot turn an exact edge into FAIL.
+                const double outputVpp = std::abs(frequency - 4000.0) < 1e-9 ? 0.19 : 2.0;
                 const double vrms = outputVpp / (2.0 * std::sqrt(2.0));
                 return "status=ready\nvolts=" + std::to_string(vrms) + "\n";
             }
