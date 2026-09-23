@@ -46,6 +46,19 @@ int main(int argc, char** argv)
         run.environmentProfile = "normal.yaml";
         run.contextAttributes = {{"mode", "formal"}};
 
+        EvidenceEvent evidence;
+        evidence.sequence = 1;
+        evidence.timestamp = run.startedAt;
+        evidence.monotonicNs = 123456789;
+        evidence.type = "COMMAND";
+        evidence.nodeId = "power";
+        evidence.resource = "power.dut";
+        evidence.capability = "power.dc_supply";
+        evidence.operation = "set_voltage";
+        evidence.message = "Equipment command";
+        evidence.data = {{"arg.volts", "27.0"}};
+        run.evidence.push_back(std::move(evidence));
+
         {
             RunStore store(path.toUtf8().toStdString());
             store.save(run);
@@ -72,14 +85,33 @@ int main(int argc, char** argv)
             require(query.value(7).toString().contains(QStringLiteral("mode=formal")),
                 "context attributes missing");
             query.finish();
+
+            require(query.exec(QStringLiteral(
+                "SELECT sequence,monotonic_ns,type,node_id,resource,capability,operation,message,verdict,data "
+                "FROM run_evidence WHERE run_id='context-run'")),
+                "cannot query structured evidence");
+            require(query.next(), "structured evidence row missing");
+            require(query.value(0).toLongLong() == 1, "evidence sequence missing");
+            require(query.value(1).toLongLong() == 123456789, "evidence monotonic time missing");
+            require(query.value(2).toString() == QStringLiteral("COMMAND"), "evidence type missing");
+            require(query.value(3).toString() == QStringLiteral("power"), "evidence node missing");
+            require(query.value(4).toString() == QStringLiteral("power.dut"), "evidence resource missing");
+            require(query.value(5).toString() == QStringLiteral("power.dc_supply"), "evidence capability missing");
+            require(query.value(6).toString() == QStringLiteral("set_voltage"), "evidence operation missing");
+            require(query.value(7).toString() == QStringLiteral("Equipment command"), "evidence message missing");
+            require(query.value(8).toString() == QStringLiteral("NOT_RUN"), "evidence verdict missing");
+            require(query.value(9).toString().contains(QStringLiteral("arg.volts=27.0")),
+                "evidence data missing");
+            require(!query.next(), "unexpected duplicate evidence row");
+            query.finish();
             database.close();
         }
         QSqlDatabase::removeDatabase(connection);
 
-        std::cout << "RunStore project context persistence OK\n";
+        std::cout << "RunStore project context and evidence persistence OK\n";
         return 0;
     } catch (const std::exception& error) {
-        std::cerr << "RunStore project context persistence failed: " << error.what() << '\n';
+        std::cerr << "RunStore project context and evidence persistence failed: " << error.what() << '\n';
         return 1;
     }
 }
