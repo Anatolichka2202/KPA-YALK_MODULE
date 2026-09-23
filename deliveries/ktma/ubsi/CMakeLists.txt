@@ -88,6 +88,10 @@ if(BUILD_TESTING)
     target_link_libraries(yalk_analog_procedure_test PRIVATE ktma_ubsi_procedures)
     add_test(NAME ktma.ubsi.yalk_analog_procedure COMMAND yalk_analog_procedure_test)
 
+    add_executable(yvp_v7_procedure_test tests/yvp_v7_procedure_test.cpp)
+    target_link_libraries(yvp_v7_procedure_test PRIVATE ktma_ubsi_procedures)
+    add_test(NAME ktma.ubsi.yvp_v7_procedure COMMAND yvp_v7_procedure_test)
+
     add_executable(ubsi_backend_contract_test tests/ubsi_backend_contract_test.cpp)
     target_compile_definitions(ubsi_backend_contract_test PRIVATE
         ORBITA_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
