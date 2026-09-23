@@ -9,6 +9,7 @@ namespace orbita::stand {
 void registerLegacyUbsiProcedures(ScenarioEngine& engine);
 void registerCurrentUbsiProcedures(ScenarioEngine& engine);
 void registerRoktUbsiProcedures(ScenarioEngine& engine);
+void registerYalkPhysicalUbsiProcedures(ScenarioEngine& engine);
 void registerIsdSafeUbsiProcedures(ScenarioEngine& engine);
 void registerProductionFinalUbsiProcedures(ScenarioEngine& engine);
 void registerV7UbsiProcedures(ScenarioEngine& engine);
