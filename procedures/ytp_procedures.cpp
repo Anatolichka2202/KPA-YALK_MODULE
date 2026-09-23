@@ -177,6 +177,13 @@ ProcedureResult channels(const ScenarioStep& step, ProcedureContext& context,
         const std::string prompt = "Установите Р4831 = " + std::to_string(targetResistance)
             + " Ом. Введите фактически установленное сопротивление.";
 
+        // The scenario worker blocks while the operator adjusts Р4831, while
+        // the dedicated UDP receiver continues collecting YTP frames.  Keep a
+        // boundary before showing the dialog so that a resumed point uses only
+        // the frames observed during this operator action, without restarting
+        // the established ROKT YTP stream.
+        const auto pointFrameMarker = stand->yalk().markYtpFrames();
+
         publish(context, step, "OPERATOR", prompt, RunVerdict::NotRun,
             {{"target_resistance_ohm",std::to_string(targetResistance)},
              {"point_index",std::to_string(pointIndex + 1)},
@@ -201,8 +208,14 @@ ProcedureResult channels(const ScenarioStep& step, ProcedureContext& context,
              {"point_count",std::to_string(points.size())}});
 
         waitChecked(context, settle);
-        const auto snapshot = stand->yalk().readYtpSnapshot(
-            samples, std::chrono::milliseconds(3000), [&context] { context.checkpoint(); });
+        publish(context, step, "YTP_RESUME",
+            "ЯТП: читаю кадры, принятые во время установки Р4831", RunVerdict::NotRun,
+            {{"target_resistance_ohm",std::to_string(targetResistance)},
+             {"point_index",std::to_string(pointIndex + 1)},
+             {"point_count",std::to_string(points.size())}});
+        const auto snapshot = stand->yalk().readYtpSnapshotSince(
+            pointFrameMarker, samples, std::chrono::milliseconds(3000),
+            [&context] { context.checkpoint(); });
 
         for (unsigned channel = 0; channel < channelCount; ++channel) {
             context.checkpoint();

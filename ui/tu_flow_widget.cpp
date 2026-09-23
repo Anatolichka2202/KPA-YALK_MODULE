@@ -1,8 +1,8 @@
 #include "tu_flow_widget.h"
 
+#include "app/tu_report_writer.h"
 #include "model/run_types.h"
 
-#include <QComboBox>
 #include <QDateTime>
 #include <QDesktopServices>
 #include <QFile>
@@ -12,13 +12,10 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
-#include <QSaveFile>
 #include <QSet>
 #include <QStackedWidget>
-#include <QStyle>
 #include <QTableWidget>
 #include <QTableWidgetItem>
-#include <QTextStream>
 #include <QUrl>
 #include <QVBoxLayout>
 
@@ -109,9 +106,8 @@ TuFlowWidget::TuFlowWidget(QWidget* parent) : QWidget(parent)
         "QPushButton{background:#132a3d;color:#eaf4fb;border:1px solid #264257;border-radius:7px;padding:9px 14px;}"
         "QPushButton:hover{border-color:#58a5ff;background:#17334a;}"
         "QPushButton#primary{background:#2e7de9;border-color:#58a5ff;font-weight:700;}"
-        "QPushButton[choiceActive='true']{background:#173b59;border-color:#58a5ff;font-weight:700;}"
         "QPushButton:disabled{color:#61788a;background:#0e1e2c;border-color:#1a3346;}"
-        "QComboBox,QLineEdit{background:#0e1e2c;color:#eaf4fb;border:1px solid #264257;border-radius:6px;padding:8px;min-height:22px;}"));
+        "QLineEdit{background:#0e1e2c;color:#eaf4fb;border:1px solid #264257;border-radius:6px;padding:8px;min-height:22px;}"));
 
     auto* root = new QVBoxLayout(this);
     root->setContentsMargins(0, 0, 0, 0);
@@ -135,64 +131,33 @@ TuFlowWidget::TuFlowWidget(QWidget* parent) : QWidget(parent)
         return bar;
     };
 
-    // TU v0.5 ENTRY: product identity first, no operator.
+    // Оператор указывает только серийный номер; в этой поставке нет production registry.
     selectionPage_ = new QWidget(pages_);
     auto* selection = new QVBoxLayout(selectionPage_);
     selection->setContentsMargins(18, 14, 18, 18);
     selection->setSpacing(14);
-    selection->addLayout(topBar(QStringLiteral("один утверждённый маршрут"), selectionPage_));
+    selection->addLayout(topBar(QStringLiteral("проверка изделия"), selectionPage_));
 
-    selection->addWidget(title(QStringLiteral("Выбор изделия"), 18, selectionPage_));
-    selection->addWidget(muted(
-        QStringLiteral("Выберите зарегистрированное УБСИ или введите SN вручную."),
-        selectionPage_));
+    selection->addWidget(title(QStringLiteral("ПРОВЕРКА УБСИ ПО ТУ"), 18, selectionPage_));
+    selection->addWidget(muted(QStringLiteral("Введите заводской номер УБСИ и проверьте готовность стенда."),
+                                selectionPage_));
 
-    auto* choices = new QHBoxLayout;
-    choices->setSpacing(14);
-
-    auto* registryCard = panel(selectionPage_);
-    registryCard->setObjectName(QStringLiteral("tuRegistryChoice"));
-    auto* registryLayout = new QVBoxLayout(registryCard);
-    registryLayout->setContentsMargins(16, 16, 16, 16);
-    registryLayout->setSpacing(12);
-    registryLayout->addWidget(title(QStringLiteral("Зарегистрированное УБСИ"), 14, registryCard));
-    registered_ = new QComboBox(registryCard);
-    registered_->setObjectName(QStringLiteral("tuRegisteredProducts"));
-    registered_->addItem(QStringLiteral("Выберите УБСИ"), QString());
-    registryLayout->addWidget(registered_);
-    registryLayout->addWidget(muted(
-        QStringLiteral("Используется запись из регистратора. Отдельная производственная сессия не создаётся."),
-        registryCard));
-    useRegistered_ = new QPushButton(QStringLiteral("Использовать выбранное"), registryCard);
-    useRegistered_->setObjectName(QStringLiteral("tuUseRegistered"));
-    registryLayout->addWidget(useRegistered_, 0, Qt::AlignLeft);
-    choices->addWidget(registryCard, 1);
-
-    auto* manualCard = panel(selectionPage_);
-    manualCard->setObjectName(QStringLiteral("tuManualChoice"));
-    auto* manualLayout = new QVBoxLayout(manualCard);
-    manualLayout->setContentsMargins(16, 16, 16, 16);
-    manualLayout->setSpacing(12);
-    manualLayout->addWidget(title(QStringLiteral("SN вручную"), 14, manualCard));
-    manualSerial_ = new QLineEdit(manualCard);
+    auto* serialCard = panel(selectionPage_);
+    serialCard->setObjectName(QStringLiteral("tuSerialEntry"));
+    serialCard->setMaximumWidth(620);
+    auto* serialLayout = new QVBoxLayout(serialCard);
+    serialLayout->setContentsMargins(16, 16, 16, 16);
+    serialLayout->setSpacing(12);
+    serialLayout->addWidget(title(QStringLiteral("Заводской номер"), 14, serialCard));
+    manualSerial_ = new QLineEdit(serialCard);
     manualSerial_->setObjectName(QStringLiteral("tuManualSerial"));
-    manualSerial_->setPlaceholderText(QStringLiteral("Введите SN…"));
+    manualSerial_->setPlaceholderText(QStringLiteral("Введите заводской номер УБСИ"));
     manualSerial_->setClearButtonEnabled(true);
-    manualLayout->addWidget(manualSerial_);
-    manualLayout->addWidget(muted(
-        QStringLiteral("Для проверки изделия, которое не требуется заранее добавлять в production registry."),
-        manualCard));
-    useManual_ = new QPushButton(QStringLiteral("Использовать введённый SN"), manualCard);
-    useManual_->setObjectName(QStringLiteral("tuUseManual"));
-    manualLayout->addWidget(useManual_, 0, Qt::AlignLeft);
-    choices->addWidget(manualCard, 1);
-    selection->addLayout(choices);
+    serialLayout->addWidget(manualSerial_);
+    selection->addWidget(serialCard, 0, Qt::AlignLeft);
     selection->addStretch();
 
     auto* footer = new QHBoxLayout;
-    auto* home = new QPushButton(QStringLiteral("← Главная"), selectionPage_);
-    home->setObjectName(QStringLiteral("tuHomeButton"));
-    footer->addWidget(home);
     scenarioState_ = muted(QString(), selectionPage_);
     scenarioState_->setObjectName(QStringLiteral("tuScenarioState"));
     footer->addWidget(scenarioState_, 1);
@@ -371,28 +336,13 @@ TuFlowWidget::TuFlowWidget(QWidget* parent) : QWidget(parent)
     reportOuter->addWidget(reportCard, 1, Qt::AlignHCenter);
     pages_->addWidget(reportPage_);
 
-    connect(home, &QPushButton::clicked, this, &TuFlowWidget::homeRequested);
     connect(reportHome, &QPushButton::clicked, this, &TuFlowWidget::homeRequested);
     connect(newCheck, &QPushButton::clicked, this, &TuFlowWidget::resetToSelection);
     connect(openReport_, &QPushButton::clicked, this, [this] {
         if (!reportPath_.isEmpty())
             QDesktopServices::openUrl(QUrl::fromLocalFile(reportPath_));
     });
-    connect(registered_, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
-            [this](int) {
-                if (!registered_->currentData().toString().trimmed().isEmpty()) setSerialMode(false);
-                updateSelectionAvailability();
-            });
     connect(manualSerial_, &QLineEdit::textChanged, this, [this](const QString&) {
-        if (!manualSerial_->text().trimmed().isEmpty()) setSerialMode(true);
-        updateSelectionAvailability();
-    });
-    connect(useRegistered_, &QPushButton::clicked, this, [this] {
-        setSerialMode(false);
-        updateSelectionAvailability();
-    });
-    connect(useManual_, &QPushButton::clicked, this, [this] {
-        setSerialMode(true);
         updateSelectionAvailability();
     });
     connect(check_, &QPushButton::clicked, this, [this] {
@@ -432,25 +382,12 @@ TuFlowWidget::TuFlowWidget(QWidget* parent) : QWidget(parent)
         showReport();
     });
 
-    setSerialMode(false);
     resetToSelection();
 }
 
 void TuFlowWidget::setRegisteredSerials(const QStringList& serials)
 {
-    const QString selected = registered_->currentData().toString();
-    QStringList unique = serials;
-    unique.removeDuplicates();
-    unique.sort(Qt::CaseInsensitive);
-    registered_->blockSignals(true);
-    registered_->clear();
-    registered_->addItem(QStringLiteral("Выберите УБСИ"), QString());
-    for (const auto& serial : unique)
-        registered_->addItem(QStringLiteral("SN %1").arg(serial), serial);
-    const int index = registered_->findData(selected);
-    registered_->setCurrentIndex(index >= 0 ? index : 0);
-    registered_->blockSignals(false);
-    updateSelectionAvailability();
+    Q_UNUSED(serials);
 }
 
 void TuFlowWidget::setOperators(const QStringList& operators)
@@ -461,10 +398,7 @@ void TuFlowWidget::setOperators(const QStringList& operators)
 void TuFlowWidget::setScenarioAvailable(bool available, const QString& detail)
 {
     scenarioAvailable_ = available;
-    registered_->setEnabled(available);
     manualSerial_->setEnabled(available);
-    useRegistered_->setEnabled(available);
-    useManual_->setEnabled(available);
     scenarioState_->setText(available ? QString()
                                       : detail.isEmpty() ? QStringLiteral("Проверка по ТУ недоступна") : detail);
     scenarioState_->setStyleSheet(available ? QString()
@@ -552,19 +486,7 @@ QString TuFlowWidget::activeOperator() const
 
 QString TuFlowWidget::selectedSerial() const
 {
-    return manualMode_ ? manualSerial_->text().trimmed()
-                       : registered_->currentData().toString().trimmed();
-}
-
-void TuFlowWidget::setSerialMode(bool manual)
-{
-    manualMode_ = manual;
-    useManual_->setProperty("choiceActive", manualMode_);
-    useRegistered_->setProperty("choiceActive", !manualMode_);
-    for (auto* button : {useManual_, useRegistered_}) {
-        button->style()->unpolish(button);
-        button->style()->polish(button);
-    }
+    return manualSerial_->text().trimmed();
 }
 
 void TuFlowWidget::updateSelectionAvailability()
@@ -749,24 +671,5 @@ void TuFlowWidget::populateReportRows(const tu::ScenarioRunResult& result)
 
 void TuFlowWidget::applyOperatorToTuProtocol(const QString& operatorName)
 {
-    const QString path = reportPath_;
-    if (path.isEmpty()) return;
-
-    QFile file(path);
-    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) return;
-    QString html = QString::fromUtf8(file.readAll());
-    file.close();
-
-    const QString marker = QStringLiteral("<tr><th>Оператор</th><td>");
-    const qsizetype begin = html.indexOf(marker);
-    if (begin < 0) return;
-    const qsizetype valueBegin = begin + marker.size();
-    const qsizetype valueEnd = html.indexOf(QStringLiteral("</td></tr>"), valueBegin);
-    if (valueEnd < 0) return;
-    html.replace(valueBegin, valueEnd - valueBegin, operatorName.toHtmlEscaped());
-
-    QSaveFile output(path);
-    if (!output.open(QIODevice::WriteOnly | QIODevice::Text)) return;
-    output.write(html.toUtf8());
-    output.commit();
+    updateTuReportOperator(reportPath_, operatorName);
 }

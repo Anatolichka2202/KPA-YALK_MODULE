@@ -424,6 +424,79 @@ struct YalkReferenceLink::Impl
         return result;
     }
 
+    YtpSnapshot ytpSnapshotSince(std::uint64_t marker, unsigned samples,
+                                 std::chrono::milliseconds timeout,
+                                 const Checkpoint& checkpoint)
+    {
+        samples = std::max(1u, samples);
+        const auto deadline = std::chrono::steady_clock::now() + timeout;
+        std::vector<QueuedFrame> selected;
+
+        for (;;) {
+            if (checkpoint) checkpoint();
+            {
+                std::unique_lock<std::mutex> lock(frameMutex);
+                if (receiver == InvalidSocket || stopping.load())
+                    throw std::runtime_error("Поток адаптера УБСИ остановлен");
+
+                selected.clear();
+                for (auto it = frames.rbegin(); it != frames.rend(); ++it) {
+                    if (it->sequence <= marker) break;
+                    if (it->bytes.size() != 68) continue;
+                    selected.push_back(*it);
+                    if (selected.size() == samples) break;
+                }
+                if (selected.size() == samples) break;
+
+                const auto now = std::chrono::steady_clock::now();
+                if (now >= deadline) break;
+                const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    deadline - now);
+                frameCv.wait_for(lock, std::min(remaining, std::chrono::milliseconds(50)));
+            }
+        }
+
+        if (selected.size() != samples) throw FrameTimeout{};
+
+        // Frames were collected newest-first.  Their order is immaterial for
+        // averaging, but restoring chronological order makes the decoding path
+        // identical to a regular consecutive snapshot.
+        std::reverse(selected.begin(), selected.end());
+        YtpSnapshot result;
+        std::array<unsigned, 30> counts{};
+        unsigned count31 = 0, count32 = 0;
+        for (const auto& queued : selected) {
+            const auto& frame = queued.bytes;
+            constexpr std::array<std::uint8_t, 4> header{0x01,0x00,0x34,0x00};
+            if (!std::equal(header.begin(), header.end(), frame.begin()))
+                throw std::runtime_error("Кадр ЯТП ROKT имеет неверный заголовок");
+            const auto word = [&frame](std::size_t index) {
+                const std::size_t offset = 4 + index * 2;
+                return static_cast<std::uint16_t>(frame[offset])
+                    | (static_cast<std::uint16_t>(frame[offset + 1]) << 8);
+            };
+            for (std::size_t index = 0; index < 30; ++index) {
+                const auto value = word(index);
+                if (value == 0x8000) continue;
+                result.channels[index] += value;
+                ++counts[index];
+            }
+            const auto v31 = word(30), v32 = word(31);
+            if (v31 != 0x8000) { result.calibration31 += v31; ++count31; }
+            if (v32 != 0x8000) { result.calibration32 += v32; ++count32; }
+        }
+        result.validWordCount = 0;
+        for (std::size_t index = 0; index < 30; ++index) {
+            if (counts[index]) { result.channels[index] /= counts[index]; ++result.validWordCount; }
+            else result.channels[index] = 32768.0;
+        }
+        if (count31) { result.calibration31 /= count31; ++result.validWordCount; }
+        else result.calibration31 = 32768.0;
+        if (count32) { result.calibration32 /= count32; ++result.validWordCount; }
+        else result.calibration32 = 32768.0;
+        return result;
+    }
+
     YalkUdpConfig config;
     sockaddr_in remote{};
     sockaddr_in local{};
@@ -512,6 +585,18 @@ YtpSnapshot YalkReferenceLink::readYtpSnapshot(
     unsigned sampleCount, std::chrono::milliseconds timeout, const Checkpoint& checkpoint)
 {
     return impl_->ytpSnapshot(sampleCount, timeout, checkpoint);
+}
+
+std::uint64_t YalkReferenceLink::markYtpFrames() const
+{
+    return impl_->currentSequence();
+}
+
+YtpSnapshot YalkReferenceLink::readYtpSnapshotSince(
+    std::uint64_t marker, unsigned sampleCount, std::chrono::milliseconds timeout,
+    const Checkpoint& checkpoint)
+{
+    return impl_->ytpSnapshotSince(marker, sampleCount, timeout, checkpoint);
 }
 
 void YalkReferenceLink::setLiveYalkSink(LiveYalkSink sink)

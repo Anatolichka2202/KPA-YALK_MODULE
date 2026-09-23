@@ -82,13 +82,11 @@ std::optional<double> eventNumber(const tu::RunEvent& event, const char* key)
     }
 }
 
-// Keep the canonical scenario node IDs in reports/journal, but adapt the few
-// runtime-only support nodes to the current HMI contract. In particular the
-// route now calls the contact step yalk_signal_thresholds, while the UI model
-// still recognizes the older yalk_contact* family.
+// Keep canonical IDs in reports and the technical journal, but map obsolete
+// standalone contact events to the one combined YALK runtime page.
 std::string runtimeUiNodeId(const std::string& node)
 {
-    if (node == "yalk_signal_thresholds") return "yalk_contact_thresholds";
+    if (node == "yalk_signal_thresholds") return "yalk_channels";
 
     // These are service steps, not acceptance rows. If they are passed through
     // as yalk_* the old sidebar fallback lights the analog row, producing the
@@ -103,7 +101,7 @@ std::string runtimeUiNodeId(const std::string& node)
 void normalizeContactResultForUi(tu::StepRunResult& step)
 {
     if (step.nodeId == "yalk_signal_thresholds")
-        step.nodeId = "yalk_contact_thresholds";
+        step.nodeId = "yalk_channels";
     for (auto& child : step.children) normalizeContactResultForUi(child);
 }
 
@@ -112,9 +110,8 @@ void normalizeContactResultForUi(tu::ScenarioRunResult& result)
     for (auto& step : result.steps) normalizeContactResultForUi(step);
 }
 
-// The runtime rail historically listed initial/open-circuit after analog and
-// contact even though the scenario executes it first. Reorder the existing
-// widgets once; this deliberately does not alter the accepted TU scope.
+// The runtime rail follows the actual scenario order. The combined YALK row
+// represents analog, accuracy, and contact criteria inside one procedure.
 void reorderTuRequirementRail(TestPage* page)
 {
     if (!page) return;
@@ -123,9 +120,7 @@ void reorderTuRequirementRail(TestPage* page)
         QStringLiteral("supply"),
         QStringLiteral("current"),
         QStringLiteral("yalk_initial"),
-        QStringLiteral("yalk_analog"),
-        QStringLiteral("yalk_accuracy"),
-        QStringLiteral("yalk_contact"),
+        QStringLiteral("yalk_channels"),
         QStringLiteral("yalk_overload"),
         QStringLiteral("yalk_reference"),
         QStringLiteral("ytp"),

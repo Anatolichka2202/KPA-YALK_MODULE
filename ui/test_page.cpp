@@ -130,7 +130,6 @@ QString sectionText(Procedure procedure)
     case Procedure::Power: return QStringLiteral("Питание");
     case Procedure::YalkInitial: return QStringLiteral("Обрыв / исходное состояние");
     case Procedure::YalkAnalog: return QStringLiteral("Аналоговые и контактные каналы");
-    case Procedure::YalkContact: return QStringLiteral("Контактные сигналы");
     case Procedure::YalkOverload: return QStringLiteral("Перегрузка ±12 В");
     case Procedure::YalkReference: return QStringLiteral("Эталон 6,2 В");
     case Procedure::Ytp: return QStringLiteral("ЯТП");
@@ -146,12 +145,11 @@ int runtimePage(Procedure procedure)
     case Procedure::Power: return 0;
     case Procedure::YalkInitial: return 1;
     case Procedure::YalkAnalog: return 2;
-    case Procedure::YalkContact: return 3;
-    case Procedure::YalkOverload: return 4;
-    case Procedure::YalkReference: return 5;
-    case Procedure::Ytp: return 6;
-    case Procedure::Yvp: return 7;
-    case Procedure::Finish: return 8;
+    case Procedure::YalkOverload: return 3;
+    case Procedure::YalkReference: return 4;
+    case Procedure::Ytp: return 5;
+    case Procedure::Yvp: return 6;
+    case Procedure::Finish: return 7;
     case Procedure::Preparation: return 0;
     }
     return 0;
@@ -855,18 +853,6 @@ struct TestPage::Impl
         legacyAnalogProxy->hide();
         stageStack->addWidget(analog);
 
-        // CONTACTS
-        auto* contacts = new QWidget(stageStack);
-        auto* contactsLayout = new QVBoxLayout(contacts);
-        contactsLayout->setContentsMargins(18, 14, 18, 14);
-        contactsContext = heading(QStringLiteral("ЯЛК-96 · контактные сигналы"), 18, contacts);
-        contactsLayout->addWidget(contactsContext);
-        contactsLayout->addWidget(muted(
-            QStringLiteral("Проверяем дискретный признак 80 адресов ЯЛК в точках 0 / 0,8 / 2,5 В. Видны фактическое напряжение, ожидаемая и измеренная логика по каждому адресу."), contacts));
-        contactPlane = new ContactPlane(contacts);
-        contactsLayout->addWidget(contactPlane, 1);
-        stageStack->addWidget(contacts);
-
         // OVERLOAD
         auto* overload = new QWidget(stageStack);
         auto* overloadLayout = new QVBoxLayout(overload);
@@ -1009,9 +995,8 @@ struct TestPage::Impl
         addTuRequirement(QStringLiteral("supply"), QStringLiteral("1.4.3"), QStringLiteral("Питание · 24 / 27 / 35 В"));
         addTuRequirement(QStringLiteral("current"), QStringLiteral("1.4.5"), QStringLiteral("Питание · общий ток"));
         addTuRequirement(QStringLiteral("yalk_initial"), QStringLiteral("1.4.10"), QStringLiteral("ЯЛК · обрыв"));
-        addTuRequirement(QStringLiteral("yalk_analog"), QStringLiteral("1.4.1"), QStringLiteral("ЯЛК · аналоговые каналы"));
-        addTuRequirement(QStringLiteral("yalk_accuracy"), QStringLiteral("1.4.14"), QStringLiteral("ЯЛК · погрешность"));
-        addTuRequirement(QStringLiteral("yalk_contact"), QStringLiteral("1.4.1"), QStringLiteral("ЯЛК · контактные каналы"));
+        addTuRequirement(QStringLiteral("yalk_channels"), QStringLiteral("1.4.1, 1.4.14"),
+                         QStringLiteral("ЯЛК · аналоговые и контактные сигналы · 0 / 0,8 / 2,5 / 3,1 / 6,2 В"));
         addTuRequirement(QStringLiteral("yalk_overload"), QStringLiteral("1.4.11"), QStringLiteral("ЯЛК · перегрузка ±12 В"));
         addTuRequirement(QStringLiteral("yalk_reference"), QStringLiteral("1.4.9"), QStringLiteral("ЯЛК · эталон 6,20 В"));
         addTuRequirement(QStringLiteral("ytp"), QStringLiteral("1.4.1"), QStringLiteral("ЯТП · 30 каналов"));
@@ -1200,7 +1185,6 @@ struct TestPage::Impl
         yalkPlane->setYalkFrame(adapter.yalkAnalog);
         legacyAnalogProxy->setProperty("renderedChannelCount", 0);
         legacyAnalogProxy->setProperty("warningChannelCount", 0);
-        contactPlane->setFrame(adapter.yalkContact, 0);
         overloadPlane->setFrame(adapter.yalkOverload);
         ytpPlane->setYtpFrame(adapter.ytp);
         yvpPlane->setFrame(adapter.yvp, 0);
@@ -1272,16 +1256,15 @@ struct TestPage::Impl
         if (node.contains(QStringLiteral("yalk_initial")))
             return {QStringLiteral("yalk_initial")};
         if (node.contains(QStringLiteral("yalk_contact")))
-            return {QStringLiteral("yalk_contact")};
+            return {QStringLiteral("yalk_channels")};
         if (node.contains(QStringLiteral("yalk_overload")))
             return {QStringLiteral("yalk_overload")};
         if (node.contains(QStringLiteral("yalk_reference")) || node.contains(QStringLiteral("reference_voltage")))
             return {QStringLiteral("yalk_reference")};
         if (node == QStringLiteral("yalk_channels"))
-            return {QStringLiteral("yalk_analog"), QStringLiteral("yalk_accuracy"),
-                    QStringLiteral("yalk_contact")};
+            return {QStringLiteral("yalk_channels")};
         if (node.startsWith(QStringLiteral("yalk_")))
-            return {QStringLiteral("yalk_analog"), QStringLiteral("yalk_accuracy")};
+            return {QStringLiteral("yalk_channels")};
         if (node.startsWith(QStringLiteral("ytp_")))
             return {QStringLiteral("ytp")};
         if (node.startsWith(QStringLiteral("yvp_")) || stageName == QStringLiteral("YVP_V7_POINT"))
@@ -1490,11 +1473,6 @@ struct TestPage::Impl
             .arg(adapter.yalkAnalog.stimulatedChannel)
             .arg(analogErrorText) + contactText);
 
-        contactPlane->setFrame(adapter.yalkContact, contactMeasurements);
-        contactsContext->setText(QStringLiteral("ЯЛК-96 · %1 В · ожидаемая логика %2")
-            .arg(adapter.yalkContact.pointV, 0, 'f', 1)
-            .arg(adapter.yalkContact.expectedLogic));
-
         overloadPlane->setFrame(adapter.yalkOverload);
         overloadContext->setText(QStringLiteral("ЯЛК-96 · %1 · канал %2 · воздействие %3 / %4")
             .arg(adapter.yalkOverload.polarity)
@@ -1621,8 +1599,6 @@ struct TestPage::Impl
     ChannelPlane* yalkPlane = nullptr;
     QWidget* legacyAnalogProxy = nullptr;
     QLabel* analogContext = nullptr;
-    ContactPlane* contactPlane = nullptr;
-    QLabel* contactsContext = nullptr;
     OverloadPlane* overloadPlane = nullptr;
     QLabel* overloadContext = nullptr;
     QLabel* referenceText = nullptr;

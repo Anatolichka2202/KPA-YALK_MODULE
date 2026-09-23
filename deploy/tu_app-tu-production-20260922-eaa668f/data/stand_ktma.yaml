@@ -1,0 +1,49 @@
+schema: 1
+id: ktma-main-clean
+version: 2026.09.20-full-tract-1
+
+# Только подтверждённые параметры рабочего стенда из отлаженной поставки.
+power_supply:
+  model: AKIP-1160/6
+  port: COM15
+  baud: 115200
+  expected_idn: AKIP-1160/6
+  timeout_ms: 1200
+  max_voltage_v: 60
+  overvoltage_limit_v: 40
+  max_current_a: 10
+  setpoint_voltage_tolerance_v: 0.011
+  setpoint_current_tolerance_a: 0.002
+  output_confirm_attempts: 4
+  output_confirm_settle_ms: 150
+
+yalk_adapter:
+  host: 192.168.0.115
+  # Это поле используется одновременно для UDP receive-bind и исходящего
+  # ROKT-сокета. Рабочий маршрут стенда использует адрес сетевой карты .50.
+  local_address: 192.168.0.50
+  data_port: 1113
+  timeout_ms: 800
+  protocol: rokt_yalk
+
+isd:
+  host: 192.168.0.101
+  port: 80
+  timeout_ms: 1500
+  service_timeout_ms: 10000
+  # Не более трёх попыток одной команды, затем пауза для перезапуска ИСД.
+  request_attempts: 3
+  retry_delay_ms: 100
+
+v7:
+  resource: USB[0-9]*::0x164E::0x0DAD::?*INSTR
+  fallback_resource: USB[0-9]*::5710::3501::?*INSTR
+  timeout_ms: 5000
+  voltage_command: MEAS:VOLT:DC?
+  ac_voltage_command: MEAS:VOLT:AC?
+  frequency_command: MEAS:FREQ?
+
+generator:
+  # Физически: Rigol DG-1022Z CH1 → вывод З кабеля ЯВП 8-2.
+  resource: USB0::0x1AB1::0x0642::DG1ZA252402338::INSTR
+  timeout_ms: 2000

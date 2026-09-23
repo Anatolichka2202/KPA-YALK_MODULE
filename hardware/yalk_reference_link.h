@@ -56,6 +56,14 @@ public:
     YtpSnapshot readYtpSnapshot(unsigned sampleCount,
                                 std::chrono::milliseconds timeout,
                                 const Checkpoint& checkpoint);
+    // Marks the beginning of an operator-controlled YTP point.  The receiver
+    // continues to drain UDP while the dialog is open; on confirmation the
+    // procedure consumes the most recent frames received after this marker.
+    std::uint64_t markYtpFrames() const;
+    YtpSnapshot readYtpSnapshotSince(std::uint64_t marker,
+                                     unsigned sampleCount,
+                                     std::chrono::milliseconds timeout,
+                                     const Checkpoint& checkpoint);
 
     // The UDP receiver has a single owner thread. The live sink receives a
     // throttled copy of fresh reference204 frames while procedure sampling

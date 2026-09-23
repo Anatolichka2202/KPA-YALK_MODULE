@@ -78,6 +78,8 @@ target_link_libraries(tu_procedures PUBLIC
 )
 
 add_library(tu_ui STATIC
+    app/tu_report_writer.cpp
+    app/tu_report_writer.h
     ui/test_page.cpp
     ui/test_page.h
     ui/tu_flow_widget.cpp
@@ -114,8 +116,6 @@ add_executable(tu_app
     app/main.cpp
     app/tu_controller.cpp
     app/tu_controller.h
-    app/tu_report_writer.cpp
-    app/tu_report_writer.h
 )
 target_include_directories(tu_app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(tu_app PRIVATE
@@ -170,4 +170,11 @@ if(BUILD_TESTING)
     add_test(NAME tu.isd_recovery COMMAND ${CMAKE_COMMAND} -E env
         "PATH=$<TARGET_FILE_DIR:Qt6::Network>;$ENV{PATH}"
         $<TARGET_FILE:isd_recovery_test>)
+
+    add_executable(ytp_resume_test tests/ytp_resume_test.cpp)
+    target_include_directories(ytp_resume_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(ytp_resume_test PRIVATE tu_hardware Qt6::Core Qt6::Network)
+    add_test(NAME tu.ytp_resume COMMAND ${CMAKE_COMMAND} -E env
+        "PATH=$<TARGET_FILE_DIR:Qt6::Network>;$ENV{PATH}"
+        $<TARGET_FILE:ytp_resume_test>)
 endif()

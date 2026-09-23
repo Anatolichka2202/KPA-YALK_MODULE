@@ -11,7 +11,6 @@
 namespace {
 
 using ubsi::ui::ChannelPlane;
-using ubsi::ui::ContactPlane;
 using ubsi::ui::OverloadPlane;
 
 constexpr int kControlHeight = 24;
@@ -96,16 +95,6 @@ private:
             return;
         }
 
-        if (auto* plane = dynamic_cast<ContactPlane*>(widget)) {
-            if (plane->property("prototypeControlsAttached").toBool()) return;
-            plane->setProperty("prototypeControlsAttached", true);
-            auto* reset = makeControl(QStringLiteral("Сбросить масштаб"),
-                                      QStringLiteral("yalkContactResetZoomButton"), plane);
-            QObject::connect(reset, &QPushButton::clicked, plane, [plane] { plane->resetView(); });
-            layout(plane);
-            return;
-        }
-
         if (auto* plane = dynamic_cast<OverloadPlane*>(widget)) {
             if (plane->property("prototypeControlsAttached").toBool()) return;
             plane->setProperty("prototypeControlsAttached", true);
@@ -139,10 +128,8 @@ private:
             return;
         }
 
-        const QString name = dynamic_cast<ContactPlane*>(widget)
-            ? QStringLiteral("yalkContactResetZoomButton")
-            : dynamic_cast<OverloadPlane*>(widget)
-                ? QStringLiteral("yalkOverloadResetZoomButton") : QString();
+        const QString name = dynamic_cast<OverloadPlane*>(widget)
+            ? QStringLiteral("yalkOverloadResetZoomButton") : QString();
         if (name.isEmpty()) return;
         if (auto* reset = widget->findChild<QPushButton*>(name)) {
             reset->setGeometry(std::max(0, widget->width() - kMargin - kResetWidth),

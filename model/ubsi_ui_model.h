@@ -16,7 +16,7 @@ namespace ubsi::ui {
 
 enum class VerificationState { Pending, Norma, NeNorma, Incomplete, Error, Stopped };
 enum class RuntimeState { Idle, Preparing, Running, WaitingOperator, StandError, Stopped, Finished };
-enum class Procedure { Preparation, Power, YalkInitial, YalkAnalog, YalkContact, YalkOverload, YalkReference, Ytp, Yvp, Finish };
+enum class Procedure { Preparation, Power, YalkInitial, YalkAnalog, YalkOverload, YalkReference, Ytp, Yvp, Finish };
 
 inline VerificationState verificationFromVerdict(tu::RunVerdict verdict)
 {
@@ -369,12 +369,10 @@ private:
         } else if (node.contains(QStringLiteral("yalk_initial")) || stage == QStringLiteral("YALK_INITIAL")) {
             run.currentProcedure = Procedure::YalkInitial;
             run.procedureContext = QStringLiteral("Обрыв / исходное состояние");
-        } else if (node == QStringLiteral("yalk_channels")) {
+        } else if (node == QStringLiteral("yalk_channels")
+                   || node.contains(QStringLiteral("yalk_contact"))) {
             run.currentProcedure = Procedure::YalkAnalog;
-            run.procedureContext = QStringLiteral("Аналоговые каналы");
-        } else if (node.contains(QStringLiteral("yalk_contact"))) {
-            run.currentProcedure = Procedure::YalkContact;
-            run.procedureContext = QStringLiteral("Контактные сигналы");
+            run.procedureContext = QStringLiteral("Аналоговые и контактные каналы");
         } else if (node.contains(QStringLiteral("yalk_overload"))) {
             run.currentProcedure = Procedure::YalkOverload;
             run.procedureContext = QStringLiteral("Перегрузка ±12 В");
