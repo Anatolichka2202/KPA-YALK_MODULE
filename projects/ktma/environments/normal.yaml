@@ -1,0 +1,7 @@
+schema: 1
+id: normal
+title: Нормальные условия
+mode: observed
+
+# V1 descriptor only. Concrete acceptance ranges remain delivery/TU data and
+# will be added when the environment runtime is connected.
