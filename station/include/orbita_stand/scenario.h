@@ -119,6 +119,18 @@ struct ScenarioRunResult {
     RunVerdict verdict = RunVerdict::NotRun;
     std::vector<StepRunResult> steps;
     std::vector<RunEvent> events;
+
+    // Product-level identity is appended so legacy ScenarioEngine callers keep
+    // their current API. Project/workflow execution fills these fields at the
+    // composition boundary; a raw scenario run legitimately leaves them empty.
+    std::string projectId;
+    std::string projectVersion;
+    std::string workflowId;
+    std::string dutType;
+    std::string dutId;
+    std::string operatorName;
+    std::string environmentProfile;
+    std::map<std::string, std::string> contextAttributes;
 };
 
 class ICapabilityProvider {
