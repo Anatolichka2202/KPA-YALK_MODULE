@@ -66,12 +66,31 @@ void yvpScenarioContract()
             && contains(standalone, "stand.switch_matrix")
             && contains(standalone, "signal.generator"),
         "V7+ISD production YVP must require Rigol, ISD and V7");
-    require(contains(standalone, "mapping_confirmed: false"),
-        "YVP production must stay fail-safe until the ISD E3 map is commissioned");
+    require(contains(standalone, "mapping_confirmed: true")
+            && contains(standalone, "active_outputs_confirmed: true"),
+        "published YVP production must use the commissioned active route");
     require(contains(standalone, "gains_mv_per_pcl: 0.25,0.5,1,2,4,8,32"),
         "YVP method must use the seven confirmed gain values");
-    require(contains(standalone, "frequencies_hz: 0.15,20,250,500,1800,2000,4000"),
-        "YVP method must retain the confirmed frequency set");
+    require(contains(standalone, "frequencies_hz: 2,6,20,500,1800,2000,4000")
+            && contains(standalone, "reference_frequency_hz: 500")
+            && contains(standalone, "afc_gain_mv_per_pcl: 1"),
+        "YVP method must retain the verified gain/AFC frequency plan");
+    require(contains(standalone, "input_1_contacts: 33")
+            && contains(standalone, "input_8_contacts: 40")
+            && contains(standalone, "measurement_1_contacts: 44")
+            && contains(standalone, "measurement_2_contacts: 29")
+            && contains(standalone, "measurement_7_contacts: 88")
+            && contains(standalone, "measurement_8_contacts: 73"),
+        "YVP method must retain the commissioned ISD input/measurement map");
+    require(contains(standalone, "channel_1_gain_contacts: 1,2,3,4")
+            && contains(standalone, "channel_8_gain_contacts: 29,30,31,32")
+            && contains(standalone, "gain_0_25_bits: none")
+            && contains(standalone, "gain_32_bits: 2,4"),
+        "YVP method must retain the commissioned gain-switch map");
+    require(contains(standalone, "v7_read_retries: 2")
+            && contains(standalone, "v7_retry_delay_ms: 250")
+            && contains(standalone, "settle_ms: 2000"),
+        "YVP method must retain the proven V7 retry/settle policy");
 }
 
 void scenarioContract()
@@ -99,6 +118,9 @@ void scenarioContract()
         "current YVP physical path is eight channels and must not be disguised as sixteen");
     require(contains(combined, "ТУ требует не менее 16"),
         "published TU run must disclose the unresolved 16-channel piezo requirement");
+    require(contains(combined, "frequencies_hz: 2,6,20,500,1800,2000,4000")
+            && contains(combined, "mapping_confirmed: true"),
+        "canonical TU run must use the verified YVP-8 physical route");
 
     require(contains(combined, "maximum_total_current_a: 0.4"),
         "whole-UBSI current criterion must be 0.4 A");
@@ -219,7 +241,7 @@ void procedureRuntimeContract()
     const auto yvpRun = engine.run(oneStep("ubsi.yvp", {
         {"channel_count", "8"},
         {"gains_mv_per_pcl", "0.25,0.5,1,2,4,8,32"},
-        {"frequencies_hz", "0.15,20,250,500,1800,2000,4000"},
+        {"frequencies_hz", "2,6,20,500,1800,2000,4000"},
         {"mapping_confirmed", "false"},
         {"active_outputs_confirmed", "true"}}), yvpEquipment, "p", "", false);
     require(yvpRun.verdict == RunVerdict::Incomplete,
