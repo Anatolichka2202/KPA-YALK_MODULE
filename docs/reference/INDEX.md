@@ -32,6 +32,7 @@
 
 | Компонент | Документ |
 |---|---|
+| Project package / workflow | [components/project-package.md](components/project-package.md) |
 | liborbita | [components/liborbita.md](components/liborbita.md) |
 | Плагины оборудования | [components/equipment-plugins.md](components/equipment-plugins.md) |
 
