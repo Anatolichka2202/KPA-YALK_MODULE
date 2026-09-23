@@ -22,6 +22,7 @@ target_link_libraries(ktma_ubsi PUBLIC ktma_registrar Qt6::Core Qt6::Sql)
 add_library(ktma_ubsi_procedures STATIC
     src/procedures/procedure_registry.cpp
     src/procedures/registration_layers.h
+    src/procedures/tu_scope_procedures.cpp
     src/procedures/yalk_analog_procedure.cpp
     src/procedures/ubsi_procedures.cpp
     src/procedures/ubsi_procedures_current.cpp
