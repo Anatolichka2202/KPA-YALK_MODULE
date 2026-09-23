@@ -108,14 +108,14 @@ void verifyLeaseContract()
     ResourceLeaseManager leases;
 
     auto runA = leases.acquire("run-a", {"power.dut", "switch_matrix.primary"});
-    require(runA, "initial resource lease was not created");
+    require(static_cast<bool>(runA), "initial resource lease was not created");
     require(leases.ownerOf("power.dut") == std::optional<std::string>{"run-a"},
             "resource owner was not recorded");
     require(leases.busy("switch_matrix.primary"),
             "leased resource must report busy");
 
     auto disjoint = leases.acquire("run-b", {"measure.reference"});
-    require(disjoint, "disjoint resource lease must be allowed");
+    require(static_cast<bool>(disjoint), "disjoint resource lease must be allowed");
 
     bool conflict = false;
     try {
@@ -129,14 +129,15 @@ void verifyLeaseContract()
 
     {
         auto nested = leases.acquire("run-a", {"power.dut"});
-        require(nested, "same owner must be able to re-enter a lease");
+        require(static_cast<bool>(nested), "same owner must be able to re-enter a lease");
         nested.reset();
         require(leases.ownerOf("power.dut") == std::optional<std::string>{"run-a"},
                 "nested lease release must not drop the outer ownership");
     }
 
     auto moved = std::move(disjoint);
-    require(moved && !disjoint, "resource lease must be safely movable");
+    require(static_cast<bool>(moved) && !static_cast<bool>(disjoint),
+            "resource lease must be safely movable");
     moved.reset();
     require(!leases.busy("measure.reference"),
             "released disjoint resource must become available");
@@ -146,7 +147,8 @@ void verifyLeaseContract()
             "outer lease reset must release all resources");
 
     auto runB = leases.acquire("run-b", {"power.dut"});
-    require(runB, "resource must be acquirable after previous owner released it");
+    require(static_cast<bool>(runB),
+            "resource must be acquirable after previous owner released it");
 }
 
 } // namespace
