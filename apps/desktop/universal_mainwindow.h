@@ -1,9 +1,12 @@
 #pragma once
 
 #include "ktma_mainwindow.h"
+#include "orbita_stand/project.h"
 #include "orbita_stand/scenario.h"
 
 #include <QFutureWatcher>
+
+#include <optional>
 
 class GenericCheckDialog;
 
@@ -32,6 +35,7 @@ private:
     QString renderEvents(const std::vector<orbita::stand::RunEvent>& events) const;
     QString formatTimestamp(std::chrono::system_clock::time_point timestamp) const;
 
+    std::optional<orbita::stand::ProjectDefinition> project_;
     GenericCheckDialog* genericDialog_ = nullptr;
     QFutureWatcher<orbita::stand::ScenarioRunResult>* genericWatcher_ = nullptr;
     QString genericDescription_;
