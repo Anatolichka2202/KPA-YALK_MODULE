@@ -196,6 +196,7 @@ public:
         std::function<void(const RunEvent&)> progressSink = {});
     void requestStop() noexcept;
     void resetStop() noexcept;
+    bool running() const noexcept { return running_.load(); }
 
 private:
     StepRunResult runNode(
@@ -205,6 +206,7 @@ private:
 
     std::map<std::string, ProcedureFunction> procedures_;
     std::atomic_bool stopRequested_{false};
+    std::atomic_bool running_{false};
 };
 
 const char* toString(RunVerdict verdict) noexcept;
