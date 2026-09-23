@@ -1,0 +1,13 @@
+schema: 1
+id: free
+title: Свободная инженерная проверка
+kind: free
+
+allow_dynamic_scenario: true
+allow_scenario_overrides: true
+
+registration:
+  required: false
+  attach_if_found: false
+
+environment: environments/normal.yaml
