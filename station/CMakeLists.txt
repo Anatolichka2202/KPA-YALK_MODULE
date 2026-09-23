@@ -113,6 +113,10 @@ if(BUILD_TESTING)
     target_link_libraries(project_definition_test PRIVATE orbita_stand_runtime Qt6::Core)
     add_test(NAME stand.project_definition COMMAND project_definition_test)
 
+    add_executable(run_store_context_test tests/run_store_context_test.cpp)
+    target_link_libraries(run_store_context_test PRIVATE orbita_stand_reporting Qt6::Core Qt6::Sql)
+    add_test(NAME stand.run_store_context COMMAND run_store_context_test)
+
     add_executable(component_runtime_test tests/component_runtime_test.cpp)
     target_compile_definitions(component_runtime_test PRIVATE
         ORBITA_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
@@ -141,6 +145,7 @@ if(BUILD_TESTING)
             stand.scenario_resource
             stand.component_profile
             stand.project_definition
+            stand.run_store_context
             stand.component_runtime
             stand.execution_runtime
             stand.execution_scenario
