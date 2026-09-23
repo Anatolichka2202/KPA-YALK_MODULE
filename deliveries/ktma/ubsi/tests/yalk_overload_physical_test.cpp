@@ -93,6 +93,39 @@ std::size_t findAfter(
     return static_cast<std::size_t>(found - actions.begin());
 }
 
+ScenarioDefinition scenarioWith(ScenarioNode overload)
+{
+    ScenarioDefinition scenario;
+    scenario.id = "yalk-overload-physical";
+    scenario.title = "YALK overload physical choreography";
+    scenario.version = "1";
+    scenario.catalogVersion = "1";
+    scenario.objectType = "UBSI_468157_002";
+    scenario.publicationState = PublicationState::Published;
+    scenario.steps = {std::move(overload)};
+    return scenario;
+}
+
+ScenarioNode baseOverloadNode()
+{
+    ScenarioNode overload;
+    overload.id = "overload";
+    overload.title = "Перегрузка";
+    overload.tuRequirement = "1.1.4.11";
+    overload.procedure = "yalk.check_overload";
+    overload.requiredCapabilities = {"ulk.parameter_source", "stand.switch_matrix"};
+    overload.arguments = {
+        {"mapping_confirmed", "true"},
+        {"sample_count", "1"},
+        {"baseline_settle_ms", "0"},
+        {"dac_off_settle_ms", "0"},
+        {"overload_settle_ms", "0"},
+        {"cleanup_settle_ms", "0"},
+        {"maximum_code_delta", "2"},
+    };
+    return overload;
+}
+
 } // namespace
 
 int main()
@@ -101,33 +134,11 @@ int main()
         ScenarioEngine engine;
         registerUbsiProcedures(engine);
 
-        ScenarioDefinition scenario;
-        scenario.id = "yalk-overload-physical";
-        scenario.title = "YALK overload physical choreography";
-        scenario.version = "1";
-        scenario.catalogVersion = "1";
-        scenario.objectType = "UBSI_468157_002";
-        scenario.publicationState = PublicationState::Published;
-
-        ScenarioNode overload;
-        overload.id = "overload";
-        overload.title = "Перегрузка";
-        overload.tuRequirement = "1.1.4.11";
-        overload.procedure = "yalk.check_overload";
-        overload.requiredCapabilities = {"ulk.parameter_source", "stand.switch_matrix"};
-        overload.arguments = {
-            {"mapping_confirmed", "true"},
-            {"physical_channels", "1-2"},
-            {"stressed_channels", "1-2"},
-            {"observed_addresses", "1-2"},
-            {"sample_count", "1"},
-            {"baseline_settle_ms", "0"},
-            {"dac_off_settle_ms", "0"},
-            {"overload_settle_ms", "0"},
-            {"cleanup_settle_ms", "0"},
-            {"maximum_code_delta", "2"},
-        };
-        scenario.steps = {overload};
+        auto overload = baseOverloadNode();
+        overload.arguments["physical_channels"] = "1-2";
+        overload.arguments["stressed_channels"] = "1-2";
+        overload.arguments["observed_addresses"] = "1-2";
+        const auto scenario = scenarioWith(std::move(overload));
 
         FakeEquipment equipment;
         const auto run = engine.run(scenario, equipment, "test", "", false);
@@ -166,6 +177,36 @@ int main()
                 && first.attributes.at("lower_delta_code") == "-2"
                 && first.attributes.at("upper_delta_code") == "2",
             "Per-channel overload evidence must retain target, observation and current +/-2 criterion");
+
+        // The currently published master scenario still carries historical
+        // *_count=88 arguments. Until that data file is migrated to explicit
+        // lists, the runtime must fail-safe to the confirmed 80-address YALK map
+        // and never drive the eight YVP-owned ISD lines.
+        auto legacyNode = baseOverloadNode();
+        legacyNode.arguments["physical_channel_count"] = "88";
+        legacyNode.arguments["observed_address_count"] = "88";
+        legacyNode.arguments["stressed_channels"] = "1";
+        FakeEquipment legacyEquipment;
+        const auto legacyRun = engine.run(
+            scenarioWith(std::move(legacyNode)), legacyEquipment, "test", "", false);
+        require(legacyRun.verdict == RunVerdict::Ok,
+            "Legacy 88-count scenario must execute through the safe-map compatibility gate");
+        require(legacyRun.steps.front().measurements.size() == 158,
+            "One stressed channel and two polarities must observe the other 79 safe YALK addresses");
+
+        for (const unsigned excluded : {29u, 30u, 31u, 44u, 71u, 72u, 73u, 88u}) {
+            const std::string analogOn = "analog:" + std::to_string(excluded) + ":true";
+            const std::string targetOnAction = "switch:channel:" + std::to_string(excluded) + ":true";
+            require(std::find(legacyEquipment.actions.begin(), legacyEquipment.actions.end(), analogOn)
+                        == legacyEquipment.actions.end(),
+                "YVP-owned ISD line was incorrectly enabled as YALK background");
+            require(std::find(legacyEquipment.actions.begin(), legacyEquipment.actions.end(), targetOnAction)
+                        == legacyEquipment.actions.end(),
+                "YVP-owned ISD line was incorrectly selected as YALK overload target");
+        }
+        require(std::find(legacyEquipment.actions.begin(), legacyEquipment.actions.end(), "analog:87:true")
+                    != legacyEquipment.actions.end(),
+            "Safe-map compatibility gate did not reach the final confirmed YALK address");
 
         std::cout << "YALK physical overload choreography OK\n";
         return 0;
