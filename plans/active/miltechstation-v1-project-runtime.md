@@ -132,7 +132,7 @@ Evidence / result
 
 ### ЯЛК / перегрузка — текущий slice
 
-Статус: **CODED / CI PENDING / LIVE RUN REQUIRED**
+Статус: **CODED / CI GREEN / LIVE RUN REQUIRED**
 
 Сделано:
 
@@ -151,13 +151,14 @@ Evidence / result
 - [x] firmware type=4/global reset внутри overload sequence не используется;
 - [x] сохранён текущий master criterion `abs(delta) <= 2 code`;
 - [x] сохранён текущий master `overload_settle_ms=10000`; donor `1000 ms` не переносится без нового подтверждения;
-- [x] добавлен отдельный regression `ktma.ubsi.yalk_overload_physical`, фиксирующий порядок команд и freshness.
+- [x] regression `ktma.ubsi.yalk_overload_physical` фиксирует порядок команд, freshness и compatibility для historical `*_count=88`;
+- [x] CI run `35927756339`: configure/build/CTest — success;
+- [x] canonical `docs/task/ubsi/testing.md` синхронизирован с безопасной физической последовательностью.
 
 Остаётся:
 
-- [ ] получить зелёный CI этого slice;
 - [ ] сделать explicit safe-address args в canonical scenario вместо compatibility `*_count=88`;
-- [ ] синхронизировать canonical testing/memory после зелёного CI;
+- [ ] синхронизировать `PROJECT_MEMORY.md` после scenario-data migration;
 - [ ] выполнить новый полный живой overload run актуального master;
 - [ ] по результату живого прогона отдельно решить timing/criterion, не копируя donor автоматически.
 
@@ -256,4 +257,5 @@ Current YALK physical slice:
 - `docs/product/data.md`
 - `docs/reference/components/project-package.md`
 - `docs/reference/INDEX.md`
+- `docs/task/ubsi/testing.md`
 - этот план.
