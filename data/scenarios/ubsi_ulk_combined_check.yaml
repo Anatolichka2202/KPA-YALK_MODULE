@@ -1,7 +1,7 @@
 schema: 1
 id: ubsi.468157.002.ulk.combined.check
 title: УБСИ · полная проверка по ТУ
-version: 2.4.0
+version: 2.5.0
 catalog_version: 2026.08.29-yalk-1
 object_type: UBSI_468157_002
 state: published
@@ -19,34 +19,37 @@ state: published
 # фактические legacy invoke внутри leaf шага маршрутизируются ScenarioEngine
 # через единственный resource с соответствующей capability.
 steps:
-  - id: isd_baseline
-    title: Исходное состояние ИСД перед новым прогоном
-    tu: 5.6 / ИСД · исходное состояние
-    procedure: ubsi.isd_baseline
-    requires:
-      - stand.switch_matrix
-    resources:
-      - resource: switch_matrix.primary
-        capability: stand.switch_matrix
+  - id: startup
+    title: Подготовка стенда и холодный запуск УБСИ
+    steps:
+      - id: isd_baseline
+        title: Исходное состояние ИСД перед новым прогоном
+        tu: 5.6 / ИСД · исходное состояние
+        procedure: ubsi.isd_baseline
+        requires:
+          - stand.switch_matrix
+        resources:
+          - resource: switch_matrix.primary
+            capability: stand.switch_matrix
 
-  - id: readiness
-    title: Готовность УБСИ после холодного включения не более 30 секунд
-    tu: 1.1.4.13
-    procedure: ubsi.readiness
-    requires:
-      - power.dc_supply
-      - ulk.parameter_source
-    resources:
-      - resource: power.dut
-        capability: power.dc_supply
-      - resource: dut.parameter_source
-        capability: ulk.parameter_source
-    args:
-      voltage_v: 27
-      current_limit_a: 0.6
-      off_settle_ms: 500
-      timeout_ms: 30000
-      technical_retries: 3
+      - id: readiness
+        title: Готовность УБСИ после холодного включения не более 30 секунд
+        tu: 1.1.4.13
+        procedure: ubsi.readiness
+        requires:
+          - power.dc_supply
+          - ulk.parameter_source
+        resources:
+          - resource: power.dut
+            capability: power.dc_supply
+          - resource: dut.parameter_source
+            capability: ulk.parameter_source
+        args:
+          voltage_v: 27
+          current_limit_a: 0.6
+          off_settle_ms: 500
+          timeout_ms: 30000
+          technical_retries: 3
 
   - id: supply_range
     title: Работа при 24 / 27 / 35 В, общий ток до 400 мА и выдержки 19 / 37 В
@@ -337,20 +340,23 @@ steps:
       settle_ms: 200
       active_outputs_confirmed: true
 
-  - id: power_off
-    title: Отключение питания УБСИ после проверки
-    tu: 5.6.8
-    procedure: ubsi.power_safe_off
-    requires:
-      - power.dc_supply
-    resources:
-      - resource: power.dut
-        capability: power.dc_supply
+  - id: finalization
+    title: Безопасное завершение и контроль полноты ТУ
+    steps:
+      - id: power_off
+        title: Отключение питания УБСИ после проверки
+        tu: 5.6.8
+        procedure: ubsi.power_safe_off
+        requires:
+          - power.dc_supply
+        resources:
+          - resource: power.dut
+            capability: power.dc_supply
 
-  - id: tu_scope_gate
-    title: Контроль полноты обязательного объёма п. 5.6
-    tu: 1.1.4.1, 1.1.4.2, 1.1.4.6, 1.1.4.14
-    procedure: ubsi.tu_scope_gate
-    args:
-      unresolved: "1.1.4.2 (питание датчиков 6,2 В / 350 мА / защита 450 мА); 1.1.4.6 (линия термодатчик–УБСИ до 50 м); 1.1.4.1 (пьезоэлектрические каналы: ТУ требует не менее 16, текущий подтверждённый тракт ЯВП-8 покрывает 8); 1.1.4.14 (входной ток каналов не более 2 мкА)"
-      reason: "Для этих требований в текущем master нет подтверждённого физического метода/evidence. Они не могут быть исключены из 5.6 и не могут автоматически считаться выполненными."
+      - id: tu_scope_gate
+        title: Контроль полноты обязательного объёма п. 5.6
+        tu: 1.1.4.1, 1.1.4.2, 1.1.4.6, 1.1.4.14
+        procedure: ubsi.tu_scope_gate
+        args:
+          unresolved: "1.1.4.2 (питание датчиков 6,2 В / 350 мА / защита 450 мА); 1.1.4.6 (линия термодатчик–УБСИ до 50 м); 1.1.4.1 (пьезоэлектрические каналы: ТУ требует не менее 16, текущий подтверждённый тракт ЯВП-8 покрывает 8); 1.1.4.14 (входной ток каналов не более 2 мкА)"
+          reason: "Для этих требований в текущем master нет подтверждённого физического метода/evidence. Они не могут быть исключены из 5.6 и не могут автоматически считаться выполненными."
