@@ -36,13 +36,29 @@ void executePrepared(QSqlQuery& query)
 
 QString attributesText(const std::map<std::string, std::string>& values)
 {
-    // A default-constructed QString is SQL NULL. The column is NOT NULL,
+    // A default-constructed QString is SQL NULL. Columns are NOT NULL,
     // therefore an empty attribute set must be bound as an empty string.
     QString result = QStringLiteral("");
     for (const auto& [key, value] : values) {
         result += QString::fromUtf8(key) + '=' + QString::fromUtf8(value).replace('\n', ' ') + '\n';
     }
     return result;
+}
+
+void addTextColumnIfMissing(
+    QSqlDatabase& database,
+    const QString& table,
+    const QString& column)
+{
+    QSqlQuery query(database);
+    std::set<QString> columns;
+    execute(query, QStringLiteral("PRAGMA table_info(%1)").arg(table));
+    while (query.next()) columns.insert(query.value(1).toString());
+    if (columns.count(column)) return;
+
+    execute(query, QStringLiteral(
+        "ALTER TABLE %1 ADD COLUMN %2 TEXT NOT NULL DEFAULT ''")
+        .arg(table, column));
 }
 
 void saveStep(QSqlDatabase& database, const std::string& runId, const std::string& parent,
@@ -95,16 +111,25 @@ RunStore::RunStore(std::string sqlitePath) : impl_(std::make_unique<Impl>())
              "CREATE TABLE IF NOT EXISTS run_events(run_id TEXT NOT NULL REFERENCES test_runs(run_id) ON DELETE CASCADE,sort_order INTEGER NOT NULL,timestamp_ms INTEGER NOT NULL,node_id TEXT NOT NULL,stage TEXT NOT NULL,message TEXT NOT NULL,verdict TEXT NOT NULL,PRIMARY KEY(run_id,sort_order))"}) {
         execute(query, QString::fromLatin1(sql));
     }
-    std::set<QString> eventColumns;
-    execute(query, QStringLiteral("PRAGMA table_info(run_events)"));
-    while (query.next()) eventColumns.insert(query.value(1).toString());
-    if (!eventColumns.count(QStringLiteral("attributes"))) execute(query,
-        QStringLiteral("ALTER TABLE run_events ADD COLUMN attributes TEXT NOT NULL DEFAULT ''"));
-    std::set<QString> measurementColumns;
-    execute(query, QStringLiteral("PRAGMA table_info(run_measurements)"));
-    while (query.next()) measurementColumns.insert(query.value(1).toString());
-    if (!measurementColumns.count(QStringLiteral("attributes"))) execute(query,
-        QStringLiteral("ALTER TABLE run_measurements ADD COLUMN attributes TEXT NOT NULL DEFAULT ''"));
+
+    // Additive migration: existing station databases remain readable. Empty
+    // values mean that the run was created through the legacy raw-scenario API.
+    for (const auto& column : {
+             QStringLiteral("project_id"),
+             QStringLiteral("project_version"),
+             QStringLiteral("workflow_id"),
+             QStringLiteral("dut_type"),
+             QStringLiteral("dut_id"),
+             QStringLiteral("operator_name"),
+             QStringLiteral("environment_profile"),
+             QStringLiteral("context_attributes")}) {
+        addTextColumnIfMissing(impl_->database, QStringLiteral("test_runs"), column);
+    }
+
+    addTextColumnIfMissing(
+        impl_->database, QStringLiteral("run_events"), QStringLiteral("attributes"));
+    addTextColumnIfMissing(
+        impl_->database, QStringLiteral("run_measurements"), QStringLiteral("attributes"));
 }
 
 RunStore::~RunStore()
@@ -122,12 +147,30 @@ void RunStore::save(const ScenarioRunResult& run)
     try {
         QSqlQuery query(impl_->database);
         query.prepare(QStringLiteral(
-            "INSERT INTO test_runs(run_id,scenario_id,scenario_version,catalog_version,profile_version,object_serial,started_ms,finished_ms,verdict) VALUES(?,?,?,?,?,?,?,?,?)"));
-        query.addBindValue(QString::fromUtf8(run.runId)); query.addBindValue(QString::fromUtf8(run.scenarioId));
-        query.addBindValue(QString::fromUtf8(run.scenarioVersion)); query.addBindValue(QString::fromUtf8(run.catalogVersion));
-        query.addBindValue(QString::fromUtf8(run.profileVersion)); query.addBindValue(QString::fromUtf8(run.objectSerial));
-        query.addBindValue(milliseconds(run.startedAt)); query.addBindValue(milliseconds(run.finishedAt));
-        query.addBindValue(QString::fromLatin1(toString(run.verdict))); executePrepared(query);
+            "INSERT INTO test_runs("
+            "run_id,scenario_id,scenario_version,catalog_version,profile_version,object_serial,"
+            "started_ms,finished_ms,verdict,project_id,project_version,workflow_id,dut_type,dut_id,"
+            "operator_name,environment_profile,context_attributes) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"));
+        query.addBindValue(QString::fromUtf8(run.runId));
+        query.addBindValue(QString::fromUtf8(run.scenarioId));
+        query.addBindValue(QString::fromUtf8(run.scenarioVersion));
+        query.addBindValue(QString::fromUtf8(run.catalogVersion));
+        query.addBindValue(QString::fromUtf8(run.profileVersion));
+        query.addBindValue(QString::fromUtf8(run.objectSerial));
+        query.addBindValue(milliseconds(run.startedAt));
+        query.addBindValue(milliseconds(run.finishedAt));
+        query.addBindValue(QString::fromLatin1(toString(run.verdict)));
+        query.addBindValue(QString::fromUtf8(run.projectId));
+        query.addBindValue(QString::fromUtf8(run.projectVersion));
+        query.addBindValue(QString::fromUtf8(run.workflowId));
+        query.addBindValue(QString::fromUtf8(run.dutType));
+        query.addBindValue(QString::fromUtf8(run.dutId));
+        query.addBindValue(QString::fromUtf8(run.operatorName));
+        query.addBindValue(QString::fromUtf8(run.environmentProfile));
+        query.addBindValue(attributesText(run.contextAttributes));
+        executePrepared(query);
+
         for (std::size_t index = 0; index < run.steps.size(); ++index) {
             saveStep(impl_->database, run.runId, {}, run.steps[index], static_cast<unsigned>(index));
         }
