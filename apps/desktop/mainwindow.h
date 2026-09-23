@@ -5,6 +5,7 @@
 #include <QTimer>
 #include <QElapsedTimer>
 #include <memory>
+#include <optional>
 #include <QLabel>
 #include <QPushButton>
 #include <QCheckBox>
@@ -20,6 +21,7 @@
 #include <QHash>
 
 #include "orbita_stand/config.h"
+#include "orbita_stand/project.h"
 #include "orbita_stand/station_session.h"
 #include "orbita_stand/sample_source.h"
 #include "orbita_stand/equipment_runtime.h"
@@ -80,6 +82,19 @@ protected:
         return scenarioWatcher_;
     }
     bool integrationStandRuntimeReady() const { return standRuntimeReady_; }
+
+    // The project package is the product-level composition root. The generic
+    // shell stores it, while a delivery decides which package to load. This
+    // keeps the reusable MainWindow free of KTMA/UBSI defaults.
+    const orbita::stand::ProjectDefinition* integrationProject() const noexcept
+    {
+        return project_ ? &*project_ : nullptr;
+    }
+    void integrationConfigureProject(orbita::stand::ProjectDefinition project)
+    {
+        project_ = std::move(project);
+    }
+
     void integrationConfigureStandProfile(
         const orbita::stand::StandProfile& profile, const QString& sourcePath)
     {
@@ -195,7 +210,7 @@ private:
     QLabel* errGroupLabel_ = nullptr;
 
     // Лог
-    QTextEdit* logEdit_ = nullptr;
+    QTextEdit* logEdit_;
 
     // Выбранный канал
     int selectedChannelIndex_ = -1;
@@ -228,6 +243,9 @@ private:
 
     bool ubsiEngineering_ = false;
     bool lastResultSaved_ = false;
+
+    // Product-level package selected by the concrete delivery/application.
+    std::optional<orbita::stand::ProjectDefinition> project_;
 
     // Единый владелец station-level composition. Алиасы ниже временно
     // сохраняют существующий desktop/KTMA integration API, но не владеют
