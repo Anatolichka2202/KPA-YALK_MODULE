@@ -108,6 +108,7 @@ int main()
         ScenarioNode seed;
         seed.id = "seed";
         seed.title = "Seed calibration";
+        seed.tuRequirement = "test.fixture";
         seed.procedure = "test.seed_yalk_calibration";
 
         ScenarioNode initial;
