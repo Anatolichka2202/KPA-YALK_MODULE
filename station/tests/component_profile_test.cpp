@@ -118,9 +118,14 @@ int main(int argc, char** argv)
 
         const auto yvpScenario = loadScenarioYaml(sourceRoot.filePath(
             QStringLiteral("data/scenarios/ubsi_production_yvp.yaml")).toStdString());
-        require(yvpScenario.steps.size() == 3,
-                "Production YVP scenario must keep power, physical YVP and safe-off steps");
-        const auto& yvp = yvpScenario.steps.at(1);
+        require(yvpScenario.steps.size() == 4,
+                "Production YVP scenario must keep ISD baseline, power, physical YVP and safe-off steps");
+        require(yvpScenario.steps.front().procedure == "ubsi.isd_baseline",
+                "Standalone production YVP must establish the same ISD baseline as YALK/YTP/full runs");
+        require(requiresResource(yvpScenario.steps.front(),
+                    "switch_matrix.primary", "stand.switch_matrix"),
+                "YVP ISD baseline must select the switch-matrix resource explicitly");
+        const auto& yvp = yvpScenario.steps.at(2);
         require(yvp.procedure == "ubsi.yvp",
                 "Production YVP scenario must use the physical V7/ISD procedure");
         require(yvp.arguments.at("mapping_confirmed") == "true"
