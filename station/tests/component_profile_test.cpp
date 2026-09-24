@@ -76,6 +76,12 @@ int main(int argc, char** argv)
                     && contains(reference->capabilities, "measure.reference_ac_voltage")
                     && contains(reference->capabilities, "measure.reference_frequency"),
                 "Reference role lost V7 capability contracts");
+        require(reference->configuration.at("timeout_ms") == "25000",
+                "UBSI production V7 timeout must preserve the proven 25 s YVP margin");
+        require(reference->configuration.at("voltage_command") == "MEAS:VOLT:DC?",
+                "UBSI production V7 DC command must match the proven donor tract");
+        require(reference->configuration.at("ac_voltage_command") == "MEAS:VOLT:AC?",
+                "UBSI production V7 AC command must match the proven donor tract");
 
         const auto legacyView = std::find_if(profile.devices.begin(), profile.devices.end(),
             [](const DeviceProfile& device) { return device.id == "dc-supply"; });
@@ -109,6 +115,27 @@ int main(int argc, char** argv)
                 "Production power safe-off must no longer depend on global capability routing");
         require(requiresResource(safeOff, "power.dut", "power.dc_supply"),
                 "Production power safe-off must select the DUT supply role");
+
+        const auto yvpScenario = loadScenarioYaml(sourceRoot.filePath(
+            QStringLiteral("data/scenarios/ubsi_production_yvp.yaml")).toStdString());
+        require(yvpScenario.steps.size() == 3,
+                "Production YVP scenario must keep power, physical YVP and safe-off steps");
+        const auto& yvp = yvpScenario.steps.at(1);
+        require(yvp.procedure == "ubsi.yvp",
+                "Production YVP scenario must use the physical V7/ISD procedure");
+        require(yvp.arguments.at("mapping_confirmed") == "true"
+                    && yvp.arguments.at("active_outputs_confirmed") == "true",
+                "Production YVP scenario must explicitly authorize only the confirmed physical map");
+        require(yvp.arguments.at("input_1_contacts") == "33"
+                    && yvp.arguments.at("measurement_1_contacts") == "44"
+                    && yvp.arguments.at("channel_1_gain_contacts") == "1,2,3,4",
+                "Production YVP channel 1 map drifted from the confirmed donor tract");
+        require(yvp.arguments.at("input_8_contacts") == "40"
+                    && yvp.arguments.at("measurement_8_contacts") == "73"
+                    && yvp.arguments.at("channel_8_gain_contacts") == "29,30,31,32",
+                "Production YVP channel 8 map drifted from the confirmed donor tract");
+        require(yvp.arguments.find("verdict_policy") == yvp.arguments.end(),
+                "Production YVP must not import donor manual-confirmed acceptance overrides");
 
         std::cout << "component profile contract OK\n";
         return 0;
