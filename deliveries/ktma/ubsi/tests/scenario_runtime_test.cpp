@@ -112,7 +112,8 @@ public:
             std::string words;
             for (unsigned index = 0; index < 100; ++index) {
                 if (index) words += ',';
-                words += std::to_string(500u + index);
+                const unsigned raw = forceOpenReading ? (0x0400u | 100u) : (500u + index);
+                words += std::to_string(raw);
             }
             return "status=ready\nsequence=" + std::to_string(++snapshotSequence)
                 + "\nwords=" + words + "\n";
@@ -741,17 +742,20 @@ void yalkOpenStateRegression()
           {"full_voltage", "6.2"}}, {}},
         {"initial", "Обрыв", "1.1.4.10", "yalk.check_initial_state",
          {"catalog.parameter_resolver", "ulk.parameter_source", "stand.switch_matrix"},
-         {{"channel_count", "1"}, {"sample_count", "1"}, {"full_scale_v", "6.2"}}, {}}
+         {{"channel_count", "80"}, {"sample_count", "1"}, {"preclean_settle_ms", "0"},
+          {"full_scale_v", "6.2"}}, {}}
     };
     FakeEquipment equipment;
     equipment.forceOpenReading = true;
     equipment.capabilities = {"ulk.parameter_source", "stand.switch_matrix",
         "catalog.parameter_resolver", "measure.reference_voltage"};
     const auto run = engine.run(scenario, equipment, "p1", "", false);
-    require(run.verdict == RunVerdict::Ok && run.steps.back().measurements.size() == 2,
-        "Negative YALK open value with signal=1 must satisfy the TU open-state criterion");
-    require(run.steps.back().measurements.front().measured < 0.0,
-        "YALK open-state regression must exercise a negative calibrated voltage");
+    require(run.verdict == RunVerdict::Ok && run.steps.back().measurements.size() == 80,
+        "Negative YALK open value with signal=1 must satisfy the TU open-state criterion on all safe addresses");
+    const auto& first = run.steps.back().measurements.front();
+    require(first.measured < 0.0 && first.attributes.at("signal") == "1"
+                && first.attributes.at("signal_check") == "diagnostic_only",
+        "YALK open-state regression must exercise negative voltage while retaining signal=1 as diagnostic evidence");
 }
 
 void yalkCleanupSignedResidualRegression()
@@ -992,7 +996,7 @@ void persistenceAndReport()
         {"reduced_error_percent", "0.0833"}, {"operator", "tester"},
         {"timestamp", "2026-09-01T12:00:00"}};
     ytpRun.steps = {{"ytp", "Каналы ЯТП", "5.6", RunVerdict::Ok,
-                     "ok", {ytpValue}, {}}};
+                     "ok", {ytpValue}, {}};
     const auto ytpReport = writeHtmlCsvReport(
         ytpRun, temporary.path().toUtf8().toStdString());
     QFile ytpCsv(QString::fromUtf8(ytpReport.csv));
