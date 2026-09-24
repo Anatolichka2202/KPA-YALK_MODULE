@@ -8,6 +8,7 @@
 
 #include <chrono>
 #include <iostream>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -15,11 +16,13 @@
 int main(int argc, char** argv)
 {
     QCoreApplication app(argc, argv);
-    if (argc != 2 && !(argc == 3 && std::string(argv[2]) == "--compare-meas")) {
-        std::cerr << "Usage: yvp_band_probe <stand.yaml> [--compare-meas]\n";
+    if (argc != 2 && !(argc == 3 && (std::string(argv[2]) == "--compare-meas"
+                                        || std::string(argv[2]) == "--production-first"))) {
+        std::cerr << "Usage: yvp_band_probe <stand.yaml> [--compare-meas|--production-first]\n";
         return 2;
     }
-    const bool compareMeas = argc == 3;
+    const bool compareMeas = argc == 3 && std::string(argv[2]) == "--compare-meas";
+    const bool productionFirst = argc == 3 && std::string(argv[2]) == "--production-first";
 
     bool ownPower = false;
     bool inputMayBeOn = false;
@@ -30,7 +33,10 @@ int main(int argc, char** argv)
         tu::hardware::Akip1160 supply(config.supply);
         tu::hardware::RigolGenerator rigol(config.generator);
         tu::hardware::IsdRouter isd(config.isd);
-        tu::hardware::VisaInstrument meter({config.v7.resourceExpressions, 25000});
+        std::unique_ptr<tu::hardware::VisaInstrument> meter;
+        if (!productionFirst)
+            meter = std::make_unique<tu::hardware::VisaInstrument>(
+                tu::hardware::VisaConfig{config.v7.resourceExpressions, 25000});
 
         const auto cleanup = [&] {
             rigol.safeOff();
@@ -82,30 +88,77 @@ int main(int argc, char** argv)
             isd.setSwitch(2, 33, true);
             measureMayBeOn = true;
             isd.setSwitch(3, 44, true);
-            gainMayBeOn = true;
-            isd.setSwitch(2, 2, true);
-            std::cout << "ROUTE input=type2/33 measurement=type3/44 KU2=type2/2 ACK\n";
+            if (!productionFirst) {
+                gainMayBeOn = true;
+                isd.setSwitch(2, 2, true);
+            }
+            std::cout << "ROUTE input=type2/33 measurement=type3/44 KU2="
+                      << (productionFirst ? "OFF" : "type2/2 ON") << " ACK\n";
 
-            meter.write("CONF:VOLT:AC");
-            std::cout << "V7=" << meter.resourceName() << '\n';
+            if (productionFirst) {
+                meter = std::make_unique<tu::hardware::VisaInstrument>(
+                    tu::hardware::VisaConfig{config.v7.resourceExpressions, 5000});
+                std::cout << "V7=" << meter->resourceName()
+                          << " timeout_ms=5000" << std::endl;
+                std::cout << "V7_DC_BEFORE=" << meter->query("MEAS:VOLT:DC?") << std::endl;
+                rigol.setSine(1, 500, 8.0, 0.0);
+                rigol.output(1, true);
+                std::this_thread::sleep_for(std::chrono::seconds(2));
+                for (unsigned attempt = 1; attempt <= 3; ++attempt) {
+                    const auto started = std::chrono::steady_clock::now();
+                    try {
+                        const auto answer = meter->query("MEAS:VOLT:AC?");
+                        const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                            std::chrono::steady_clock::now() - started).count();
+                        std::cout << "PRODUCTION_FIRST attempt=" << attempt
+                                  << " timeout_ms=5000 latency_ms=" << elapsed
+                                  << " v7_vrms=" << answer << std::endl;
+                        break;
+                    } catch (const std::exception& error) {
+                        const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                            std::chrono::steady_clock::now() - started).count();
+                        std::cout << "PRODUCTION_FIRST attempt=" << attempt
+                                  << " timeout_ms=5000 latency_ms=" << elapsed
+                                  << " error=" << error.what() << std::endl;
+                        if (attempt < 3) {
+                            meter->reconnect();
+                            std::this_thread::sleep_for(std::chrono::milliseconds(250));
+                        }
+                    }
+                }
+                meter.reset();
+                meter = std::make_unique<tu::hardware::VisaInstrument>(
+                    tu::hardware::VisaConfig{config.v7.resourceExpressions, 25000});
+                const auto started = std::chrono::steady_clock::now();
+                const auto answer = meter->query("MEAS:VOLT:AC?");
+                const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::steady_clock::now() - started).count();
+                std::cout << "PRODUCTION_FIRST timeout_ms=25000 latency_ms=" << elapsed
+                          << " v7_vrms=" << answer << std::endl;
+                cleanup();
+                return 0;
+            }
+
+            meter->write("CONF:VOLT:AC");
+            std::cout << "V7=" << meter->resourceName() << '\n';
             for (const unsigned frequency : {5u, 10u, 20u, 500u}) {
                 if (compareMeas && frequency != 5u && frequency != 500u) continue;
                 rigol.output(1, false);
                 rigol.setSine(1, frequency, 2.0, 0.0);
                 rigol.output(1, true);
                 if (compareMeas) {
-                    meter.write("CONF:VOLT:AC");
-                    meter.write("SENS:DET:BAND 3");
+                    meter->write("CONF:VOLT:AC");
+                    meter->write("SENS:DET:BAND 3");
                     std::this_thread::sleep_for(std::chrono::seconds(12));
-                    const auto beforeBand = meter.query("SENS:DET:BAND?");
-                    const auto beforeRms = meter.query("READ?");
-                    const auto measuredRms = meter.query("MEAS:VOLT:AC?");
-                    const auto afterMeasBand = meter.query("SENS:DET:BAND?");
-                    meter.write("CONF:VOLT:AC");
-                    meter.write("SENS:DET:BAND 3");
+                    const auto beforeBand = meter->query("SENS:DET:BAND?");
+                    const auto beforeRms = meter->query("READ?");
+                    const auto measuredRms = meter->query("MEAS:VOLT:AC?");
+                    const auto afterMeasBand = meter->query("SENS:DET:BAND?");
+                    meter->write("CONF:VOLT:AC");
+                    meter->write("SENS:DET:BAND 3");
                     std::this_thread::sleep_for(std::chrono::seconds(12));
-                    const auto afterRms = meter.query("READ?");
-                    const auto restoredBand = meter.query("SENS:DET:BAND?");
+                    const auto afterRms = meter->query("READ?");
+                    const auto restoredBand = meter->query("SENS:DET:BAND?");
                     std::cout << "COMPARE frequency_hz=" << frequency
                               << " rigol_vpp=2 band_before=" << beforeBand
                               << " read_before_vrms=" << beforeRms
@@ -116,11 +169,11 @@ int main(int argc, char** argv)
                     continue;
                 }
                 for (const unsigned band : {20u, 3u}) {
-                    meter.write("SENS:DET:BAND " + std::to_string(band));
-                    const auto bandBefore = meter.query("SENS:DET:BAND?");
+                    meter->write("SENS:DET:BAND " + std::to_string(band));
+                    const auto bandBefore = meter->query("SENS:DET:BAND?");
                     std::this_thread::sleep_for(std::chrono::seconds(12));
-                    const auto rms = meter.query("READ?");
-                    const auto bandAfter = meter.query("SENS:DET:BAND?");
+                    const auto rms = meter->query("READ?");
+                    const auto bandAfter = meter->query("SENS:DET:BAND?");
                     std::cout << "POINT frequency_hz=" << frequency
                               << " rigol_vpp=2 band_requested_hz=" << band
                               << " band_before=" << bandBefore

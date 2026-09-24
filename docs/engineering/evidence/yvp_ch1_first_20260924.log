@@ -1,0 +1,11 @@
+2026-09-24T08:51:57.924 EVENT node=yvp_ch1_first stage=START verdict=NOT_RUN message=ЯВП-8 · CH1 · K=0,25 · 500 Гц
+2026-09-24T08:51:58.048 ISD request=1 type=0 num=0 latency_ms=78 http_status=200 timeout=false path=/ response=komanda ne vypolnena. Nepravilny format zaprosa: http://192.168.0.99/type=1num=2val=3work=1
+2026-09-24T08:51:59.102 ISD request=2 type=2 num=33 latency_ms=1052 http_status=200 timeout=false path=/type=2num=33val=1 response=OK
+2026-09-24T08:52:00.157 ISD request=3 type=1 num=44 latency_ms=1056 http_status=200 timeout=false path=/type=1num=44val=0work=0 response=OK
+2026-09-24T08:52:01.209 ISD request=4 type=3 num=44 latency_ms=1051 http_status=200 timeout=false path=/type=3num=44val=1 response=OK
+2026-09-24T08:52:12.933 EVENT node=yvp_ch1_first stage=YVP_V7_POINT verdict=NOT_RUN message=ЯВП 1: K=0.250000 мВ/пКл, 500.000000 Гц acceptance=evaluated_after_gain_sweep backend=production_isd_v7 calculated_gain_mv_per_pc=0.231705 capacitance_pf=1000.000000 charge_pc_from_commanded_vpp=8000.000000 frequency_verification=v7_diagnostic gain_mv_per_pc=0.250000 ku_bits=none measured_frequency_hz=558.831808 point_count=1 point_index=1 rigol_input_vpp=8.000000 section=YVP set_frequency_hz=500.000000 type2_contacts= v7_output_vpp=1.853641 v7_output_vrms=0.655361 yvp_channel=1
+2026-09-24T08:52:12.984 ISD request=5 type=3 num=44 latency_ms=49 http_status=200 timeout=false path=/type=3num=44val=0 response=OK
+2026-09-24T08:52:14.038 ISD request=6 type=1 num=44 latency_ms=1053 http_status=200 timeout=false path=/type=1num=44val=0work=0 response=OK
+2026-09-24T08:52:15.094 ISD request=7 type=2 num=33 latency_ms=1056 http_status=200 timeout=false path=/type=2num=33val=0 response=OK
+2026-09-24T08:52:15.094 EVENT node=yvp_ch1_first stage=FINISH verdict=OK message=Инженерская проба ЯВП завершена; acceptance verdict не формируется
+2026-09-24T08:52:15.236 RUN verdict=OK steps=1

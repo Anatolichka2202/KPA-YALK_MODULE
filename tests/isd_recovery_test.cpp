@@ -156,6 +156,8 @@ int main(int argc, char** argv)
                 "Production-профиль ИСД должен выполнять не более трёх попыток");
         require(productionConfig.isd.retryDelayMilliseconds == 100,
                 "Production-профиль ИСД должен выдерживать 100 мс между попытками");
+        require(productionConfig.v7.timeoutMilliseconds >= 25000,
+                "Первое AC-чтение В7 на ЯВП требует тайм-аут не менее 25 с");
 
         FakeIsdServer server;
         const quint16 port = server.waitUntilListening();
