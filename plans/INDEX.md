@@ -7,6 +7,8 @@
 ## Активные
 
 - [Universal MilTechStation — backend refactor](active/universal-miltechstation-backend.md)
+- [MilTechStation V1 — project/workflow runtime](active/miltechstation-v1-project-runtime.md)
+- [УБСИ по ТУ на MilTechStation](active/ubsi-tu-on-miltechstation.md)
 - [Перестройка документации](active/documentation-rebuild.md)
 - [УБСИ — операторский интерфейс](active/ubsi-operator-ui.md)
 
