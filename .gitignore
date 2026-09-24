@@ -46,3 +46,4 @@ docs/.obsidian/workspace.json
 docs/.obsidian/workspace-mobile.json
 
 tmp*/
+/deploy/

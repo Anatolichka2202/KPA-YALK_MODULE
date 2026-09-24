@@ -366,7 +366,7 @@ X1/37→CH90; X2/36→CH91, X2/37→CH92; X3/36→CH93, X3/37→CH94.
 
 ## Источники сверки
 
-- скан ТУ: `tmp/pdfs/ubsi_tu_scan.pdf`;
+- скан ТУ: `docs/sources/ubsi_tu_scan.pdf`;
 - согласованная рабочая документация ветки `master`:
   `docs/task/ubsi/tu.md`, `tu-work.md`, `testing.md`, `yvp.md`;
 - окончательная карта ЯВП и живое подтверждение: коммиты `de519347` и

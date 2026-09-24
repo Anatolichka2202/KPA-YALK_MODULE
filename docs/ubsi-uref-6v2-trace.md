@@ -12,11 +12,11 @@
 | Evidence | файл/лист | элемент | pin | net | куда идёт | статус |
 |---|---|---|---|---|---|---|
 | `reference204` имеет 100 little-endian 16-bit слов после 4-байтного заголовка; host хранит слово с external address `N` в vector index `N-1` | `hardware/yalk_reference_link.cpp`, `decodeYalkFrame()` и `yalkSnapshot()` | host decoder | не применимо | не применимо | external `reference204` | CONFIRMED |
-| Прошивка выбирает аналоговый источник словом `MX_P1_CACSH[QUERY[1]]`, записывает его в `FIO1PIN` и считывает результат из `AD0DR0` | `tmp/electrical_sources/ktma/ЯЛК/main.cpp`, строки с `FIO1PIN`, `AD0CR`, `AD0DR0` | ЯЛК firmware | `AD0DR0` | не установлено | внутренний ADC result | CONFIRMED |
-| Служебные internal indices 80..83 имеют слова `0x04010110`, `0x04010012`, `0x04010010`, `0x04000000` | `tmp/electrical_sources/ktma/ЯЛК/main.cpp`, таблица `MX_P1_CACSH` | ЯЛК firmware | не установлено | не установлено | четыре служебных выбора mux | CONFIRMED |
-| Firmware контролирует code `88..168` для internal index 80 и `888..968` для internal index 82 | `tmp/electrical_sources/ktma/ЯЛК/main.cpp`, проверки `QueryTmp==80` и `QueryTmp==82` | ЯЛК firmware | не установлено | не установлено | `WorkFlag` | CONFIRMED |
+| Прошивка выбирает аналоговый источник словом `MX_P1_CACSH[QUERY[1]]`, записывает его в `FIO1PIN` и считывает результат из `AD0DR0` | `docs/sources/hardware/ЯЛК/main.cpp`, строки с `FIO1PIN`, `AD0CR`, `AD0DR0` | ЯЛК firmware | `AD0DR0` | не установлено | внутренний ADC result | CONFIRMED |
+| Служебные internal indices 80..83 имеют слова `0x04010110`, `0x04010012`, `0x04010010`, `0x04000000` | `docs/sources/hardware/ЯЛК/main.cpp`, таблица `MX_P1_CACSH` | ЯЛК firmware | не установлено | не установлено | четыре служебных выбора mux | CONFIRMED |
+| Firmware контролирует code `88..168` для internal index 80 и `888..968` для internal index 82 | `docs/sources/hardware/ЯЛК/main.cpp`, проверки `QueryTmp==80` и `QueryTmp==82` | ЯЛК firmware | не установлено | не установлено | `WorkFlag` | CONFIRMED |
 | Host-калибровка использует external addresses 97 и 99; decoder test закрепляет positions 96 и 98 | `procedures/yalk_procedures.cpp`, `calibration()`; `C:/qt_repos_2/liborbita_master_probe/station/tests/equipment_protocol_test.cpp` | host calibration | не применимо | не применимо | external 97/99 | CONFIRMED |
-| В старом CSV addr98 имеет raw `1939,5`, code `915,5`; это измерение не доказывает происхождение сигнала | `tmp/run-1789970458583-fcdb1ee8/TU_1789970458583-fcdb1ee8.csv`, строка `ubsi.reference_6v2.adapter` | historical run | не применимо | не установлено | external addr98 | CONFIRMED AS RAW OBSERVATION |
+| В старом CSV addr98 имеет raw `1939,5`, code `915,5`; это измерение не доказывает происхождение сигнала | `docs/engineering/evidence/legacy/TU_1789970458583-fcdb1ee8.csv`, строка `ubsi.reference_6v2.adapter` | historical run | не применимо | не установлено | external addr98 | CONFIRMED AS RAW OBSERVATION |
 
 ## Что не доказано
 
