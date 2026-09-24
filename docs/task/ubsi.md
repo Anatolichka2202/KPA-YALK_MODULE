@@ -28,14 +28,24 @@
     ↓
 программная реализация
     ↓
+автоматические tests / regression
+    ↓
+трассировка на frozen physical reference
+    ↓
 операторский процесс
     ↓
-выполнение на живом стенде
+выполнение текущего master на живом стенде
+    ↓
+Run / Evidence
     ↓
 регистрация результатов
     ↓
 итоговый документ
 ```
+
+Физический путь УБСИ считается закрытым только по правилам
+[traceability.md](ubsi/traceability.md). Наличие реализации или зелёного
+unit test само по себе не закрывает аппаратно-значимый acceptance path.
 
 ---
 
@@ -49,6 +59,7 @@ task/ubsi/
 ├── tu.md             выжимка исходных требований
 ├── tu-work.md        рабочая трактовка и покрытие
 ├── testing.md        физическая реализация испытаний
+├── traceability.md   закрытость: TU -> master -> donor -> test -> bench -> evidence
 ├── operator.md       рабочий процесс оператора и HMI
 ├── production-data.md production lifecycle и snapshot состава
 └── yvp.md            актуальный commissioning ЯВП
@@ -97,6 +108,11 @@ docs/research/
 В канон переносится только подтверждённый итог исследования.
 
 Опровергнутые гипотезы не переносятся.
+
+Замороженный `rebuild/tu-minimal-clean` для текущей работы имеет отдельную
+роль: это read-only physical reference УБСИ. Он не заменяет ТУ, но его
+соответствующий physical path обязан быть просмотрен и сопоставлен с master
+перед закрытием аппаратно-значимого пути.
 
 ---
 
@@ -159,6 +175,7 @@ docs/research/
 - [Нормативная выжимка](ubsi/tu.md)
 - [Рабочая карта требований](ubsi/tu-work.md)
 - [Физическая методика испытания](ubsi/testing.md)
+- [Трассировка, тестируемость и закрытие](ubsi/traceability.md)
 - [Операторский интерфейс](ubsi/operator.md)
 - [Production data](ubsi/production-data.md)
 - [ЯВП commissioning](ubsi/yvp.md)
