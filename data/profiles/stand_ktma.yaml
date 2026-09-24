@@ -1,6 +1,6 @@
 schema: 1
 id: ktma-main
-version: 2026.09.18-universal-isd-safe-1
+version: 2026.09.24-v7-yvp-timeout-1
 title: Основной стенд КТМА, Windows 11
 
 # Общие активные воздействия разрешены только для уже подтверждённых устройств.
@@ -35,7 +35,8 @@ components:
     config:
       # ЯЛК: четыре подтверждённые ROKT-команды и кадры 204.
       # ЯТП: общая адресация, затем ROKT 0A 02 00 01 00 и кадры 68 байт.
-      # ЯВП: ROKT 0A 01 / 0A 03; payload пока не декодирован.
+      # ЯВП: ROKT 0A 01 / 0A 03 сохранён как отдельный transport-инструмент;
+      # production acceptance ЯВП идёт по подтверждённому тракту ИСД / Rigol / В7.
       # Архивный legacy mode6 (44 01 06, кадры 120/200) сохранён в плагине.
       host: 192.168.0.115
       local_address: 192.168.0.50
@@ -84,8 +85,11 @@ components:
     config:
       resource: USB[0-9]*::0x164E::0x0DAD::?*INSTR
       fallback_resource: USB[0-9]*::5710::3501::?*INSTR
-      timeout_ms: 2000
-      voltage_command: READ?
+      # Донорный живой прогон ЯВП: MEAS:VOLT:AC? ответил за 7023 мс;
+      # 5000 мс трижды завершались VI_ERROR_TMO при той же коммутации.
+      # Поэтому production-профиль УБСИ использует запас 25 с.
+      timeout_ms: 25000
+      voltage_command: MEAS:VOLT:DC?
       current_command: MEAS:CURR:DC?
       ac_voltage_command: MEAS:VOLT:AC?
       frequency_command: MEAS:FREQ?
@@ -206,7 +210,7 @@ routes:
   # Эти два route оставлены только как совместимость со старой конфигурацией.
   # Для ЯВП нельзя использовать base+offset: физический вход коммутируется парой
   # линий ИСД, а коэффициент усиления — комбинацией КУ1..КУ4.
-  # До снятия точных HTTP type/num текущий ROKT commissioning их не активирует.
+  # Production ЯВП использует только явную карту из сценария.
   yvp_gain:
     base: TODO_CONFIRM
     type: 2
