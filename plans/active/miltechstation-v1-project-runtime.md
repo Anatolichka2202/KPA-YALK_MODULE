@@ -36,9 +36,45 @@ Evidence / result
 - климатические setpoints не угадываются до подтверждённой методики;
 - frozen donor `rebuild/tu-minimal-clean` не изменяется.
 
+## Closure / testability policy
+
+Общая продуктовая шкала закрытия определена в `docs/product/miltechstation.md`:
+
+```text
+DEFINED
+IMPLEMENTED
+CONTRACT_TESTED
+INTEGRATION_TESTED
+BENCH_VERIFIED       # если feature аппаратно-значим
+EVIDENCE_VERIFIED    # если feature влияет на формальный run
+CLOSED
+```
+
+Правила для backlog этого плана:
+
+- `[x]` у кода означает, что конкретная подзадача сделана, но не обязательно что весь feature `CLOSED`;
+- обязательный CI текущего `master` должен быть зелёным для статуса `CLOSED`;
+- аппаратный feature не закрывается только mock/CTest;
+- feature, меняющий физическое воздействие, freshness, criterion или cleanup, требует нового bench verification;
+- Run/Evidence/report feature закрывается только после проверки сохранённого результата, а не только renderer/unit test;
+- project/delivery может вводить дополнительный gate, не протаскивая его в generic core.
+
+Для УБСИ действует дополнительный gate:
+
+```text
+TU -> master path -> frozen donor trace -> automated test -> live master bench -> Evidence
+```
+
+Канонический task contract: `docs/task/ubsi/traceability.md`.
+
+- [x] продуктовая closure шкала зафиксирована;
+- [x] UBSI-specific donor trace gate зафиксирован;
+- [ ] по мере реализации каждый active slice должен иметь явный текущий closure status;
+- [ ] перед переводом milestone в `CLOSED` проверить, что его обязательные child slices закрыты по назначенной policy.
+
 ## Этап 1 — Project package contract
 
-Статус: **IMPLEMENTED / GREEN**
+Статус: **CLOSED for V1 contract scope**
 
 Сделано:
 
@@ -58,7 +94,9 @@ Evidence / result
 - [x] environment placeholders без выдуманных setpoints;
 - [x] contract test `stand.project_definition`;
 - [x] canonical product/reference documentation updated;
-- [x] Windows CI после project/runtime slice прошёл полностью.
+- [x] Windows CI после project/runtime slice проходил полностью.
+
+Примечание: это закрывает контракт package V1, но не означает готовность всех workflow КТМА.
 
 ## Этап 2 — Run Context и Evidence foundation
 
@@ -83,7 +121,10 @@ Evidence / result
 
 - [ ] resource/device/quality identity для measurement evidence;
 - [ ] связать delivery readiness с общим run/evidence lifecycle;
-- [ ] хранение high-rate/raw artifacts привязать к Evidence metadata.
+- [ ] хранение high-rate/raw artifacts привязать к Evidence metadata;
+- [ ] integration regression доказать command/ack/error/safety event ordering;
+- [ ] проверить persistence/re-render Evidence на одном законченном generic run;
+- [ ] только после этого выставить foundation `CLOSED`.
 
 ## Этап 3 — Resource ownership / safety
 
@@ -103,7 +144,9 @@ Evidence / result
 - [ ] resource states READY/ACTIVE/SAFE/ERROR/INDETERMINATE;
 - [ ] ISD timeout -> indeterminate semantics в общем resource state;
 - [ ] operator recovery/restart UX;
-- [ ] equipment safety limits metadata.
+- [ ] equipment safety limits metadata;
+- [ ] contract/integration tests на conflict, timeout, cleanup и partial failure;
+- [ ] для hardware-impacting safety path получить bench/evidence до `CLOSED`.
 
 ## Этап 4 — KTMA project composition
 
@@ -124,15 +167,19 @@ Evidence / result
 - [ ] `equipment_profile` основной KTMA runtime должен браться из project package, а не из legacy `profiles/stand_ktma.yaml` выбора;
 - [ ] TU/Production launcher перевести на project workflows с сохранением текущего UX;
 - [ ] current KTMA readiness оставить delivery-owned;
-- [ ] workflow selector сделать project-driven вместо hard-coded codes.
+- [ ] workflow selector сделать project-driven вместо hard-coded codes;
+- [ ] integration test project selection -> workflow -> scenario -> RunContext;
+- [ ] smoke test установленного runtime package на layout, близком к чистому ПК.
 
 ## Этап 5 — УБСИ TU NORMAL
 
 Не менять нормативную методику ради архитектурного refactor.
 
+UBSI slice закрывается только по `docs/task/ubsi/traceability.md`, включая обязательную сверку физического пути с frozen donor `rebuild/tu-minimal-clean@e4ca10616e7d85f8ac9a0535482612a6d4d8f20b`.
+
 ### ЯЛК / перегрузка — текущий slice
 
-Статус: **CODED / CI GREEN / LIVE RUN REQUIRED**
+Статус: **IMPLEMENTED + AUTO_TESTED + DONOR_TRACED / MASTER BENCH REQUIRED / GLOBAL CI RED**
 
 Сделано:
 
@@ -152,34 +199,47 @@ Evidence / result
 - [x] сохранён текущий master criterion `abs(delta) <= 2 code`;
 - [x] сохранён текущий master `overload_settle_ms=10000`; donor `1000 ms` не переносится без нового подтверждения;
 - [x] regression `ktma.ubsi.yalk_overload_physical` фиксирует порядок команд, freshness и compatibility для historical `*_count=88`;
-- [x] CI run `35927756339`: configure/build/CTest — success;
-- [x] canonical `docs/task/ubsi/testing.md` синхронизирован с безопасной физической последовательностью.
+- [x] ранее targeted overload slice проходил CI;
+- [x] canonical `docs/task/ubsi/testing.md` синхронизирован с безопасной физической последовательностью;
+- [x] donor trace/closure policy вынесены в `docs/task/ubsi/traceability.md`.
 
 Остаётся:
 
+- [ ] вернуть текущий master в GREEN: сейчас два regression вокруг YALK open-input semantics блокируют общий closure;
 - [ ] сделать explicit safe-address args в canonical scenario вместо compatibility `*_count=88`;
 - [ ] синхронизировать `PROJECT_MEMORY.md` после scenario-data migration;
 - [ ] выполнить новый полный живой overload run актуального master;
-- [ ] по результату живого прогона отдельно решить timing/criterion, не копируя donor автоматически.
+- [ ] проверить Evidence и cleanup этого run;
+- [ ] по результату живого прогона отдельно решить timing/criterion, не копируя donor автоматически;
+- [ ] выставить окончательный parity `SAME`/`INTENTIONAL_DIFF` и только затем `CLOSED`.
 
 ### Остальной TU NORMAL
 
+Для каждого пункта ниже обязательны: master path, donor trace, automated regression, GREEN CI, live master bench, Evidence.
+
 - [ ] equipment readiness end-to-end evidence;
 - [ ] power/readiness;
-- [ ] ЯЛК полный analog/contact/open/reference тракт проверить на master после overload merge;
+- [ ] ЯЛК initial/open path закрыть после устранения текущих regressions;
+- [ ] ЯЛК полный analog/contact/reference тракт;
 - [ ] ЯТП;
 - [ ] ЯВП commissioning/physical path;
 - [ ] TU coverage gate;
 - [ ] Evidence + TU report;
-- [ ] полный живой прогон.
+- [ ] полный живой прогон;
+- [ ] все mandatory строки `docs/task/ubsi/traceability.md` получить `CLOSED` либо явный нормативно обоснованный отдельный status.
 
 ## Этап 6 — Production
+
+Статус: **OPEN / PARTIAL COMPONENTS EXIST**
 
 - [ ] registered DUT required через project workflow;
 - [ ] scopes/packages;
 - [ ] production evidence;
 - [ ] final TU reference run;
-- [ ] normal/climate workflows.
+- [ ] normal/climate workflows;
+- [ ] contract tests registration policy + immutable scenario identity;
+- [ ] integration test production workflow without physical DUT;
+- [ ] final production bench run + Evidence before `CLOSED`.
 
 ## Этап 7 — Studio/Admin/HMI
 
@@ -193,7 +253,9 @@ Evidence / result
 - [ ] native custom screen API;
 - [ ] Admin V1: project/equipment/connections/resources/diagnostics;
 - [ ] calibration metadata без enforcement;
-- [ ] roles model с выключенным enforcement.
+- [ ] roles model с выключенным enforcement;
+- [ ] editor round-trip tests `UI -> IR -> YAML -> IR`;
+- [ ] operator/engineering smoke tests на project screens.
 
 ## Этап 8 — Environment
 
@@ -203,7 +265,9 @@ Evidence / result
 - [ ] controlled chamber capability;
 - [ ] post-climate workflow;
 - [ ] vibration capability;
-- [ ] parallel exposure + monitoring.
+- [ ] parallel exposure + monitoring;
+- [ ] simulator/integration tests;
+- [ ] реальные chamber/vibration paths требуют отдельного `BENCH_VERIFIED`.
 
 ## Этап 9 — Script runtime / PPB
 
@@ -213,7 +277,9 @@ Evidence / result
 - [ ] разобрать PPB на project/scenario/Lua/generator;
 - [ ] генератор только через `signal.generator`;
 - [ ] migration без отдельного PPB application;
-- [ ] architecture-leak regression: PPB не добавляет PPB-specific code в core.
+- [ ] architecture-leak regression: PPB не добавляет PPB-specific code в core;
+- [ ] Lua sandbox/resource API contract tests;
+- [ ] PPB становится вторым project-level proof: closed только после собственного end-to-end run.
 
 ## Не входит в V1
 
@@ -245,9 +311,11 @@ Platform/project slice:
 
 Current YALK physical slice:
 
+- `deliveries/ktma/ubsi/src/procedures/yalk_initial_physical.cpp`
 - `deliveries/ktma/ubsi/src/procedures/yalk_overload_physical.cpp`
 - `deliveries/ktma/ubsi/src/procedures/registration_layers.h`
 - `deliveries/ktma/ubsi/src/procedures/procedure_registry.cpp`
+- `deliveries/ktma/ubsi/tests/yalk_initial_physical_test.cpp`
 - `deliveries/ktma/ubsi/tests/yalk_overload_physical_test.cpp`
 - `deliveries/ktma/ubsi/CMakeLists.txt`
 
@@ -257,5 +325,8 @@ Current YALK physical slice:
 - `docs/product/data.md`
 - `docs/reference/components/project-package.md`
 - `docs/reference/INDEX.md`
+- `docs/task/ubsi.md`
 - `docs/task/ubsi/testing.md`
+- `docs/task/ubsi/traceability.md`
+- `plans/active/ubsi-tu-on-miltechstation.md`
 - этот план.
