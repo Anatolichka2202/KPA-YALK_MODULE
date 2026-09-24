@@ -15,10 +15,11 @@
 int main(int argc, char** argv)
 {
     QCoreApplication app(argc, argv);
-    if (argc != 2) {
-        std::cerr << "Usage: yvp_band_probe <stand.yaml>\n";
+    if (argc != 2 && !(argc == 3 && std::string(argv[2]) == "--compare-meas")) {
+        std::cerr << "Usage: yvp_band_probe <stand.yaml> [--compare-meas]\n";
         return 2;
     }
+    const bool compareMeas = argc == 3;
 
     bool ownPower = false;
     bool inputMayBeOn = false;
@@ -88,9 +89,32 @@ int main(int argc, char** argv)
             meter.write("CONF:VOLT:AC");
             std::cout << "V7=" << meter.resourceName() << '\n';
             for (const unsigned frequency : {5u, 10u, 20u, 500u}) {
+                if (compareMeas && frequency != 5u && frequency != 500u) continue;
                 rigol.output(1, false);
                 rigol.setSine(1, frequency, 2.0, 0.0);
                 rigol.output(1, true);
+                if (compareMeas) {
+                    meter.write("CONF:VOLT:AC");
+                    meter.write("SENS:DET:BAND 3");
+                    std::this_thread::sleep_for(std::chrono::seconds(12));
+                    const auto beforeBand = meter.query("SENS:DET:BAND?");
+                    const auto beforeRms = meter.query("READ?");
+                    const auto measuredRms = meter.query("MEAS:VOLT:AC?");
+                    const auto afterMeasBand = meter.query("SENS:DET:BAND?");
+                    meter.write("CONF:VOLT:AC");
+                    meter.write("SENS:DET:BAND 3");
+                    std::this_thread::sleep_for(std::chrono::seconds(12));
+                    const auto afterRms = meter.query("READ?");
+                    const auto restoredBand = meter.query("SENS:DET:BAND?");
+                    std::cout << "COMPARE frequency_hz=" << frequency
+                              << " rigol_vpp=2 band_before=" << beforeBand
+                              << " read_before_vrms=" << beforeRms
+                              << " meas_vrms=" << measuredRms
+                              << " band_after_meas=" << afterMeasBand
+                              << " read_after_vrms=" << afterRms
+                              << " restored_band=" << restoredBand << std::endl;
+                    continue;
+                }
                 for (const unsigned band : {20u, 3u}) {
                     meter.write("SENS:DET:BAND " + std::to_string(band));
                     const auto bandBefore = meter.query("SENS:DET:BAND?");
