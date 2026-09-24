@@ -1,7 +1,7 @@
 schema: 1
 id: ktma.ubsi.production.yvp
 title: Производство УБСИ · ЯВП-8
-version: 2.0.0
+version: 2.0.1
 catalog_version: 2026.08.29-yalk-1
 object_type: UBSI_468157_002
 state: published
@@ -15,6 +15,16 @@ state: published
 # Нормативное требование УБСИ «не менее 16 пьезоэлектрических каналов» закрывается
 # только после подтверждения второго физического 8-канального тракта/методики.
 steps:
+  - id: isd_baseline
+    title: Исходное состояние ИСД перед новым прогоном
+    tu: 5.6 / ИСД · исходное состояние
+    procedure: ubsi.isd_baseline
+    requires:
+      - stand.switch_matrix
+    resources:
+      - resource: switch_matrix.primary
+        capability: stand.switch_matrix
+
   - id: supply_status
     title: Включение и контроль питания перед проверкой ЯВП
     tu: PRODUCTION / YVP / POWER
