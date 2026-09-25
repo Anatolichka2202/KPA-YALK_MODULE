@@ -168,6 +168,24 @@ int main(int argc, char** argv)
         require(!readiness.equipment().hasCapability("test.scenario_service"),
                 "full equipment reset preserved a built-in service unexpectedly");
 
+        auto persistentProfile = readinessProfile;
+        persistentProfile.components.back().configuration["session_persistent"] = "true";
+        StationSession persistent;
+        persistent.configure(persistentProfile,
+            builtPluginDirectory.toUtf8().toStdString(), {},
+            EquipmentInstantiation::Deferred);
+        const auto first = persistent.createEquipmentComponent("bench-power");
+        persistent.bindEquipmentComponent("bench-power", first);
+        persistent.clearPhysicalEquipment();
+        require(persistent.equipmentDevices().size() == 1,
+                "Session-persistent equipment was discarded between runs");
+        const auto second = persistent.createEquipmentComponent("bench-power");
+        require(first == second,
+                "Session-persistent equipment was recreated after physical readiness reset");
+        persistent.clearEquipment();
+        require(persistent.equipmentDevices().empty(),
+                "Full equipment clear retained a persistent device");
+
         std::cout << "station session contract OK\n";
         return 0;
     } catch (const std::exception& error) {

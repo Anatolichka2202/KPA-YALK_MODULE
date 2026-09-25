@@ -24,9 +24,7 @@ struct FakeIsd {
     std::atomic<int> inFlight{0};
     std::atomic<int> maxInFlight{0};
     bool failNextSwitch = false;
-    bool failNextReset = false;
     bool failNextProbe = false;
-    unsigned fullResetCount = 0;
 
     void record(const std::string& call)
     {
@@ -58,14 +56,6 @@ struct FakeIsd {
                 throw std::runtime_error("simulated probe failure");
             }
             return std::string("HTTP page");
-        };
-        result.serviceFullReset = [this] {
-            record("service_full_reset");
-            ++fullResetCount;
-            if (failNextReset) {
-                failNextReset = false;
-                throw std::runtime_error("simulated service timeout");
-            }
         };
         result.setSwitch = [this](unsigned type, unsigned channel, bool enabled) {
             record("switch:" + std::to_string(type) + ":"
@@ -109,11 +99,8 @@ void ownershipAndTargetedCleanup()
     catch (const std::runtime_error&) { conflict = true; }
     require(conflict, "A foreign owner changed an owned route");
 
-    const auto resetBefore = fake.fullResetCount;
     driver.releaseOwner("yvp.5");
     require(driver.ownedCount() == 0, "releaseOwner left the route owned");
-    require(fake.fullResetCount == resetBefore,
-            "releaseOwner must never use firmware type=4/full reset");
     require(!fake.calls.empty() && fake.calls.back() == "switch:2:37:0",
             "releaseOwner did not send targeted OFF");
 }
@@ -182,8 +169,6 @@ void restartRecoveryReplaysExactDesiredState()
     };
     require(fake.calls == expected,
             "Recovery did not probe then replay exact remembered state in activation order");
-    require(fake.fullResetCount == 0,
-            "Restart recovery must never use firmware type=4/full reset");
     require(driver.sessionState() == IsdSessionState::Operational,
             "Successful restart recovery did not restore operational session");
     require(driver.ownedCount() == 4,
@@ -208,7 +193,6 @@ void failedRecoveryStaysIndeterminate()
     fake.failNextSwitch = true;
     try { driver.setSwitch(2, 41, true, "run"); } catch (...) {}
     fake.failNextProbe = true;
-    const auto resetBefore = fake.fullResetCount;
 
     bool failed = false;
     try { driver.recoverAfterRestart("operator-restart"); }
@@ -218,8 +202,6 @@ void failedRecoveryStaysIndeterminate()
             "Failed recovery must keep session indeterminate");
     require(driver.ownedCount() == 1,
             "Failed recovery lost desired owned state");
-    require(fake.fullResetCount == resetBefore,
-            "Failed recovery fell back to a destructive full reset");
     driver.safeStopAll();
 }
 
@@ -230,10 +212,7 @@ void safeStopNeverUsesFullReset()
     driver.setSwitch(2, 33, true, "cleanup");
     driver.setAnalog(44, 100, true, "cleanup");
     driver.setYalkVoltage(1, 3.1, "cleanup");
-    const auto resetBefore = fake.fullResetCount;
     driver.safeStopAll();
-    require(fake.fullResetCount == resetBefore,
-            "safeStopAll issued service/full reset");
     require(driver.ownedCount() == 0,
             "safeStopAll did not release owned outputs");
 }
@@ -242,6 +221,7 @@ void probeIsConnectivityOnly()
 {
     FakeIsd fake;
     IsdDriver driver(fake.ops(), 64);
+    driver.establishAddressedBaseline({1}, {1}, {1}, 20, "startup");
     driver.setSwitch(2, 34, true, "probe-owner");
     const auto before = driver.statusText();
     const auto response = driver.probe();
@@ -249,28 +229,55 @@ void probeIsConnectivityOnly()
     const auto after = driver.statusText();
     require(before == after,
             "Probe changed session state or ownership");
+    fake.failNextProbe = true;
+    bool failed = false;
+    try { driver.probe(); } catch (const std::runtime_error&) { failed = true; }
+    require(failed && !driver.addressedBaselineAcknowledged()
+                && driver.sessionState() == IsdSessionState::Indeterminate,
+            "Lost ISD connectivity did not invalidate the session baseline");
+    driver.safeStopAll();
 }
 
-void serviceResetIsExplicitAndOneShot()
+void addressedBaselineIsOneShotAndAcknowledged()
 {
     FakeIsd fake;
     IsdDriver driver(fake.ops(), 64);
-    driver.setSwitch(2, 40, true, "service-test");
-    driver.serviceFullReset("technician");
-    require(fake.fullResetCount == 1,
-            "Explicit service full reset was not called exactly once");
-    require(driver.ownedCount() == 0,
-            "Acknowledged service full reset did not clear process ownership");
+    require(driver.establishAddressedBaseline({1, 95, 96}, {1, 2}, {1, 2}, 20, "startup"),
+            "First addressed baseline was not performed");
+    require(driver.addressedBaselineAcknowledged(),
+            "Acknowledged address sweep was not retained in the session");
+    const std::vector<std::string> expected{
+        "switch:3:1:0", "switch:3:95:0", "switch:3:96:0",
+        "switch:2:1:0", "switch:2:2:0",
+        "analog:1:0:0", "analog:2:0:0"};
+    require(fake.calls == expected, "Addressed baseline order or OFF commands changed");
+    fake.clearCalls();
+    require(!driver.establishAddressedBaseline({1, 95, 96}, {1, 2}, {1, 2}, 20, "next-run"),
+            "Acknowledged baseline was repeated in the same process session");
+    require(fake.calls.empty(), "Skipped baseline still sent HTTP commands");
 
-    fake.failNextReset = true;
+    bool scopeRejected = false;
+    try { driver.establishAddressedBaseline({1}, {1, 2}, {1, 2}, 20, "changed-scope"); }
+    catch (const std::runtime_error&) { scopeRejected = true; }
+    require(scopeRejected && fake.calls.empty(),
+            "A narrower baseline scope was silently reused as the established session scope");
+
+    driver.setSwitch(2, 40, true, "run");
     bool failed = false;
-    try { driver.serviceFullReset("technician"); }
+    try { driver.establishAddressedBaseline({1}, {1}, {1}, 20, "unsafe-next-run"); }
     catch (const std::runtime_error&) { failed = true; }
-    require(failed, "Service full-reset failure was not propagated");
-    require(fake.fullResetCount == 2,
-            "Failed service full reset was retried implicitly");
-    require(driver.sessionState() == IsdSessionState::Indeterminate,
-            "Failed service full reset must leave session indeterminate");
+    require(failed, "A later run skipped cleanup of a process-owned route");
+    driver.releaseOwner("run");
+
+    FakeIsd failedFake;
+    IsdDriver failedDriver(failedFake.ops(), 64);
+    failedFake.failNextSwitch = true;
+    failed = false;
+    try { failedDriver.establishAddressedBaseline({1}, {1}, {1}, 20, "startup"); }
+    catch (const std::runtime_error&) { failed = true; }
+    require(failed && !failedDriver.addressedBaselineAcknowledged()
+                && failedDriver.sessionState() == IsdSessionState::Indeterminate,
+            "Failed address OFF was incorrectly accepted as a session baseline");
 }
 
 void serializesTransport()
@@ -300,7 +307,7 @@ int main()
         failedRecoveryStaysIndeterminate();
         safeStopNeverUsesFullReset();
         probeIsConnectivityOnly();
-        serviceResetIsExplicitAndOneShot();
+        addressedBaselineIsOneShotAndAcknowledged();
         serializesTransport();
         std::cout << "ISD driver tests passed\n";
         return 0;

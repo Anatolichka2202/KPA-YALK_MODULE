@@ -1,9 +1,9 @@
 #include "orbita_stand/yaml_lite.h"
 
+#include <QFile>
+
 #include <yaml-cpp/yaml.h>
 
-#include <fstream>
-#include <sstream>
 #include <utility>
 
 namespace orbita::stand::yaml {
@@ -148,21 +148,21 @@ Node parse(const std::string& document)
 
 Node parseFile(const std::string& path)
 {
-    std::ifstream stream(path, std::ios::binary);
-
-    if (!stream) {
+    // The public configuration API carries filesystem paths as UTF-8. QFile
+    // preserves that contract on Windows too; std::ifstream with a narrow
+    // UTF-8 path cannot open a path below a Cyrillic user profile on MinGW.
+    QFile file(QString::fromUtf8(path.data(), static_cast<qsizetype>(path.size())));
+    if (!file.open(QIODevice::ReadOnly)) {
         throw Error("Cannot open YAML file: " + path);
     }
 
-    std::ostringstream document;
-    document << stream.rdbuf();
-
-    if (!stream.good() && !stream.eof()) {
+    const QByteArray bytes = file.readAll();
+    if (file.error() != QFileDevice::NoError) {
         throw Error("Cannot read YAML file: " + path);
     }
 
     try {
-        return load(document.str());
+        return load(std::string(bytes.constData(), static_cast<std::size_t>(bytes.size())));
     } catch (const Error& error) {
         throw Error(path + ": " + error.what());
     }

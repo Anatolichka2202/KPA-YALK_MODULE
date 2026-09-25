@@ -62,46 +62,59 @@ ProcedureResult isdBaseline(const ScenarioNode& node, ProcedureContext& context)
 {
     const std::string owner = "run:" + context.runId + ":bootstrap:" + node.id;
 
-    // This is the only normal production use of firmware type=4.  The plugin
-    // sends exactly one service_full_reset request with its dedicated service
-    // timeout.  Any timeout/error propagates and stops the scenario traversal.
-    context.equipment.invoke("stand.switch_matrix", "service_full_reset", {
-        {"owner", owner}});
+    // Same addressed OFF sweep as the frozen TU-minimal path. The driver skips
+    // it on later runs only when this process already has an acknowledged
+    // baseline and all process-owned outputs were successfully released.
+    const auto response = responseValues(context.equipment.invoke(
+        "stand.switch_matrix", "addressed_baseline", {
+            {"owner", owner},
+            {"type3_contacts", "1-88,95-96"},
+            {"type2_contacts", "1-40"},
+            {"analog_type1_contacts", "1-88"},
+            {"isd_command_gap_ms", "30"}}));
 
     const auto state = responseValues(context.equipment.invoke(
         "stand.switch_matrix", "state", {}));
     const auto session = state.find("session_state");
     const auto owned = state.find("owned_count");
-    if (session == state.end() || owned == state.end()) {
+    const auto acknowledged = state.find("addressed_baseline_acknowledged");
+    const auto offCount = response.find("acknowledged_off_count");
+    if (session == state.end() || owned == state.end()
+        || acknowledged == state.end() || offCount == response.end()) {
         throw std::runtime_error(
-            "ИСД после baseline не вернул session_state/owned_count");
+            "ИСД после baseline не вернул подтверждённое состояние сессии");
     }
-    if (session->second != "operational" || owned->second != "0") {
+    if (session->second != "operational" || owned->second != "0"
+        || acknowledged->second != "true" || offCount->second != "218") {
         throw std::runtime_error(
-            "ИСД после baseline не перешёл в operational с owned_count=0");
+            "ИСД после baseline не подтвердил адресное отключение всех маршрутов");
     }
 
     MeasurementResult baseline;
     baseline.parameterKey = "stand.isd.baseline";
-    baseline.title = "Команда стартового all-off baseline ИСД";
-    baseline.reference = 0.0;
-    baseline.measured = 0.0;
-    baseline.lowerLimit = 0.0;
-    baseline.upperLimit = 0.0;
-    baseline.unit = "owned routes";
+    baseline.title = "Подтверждённые адресные OFF ИСД в текущей сессии";
+    baseline.reference = 218.0;
+    baseline.measured = 218.0;
+    baseline.lowerLimit = 218.0;
+    baseline.upperLimit = 218.0;
+    baseline.unit = "команд";
     baseline.verdict = RunVerdict::Ok;
     baseline.attributes = {
-        {"baseline_reset_acknowledged", "true"},
+        {"addressed_baseline_acknowledged", "true"},
+        {"performed_this_run", response.at("performed")},
+        {"acknowledged_off_count", offCount->second},
         {"session_state", session->second},
         {"owned_count", owned->second},
         {"global_hardware_state", "not_readable"}};
 
     context.eventSink({std::chrono::system_clock::now(), node.id, "ISD_BASELINE",
-        "Firmware подтвердил выполнение стартовой команды all-off baseline", RunVerdict::Ok,
+        response.at("performed") == "true"
+            ? "ИСД подтвердил адресную подготовку"
+            : "Используется подтверждённая подготовка текущей сессии ИСД", RunVerdict::Ok,
         baseline.attributes});
 
     ProcedureResult result{RunVerdict::Ok,
-        "Стартовая команда all-off baseline подтверждена; глобальное состояние аппаратно не читается",
+        "Адресная подготовка ИСД подтверждена; глобальное состояние аппаратно не читается",
         {}};
     result.measurements.push_back(std::move(baseline));
     return result;

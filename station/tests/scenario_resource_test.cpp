@@ -3,6 +3,7 @@
 #include "orbita_stand/scenario.h"
 
 #include <QCoreApplication>
+#include <QDir>
 #include <QFile>
 #include <QTemporaryDir>
 #include <QTextStream>
@@ -206,7 +207,10 @@ int main(int argc, char** argv)
 {
     QCoreApplication app(argc, argv);
     try {
-        QTemporaryDir directory;
+        // Keep the UTF-8 path contract observable even on a CI worker whose
+        // TEMP directory itself contains ASCII only.
+        QTemporaryDir directory(
+            QDir::tempPath() + QStringLiteral("/orbita-сценарий-XXXXXX"));
         require(directory.isValid(), "temporary directory is unavailable");
 
         const auto scenario = loadScenarioYaml(

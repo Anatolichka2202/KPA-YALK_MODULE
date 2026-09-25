@@ -5,6 +5,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace orbita::stand {
 
@@ -23,7 +24,6 @@ enum class IsdOwnedCertainty {
 
 struct IsdDriverOps {
     std::function<std::string()> probe;
-    std::function<void()> serviceFullReset;
     std::function<void(unsigned, unsigned, bool)> setSwitch;
     std::function<void(unsigned, unsigned, bool)> setAnalog;
     std::function<void(unsigned, double)> setYalkVoltage;
@@ -36,13 +36,18 @@ public:
     ~IsdDriver();
 
     // Connectivity only. A successful probe does not establish relay/UART
-    // readiness and never changes ownership or session determinacy.
+    // readiness. A failed probe invalidates the one-session baseline because
+    // the ISD may have restarted or changed state while unreachable.
     std::string probe();
 
-    // Explicit service operation only. This is firmware type=4: a long,
-    // synchronous "turn all channels off" sweep, not a generic controller reset.
-    // It must never be used by safeStop/release/error recovery automatically.
-    void serviceFullReset(const std::string& owner = "service");
+    // One acknowledged address-by-address OFF sweep per process session.
+    // Returns false only when a previous sweep is still valid and no route is owned.
+    // No firmware type=4 command is sent.
+    bool establishAddressedBaseline(const std::vector<unsigned>& type3Contacts,
+                                    const std::vector<unsigned>& type2Contacts,
+                                    const std::vector<unsigned>& analogType1Contacts,
+                                    unsigned commandGapMs,
+                                    const std::string& owner);
 
     void setSwitch(unsigned type, unsigned channel, bool enabled,
                    const std::string& owner);
@@ -66,6 +71,7 @@ public:
     void safeStopAll() noexcept;
 
     IsdSessionState sessionState() const noexcept;
+    bool addressedBaselineAcknowledged() const noexcept;
     std::size_t ownedCount() const noexcept;
     std::string statusText() const;
     std::string traceText() const;

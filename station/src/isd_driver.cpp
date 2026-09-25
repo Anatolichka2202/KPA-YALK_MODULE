@@ -6,6 +6,7 @@
 #include <mutex>
 #include <sstream>
 #include <stdexcept>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -96,7 +97,7 @@ struct IsdDriver::Impl {
     explicit Impl(IsdDriverOps value, std::size_t capacity)
         : ops(std::move(value)), traceCapacity(std::max<std::size_t>(1, capacity))
     {
-        if (!ops.probe || !ops.serviceFullReset || !ops.setSwitch
+        if (!ops.probe || !ops.setSwitch
             || !ops.setAnalog || !ops.setYalkVoltage || !ops.disableYalkOutput) {
             throw std::invalid_argument("ISD driver requires a complete operation set");
         }
@@ -106,6 +107,10 @@ struct IsdDriver::Impl {
     std::size_t traceCapacity = 256;
     mutable std::mutex mutex;
     IsdSessionState state = IsdSessionState::Operational;
+    bool addressedBaselineAcknowledged = false;
+    std::vector<unsigned> baselineType3;
+    std::vector<unsigned> baselineType2;
+    std::vector<unsigned> baselineAnalog;
     std::vector<OwnedResource> owned;
     std::deque<TraceEntry> trace;
     std::uint64_t nextSequence = 1;
@@ -331,37 +336,113 @@ std::string IsdDriver::probe()
             "ack", before, impl_->state, {}});
         return response;
     } catch (const std::exception& error) {
+        impl_->state = IsdSessionState::Indeterminate;
+        impl_->addressedBaselineAcknowledged = false;
         const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - started).count();
         impl_->appendTrace({0, 0, "system", "probe", "http_connectivity_only=1",
             static_cast<unsigned>(std::max<std::int64_t>(0, elapsed)),
-            "failed", before, impl_->state, clean(error.what())});
+            "indeterminate", before, impl_->state, clean(error.what())});
         throw;
     }
 }
 
-void IsdDriver::serviceFullReset(const std::string& owner)
+bool IsdDriver::establishAddressedBaseline(
+    const std::vector<unsigned>& type3Contacts,
+    const std::vector<unsigned>& type2Contacts,
+    const std::vector<unsigned>& analogType1Contacts,
+    unsigned commandGapMs,
+    const std::string& owner)
 {
-    if (owner.empty()) throw std::invalid_argument("ISD service operation requires owner");
+    if (owner.empty()) throw std::invalid_argument("ISD addressed baseline requires owner");
+    if (type3Contacts.empty() || type2Contacts.empty() || analogType1Contacts.empty())
+        throw std::invalid_argument("ISD addressed baseline requires all three address lists");
+    if (commandGapMs < 20 || commandGapMs > 50)
+        throw std::invalid_argument("ISD command gap must be 20..50 ms");
+    const auto valid = [](const std::vector<unsigned>& contacts) {
+        return std::all_of(contacts.begin(), contacts.end(),
+            [](unsigned contact) { return contact != 0; });
+    };
+    if (!valid(type3Contacts) || !valid(type2Contacts) || !valid(analogType1Contacts))
+        throw std::invalid_argument("ISD addressed baseline contains channel zero");
     std::lock_guard<std::mutex> lock(impl_->mutex);
+    if (impl_->addressedBaselineAcknowledged) {
+        if (impl_->baselineType3 != type3Contacts
+            || impl_->baselineType2 != type2Contacts
+            || impl_->baselineAnalog != analogType1Contacts)
+            throw std::runtime_error("ISD addressed baseline scope changed within one session");
+        if (impl_->state != IsdSessionState::Operational || !impl_->owned.empty())
+            throw std::runtime_error("ISD previous run requires targeted cleanup or recovery");
+        impl_->appendTrace({0, 0, owner, "addressed_baseline_skip",
+            "previous_ack=1,owned=0", 0, "ack", impl_->state, impl_->state, {}});
+        return false;
+    }
     const auto before = impl_->state;
     const auto started = std::chrono::steady_clock::now();
     try {
-        impl_->ops.serviceFullReset();
+        unsigned completed = 0;
+        const unsigned total = static_cast<unsigned>(type3Contacts.size()
+            + type2Contacts.size() + analogType1Contacts.size());
+        const auto gap = [&] {
+            if (completed < total)
+                std::this_thread::sleep_for(std::chrono::milliseconds(commandGapMs));
+        };
+        for (const unsigned channel : type3Contacts) {
+            const auto commandStart = std::chrono::steady_clock::now();
+            impl_->ops.setSwitch(3, channel, false);
+            ++completed;
+            const auto latency = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - commandStart).count();
+            impl_->appendTrace({0, 0, owner, "addressed_off",
+                "type=3,channel=" + std::to_string(channel),
+                static_cast<unsigned>(std::max<std::int64_t>(0, latency)),
+                "ack", before, impl_->state, {}});
+            gap();
+        }
+        for (const unsigned channel : type2Contacts) {
+            const auto commandStart = std::chrono::steady_clock::now();
+            impl_->ops.setSwitch(2, channel, false);
+            ++completed;
+            const auto latency = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - commandStart).count();
+            impl_->appendTrace({0, 0, owner, "addressed_off",
+                "type=2,channel=" + std::to_string(channel),
+                static_cast<unsigned>(std::max<std::int64_t>(0, latency)),
+                "ack", before, impl_->state, {}});
+            gap();
+        }
+        for (const unsigned channel : analogType1Contacts) {
+            const auto commandStart = std::chrono::steady_clock::now();
+            impl_->ops.setAnalog(channel, 0, false);
+            ++completed;
+            const auto latency = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - commandStart).count();
+            impl_->appendTrace({0, 0, owner, "addressed_off",
+                "type=1,channel=" + std::to_string(channel),
+                static_cast<unsigned>(std::max<std::int64_t>(0, latency)),
+                "ack", before, impl_->state, {}});
+            gap();
+        }
         impl_->owned.clear();
         impl_->state = IsdSessionState::Operational;
+        impl_->addressedBaselineAcknowledged = true;
+        impl_->baselineType3 = type3Contacts;
+        impl_->baselineType2 = type2Contacts;
+        impl_->baselineAnalog = analogType1Contacts;
         const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - started).count();
-        impl_->appendTrace({0, 0, owner, "service_full_reset",
-            "type=4,global_readback=unavailable",
+        impl_->appendTrace({0, 0, owner, "addressed_baseline",
+            "completed=" + std::to_string(completed) + ",type4=0",
             static_cast<unsigned>(std::max<std::int64_t>(0, elapsed)),
             "ack", before, impl_->state, {}});
+        return true;
     } catch (const std::exception& error) {
         impl_->state = IsdSessionState::Indeterminate;
+        impl_->addressedBaselineAcknowledged = false;
         const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - started).count();
-        impl_->appendTrace({0, 0, owner, "service_full_reset",
-            "type=4,global_readback=unavailable",
+        impl_->appendTrace({0, 0, owner, "addressed_baseline",
+            "type4=0,global_readback=unavailable",
             static_cast<unsigned>(std::max<std::int64_t>(0, elapsed)),
             "indeterminate", before, impl_->state, clean(error.what())});
         throw;
@@ -440,6 +521,9 @@ void IsdDriver::recoverAfterRestart(const std::string& owner)
     std::lock_guard<std::mutex> lock(impl_->mutex);
     const auto before = impl_->state;
     const auto started = std::chrono::steady_clock::now();
+    // A physical restart invalidates the earlier address-by-address OFF proof.
+    // Replaying process-owned outputs restores only the known desired routes.
+    impl_->addressedBaselineAcknowledged = false;
     try {
         (void)impl_->ops.probe();
         for (const auto& resource : impl_->owned) impl_->replay(resource);
@@ -507,6 +591,13 @@ IsdSessionState IsdDriver::sessionState() const noexcept
     return impl_->state;
 }
 
+bool IsdDriver::addressedBaselineAcknowledged() const noexcept
+{
+    if (!impl_) return false;
+    std::lock_guard<std::mutex> lock(impl_->mutex);
+    return impl_->addressedBaselineAcknowledged;
+}
+
 std::size_t IsdDriver::ownedCount() const noexcept
 {
     if (!impl_) return 0;
@@ -520,6 +611,8 @@ std::string IsdDriver::statusText() const
     std::ostringstream out;
     out << "status=ready\n"
         << "session_state=" << toString(impl_->state) << "\n"
+        << "addressed_baseline_acknowledged="
+        << (impl_->addressedBaselineAcknowledged ? "true" : "false") << "\n"
         << "global_hardware_state=not_readable\n"
         << "owned_count=" << impl_->owned.size() << "\n";
     for (std::size_t index = 0; index < impl_->owned.size(); ++index) {

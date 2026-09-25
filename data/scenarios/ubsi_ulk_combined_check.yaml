@@ -132,6 +132,32 @@ steps:
       full_scale_v: 6.2
       tolerance_percent_fs: 0.5
 
+  - id: yalk_overload
+    title: Устойчивость остальных каналов при перегрузке ±12 В
+    tu: 1.1.4.10, 1.1.4.11
+    procedure: yalk.check_overload
+    requires:
+      - ulk.parameter_source
+      - stand.switch_matrix
+    resources:
+      - resource: dut.parameter_source
+        capability: ulk.parameter_source
+      - resource: switch_matrix.primary
+        capability: stand.switch_matrix
+    args:
+      mapping_confirmed: true
+      physical_channels: 1-28,32-43,45-70,74-87
+      stressed_channels: 1-28,32-43,45-70,74-87
+      observed_addresses: 1-28,32-43,45-70,74-87
+      positive_overload_route: yalk_overload_positive
+      negative_overload_route: yalk_overload_negative
+      sample_count: 4
+      baseline_settle_ms: 1000
+      dac_off_settle_ms: 300
+      overload_settle_ms: 10000
+      cleanup_settle_ms: 300
+      maximum_code_delta: 2
+
   - id: yalk_channels
     title: Аналоговые сигналы 80 адресов ЯЛК · 0 / 3,1 / 6,2 В
     tu: 1.1.4.1, 1.1.4.14
@@ -182,32 +208,6 @@ steps:
       channel_off_settle_ms: 1000
       full_scale_v: 6.2
       tolerance_percent_fs: 0.5
-
-  - id: yalk_overload
-    title: Устойчивость остальных каналов при перегрузке ±12 В
-    tu: 1.1.4.10, 1.1.4.11
-    procedure: yalk.check_overload
-    requires:
-      - ulk.parameter_source
-      - stand.switch_matrix
-    resources:
-      - resource: dut.parameter_source
-        capability: ulk.parameter_source
-      - resource: switch_matrix.primary
-        capability: stand.switch_matrix
-    args:
-      mapping_confirmed: true
-      physical_channels: 1-28,32-43,45-70,74-87
-      stressed_channels: 1-28,32-43,45-70,74-87
-      observed_addresses: 1-28,32-43,45-70,74-87
-      positive_overload_route: yalk_overload_positive
-      negative_overload_route: yalk_overload_negative
-      sample_count: 4
-      baseline_settle_ms: 1000
-      dac_off_settle_ms: 300
-      overload_settle_ms: 10000
-      cleanup_settle_ms: 300
-      maximum_code_delta: 2
 
   - id: yalk_reference_voltage
     title: Эталон 6,2 ±0,03 В по В7 и адресу ЯЛК

@@ -63,11 +63,11 @@ components:
       host: 192.168.0.101
       port: 80
       timeout_ms: 1500
-      # type=4 — длинный синхронный all-off sweep. Только явная
-      # service_full_reset операция, один HTTP-запрос с отдельным timeout.
-      service_timeout_ms: 10000
+      # Адресная подготовка ИСД выполняется один раз за сессию приложения.
+      # Экземпляр драйвера сохраняет её подтверждение между запусками проверок.
+      session_persistent: true
       switch_type: 2
-      # Production использует подтверждённые type=1/2/3/5.
+      # Стартовая подготовка использует только type=1/2/3, без type=4.
       # type=7 не используется: в предоставленном firmware case 7 пуст.
       # Карта ЯВП type/num задаётся явными таблицами в сценариях.
       device.active_commands_confirmed: true

@@ -65,6 +65,14 @@ std::shared_ptr<EquipmentDevice> StationSession::createEquipmentComponent(
         throw std::invalid_argument("Equipment component provider is empty: " + componentId);
     }
 
+    const auto persistent = component->configuration.find("session_persistent");
+    const bool keepForSession = persistent != component->configuration.end()
+        && persistent->second == "true";
+    if (keepForSession) {
+        const auto existing = sessionEquipment_.find(componentId);
+        if (existing != sessionEquipment_.end()) return existing->second;
+    }
+
     auto config = component->configuration;
     config["profile.active_outputs_confirmed"] =
         profile_.activeOutputsConfirmed ? "true" : "false";
@@ -75,6 +83,7 @@ std::shared_ptr<EquipmentDevice> StationSession::createEquipmentComponent(
     auto device = equipmentPlugins_.createDevice(
         component->provider, component->id, config);
     retainEquipmentDevice(device);
+    if (keepForSession) sessionEquipment_.emplace(componentId, device);
     return device;
 }
 
@@ -153,13 +162,18 @@ void StationSession::retainEquipmentDevice(std::shared_ptr<EquipmentDevice> devi
 void StationSession::clearPhysicalEquipment() noexcept
 {
     equipment_.clearPhysical();
-    equipmentDevices_.clear();
+    equipmentDevices_.erase(std::remove_if(equipmentDevices_.begin(), equipmentDevices_.end(),
+        [this](const auto& device) {
+            return std::none_of(sessionEquipment_.begin(), sessionEquipment_.end(),
+                [&](const auto& entry) { return entry.second == device; });
+        }), equipmentDevices_.end());
 }
 
 void StationSession::clearEquipment() noexcept
 {
     equipment_.clear();
     equipmentDevices_.clear();
+    sessionEquipment_.clear();
 }
 
 void StationSession::safeStopAll() noexcept

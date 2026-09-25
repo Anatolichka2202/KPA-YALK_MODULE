@@ -1,5 +1,60 @@
 # MilTechStation V1 — project/workflow runtime
 
+## Рабочая спецификация и задачи
+
+Согласованная продуктовая спецификация и декомпозиция живут в явно запрошенном
+рабочем трекере [`_spec/_spec.md`](../../_spec/_spec.md) и
+[`task.md`](../../task.md). Статусы задач являются источником истины только в
+`_specs/miltechstation-v1/tasks/`; этот план сохраняет архитектурные решения и
+текущие факты, а не дублирует прогресс.
+
+## Аудит общего слоя станции (2026-09-25)
+
+Этот срез **не включает** физический тракт КТМА/УБСИ. `DONE` ниже означает
+завершённую ограниченную подзадачу, а не готовность продукта к выпуску.
+
+| Подзадача | Текущий статус | Проверяемое основание / граница |
+| --- | --- | --- |
+| Контракт project package и workflow | `CONTRACT_TESTED`; закрытие V1-контракта временно снято | `station.project_definition` проходит; `station/src/project.cpp`, `station/tests/project_definition_test.cpp`. Полный текущий CTest не зелёный. |
+| Декларативный профиль, component lifecycle и сессия | `CONTRACT_TESTED` для имеющихся контрактов | `stand.component_profile`, `stand.component_runtime`, `stand.station_session` проходят; `station/src/station_session.cpp`. Это не подтверждение произвольного нового оборудования на стенде. |
+| Внешний process execution runtime | `CONTRACT_TESTED` | `stand.execution_runtime` и `stand.execution_scenario` проходят; связь с общим Evidence ещё не сделана. |
+| Источник сырых отсчётов и интеграционная граница | `CONTRACT_TESTED` для текущего sample bridge | `integration.orbita_sample_bridge` проходит; поддержка других источников не доказана этим тестом. |
+| Resource/capability routing | `CONTRACT_TESTED` | `stand.scenario_resource` проходит после исправления UTF-8 пути временного YAML через Qt file API; fixture принудительно использует кириллический путь. |
+| Project workflow run и сохранение контекста | `CONTRACT_TESTED`, Evidence foundation открыт | `stand.project_definition` и `stand.run_store_context` проходят; проверка полного сохранённого и повторно отображённого Evidence отсутствует. |
+| Защита ресурсов и восстановление | `PARTIAL` | Есть ownership и адресная подготовка ИСД; конфликтующие параллельные Free/TU/Production runs, общее состояние ресурсов и recovery UX ещё не закрыты. |
+| Общий desktop, project selection | `PARTIAL` | Project package загружается в desktop, но выбор workflow и основной профиль оборудования ещё содержат delivery-specific composition. |
+| Производственные пакеты, повтор узла и актуальный статус изделия | `DEFINED`, не реализовано | Решение о пяти пакетах и сохранении истории принято ниже; рабочего end-to-end пути и теста агрегирования статуса пока нет. |
+| Admin/Studio, Environment, Script API | `DEFINED/TODO` | Контракты и желаемые границы описаны; готового V1-цикла нет. |
+
+Локальная проверка текущей Release-сборки: `ctest --test-dir
+build/Desktop_Qt_6_8_0_MinGW_64_bit-Release --output-on-failure --timeout 60`
+дала **22/24**. Не прошли
+`ktma.ubsi.equipment_readiness` (`0xc0000135`) и
+`ktma.ubsi.scenario_runtime` (критерий обрыва ЯЛК). Это не доказывает причину
+каждого отказа, но по принятой ниже closure policy запрещает объявлять
+текущий `master` полностью `CLOSED`. Текущий статус удалённого CI этим
+локальным прогоном не подтверждён.
+
+## Согласованная граница этапов (2026-09-25)
+
+- Этап A: один УБСИ проходит отдельный ТУ-run в нормальных условиях через
+  MilTechStation с Evidence и отчётом. Это внутренний milestone.
+- Этап B: пять производственных пакетов `FULL`, `POWER`, `YALK`, `YTP`, `YVP`,
+  минимальная админка и свободный режим. После `FULL` выборочный повтор узла
+  создаёт новый run, сохраняет историю и обновляет текущий статус изделия по
+  последней принятой проверке этого узла. Финальный ТУ запускается отдельно.
+- Гибкость этапа B доказывается без перекомпиляции: новая композиция сценария
+  из существующих процедур, смена совместимого resource binding и свободная
+  проверка со своим допуском; версии конфигурации сохраняются вместе с run.
+- Климатические ТУ `+`/`−` — отдельные запуски при заданных условиях, без
+  post-climate workflow в этом объёме. PPB — последующий проект, не критерий B.
+- Персональные логины не обязательны для первого выпуска: UI разделяет
+  оператора и настройку, оператор фиксируется в run, опубликованная
+  конфигурация защищена правами ОС.
+
+Эти решения определяют backlog, но не утверждают, что пути уже реализованы
+или стендово подтверждены.
+
 ## Цель
 
 Реализовать согласованную продуктовую модель, не останавливая доводку реального УБСИ:
@@ -74,7 +129,7 @@ TU -> master path -> frozen donor trace -> automated test -> live master bench -
 
 ## Этап 1 — Project package contract
 
-Статус: **CLOSED for V1 contract scope**
+Статус: **CONTRACT_TESTED; прежний CLOSED приостановлен из-за RED текущего master**
 
 Сделано:
 
@@ -96,7 +151,10 @@ TU -> master path -> frozen donor trace -> automated test -> live master bench -
 - [x] canonical product/reference documentation updated;
 - [x] Windows CI после project/runtime slice проходил полностью.
 
-Примечание: это закрывает контракт package V1, но не означает готовность всех workflow КТМА.
+Примечание: перечисленные контрактные подзадачи сделаны. Прежний успешный
+Windows CI относился к более раннему срезу; до восстановления зелёного
+текущего master нельзя сохранять статус `CLOSED` даже для V1-контракта.
+Это также не означает готовность всех workflow КТМА.
 
 ## Этап 2 — Run Context и Evidence foundation
 
@@ -236,7 +294,7 @@ UBSI slice закрывается только по `docs/task/ubsi/traceability
 - [ ] scopes/packages;
 - [ ] production evidence;
 - [ ] final TU reference run;
-- [ ] normal/climate workflows;
+- [ ] normal-condition production workflows; climate `+`/`−` is a later milestone;
 - [ ] contract tests registration policy + immutable scenario identity;
 - [ ] integration test production workflow without physical DUT;
 - [ ] final production bench run + Evidence before `CLOSED`.
@@ -263,7 +321,7 @@ UBSI slice закрывается только по `docs/task/ubsi/traceability
 - [ ] continuous environment evidence;
 - [ ] manual climate flow;
 - [ ] controlled chamber capability;
-- [ ] post-climate workflow;
+- [ ] separate climate `+` and `−` TU workflows during specified conditions;
 - [ ] vibration capability;
 - [ ] parallel exposure + monitoring;
 - [ ] simulator/integration tests;
@@ -279,7 +337,8 @@ UBSI slice закрывается только по `docs/task/ubsi/traceability
 - [ ] migration без отдельного PPB application;
 - [ ] architecture-leak regression: PPB не добавляет PPB-specific code в core;
 - [ ] Lua sandbox/resource API contract tests;
-- [ ] PPB становится вторым project-level proof: closed только после собственного end-to-end run.
+- [ ] PPB становится последующим project-level proof после production/flexibility stage:
+      closed только после собственного end-to-end run.
 
 ## Не входит в V1
 

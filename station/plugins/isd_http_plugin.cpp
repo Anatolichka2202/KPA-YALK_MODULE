@@ -10,6 +10,7 @@
 #include <memory>
 #include <sstream>
 #include <thread>
+#include <vector>
 
 namespace {
 using namespace orbita::stand;
@@ -20,6 +21,37 @@ std::string ownerOf(const std::map<std::string, std::string>& args)
     if (found != args.end() && !found->second.empty()) return found->second;
     // Compatibility only. Production procedures should pass an explicit owner.
     return "unscoped";
+}
+
+std::vector<unsigned> addressList(const std::map<std::string, std::string>& args,
+                                  const char* key)
+{
+    const auto found = args.find(key);
+    if (found == args.end() || found->second.empty())
+        throw std::invalid_argument(std::string("Missing ISD address list: ") + key);
+    std::vector<unsigned> result;
+    std::istringstream input(found->second);
+    std::string part;
+    const auto parse = [](const std::string& token) {
+        if (token.empty()) throw std::invalid_argument("Empty ISD address");
+        std::size_t consumed = 0;
+        const auto value = std::stoul(token, &consumed);
+        if (consumed != token.size() || value == 0 || value > 4096)
+            throw std::invalid_argument("Invalid ISD address");
+        return static_cast<unsigned>(value);
+    };
+    while (std::getline(input, part, ',')) {
+        const auto dash = part.find('-');
+        const unsigned first = parse(part.substr(0, dash));
+        const unsigned last = dash == std::string::npos
+            ? first : parse(part.substr(dash + 1));
+        if (last < first)
+            throw std::invalid_argument("Invalid ISD address range");
+        for (unsigned channel = first; channel <= last; ++channel)
+            result.push_back(channel);
+    }
+    if (result.empty()) throw std::invalid_argument("Empty ISD address list");
+    return result;
 }
 
 std::string switchPath(unsigned type, unsigned channel, bool enabled)
@@ -66,7 +98,6 @@ struct Instance {
     std::unique_ptr<IsdHttpTransport> transport;
     std::unique_ptr<IsdDriver> driver;
     unsigned defaultSwitchType = 2;
-    unsigned serviceTimeoutMilliseconds = 10000;
 };
 
 orbita_plugin_status_v1 create(const char*, const char* text, void** output,
@@ -77,8 +108,6 @@ orbita_plugin_status_v1 create(const char*, const char* text, void** output,
         auto instance = std::make_unique<Instance>();
         instance->config = plugin::arguments(text);
         const unsigned normalTimeout = plugin::unsignedValue(instance->config, "timeout_ms", 1500);
-        instance->serviceTimeoutMilliseconds = plugin::unsignedValue(
-            instance->config, "service_timeout_ms", std::max(10000u, normalTimeout));
         instance->defaultSwitchType = plugin::unsignedValue(instance->config, "switch_type", 2);
         instance->transport = std::make_unique<IsdHttpTransport>(IsdHttpTransportConfig{
             plugin::required(instance->config, "host"),
@@ -86,15 +115,9 @@ orbita_plugin_status_v1 create(const char*, const char* text, void** output,
             normalTimeout});
 
         auto* transport = instance->transport.get();
-        const unsigned serviceTimeout = instance->serviceTimeoutMilliseconds;
         IsdDriverOps operations;
         operations.probe = [transport] {
             return transport->get("/").body;
-        };
-        operations.serviceFullReset = [transport, serviceTimeout] {
-            // Firmware type=4 is a long synchronous all-channels-off sweep.
-            // It is a SERVICE action and is attempted exactly once.
-            (void)transport->get("/type=4num=1", serviceTimeout);
         };
         operations.setSwitch = [transport](unsigned type, unsigned channel, bool enabled) {
             (void)transport->get(switchPath(type, channel, enabled));
@@ -179,8 +202,16 @@ orbita_plugin_status_v1 invoke(void* value, const char* capability, const char* 
             return plugin::unsignedValue(args, "channel");
         };
 
-        if (command == "service_full_reset") {
-            instance.driver->serviceFullReset(owner);
+        if (command == "addressed_baseline") {
+            const auto type3 = addressList(args, "type3_contacts");
+            const auto type2 = addressList(args, "type2_contacts");
+            const auto analog = addressList(args, "analog_type1_contacts");
+            const bool performed = instance.driver->establishAddressedBaseline(
+                type3, type2, analog,
+                plugin::unsignedValue(args, "isd_command_gap_ms", 30), owner);
+            return std::string("status=ok\noperation=addressed_baseline\nperformed=")
+                + (performed ? "true" : "false") + "\nacknowledged_off_count="
+                + std::to_string(type3.size() + type2.size() + analog.size()) + "\n";
         } else if (command == "recover_after_restart" || command == "recover") {
             // Explicit only: caller/operator must have restarted ISD first.
             // Driver probes and replays the exact process-owned desired state.

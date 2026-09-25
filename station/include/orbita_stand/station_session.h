@@ -6,6 +6,7 @@
 #include "orbita_stand/resource_lease.h"
 
 #include <memory>
+#include <map>
 #include <set>
 #include <string>
 #include <vector>
@@ -118,6 +119,7 @@ private:
     EquipmentRegistry equipment_;
     ResourceLeaseManager leases_;
     std::vector<std::shared_ptr<EquipmentDevice>> equipmentDevices_;
+    std::map<std::string, std::shared_ptr<EquipmentDevice>> sessionEquipment_;
     ComponentRuntime components_;
     bool configured_ = false;
 };

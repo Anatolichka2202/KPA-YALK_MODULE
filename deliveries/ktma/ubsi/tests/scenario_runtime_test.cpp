@@ -43,10 +43,17 @@ public:
             switchArguments.push_back(arguments);
         }
         if (capability == "stand.switch_matrix" && operation == "state") {
-            return "session_state=operational\nowned_count=0\n";
+            return std::string("session_state=operational\nowned_count=0\n")
+                + "addressed_baseline_acknowledged="
+                + (addressedBaselineAcknowledged ? "true\n" : "false\n");
         }
-        if (capability == "stand.switch_matrix" && operation == "service_full_reset") {
-            return "status=ok\noperation=service_full_reset\n";
+        if (capability == "stand.switch_matrix" && operation == "addressed_baseline") {
+            const bool performed = !addressedBaselineAcknowledged;
+            addressedBaselineAcknowledged = true;
+            if (performed) ++addressedBaselineSweeps;
+            return std::string("status=ok\noperation=addressed_baseline\nperformed=")
+                + (performed ? "true\n" : "false\n")
+                + "acknowledged_off_count=218\n";
         }
         if (capability == "orbita.parameter_source" && operation == "health") {
             return "status=ready\nframes_processed=12\nphrase_error_percent=0\n"
@@ -230,6 +237,8 @@ public:
     std::vector<double> aliveSupplyVoltages;
     std::vector<unsigned> snapshotAfterSequences;
     bool stopped = false;
+    bool addressedBaselineAcknowledged = false;
+    unsigned addressedBaselineSweeps = 0;
     double currentResistance = 120.0;
     double currentVoltage = 0.0;
     bool supplyOutputEnabled = true;
@@ -394,6 +403,14 @@ void configurationAndCatalog(const QString& root)
         return iterator == combined.steps.end() ? nullptr : &*iterator;
     };
     const auto* contactThresholds = combinedStep("yalk_contact_thresholds");
+    const auto positionOf = [&combined](const std::string& id) {
+        const auto found = std::find_if(combined.steps.begin(), combined.steps.end(),
+            [&id](const ScenarioNode& step) { return step.id == id; });
+        return std::distance(combined.steps.begin(), found);
+    };
+    require(positionOf("yalk_initial") < positionOf("yalk_overload")
+                && positionOf("yalk_overload") < positionOf("yalk_channels"),
+            "Canonical TU must overload after the open-input check and before analog points");
     require(contactThresholds
                 && contactThresholds->arguments.at("point_volts") == "0,0.9,2.5"
                 && contactThresholds->arguments.at("signal_expectations") == "0,0,1",
@@ -523,8 +540,8 @@ void configurationAndCatalog(const QString& root)
                 "stand.switch_matrix:switch") == 0,
             "YTP must not use the retired ISD type-7 routing");
     require(std::count(ytpEquipment.operations.begin(), ytpEquipment.operations.end(),
-                "stand.switch_matrix:service_full_reset") == 1,
-            "YTP scenario must establish one explicit ISD baseline before the run");
+                "stand.switch_matrix:addressed_baseline") == 1,
+            "YTP scenario must request an addressed ISD baseline before the run");
     require(!ytpEquipment.supplyOutputEnabled,
             "YTP scenario must switch the AKIP output off after the test");
     const auto repeatedYtpRun = engine.run(
@@ -532,8 +549,9 @@ void configurationAndCatalog(const QString& root)
     require(repeatedYtpRun.verdict == RunVerdict::Ok
                 && ytpEquipment.supplyEnableCount == 1
                 && ytpEquipment.supplyDisableCount >= 2
+                && ytpEquipment.addressedBaselineSweeps == 1
                 && !ytpEquipment.supplyOutputEnabled,
-            "A repeated YTP run must restore AKIP output and switch it off again");
+            "A repeated YTP run must preserve one ISD baseline and restore AKIP safely");
     const auto routedVia = [&ytpEquipment](const std::string& prefix) {
         return std::any_of(ytpEquipment.resourceOperations.begin(),
             ytpEquipment.resourceOperations.end(), [&prefix](const std::string& value) {
@@ -544,9 +562,9 @@ void configurationAndCatalog(const QString& root)
             "YTP power operations must be routed through power.dut");
     require(routedVia("dut.parameter_source:ulk.parameter_source:"),
             "YTP adapter operations must be routed through dut.parameter_source");
-    require(routedVia("switch_matrix.primary:stand.switch_matrix:service_full_reset")
+    require(routedVia("switch_matrix.primary:stand.switch_matrix:addressed_baseline")
                 && routedVia("switch_matrix.primary:stand.switch_matrix:state"),
-            "YTP must route only the explicit startup ISD baseline through switch_matrix.primary");
+            "YTP must route the addressed startup ISD baseline through switch_matrix.primary");
 
     FakeEquipment ytp120Equipment;
     ytp120Equipment.capabilities = {
