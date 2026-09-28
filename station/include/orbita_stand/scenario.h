@@ -28,6 +28,22 @@ enum class RunVerdict {
     Aborted,
 };
 
+// Provenance belongs to an individual persisted measurement. The default is
+// deliberately explicit: legacy procedures which cannot identify a physical
+// source are recorded as NOT_PROVIDED rather than being mistaken for measured
+// resource/device/quality metadata.
+enum class MeasurementIdentityState {
+    NotProvided,
+    Provided,
+};
+
+struct MeasurementEvidence {
+    MeasurementIdentityState identityState = MeasurementIdentityState::NotProvided;
+    std::string resource;
+    std::string device;
+    std::string quality;
+};
+
 struct MeasurementResult {
     std::string parameterKey;
     std::string title;
@@ -39,6 +55,7 @@ struct MeasurementResult {
     RunVerdict verdict = RunVerdict::Error;
     std::string message;
     std::map<std::string, std::string> attributes;
+    MeasurementEvidence evidence;
 };
 
 struct ProcedureResult {
@@ -123,6 +140,17 @@ struct EvidenceEvent {
     std::map<std::string, std::string> data;
 };
 
+// A raw file is retained outside SQLite, while this small immutable snapshot
+// identifies the file that belonged to the run and its content at attach time.
+// `relativePath` is resolved below ScenarioRunResult::artifactDirectory.
+struct ArtifactReference {
+    std::string kind;
+    std::string relativePath;
+    std::string mediaType;
+    std::uint64_t byteCount = 0;
+    std::string sha256;
+};
+
 struct StepRunResult {
     std::string nodeId;
     std::string title;
@@ -162,6 +190,11 @@ struct ScenarioRunResult {
     // Primary structured technical evidence. Reports are projections of the
     // run/evidence data; they are not the sole source of truth.
     std::vector<EvidenceEvent> evidence;
+
+    // Directory and content-addressed raw files attached when a producer uses
+    // RunArtifacts::attachTo(). Empty is valid for a run with no raw capture.
+    std::string artifactDirectory;
+    std::vector<ArtifactReference> artifacts;
 };
 
 class ICapabilityProvider {

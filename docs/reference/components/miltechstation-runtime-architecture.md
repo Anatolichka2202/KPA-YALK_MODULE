@@ -49,9 +49,16 @@
 `RunStore::load()` восстанавливает сохранённый `ScenarioRunResult`, включая
 identity, шаги, measurements, progress events и structured evidence; HTML/CSV
 renderer принимает эту же модель. Это проверяется `stand.run_store_context` на
-generic run, выполненном через `runScenarioWithEvidence()`. `RunArtifacts`
-пока не записывает свою directory/файлы в run metadata, поэтому это не
-доказывает сохранение raw-artifacts как части evidence.
+generic run, выполненном через `runScenarioWithEvidence()`. `RunArtifacts::attachTo()`
+сохраняет directory, relative path, size и SHA-256 telemetry/raw packet files
+в этой модели; HTML показывает их как локальные links. Hash фиксирует
+содержимое на момент прикрепления, но не делает файловую систему физически
+неизменяемой.
+
+У каждого persisted measurement есть typed provenance: `PROVIDED` требует
+непустые resource, device и quality; legacy или пока не мигрировавшая
+процедура сохраняется как явный `NOT_PROVIDED`. Runtime не угадывает источник
+из parameter key или capability.
 
 ## Есть ли единая шина данных?
 

@@ -13,7 +13,7 @@
 | 03 | External process в общем run | done | 01, 02 |
 | 04 | Зелёный resource-routing contract | done | 02 |
 | 05 | Lease, состояния ресурсов и recovery | in-progress | 04 |
-| 06 | Сквозной immutable Evidence | in-progress | 01, 03, 04 |
+| 06 | Сквозной immutable Evidence | done | 01, 03, 04 |
 | 07 | Project-driven operator launcher | todo | 01, 02, 04 |
 | 08 | Production packages и повтор узла | todo | 05, 06, 07 |
 | 09 | Free и минимальный Admin V1 | todo | 05, 06, 07 |
@@ -29,8 +29,9 @@ component/sample boundary, execution runtime и resource-routing contract. Эт�
 Задача 05 выполняется: declared-resource lease уже включён в common run и
 Desktop-маршруты. Состояния ресурса и recovery ещё не реализованы, поэтому
 задача не закрыта.
-Задача 06 выполняется: сохранённый run теперь читается обратно и из него
-строится отчёт; raw-artifact metadata и measurement identity ещё отсутствуют.
+Задача 06 закрыта локальным contract: run/Evidence/measurements и metadata
+raw-artifacts сохраняются, читаются обратно и формируют отчёт. Это не
+подменяет bench/Evidence gates аппаратно значимых поставок.
 Локальный Release build и полный CTest от 2026-09-28 проходят: **24/24**.
 Это локальный gate; статус удалённого CI и bench/Evidence подтверждения этим
 прогоном не заменяются.

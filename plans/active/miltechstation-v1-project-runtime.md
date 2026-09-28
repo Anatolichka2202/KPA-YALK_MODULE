@@ -20,7 +20,7 @@
 | Внешний process execution runtime | `CONTRACT_TESTED` | `stand.execution_runtime` и `stand.execution_scenario` проходят; связь с общим Evidence ещё не сделана. |
 | Источник сырых отсчётов и интеграционная граница | `CONTRACT_TESTED` для текущего sample bridge | `integration.orbita_sample_bridge` проходит; поддержка других источников не доказана этим тестом. |
 | Resource/capability routing | `CONTRACT_TESTED` | `stand.scenario_resource` проходит после исправления UTF-8 пути временного YAML через Qt file API; fixture принудительно использует кириллический путь. |
-| Project workflow run и сохранение контекста | `CONTRACT_TESTED`, Evidence foundation активен | `stand.project_definition` и `stand.run_store_context` проходят; последний выполняет generic run → SQLite save/load → HTML re-render. Raw-artifact metadata и measurement identity ещё отсутствуют. |
+| Project workflow run и сохранение контекста | `CONTRACT_TESTED` | `stand.project_definition` и `stand.run_store_context` проходят; последний выполняет generic run → SQLite save/load → HTML re-render. Measurement provenance хранит `PROVIDED` либо явный `NOT_PROVIDED`; `RunArtifacts` прикрепляет content-addressed metadata telemetry/raw packets. |
 | Защита ресурсов и восстановление | `CONTRACT_TESTED` для declared-resource lease; `PARTIAL` в целом | Common run захватывает все явно объявленные resources до возврата из `safeStopAll()`; Main, Universal Free и КТМА передают lease текущей сессии. `stand.scenario_resource` подтверждает conflict, передачу причины в progressSink и release. READY/ACTIVE/SAFE/ERROR/INDETERMINATE, подтверждённый recovery и bench gate не сделаны. |
 | Общий desktop, project selection | `PARTIAL` | Project package загружается в desktop, но выбор workflow и основной профиль оборудования ещё содержат delivery-specific composition. |
 | Производственные пакеты, повтор узла и актуальный статус изделия | `DEFINED`, не реализовано | Решение о пяти пакетах и сохранении истории принято ниже; рабочего end-to-end пути и теста агрегирования статуса пока нет. |
@@ -176,13 +176,17 @@ Windows CI относился к более раннему срезу; до во
 
 Остаётся:
 
-- [ ] resource/device/quality identity для measurement evidence;
+- [x] `MeasurementEvidence` сохраняет resource/device/quality при `PROVIDED`
+  либо явный `NOT_PROVIDED`; round-trip проверяется `stand.run_store_context`;
 - [ ] связать delivery readiness с общим run/evidence lifecycle;
-- [ ] хранение high-rate/raw artifacts привязать к Evidence metadata;
+- [x] `RunArtifacts::attachTo()` сохраняет каталог, relative path, размер и
+  SHA-256 telemetry/raw files в `RunStore`; round-trip и HTML link проверяет
+  `stand.run_store_context`;
 - [ ] integration regression доказать command/ack/error/safety event ordering;
 - [x] generic `runScenarioWithEvidence()` → SQLite save/load → HTML re-render
   проверяется `stand.run_store_context`;
-- [ ] только после этого выставить foundation `CLOSED`.
+- [x] foundation закрыта как `CONTRACT_TESTED`; hardware delivery-specific
+  Evidence gates остаются отдельными.
 
 ## Этап 3 — Resource ownership / safety
 

@@ -90,6 +90,8 @@ test_runs
 run_steps
 run_measurements
 run_events
+run_evidence
+run_artifacts
 ```
 
 ## test_runs
@@ -141,10 +143,19 @@ unit
 verdict
 message
 attributes
+evidence_state
+evidence_resource
+evidence_device
+evidence_quality
 ```
 
 `attributes` используется процедурами для специфических данных без
 изменения общей схемы на каждый новый тип измерения.
+
+`evidence_state` имеет `NOT_PROVIDED` или `PROVIDED`. При `PROVIDED` поля
+resource, device и quality обязательны. Значение `NOT_PROVIDED` является
+явной фиксацией того, что процедура не передала происхождение измерения; оно
+не означает, что источник был определён неявно.
 
 ## run_events
 
@@ -156,6 +167,45 @@ node
 stage
 message
 verdict
+```
+
+## run_artifacts
+
+Хранит metadata файлов, прикреплённых к run без превращения каждого raw sample
+в `run_events`:
+
+```text
+sort_order
+kind
+relative_path
+media_type
+byte_count
+sha256
+```
+
+`relative_path` разрешается относительно `test_runs.artifact_directory`.
+`RunArtifacts::attachTo()` прикладывает собственные telemetry/raw packet
+файлы, а `attachFileTo()` — любой уже созданный файл внутри того же каталога
+(например stdout, stderr или waveform).
+`sha256` фиксирует содержимое на момент `RunArtifacts::attachTo()`; он не
+утверждает, что файл нельзя изменить позднее, а позволяет это обнаружить.
+
+## run_evidence
+
+Хранит упорядоченные технические события audited equipment boundary:
+
+```text
+sequence
+timestamp_ms
+monotonic_ns
+type
+node_id
+resource
+capability
+operation
+message
+verdict
+data
 ```
 
 ---

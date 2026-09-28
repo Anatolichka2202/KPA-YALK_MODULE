@@ -8,6 +8,7 @@
 #include <QSqlQuery>
 #include <QTemporaryDir>
 
+#include <algorithm>
 #include <chrono>
 #include <iostream>
 #include <stdexcept>
@@ -18,6 +19,17 @@ namespace {
 void require(bool value, const char* message)
 {
     if (!value) throw std::runtime_error(message);
+}
+
+void requireEvidenceOrder(const std::vector<EvidenceEvent>& evidence)
+{
+    require(!evidence.empty(), "evidence must not be empty");
+    for (std::size_t index = 1; index < evidence.size(); ++index) {
+        require(evidence[index].sequence == evidence[index - 1].sequence + 1,
+            "evidence sequence must be contiguous");
+        require(evidence[index].monotonicNs >= evidence[index - 1].monotonicNs,
+            "evidence monotonic clock must not move backwards");
+    }
 }
 
 class AuditEquipment final : public ICapabilityProvider {
@@ -37,6 +49,7 @@ public:
         }
         const auto value = arguments.find("value");
         if (value == arguments.end()) throw std::runtime_error("missing value");
+        if (value->second == "error") throw std::runtime_error("simulated equipment error");
         return "echo=" + value->second;
     }
 
@@ -75,6 +88,8 @@ ScenarioRunResult completedGenericRun()
         measurement.verdict = measurement.measured == 6.2 ? RunVerdict::Ok : RunVerdict::Fail;
         measurement.message = "measured";
         measurement.attributes = {{"source", "generic-test"}};
+        measurement.evidence = {MeasurementIdentityState::Provided,
+            "measure.reference", "fake.voltmeter", "VALID"};
         return ProcedureResult{measurement.verdict, "completed", {measurement}};
     });
 
@@ -92,6 +107,37 @@ ScenarioRunResult completedGenericRun()
     run.contextAttributes = {{"mode", "formal"}};
     return run;
 }
+
+ScenarioRunResult failedGenericRun()
+{
+    ScenarioDefinition scenario;
+    scenario.id = "generic.evidence.error.contract";
+    scenario.title = "Generic evidence error contract";
+    scenario.version = "1";
+    scenario.catalogVersion = "test";
+    scenario.objectType = "TEST";
+    scenario.publicationState = PublicationState::Published;
+
+    ScenarioNode step;
+    step.id = "error";
+    step.title = "Error";
+    step.tuRequirement = "test";
+    step.procedure = "test.error";
+    step.requiredCapabilities.insert("test.echo");
+    scenario.steps.push_back(std::move(step));
+
+    ScenarioEngine engine;
+    engine.registerProcedure("test.error", [](const ScenarioNode&, ProcedureContext& context) {
+        (void)context.equipment.invoke("test.echo", "ping", {{"value", "error"}});
+        return ProcedureResult{RunVerdict::Ok, "unreachable", {}};
+    });
+
+    AuditEquipment equipment;
+    auto run = runScenarioWithEvidence(
+        engine, equipment, scenario, "profile", "SN", false);
+    run.runId = "error-run";
+    return run;
+}
 }
 
 int main(int argc, char** argv)
@@ -103,13 +149,34 @@ int main(int argc, char** argv)
         require(directory.isValid(), "temporary directory unavailable");
         const QString path = directory.filePath(QStringLiteral("runs.db"));
 
-        const auto run = completedGenericRun();
+        auto run = completedGenericRun();
         require(run.verdict == RunVerdict::Ok, "generic run must complete before persistence");
         require(run.evidence.size() >= 4, "generic run must produce command and safety evidence");
+        requireEvidenceOrder(run.evidence);
+        const auto failedRun = failedGenericRun();
+        require(failedRun.verdict == RunVerdict::Error, "error scenario must retain technical error");
+        requireEvidenceOrder(failedRun.evidence);
+        const auto errorEvidence = std::find_if(
+            failedRun.evidence.begin(), failedRun.evidence.end(),
+            [](const EvidenceEvent& event) { return event.type == "ERROR"; });
+        require(errorEvidence != failedRun.evidence.end()
+                    && errorEvidence->data.at("error") == "simulated equipment error",
+            "equipment error must be structured evidence");
+        RunArtifacts artifacts(directory.filePath(QStringLiteral("artifacts")).toUtf8().toStdString(), run.runId);
+        artifacts.appendRawPacket({0x01, 0x02, 0x03});
+        artifacts.attachTo(run);
+        QFile waveform(QDir(QString::fromUtf8(artifacts.directory())).filePath(QStringLiteral("waveform.csv")));
+        require(waveform.open(QIODevice::WriteOnly | QIODevice::Text), "cannot create test waveform");
+        waveform.write("time_s;volts\n0;0\n");
+        waveform.close();
+        artifacts.attachFileTo(run, "waveform", "waveform.csv", "text/csv");
+        require(run.artifacts.size() == 3 && !run.artifacts.front().sha256.empty(),
+            "raw artifact metadata must be attached without generic events");
 
         {
             RunStore store(path.toUtf8().toStdString());
             store.save(run);
+            store.save(failedRun);
         }
 
         const QString connection = QStringLiteral("run_store_context_test");
@@ -168,12 +235,29 @@ int main(int argc, char** argv)
             "step measurement did not round-trip");
         const auto& measurement = restored->steps.front().measurements.front();
         require(measurement.parameterKey == "test.voltage" && measurement.measured == 6.2
-                    && measurement.attributes.at("source") == "generic-test",
+                    && measurement.attributes.at("source") == "generic-test"
+                    && measurement.evidence.identityState == MeasurementIdentityState::Provided
+                    && measurement.evidence.resource == "measure.reference"
+                    && measurement.evidence.device == "fake.voltmeter"
+                    && measurement.evidence.quality == "VALID",
             "measurement contents did not round-trip");
         require(restored->evidence.size() == run.evidence.size(), "evidence count did not round-trip");
         require(restored->evidence.front().type == "COMMAND"
                     && restored->evidence.front().data.at("arg.value") == "42",
             "evidence contents did not round-trip");
+        const auto restoredError = store.load("error-run");
+        require(restoredError.has_value()
+                    && std::any_of(restoredError->evidence.begin(), restoredError->evidence.end(),
+                        [](const EvidenceEvent& event) { return event.type == "ERROR"; }),
+            "error evidence did not round-trip");
+        requireEvidenceOrder(restoredError->evidence);
+        require(restored->artifactDirectory == run.artifactDirectory
+                    && restored->artifacts.size() == 3
+                    && restored->artifacts[1].kind == "raw-packets"
+                    && restored->artifacts[1].relativePath == "raw_packets.bin"
+                    && restored->artifacts[2].kind == "waveform"
+                    && !restored->artifacts[1].sha256.empty(),
+            "raw artifact metadata did not round-trip");
 
         const auto reportsDirectory = directory.filePath(QStringLiteral("reports"));
         const auto reports = writeHtmlCsvReport(*restored, reportsDirectory.toUtf8().toStdString());
@@ -181,8 +265,30 @@ int main(int argc, char** argv)
         require(report.open(QIODevice::ReadOnly | QIODevice::Text), "cannot read rendered report");
         const auto rendered = QString::fromUtf8(report.readAll());
         require(rendered.contains(QStringLiteral("Generic persistence contract"))
-                    && rendered.contains(QStringLiteral("НОРМА")),
+                    && rendered.contains(QStringLiteral("НОРМА"))
+                    && rendered.contains(QStringLiteral("raw_packets.bin"))
+                    && rendered.contains(QStringLiteral("waveform.csv")),
             "report must be rendered from restored run");
+
+        const QString legacyConnection = QStringLiteral("run_store_legacy_measurement_test");
+        {
+            auto database = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), legacyConnection);
+            database.setDatabaseName(path);
+            require(database.open(), "cannot open run database for legacy migration");
+            QSqlQuery query(database);
+            require(query.exec(QStringLiteral(
+                "UPDATE run_measurements SET evidence_state='' "
+                "WHERE run_id='context-run' AND node_id='measure'")),
+                "cannot simulate legacy empty measurement identity");
+            database.close();
+        }
+        QSqlDatabase::removeDatabase(legacyConnection);
+        RunStore migratedStore(path.toUtf8().toStdString());
+        const auto migrated = migratedStore.load("context-run");
+        require(migrated.has_value()
+                    && migrated->steps.front().measurements.front().evidence.identityState
+                        == MeasurementIdentityState::NotProvided,
+            "legacy empty measurement identity must migrate to NOT_PROVIDED");
 
         std::cout << "RunStore generic run persistence and re-render OK\n";
         return 0;

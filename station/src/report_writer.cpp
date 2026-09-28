@@ -3,6 +3,8 @@
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
+#include <QUrl>
 #include <QSaveFile>
 #include <QTextStream>
 
@@ -188,6 +190,21 @@ ReportPaths writeHtmlCsvReport(const ScenarioRunResult& run, const std::string& 
                << escape(production.componentType) << QStringLiteral(" · SN ") << escape(production.componentSerial)
                << QStringLiteral("</td></tr><tr><th>Этап</th><td>") << escape(production.stage)
                << QStringLiteral("</td></tr></tbody></table>");
+    }
+    if (!run.artifacts.empty()) {
+        output << QStringLiteral("<h2>Инженерные файлы</h2><table><thead><tr><th>Тип</th><th>Файл</th><th>Размер, байт</th><th>SHA-256</th></tr></thead><tbody>");
+        for (const auto& artifact : run.artifacts) {
+            const auto localPath = QDir(QString::fromUtf8(run.artifactDirectory))
+                .filePath(QString::fromUtf8(artifact.relativePath));
+            const auto href = QUrl::fromLocalFile(localPath).toString(QUrl::FullyEncoded);
+            output << QStringLiteral("<tr><td>") << escape(artifact.kind)
+                   << QStringLiteral("</td><td><a href=\"") << href.toHtmlEscaped()
+                   << QStringLiteral("\">") << escape(artifact.relativePath)
+                   << QStringLiteral("</a></td><td>") << artifact.byteCount
+                   << QStringLiteral("</td><td><code>") << escape(artifact.sha256)
+                   << QStringLiteral("</code></td></tr>");
+        }
+        output << QStringLiteral("</tbody></table>");
     }
 
     std::map<QString, std::vector<const MeasurementResult*>> chartGroups;

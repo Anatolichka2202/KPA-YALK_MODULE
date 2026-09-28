@@ -20,9 +20,9 @@ measurements, verdict и ссылки на raw artifacts. Отчёт строи�
   environment при их наличии.
 - [x] Equipment boundary записывает COMMAND, COMMAND_ACK, ERROR и SAFETY в
   одном упорядоченном event envelope.
-- [ ] Measurement evidence содержит resource/device/quality identity либо
+- [x] Measurement evidence содержит resource/device/quality identity либо
   явный статус отсутствия этих данных.
-- [ ] stdout/stderr, telemetry и waveform могут быть приложены raw artifact
+- [x] stdout/stderr, telemetry и waveform могут быть приложены raw artifact
   metadata без записи каждого sample как generic event.
 - [x] Сохранённый run повторно отображается и формирует тот же verdict/report
   view.
@@ -32,13 +32,18 @@ measurements, verdict и ссылки на raw artifacts. Отчёт строи�
 ## Фактическое состояние
 
 `RunStore::load()` восстанавливает `ScenarioRunResult` из SQLite: identity,
-steps/measurements, legacy events и structured evidence. `scenario_title`
+steps/measurements, legacy events и structured evidence. Каждое measurement
+хранит `PROVIDED` resource/device/quality либо явный `NOT_PROVIDED`.
+`scenario_title`
 сохраняется additive migration, поэтому renderer не вынужден подменять его
 идентификатором сценария. Контракт `stand.run_store_context` выполняет generic
 run через `runScenarioWithEvidence()`, сохраняет его, читает обратно и строит
 HTML-отчёт из восстановленной модели.
 
-Это не закрывает задачу: `RunArtifacts` пока создаёт файлы telemetry/raw
-отдельно от `ScenarioRunResult`, а measurement evidence не содержит обязательной
-resource/device/quality identity. До связывания этих частей с сохранённым run
-критерий К7 остаётся незакрытым.
+`RunArtifacts::attachTo()` прикладывает к run каталог, относительный путь,
+размер и SHA-256 telemetry/raw packet файлов. Контракт не утверждает, что
+файл физически невозможно изменить после запуска; hash позволяет обнаружить
+расхождение с сохранённым фактом.
+
+Все критерии этой task выполнены локальным integration contract. Её закрытие
+не заменяет отдельные bench/Evidence gates аппаратно значимых поставок.
