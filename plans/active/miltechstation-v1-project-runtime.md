@@ -8,32 +8,31 @@
 `_specs/miltechstation-v1/tasks/`; этот план сохраняет архитектурные решения и
 текущие факты, а не дублирует прогресс.
 
-## Аудит общего слоя станции (2026-09-25)
+## Аудит общего слоя станции (2026-09-28)
 
 Этот срез **не включает** физический тракт КТМА/УБСИ. `DONE` ниже означает
 завершённую ограниченную подзадачу, а не готовность продукта к выпуску.
 
 | Подзадача | Текущий статус | Проверяемое основание / граница |
 | --- | --- | --- |
-| Контракт project package и workflow | `CONTRACT_TESTED`; закрытие V1-контракта временно снято | `station.project_definition` проходит; `station/src/project.cpp`, `station/tests/project_definition_test.cpp`. Полный текущий CTest не зелёный. |
+| Контракт project package и workflow | `CONTRACT_TESTED`; локальный полный CTest зелёный | `station.project_definition` проходит; `station/src/project.cpp`, `station/tests/project_definition_test.cpp`. Удалённый CI этим локальным запуском не подтверждён. |
 | Декларативный профиль, component lifecycle и сессия | `CONTRACT_TESTED` для имеющихся контрактов | `stand.component_profile`, `stand.component_runtime`, `stand.station_session` проходят; `station/src/station_session.cpp`. Это не подтверждение произвольного нового оборудования на стенде. |
 | Внешний process execution runtime | `CONTRACT_TESTED` | `stand.execution_runtime` и `stand.execution_scenario` проходят; связь с общим Evidence ещё не сделана. |
 | Источник сырых отсчётов и интеграционная граница | `CONTRACT_TESTED` для текущего sample bridge | `integration.orbita_sample_bridge` проходит; поддержка других источников не доказана этим тестом. |
 | Resource/capability routing | `CONTRACT_TESTED` | `stand.scenario_resource` проходит после исправления UTF-8 пути временного YAML через Qt file API; fixture принудительно использует кириллический путь. |
 | Project workflow run и сохранение контекста | `CONTRACT_TESTED`, Evidence foundation открыт | `stand.project_definition` и `stand.run_store_context` проходят; проверка полного сохранённого и повторно отображённого Evidence отсутствует. |
-| Защита ресурсов и восстановление | `PARTIAL` | Есть ownership и адресная подготовка ИСД; конфликтующие параллельные Free/TU/Production runs, общее состояние ресурсов и recovery UX ещё не закрыты. |
+| Защита ресурсов и восстановление | `CONTRACT_TESTED` для declared-resource lease; `PARTIAL` в целом | Common run захватывает все явно объявленные resources до возврата из `safeStopAll()`; Main, Universal Free и КТМА передают lease текущей сессии. `stand.scenario_resource` подтверждает conflict, передачу причины в progressSink и release. READY/ACTIVE/SAFE/ERROR/INDETERMINATE, подтверждённый recovery и bench gate не сделаны. |
 | Общий desktop, project selection | `PARTIAL` | Project package загружается в desktop, но выбор workflow и основной профиль оборудования ещё содержат delivery-specific composition. |
 | Производственные пакеты, повтор узла и актуальный статус изделия | `DEFINED`, не реализовано | Решение о пяти пакетах и сохранении истории принято ниже; рабочего end-to-end пути и теста агрегирования статуса пока нет. |
 | Admin/Studio, Environment, Script API | `DEFINED/TODO` | Контракты и желаемые границы описаны; готового V1-цикла нет. |
 
-Локальная проверка текущей Release-сборки: `ctest --test-dir
+Локальная проверка текущей Release-сборки 28.09.2026: `ctest --test-dir
 build/Desktop_Qt_6_8_0_MinGW_64_bit-Release --output-on-failure --timeout 60`
-дала **22/24**. Не прошли
-`ktma.ubsi.equipment_readiness` (`0xc0000135`) и
-`ktma.ubsi.scenario_runtime` (критерий обрыва ЯЛК). Это не доказывает причину
-каждого отказа, но по принятой ниже closure policy запрещает объявлять
-текущий `master` полностью `CLOSED`. Текущий статус удалённого CI этим
-локальным прогоном не подтверждён.
+прошла **24/24**. Исправлены test-environment PATH для
+`ktma.ubsi.equipment_readiness` и fixture `signal=1` / negative-code для
+`ktma.ubsi.scenario_runtime`; это не изменяет методику УБСИ. Текущий статус
+удалённого CI этим локальным прогоном не подтверждён, как и bench/Evidence
+gates для hardware-impacting slices.
 
 ## Согласованная граница этапов (2026-09-25)
 
@@ -129,7 +128,7 @@ TU -> master path -> frozen donor trace -> automated test -> live master bench -
 
 ## Этап 1 — Project package contract
 
-Статус: **CONTRACT_TESTED; прежний CLOSED приостановлен из-за RED текущего master**
+Статус: **CONTRACT_TESTED; локальный полный CTest GREEN, remote CI не подтверждён**
 
 Сделано:
 
@@ -194,11 +193,21 @@ Windows CI относился к более раннему срезу; до во
 - [x] generic ISD safe-stop не использует firmware type=4;
 - [x] YALK overload использует отдельные ownership domains для background DAC и transient ±12 V impact;
 - [x] аварийный cleanup перегрузки адресный и не требует global reset.
+- [x] `ScenarioEngine::run()` атомарно захватывает все явно объявленные
+  `requiredResources` через `ResourceLeaseManager` до первого физического
+  шага и удерживает их до своего безусловного `safeStopAll()`;
+- [x] конфликт выдаёт `Incomplete` / `RESOURCE_LEASE` с именем занятого
+  ресурса и владельцем, не вызывая процедуру или `safeStopAll()`;
+- [x] Main, Universal Free и КТМА передают session-owned lease-manager в
+  audited common run entry point;
+- [x] `stand.scenario_resource` проверяет conflict, отсутствие оборудования
+  при конфликте и release после run.
 
 Остаётся:
 
-- [ ] ResourceLease для concurrent runs;
-- [ ] симметричная блокировка Free/TU/Production при пересечении ресурсов;
+- [ ] обеспечить mandatory resource declaration или безопасную policy для
+  legacy capability-only сценариев; сейчас без declared resources lease не
+  применяется и это явно фиксируется в RunEvent;
 - [ ] resource states READY/ACTIVE/SAFE/ERROR/INDETERMINATE;
 - [ ] ISD timeout -> indeterminate semantics в общем resource state;
 - [ ] operator recovery/restart UX;
@@ -237,7 +246,7 @@ UBSI slice закрывается только по `docs/task/ubsi/traceability
 
 ### ЯЛК / перегрузка — текущий slice
 
-Статус: **IMPLEMENTED + AUTO_TESTED + DONOR_TRACED / MASTER BENCH REQUIRED / GLOBAL CI RED**
+Статус: **IMPLEMENTED + AUTO_TESTED + DONOR_TRACED / MASTER BENCH REQUIRED / REMOTE CI UNCONFIRMED**
 
 Сделано:
 

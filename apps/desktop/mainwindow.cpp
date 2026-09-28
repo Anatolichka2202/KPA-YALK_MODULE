@@ -910,14 +910,15 @@ void MainWindow::onRunScenario(
     log(QStringLiteral("Запуск сценария %1, объект %2")
         .arg(QString::fromStdString(scenario.id),
              objectSerial.isEmpty() ? QStringLiteral("без заводского номера") : objectSerial));
-    scenarioWatcher_->setFuture(QtConcurrent::run([this, scenario, serial, partial]() {
-        return scenarioEngine_->run(scenario, *equipmentRegistry_,
-            standProfile_.version, serial, partial,
+    auto* leases = &stationSession_.leases();
+    scenarioWatcher_->setFuture(QtConcurrent::run([this, scenario, serial, partial, leases]() {
+        return orbita::stand::runScenarioWithEvidence(*scenarioEngine_, *equipmentRegistry_,
+            scenario, standProfile_.version, serial, partial,
             [this](const orbita::stand::RunEvent& event) {
                 QMetaObject::invokeMethod(this, [this, event]() {
                     testPage_->setRunEvent(event);
                 }, Qt::QueuedConnection);
-            });
+            }, leases);
     }));
 }
 

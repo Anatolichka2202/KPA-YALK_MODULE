@@ -9,6 +9,8 @@
 
 namespace orbita::stand {
 
+class ResourceLeaseManager;
+
 // Registration is a workflow policy, not a property of the ScenarioEngine.
 // A free/TU workflow may run without a lifecycle record, while a production
 // workflow can require one. The core deliberately does not interpret workflow
@@ -85,7 +87,8 @@ ScenarioRunResult runScenarioWithEvidence(
     std::string profileVersion,
     std::string objectSerial,
     bool allowPartial,
-    std::function<void(const RunEvent&)> progressSink = {});
+    std::function<void(const RunEvent&)> progressSink = {},
+    ResourceLeaseManager* resourceLeases = nullptr);
 
 // Execute one workflow through the ordinary ScenarioEngine and attach the
 // project/workflow identity to ScenarioRunResult. A fixed workflow loads its
@@ -101,6 +104,7 @@ ScenarioRunResult runProjectWorkflow(
     bool allowPartial,
     ProjectRunContext context = {},
     const ScenarioDefinition* scenarioOverride = nullptr,
-    std::function<void(const RunEvent&)> progressSink = {});
+    std::function<void(const RunEvent&)> progressSink = {},
+    ResourceLeaseManager* resourceLeases = nullptr);
 
 } // namespace orbita::stand

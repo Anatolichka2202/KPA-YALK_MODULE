@@ -12,6 +12,8 @@
 
 namespace orbita::stand {
 
+class ResourceLeaseManager;
+
 enum class PublicationState {
     Draft,
     Published,
@@ -222,7 +224,8 @@ public:
         std::string profileVersion,
         std::string objectSerial,
         bool allowPartial,
-        std::function<void(const RunEvent&)> progressSink = {});
+        std::function<void(const RunEvent&)> progressSink = {},
+        ResourceLeaseManager* resourceLeases = nullptr);
     void requestStop() noexcept;
     void resetStop() noexcept;
     bool running() const noexcept { return running_.load(); }

@@ -848,17 +848,18 @@ void KtmaMainWindow::runScenario(
             .arg(QString::fromStdString(scenario.id), QString::fromUtf8(serial.c_str())));
 
         const std::string profileVersion = integrationStandProfile().version;
+        auto* leases = &integrationStationSession().leases();
         watcher->setFuture(QtConcurrent::run(
             [this, engine, registry, scenario, profileVersion, serial, allowPartial,
-             yvpExcluded, overloadExcluded, survivalExcluded]() {
-                auto result = engine->run(
-                    scenario, *registry, profileVersion, serial, allowPartial,
+             yvpExcluded, overloadExcluded, survivalExcluded, leases]() {
+                auto result = orbita::stand::runScenarioWithEvidence(
+                    *engine, *registry, scenario, profileVersion, serial, allowPartial,
                     [this](const orbita::stand::RunEvent& event) {
                         QMetaObject::invokeMethod(this, [this, event] {
                             if (auto* testPage = integrationTestPage())
                                 testPage->setRunEvent(event);
                         }, Qt::QueuedConnection);
-                    });
+                    }, leases);
                 if (yvpExcluded || overloadExcluded || survivalExcluded) {
                     result.events.insert(result.events.begin(), {
                         result.startedAt, "scope", "SCOPE",

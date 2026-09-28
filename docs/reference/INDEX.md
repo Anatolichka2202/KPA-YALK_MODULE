@@ -33,6 +33,7 @@
 | Компонент | Документ |
 |---|---|
 | Project package / workflow | [components/project-package.md](components/project-package.md) |
+| Текущий runtime, потоки данных и контур КТМА / УБСИ | [components/miltechstation-runtime-architecture.md](components/miltechstation-runtime-architecture.md) |
 | liborbita | [components/liborbita.md](components/liborbita.md) |
 | Плагины оборудования | [components/equipment-plugins.md](components/equipment-plugins.md) |
 

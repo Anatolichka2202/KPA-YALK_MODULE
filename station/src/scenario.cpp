@@ -1,4 +1,5 @@
 #include "orbita_stand/scenario.h"
+#include "orbita_stand/resource_lease.h"
 
 #include <algorithm>
 #include <iomanip>
@@ -36,6 +37,20 @@ bool retryLimit(const ScenarioNode& node, unsigned& value)
 {
     value = node.policy.technicalRetries;
     return value <= 3;
+}
+
+void collectRequiredResources(
+    const std::vector<ScenarioNode>& nodes,
+    std::set<std::string>& resources)
+{
+    for (const auto& node : nodes) {
+        for (const auto& requirement : node.requiredResources) {
+            // validate() reports an empty id. Do not create a meaningless
+            // lease before that validation is known to have passed.
+            if (!requirement.resource.empty()) resources.insert(requirement.resource);
+        }
+        collectRequiredResources(node.children, resources);
+    }
 }
 
 struct ResourceRoute {
@@ -371,7 +386,8 @@ ScenarioRunResult ScenarioEngine::run(
     std::string profileVersion,
     std::string objectSerial,
     bool allowPartial,
-    std::function<void(const RunEvent&)> progressSink)
+    std::function<void(const RunEvent&)> progressSink,
+    ResourceLeaseManager* resourceLeases)
 {
     bool expected = false;
     if (!running_.compare_exchange_strong(expected, true)) {
@@ -395,6 +411,11 @@ ScenarioRunResult ScenarioEngine::run(
     run.profileVersion = std::move(profileVersion);
     run.objectSerial = std::move(objectSerial);
     run.startedAt = std::chrono::system_clock::now();
+
+    const auto publish = [&run, &progressSink](RunEvent event) {
+        run.events.push_back(event);
+        if (progressSink) progressSink(event);
+    };
 
     const auto finish = [&run] {
         run.finishedAt = std::chrono::system_clock::now();
@@ -422,13 +443,44 @@ ScenarioRunResult ScenarioEngine::run(
         return run;
     }
 
+    // A delivery declares its logical resources in ScenarioNode::requiredResources.
+    // Claim the complete set once, before the first physical procedure. Keeping
+    // the lease alive through engine.run() also keeps it alive through the
+    // unconditional safeStopAll() at the end of this function.
+    ResourceLeaseManager::Lease lease;
+    if (resourceLeases) {
+        std::set<std::string> resources;
+        collectRequiredResources(scenario.steps, resources);
+        if (!resources.empty()) {
+            try {
+                lease = resourceLeases->acquire(run.runId, std::move(resources));
+                publish({
+                    std::chrono::system_clock::now(), {}, "RESOURCE_LEASE",
+                    "Ресурсы станции закреплены за запуском", RunVerdict::NotRun,
+                    {{"owner", lease.owner()},
+                     {"resource_count", std::to_string(lease.resources().size())}}});
+            } catch (const ResourceBusyError& error) {
+                run.verdict = RunVerdict::Incomplete;
+                publish({
+                    std::chrono::system_clock::now(), {}, "RESOURCE_LEASE",
+                    "Запуск не начат: ресурс станции занят другим запуском",
+                    RunVerdict::Incomplete,
+                    {{"resource", error.resource()}, {"owner", error.owner()}}});
+                finish();
+                return run;
+            }
+        } else {
+            publish({
+                std::chrono::system_clock::now(), {}, "RESOURCE_LEASE",
+                "Сценарий не объявляет логические ресурсы; межзапусковая блокировка не применена",
+                RunVerdict::NotRun});
+        }
+    }
+
     ProcedureContext context{
         equipment,
         stopRequested_,
-        [&run, &progressSink](const RunEvent& event) {
-            run.events.push_back(event);
-            if (progressSink) progressSink(event);
-        },
+        publish,
         run.runId,
         {},
     };

@@ -138,6 +138,7 @@ if(WIN32 AND BUILD_TESTING)
         ktma.ubsi.production
         ktma.ubsi.production_scenarios
         ktma.ubsi.production_report
+        ktma.ubsi.equipment_readiness
         ktma.ubsi.scenario_runtime
         PROPERTIES
         ENVIRONMENT_MODIFICATION

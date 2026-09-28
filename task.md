@@ -12,7 +12,7 @@
 | 02 | Component profile и raw-sample boundary | done | — |
 | 03 | External process в общем run | done | 01, 02 |
 | 04 | Зелёный resource-routing contract | done | 02 |
-| 05 | Lease, состояния ресурсов и recovery | todo | 04 |
+| 05 | Lease, состояния ресурсов и recovery | in-progress | 04 |
 | 06 | Сквозной immutable Evidence | todo | 01, 03, 04 |
 | 07 | Project-driven operator launcher | todo | 01, 02, 04 |
 | 08 | Production packages и повтор узла | todo | 05, 06, 07 |
@@ -26,11 +26,12 @@
 component/sample boundary, execution runtime и resource-routing contract. Это подтверждено их
 контрактными тестами, но не делает продукт готовым.
 
-Ближайшая незакрытая задача — 05: lease, состояния ресурсов и recovery.
-Локальный полный CTest от 2026-09-25 после исправления Unicode-пути даёт
-22/24. Оставшиеся отказы относятся к КТМА/УБСИ:
-`ktma.ubsi.equipment_readiness` (`0xc0000135`) и
-`ktma.ubsi.scenario_runtime` (YALK open-state criterion).
+Задача 05 выполняется: declared-resource lease уже включён в common run и
+Desktop-маршруты. Состояния ресурса и recovery ещё не реализованы, поэтому
+задача не закрыта.
+Локальный Release build и полный CTest от 2026-09-28 проходят: **24/24**.
+Это локальный gate; статус удалённого CI и bench/Evidence подтверждения этим
+прогоном не заменяются.
 
 ## Покрытие критериев спецификации
 

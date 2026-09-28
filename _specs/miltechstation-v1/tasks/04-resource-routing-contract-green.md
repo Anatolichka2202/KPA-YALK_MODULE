@@ -31,7 +31,7 @@ capability и выполняет процедуру через выбранны�
 `std::ifstream` на Windows/MinGW под кириллическим профилем. Loader теперь
 использует Qt file API с UTF-8 декодированием, а regression fixture всегда
 создаёт каталог с кириллицей. После Release-сборки проходят
-`stand.scenario_resource` и весь набор generic station тестов; полный CTest
-даёт 22/24. Два оставшихся отказа относятся к KTMA/UBSI, а не к routing
-contract: `ktma.ubsi.equipment_readiness` (`0xc0000135`) и
-`ktma.ubsi.scenario_runtime` (YALK open-state criterion).
+`stand.scenario_resource` и весь набор generic station тестов. После
+исправления test-environment PATH и fixture open-input полный локальный
+Release CTest от 28.09.2026 проходит **24/24**. Удалённый CI этим локальным
+прогоном не подтверждается.

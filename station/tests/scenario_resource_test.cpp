@@ -266,6 +266,39 @@ int main(int argc, char** argv)
         require(equipment.stopped,
                 "successful run must still safe-stop equipment");
 
+        ResourceLeaseManager runLeases;
+        auto owner = runLeases.acquire("already-running", {"supply.primary"});
+        equipment.resourceInvoked = false;
+        equipment.stopped = false;
+        std::vector<RunEvent> leaseProgress;
+        const auto blocked = engine.run(
+            scenario, equipment, "profile-1", "SN-1", false,
+            [&leaseProgress](const RunEvent& event) { leaseProgress.push_back(event); },
+            &runLeases);
+        require(blocked.verdict == RunVerdict::Incomplete,
+                "a conflicting cross-engine lease must reject the run before a procedure starts");
+        require(!equipment.resourceInvoked && !equipment.stopped,
+                "a lease conflict must not touch equipment or issue a safe stop");
+        require(blocked.events.size() == 1
+                    && blocked.events.front().stage == "RESOURCE_LEASE"
+                    && blocked.events.front().data.at("resource") == "supply.primary"
+                    && blocked.events.front().data.at("owner") == "already-running",
+                "lease conflict event must identify the blocking resource and owner");
+        require(leaseProgress.size() == 1
+                    && leaseProgress.front().stage == "RESOURCE_LEASE"
+                    && leaseProgress.front().data.at("owner") == "already-running",
+                "lease conflict must reach the operator progress sink");
+
+        owner.reset();
+        equipment.resourceInvoked = false;
+        equipment.stopped = false;
+        const auto leased = engine.run(
+            scenario, equipment, "profile-1", "SN-1", false, {}, &runLeases);
+        require(leased.verdict == RunVerdict::Ok && equipment.resourceInvoked && equipment.stopped,
+                "a released resource must permit the next run through cleanup");
+        require(!runLeases.busy("supply.primary"),
+                "the engine must release its lease only after its run returns");
+
         verifyLeaseContract();
         verifyScenarioEngineRejectsNestedRun();
 

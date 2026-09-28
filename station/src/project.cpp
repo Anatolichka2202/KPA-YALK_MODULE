@@ -367,14 +367,15 @@ ScenarioRunResult runScenarioWithEvidence(
     std::string profileVersion,
     std::string objectSerial,
     bool allowPartial,
-    std::function<void(const RunEvent&)> progressSink)
+    std::function<void(const RunEvent&)> progressSink,
+    ResourceLeaseManager* resourceLeases)
 {
     std::vector<EvidenceEvent> evidence;
     evidence.reserve(64);
     EvidenceProvider auditedEquipment(equipment, evidence);
     auto result = engine.run(
         scenario, auditedEquipment, std::move(profileVersion), std::move(objectSerial),
-        allowPartial, std::move(progressSink));
+        allowPartial, std::move(progressSink), resourceLeases);
     result.evidence = std::move(evidence);
     return result;
 }
@@ -389,7 +390,8 @@ ScenarioRunResult runProjectWorkflow(
     bool allowPartial,
     ProjectRunContext context,
     const ScenarioDefinition* scenarioOverride,
-    std::function<void(const RunEvent&)> progressSink)
+    std::function<void(const RunEvent&)> progressSink,
+    ResourceLeaseManager* resourceLeases)
 {
     const auto* workflow = findWorkflow(project, workflowId);
     if (!workflow) throw std::invalid_argument("Project workflow not found: " + workflowId);
@@ -420,7 +422,7 @@ ScenarioRunResult runProjectWorkflow(
 
     auto result = runScenarioWithEvidence(
         engine, equipment, *scenario, std::move(profileVersion), std::move(objectSerial),
-        allowPartial, std::move(progressSink));
+        allowPartial, std::move(progressSink), resourceLeases);
     result.projectId = project.id;
     result.projectVersion = project.version;
     result.workflowId = workflow->id;

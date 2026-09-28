@@ -237,8 +237,9 @@ void UniversalMainWindow::runGenericScenario(
     engine->resetStop();
     const std::string profileVersion = integrationStandProfile().version;
     const std::string serial = objectSerial.toStdString();
+    auto* leases = &integrationStationSession().leases();
     genericWatcher_->setFuture(QtConcurrent::run(
-        [this, scenario, profileVersion, serial] {
+        [this, scenario, profileVersion, serial, leases] {
             const auto progress = [this](const orbita::stand::RunEvent& event) {
                 QMetaObject::invokeMethod(this, [this, event] {
                     if (genericDialog_) genericDialog_->appendEvent(event);
@@ -254,14 +255,16 @@ void UniversalMainWindow::runGenericScenario(
                 return orbita::stand::runProjectWorkflow(
                     *project, "free", *integrationScenarioEngine(),
                     *integrationEquipmentRegistry(), profileVersion, serial, false,
-                    std::move(context), &scenario, progress);
+                    std::move(context), &scenario, progress,
+                    leases);
             }
 
             // Compatibility fallback for development layouts that do not yet
             // deploy project packages next to the executable.
-            return integrationScenarioEngine()->run(
-                scenario, *integrationEquipmentRegistry(), profileVersion, serial, false,
-                progress);
+            return orbita::stand::runScenarioWithEvidence(
+                *integrationScenarioEngine(), *integrationEquipmentRegistry(),
+                scenario, profileVersion, serial, false, progress,
+                leases);
         }));
 }
 

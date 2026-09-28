@@ -99,6 +99,10 @@ Capability → Device plugin → Evidence → Result`.
 - Состояние ресурса и recovery являются общими механизмами. После timeout
   состояние, которое нельзя доказать, становится `INDETERMINATE`; это не
   verdict изделия.
+- В текущем V1 нет общей внутренней DataBus/EventBus: raw samples, progress и
+  durable evidence идут отдельными подтверждёнными путями. Настоящая шина
+  требует отдельного контракта порядка, fan-out, backpressure и persistence;
+  её нельзя объявить реализованной переименованием callbacks.
 - Каждый физически значимый путь получает назначенные closure gates:
   contract/integration tests, bench verification при применимости и проверку
   сохранённого Evidence.
