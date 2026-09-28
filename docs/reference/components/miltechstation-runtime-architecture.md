@@ -33,7 +33,7 @@
 | Сборка оборудования | `StationSession` создаёт `EquipmentRegistry` и `ComponentRuntime`: `station/include/orbita_stand/station_session.h`, `station/src/station_session.cpp` | реализован |
 | Операторские окна | `apps/desktop/universal_mainwindow.cpp`, `apps/desktop/ktma_mainwindow.cpp`, `apps/desktop/mainwindow.cpp` | реализован, с несколькими маршрутами запуска |
 | Lease | `ResourceLeaseManager` принадлежит `StationSession`; common run получает lease всех явно объявленных ресурсов до возврата из `safeStopAll()` | реализовано для сценариев с `requiredResources`; state/recovery ещё нет |
-| Структурированное evidence | `EvidenceProvider` в `station/src/project.cpp` и `RunStore` в `station/src/run_store.cpp` | audited entry point реализован; не каждый вызов `ScenarioEngine::run()` обязан его использовать |
+| Структурированное evidence | `EvidenceProvider` в `station/src/project.cpp` и `RunStore` в `station/src/run_store.cpp` | audited entry point и SQLite save/load реализованы; не каждый вызов `ScenarioEngine::run()` обязан его использовать; raw-artifact metadata ещё не связано с run |
 
 `runScenarioWithEvidence()` оборачивает оборудование в `EvidenceProvider`,
 затем запускает сценарий. `runProjectWorkflow()` использует тот же entry point.
@@ -45,6 +45,13 @@
 Сценарий без `requiredResources` не получает такую блокировку: runtime не
 угадывает физические ресурсы по старому capability-only вызову. Поэтому
 критерий состояния и recovery остаётся открытым.
+
+`RunStore::load()` восстанавливает сохранённый `ScenarioRunResult`, включая
+identity, шаги, measurements, progress events и structured evidence; HTML/CSV
+renderer принимает эту же модель. Это проверяется `stand.run_store_context` на
+generic run, выполненном через `runScenarioWithEvidence()`. `RunArtifacts`
+пока не записывает свою directory/файлы в run metadata, поэтому это не
+доказывает сохранение raw-artifacts как части evidence.
 
 ## Есть ли единая шина данных?
 

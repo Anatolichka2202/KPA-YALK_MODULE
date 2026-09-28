@@ -114,7 +114,8 @@ if(BUILD_TESTING)
     add_test(NAME stand.project_definition COMMAND project_definition_test)
 
     add_executable(run_store_context_test tests/run_store_context_test.cpp)
-    target_link_libraries(run_store_context_test PRIVATE orbita_stand_reporting Qt6::Core Qt6::Sql)
+    target_link_libraries(run_store_context_test PRIVATE
+        orbita_stand_reporting orbita_stand_runtime Qt6::Core Qt6::Sql)
     add_test(NAME stand.run_store_context COMMAND run_store_context_test)
 
     add_executable(component_runtime_test tests/component_runtime_test.cpp)

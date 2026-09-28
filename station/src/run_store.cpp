@@ -11,6 +11,8 @@
 
 #include <atomic>
 #include <cstring>
+#include <functional>
+#include <map>
 #include <set>
 #include <stdexcept>
 
@@ -22,6 +24,11 @@ std::atomic_uint runConnectionCounter{0};
 qint64 milliseconds(std::chrono::system_clock::time_point value)
 {
     return std::chrono::duration_cast<std::chrono::milliseconds>(value.time_since_epoch()).count();
+}
+
+std::chrono::system_clock::time_point fromMilliseconds(qint64 value)
+{
+    return std::chrono::system_clock::time_point{std::chrono::milliseconds(value)};
 }
 
 void execute(QSqlQuery& query, const QString& sql)
@@ -43,6 +50,36 @@ QString attributesText(const std::map<std::string, std::string>& values)
         result += QString::fromUtf8(key) + '=' + QString::fromUtf8(value).replace('\n', ' ') + '\n';
     }
     return result;
+}
+
+std::map<std::string, std::string> attributesFromText(const QString& text)
+{
+    std::map<std::string, std::string> values;
+    for (const auto& line : text.split('\n', Qt::SkipEmptyParts)) {
+        const auto separator = line.indexOf('=');
+        if (separator <= 0) {
+            throw std::runtime_error(
+                "Persisted attribute line has no key/value separator");
+        }
+        const auto key = line.left(separator).toUtf8().toStdString();
+        const auto value = line.mid(separator + 1).toUtf8().toStdString();
+        const auto inserted = values.emplace(key, value);
+        if (!inserted.second) {
+            throw std::runtime_error("Persisted attribute key occurs more than once: " + key);
+        }
+    }
+    return values;
+}
+
+RunVerdict verdictFromText(const QString& value)
+{
+    if (value == QStringLiteral("NOT_RUN")) return RunVerdict::NotRun;
+    if (value == QStringLiteral("OK")) return RunVerdict::Ok;
+    if (value == QStringLiteral("FAIL")) return RunVerdict::Fail;
+    if (value == QStringLiteral("INCOMPLETE")) return RunVerdict::Incomplete;
+    if (value == QStringLiteral("ERROR")) return RunVerdict::Error;
+    if (value == QStringLiteral("ABORTED")) return RunVerdict::Aborted;
+    throw std::runtime_error("Unknown persisted run verdict: " + value.toUtf8().toStdString());
 }
 
 void addTextColumnIfMissing(
@@ -123,6 +160,7 @@ RunStore::RunStore(std::string sqlitePath) : impl_(std::make_unique<Impl>())
              QStringLiteral("dut_id"),
              QStringLiteral("operator_name"),
              QStringLiteral("environment_profile"),
+             QStringLiteral("scenario_title"),
              QStringLiteral("context_attributes")}) {
         addTextColumnIfMissing(impl_->database, QStringLiteral("test_runs"), column);
     }
@@ -151,8 +189,8 @@ void RunStore::save(const ScenarioRunResult& run)
             "INSERT INTO test_runs("
             "run_id,scenario_id,scenario_version,catalog_version,profile_version,object_serial,"
             "started_ms,finished_ms,verdict,project_id,project_version,workflow_id,dut_type,dut_id,"
-            "operator_name,environment_profile,context_attributes) "
-            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"));
+            "operator_name,environment_profile,scenario_title,context_attributes) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"));
         query.addBindValue(QString::fromUtf8(run.runId));
         query.addBindValue(QString::fromUtf8(run.scenarioId));
         query.addBindValue(QString::fromUtf8(run.scenarioVersion));
@@ -169,6 +207,7 @@ void RunStore::save(const ScenarioRunResult& run)
         query.addBindValue(QString::fromUtf8(run.dutId));
         query.addBindValue(QString::fromUtf8(run.operatorName));
         query.addBindValue(QString::fromUtf8(run.environmentProfile));
+        query.addBindValue(QString::fromUtf8(run.scenarioTitle));
         query.addBindValue(attributesText(run.contextAttributes));
         executePrepared(query);
 
@@ -211,6 +250,142 @@ void RunStore::save(const ScenarioRunResult& run)
         impl_->database.rollback();
         throw;
     }
+}
+
+std::optional<ScenarioRunResult> RunStore::load(const std::string& runId) const
+{
+    QSqlQuery query(impl_->database);
+    query.prepare(QStringLiteral(
+        "SELECT scenario_id,scenario_title,scenario_version,catalog_version,profile_version,object_serial,"
+        "started_ms,finished_ms,verdict,project_id,project_version,workflow_id,dut_type,dut_id,"
+        "operator_name,environment_profile,context_attributes "
+        "FROM test_runs WHERE run_id=?"));
+    query.addBindValue(QString::fromUtf8(runId));
+    executePrepared(query);
+    if (!query.next()) return std::nullopt;
+
+    ScenarioRunResult result;
+    result.runId = runId;
+    result.scenarioId = query.value(0).toString().toUtf8().toStdString();
+    result.scenarioTitle = query.value(1).toString().toUtf8().toStdString();
+    result.scenarioVersion = query.value(2).toString().toUtf8().toStdString();
+    result.catalogVersion = query.value(3).toString().toUtf8().toStdString();
+    result.profileVersion = query.value(4).toString().toUtf8().toStdString();
+    result.objectSerial = query.value(5).toString().toUtf8().toStdString();
+    result.startedAt = fromMilliseconds(query.value(6).toLongLong());
+    result.finishedAt = fromMilliseconds(query.value(7).toLongLong());
+    result.verdict = verdictFromText(query.value(8).toString());
+    result.projectId = query.value(9).toString().toUtf8().toStdString();
+    result.projectVersion = query.value(10).toString().toUtf8().toStdString();
+    result.workflowId = query.value(11).toString().toUtf8().toStdString();
+    result.dutType = query.value(12).toString().toUtf8().toStdString();
+    result.dutId = query.value(13).toString().toUtf8().toStdString();
+    result.operatorName = query.value(14).toString().toUtf8().toStdString();
+    result.environmentProfile = query.value(15).toString().toUtf8().toStdString();
+    result.contextAttributes = attributesFromText(query.value(16).toString());
+    if (query.next()) throw std::runtime_error("Persisted run id is not unique: " + runId);
+    query.finish();
+
+    std::map<std::string, std::vector<MeasurementResult>> measurements;
+    query.prepare(QStringLiteral(
+        "SELECT node_id,parameter_key,title,reference,measured,lower_limit,upper_limit,unit,verdict,message,attributes "
+        "FROM run_measurements WHERE run_id=? ORDER BY node_id,sort_order"));
+    query.addBindValue(QString::fromUtf8(runId));
+    executePrepared(query);
+    while (query.next()) {
+        MeasurementResult value;
+        const auto nodeId = query.value(0).toString().toUtf8().toStdString();
+        value.parameterKey = query.value(1).toString().toUtf8().toStdString();
+        value.title = query.value(2).toString().toUtf8().toStdString();
+        value.reference = query.value(3).toDouble();
+        value.measured = query.value(4).toDouble();
+        value.lowerLimit = query.value(5).toDouble();
+        value.upperLimit = query.value(6).toDouble();
+        value.unit = query.value(7).toString().toUtf8().toStdString();
+        value.verdict = verdictFromText(query.value(8).toString());
+        value.message = query.value(9).toString().toUtf8().toStdString();
+        value.attributes = attributesFromText(query.value(10).toString());
+        measurements[nodeId].push_back(std::move(value));
+    }
+    query.finish();
+
+    struct StoredStep {
+        StepRunResult step;
+        std::string parent;
+    };
+    std::map<std::string, std::vector<StoredStep>> children;
+    query.prepare(QStringLiteral(
+        "SELECT node_id,parent_node,title,tu_requirement,verdict,message "
+        "FROM run_steps WHERE run_id=? ORDER BY parent_node,sort_order"));
+    query.addBindValue(QString::fromUtf8(runId));
+    executePrepared(query);
+    while (query.next()) {
+        StoredStep stored;
+        stored.step.nodeId = query.value(0).toString().toUtf8().toStdString();
+        stored.parent = query.value(1).toString().toUtf8().toStdString();
+        stored.step.title = query.value(2).toString().toUtf8().toStdString();
+        stored.step.tuRequirement = query.value(3).toString().toUtf8().toStdString();
+        stored.step.verdict = verdictFromText(query.value(4).toString());
+        stored.step.message = query.value(5).toString().toUtf8().toStdString();
+        const auto found = measurements.find(stored.step.nodeId);
+        if (found != measurements.end()) stored.step.measurements = found->second;
+        children[stored.parent].push_back(std::move(stored));
+    }
+    query.finish();
+
+    std::function<std::vector<StepRunResult>(const std::string&)> restoreSteps;
+    restoreSteps = [&children, &restoreSteps](const std::string& parent) {
+        std::vector<StepRunResult> restored;
+        const auto found = children.find(parent);
+        if (found == children.end()) return restored;
+        restored.reserve(found->second.size());
+        for (const auto& stored : found->second) {
+            auto step = stored.step;
+            step.children = restoreSteps(step.nodeId);
+            restored.push_back(std::move(step));
+        }
+        return restored;
+    };
+    result.steps = restoreSteps({});
+
+    query.prepare(QStringLiteral(
+        "SELECT timestamp_ms,node_id,stage,message,verdict,attributes "
+        "FROM run_events WHERE run_id=? ORDER BY sort_order"));
+    query.addBindValue(QString::fromUtf8(runId));
+    executePrepared(query);
+    while (query.next()) {
+        RunEvent event;
+        event.timestamp = fromMilliseconds(query.value(0).toLongLong());
+        event.nodeId = query.value(1).toString().toUtf8().toStdString();
+        event.stage = query.value(2).toString().toUtf8().toStdString();
+        event.message = query.value(3).toString().toUtf8().toStdString();
+        event.verdict = verdictFromText(query.value(4).toString());
+        event.data = attributesFromText(query.value(5).toString());
+        result.events.push_back(std::move(event));
+    }
+    query.finish();
+
+    query.prepare(QStringLiteral(
+        "SELECT sequence,timestamp_ms,monotonic_ns,type,node_id,resource,capability,operation,message,verdict,data "
+        "FROM run_evidence WHERE run_id=? ORDER BY sequence"));
+    query.addBindValue(QString::fromUtf8(runId));
+    executePrepared(query);
+    while (query.next()) {
+        EvidenceEvent event;
+        event.sequence = query.value(0).toULongLong();
+        event.timestamp = fromMilliseconds(query.value(1).toLongLong());
+        event.monotonicNs = query.value(2).toLongLong();
+        event.type = query.value(3).toString().toUtf8().toStdString();
+        event.nodeId = query.value(4).toString().toUtf8().toStdString();
+        event.resource = query.value(5).toString().toUtf8().toStdString();
+        event.capability = query.value(6).toString().toUtf8().toStdString();
+        event.operation = query.value(7).toString().toUtf8().toStdString();
+        event.message = query.value(8).toString().toUtf8().toStdString();
+        event.verdict = verdictFromText(query.value(9).toString());
+        event.data = attributesFromText(query.value(10).toString());
+        result.evidence.push_back(std::move(event));
+    }
+    return result;
 }
 
 RunArtifacts::RunArtifacts(std::string rootDirectory, std::string runId)

@@ -4,6 +4,7 @@
 #include "orbita_stand/telemetry.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -17,6 +18,11 @@ public:
     RunStore& operator=(const RunStore&) = delete;
 
     void save(const ScenarioRunResult& run);
+
+    // Reconstructs the durable run model used by reports and engineering
+    // viewers. A missing run has no exceptional meaning and returns nullopt;
+    // malformed persisted verdict/attribute data is reported as an error.
+    std::optional<ScenarioRunResult> load(const std::string& runId) const;
 
 private:
     struct Impl;
