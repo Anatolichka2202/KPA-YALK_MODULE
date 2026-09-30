@@ -65,6 +65,13 @@ struct ProductionLedger::Impl
             "PRIMARY KEY(production_run_id, component_id), "
             "FOREIGN KEY(production_run_id) REFERENCES ubsi_production_runs(id) ON DELETE CASCADE)")),
             query, "create ubsi_production_run_components");
+        check(query.exec(QStringLiteral(
+            "CREATE TABLE IF NOT EXISTS ubsi_production_status_audit ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, product_id TEXT NOT NULL, "
+            "component_type TEXT NOT NULL, status TEXT NOT NULL, "
+            "production_run_id TEXT NOT NULL, run_id TEXT NOT NULL, "
+            "reason TEXT NOT NULL, selected_at TEXT NOT NULL)")),
+            query, "create production status audit");
     }
 
     ~Impl()
@@ -217,11 +224,88 @@ std::vector<ProductionRunRecord> ProductionLedger::listForProduct(const std::str
     query.prepare(QStringLiteral(
         "SELECT id, product_id, product_serial, stage, package_code, scenario_code, "
         "status, COALESCE(run_id,''), opened_at, COALESCE(finished_at,'') "
-        "FROM ubsi_production_runs WHERE product_id=? ORDER BY opened_at DESC"));
+        "FROM ubsi_production_runs WHERE product_id=? ORDER BY opened_at DESC, rowid DESC"));
     query.addBindValue(QString::fromStdString(productId));
     check(query.exec(), query, "list production runs");
     std::vector<ProductionRunRecord> result;
     while (query.next()) result.push_back(impl_->readRecord(query));
+    return result;
+}
+
+std::vector<CurrentComponentStatus> ProductionLedger::recomputeCurrentStatus(
+    const std::string& productId, const std::string& reason)
+{
+    if (productId.empty() || reason.empty())
+        throw std::invalid_argument("product id and status-selection reason are required");
+
+    std::map<std::string, CurrentComponentStatus> current;
+    for (const auto& record : listForProduct(productId)) {
+        if (record.status != ProductionRunStatus::Norm
+            && record.status != ProductionRunStatus::NotNorm) continue;
+        if (record.runId.empty()) continue;
+        for (const auto& component : record.context.composition) {
+            if (!component.affected || current.count(component.componentType)) continue;
+            current.emplace(component.componentType, CurrentComponentStatus{
+                component.componentType, record.status, record.id, record.runId, {}});
+        }
+    }
+
+    if (!impl_->database.transaction())
+        throw std::runtime_error("cannot start production status audit transaction");
+    try {
+        QSqlQuery insert(impl_->database);
+        insert.prepare(QStringLiteral(
+            "INSERT INTO ubsi_production_status_audit "
+            "(product_id, component_type, status, production_run_id, run_id, reason, selected_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)"));
+        for (auto& [componentType, selection] : current) {
+            (void)componentType;
+            selection.selectedAt = nowUtc();
+            insert.addBindValue(QString::fromStdString(productId));
+            insert.addBindValue(QString::fromStdString(selection.componentType));
+            insert.addBindValue(QString::fromUtf8(toString(selection.status)));
+            insert.addBindValue(QString::fromStdString(selection.productionRunId));
+            insert.addBindValue(QString::fromStdString(selection.runId));
+            insert.addBindValue(QString::fromStdString(reason));
+            insert.addBindValue(QString::fromStdString(selection.selectedAt));
+            check(insert.exec(), insert, "audit current production status");
+            insert.finish();
+        }
+        if (!impl_->database.commit())
+            throw std::runtime_error("cannot commit production status audit");
+    } catch (...) {
+        impl_->database.rollback();
+        throw;
+    }
+
+    std::vector<CurrentComponentStatus> result;
+    result.reserve(current.size());
+    for (auto& [componentType, selection] : current) {
+        (void)componentType;
+        result.push_back(std::move(selection));
+    }
+    return result;
+}
+
+std::vector<ProductionStatusSelectionEvent> ProductionLedger::statusSelectionHistory(
+    const std::string& productId) const
+{
+    QSqlQuery query(impl_->database);
+    query.prepare(QStringLiteral(
+        "SELECT product_id, component_type, status, production_run_id, run_id, reason, selected_at "
+        "FROM ubsi_production_status_audit WHERE product_id=? ORDER BY id ASC"));
+    query.addBindValue(QString::fromStdString(productId));
+    check(query.exec(), query, "read production status audit");
+    std::vector<ProductionStatusSelectionEvent> result;
+    while (query.next()) {
+        result.push_back({query.value(0).toString().toStdString(),
+            query.value(1).toString().toStdString(),
+            productionRunStatusFromString(query.value(2).toString().toStdString()),
+            query.value(3).toString().toStdString(),
+            query.value(4).toString().toStdString(),
+            query.value(5).toString().toStdString(),
+            query.value(6).toString().toStdString()});
+    }
     return result;
 }
 

@@ -4,6 +4,7 @@
 #include "ktma/ubsi/production.h"
 
 #include <memory>
+#include <map>
 #include <optional>
 #include <string>
 
@@ -40,6 +41,7 @@ private slots:
                      bool allowPartial);
     void finalizeProductionRun();
     void checkSelectedEquipment();
+    void openProjectWorkflow(const QString& workflowId);
 
 private:
     void loadTuScenarios();
@@ -54,5 +56,7 @@ private:
     std::unique_ptr<ktma::ubsi::ProductionLedger> productionLedger_;
     std::string pendingProductionRunId_;
     std::string pendingTuProductId_;
+    QString projectProductionCode_;
+    std::map<std::string, std::string> pendingWorkflowContext_;
     std::optional<ktma::ubsi::ProductionRunContext> pendingProductionContext_;
 };

@@ -65,7 +65,7 @@ foreach ($name in @(
     }
 }
 
-foreach ($name in @('address', 'catalog', 'profiles', 'scenarios', 'plugins')) {
+foreach ($name in @('address', 'catalog', 'profiles', 'scenarios', 'plugins', 'projects', 'data')) {
     $source = Join-Path $runtimeRoot $name
     if (-not (Test-Path -LiteralPath $source -PathType Container)) {
         throw "Required runtime directory not found: $source"
@@ -93,6 +93,15 @@ foreach ($plugin in Get-ChildItem -LiteralPath (Join-Path $packageRoot 'plugins'
 
 $required = @(
     'MilTechStation.exe', 'parameters.db', 'profiles\stand_ktma.yaml',
+    'projects\ktma\project.yaml',
+    'projects\ktma\workflows\free.yaml',
+    'projects\ktma\workflows\tu_normal.yaml',
+    'projects\ktma\workflows\tu_climate.yaml',
+    'projects\ktma\workflows\tu_climate_minus.yaml',
+    'projects\ktma\workflows\production.yaml',
+    'projects\ktma\workflows\production_climate.yaml',
+    'projects\ktma\workflows\production_climate_minus.yaml',
+    'data\profiles\stand_ktma.yaml',
     'scenarios\ubsi_production_full.yaml', 'scenarios\ubsi_production_power.yaml',
     'scenarios\ubsi_production_yalk.yaml', 'scenarios\ubsi_production_ytp.yaml',
     'scenarios\ubsi_production_yvp.yaml',

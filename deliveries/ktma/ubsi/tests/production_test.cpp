@@ -9,6 +9,7 @@
 #include <QTemporaryDir>
 
 #include <array>
+#include <algorithm>
 #include <chrono>
 #include <fstream>
 #include <iostream>
@@ -264,6 +265,78 @@ void persistedLifecycleContract()
         "product lifecycle leaked into runs.db");
 }
 
+void rerunStatusSelectionContract()
+{
+    QTemporaryDir directory;
+    require(directory.isValid(), "temporary production status directory unavailable");
+    ubsi::ProductionLedger ledger(
+        directory.filePath(QStringLiteral("registrar.db")).toStdString());
+    const auto product = completeProduct();
+
+    const auto addAttempt = [&](ubsi::ProductionPackage package,
+                                ubsi::ProductionRunStatus status,
+                                const std::string& runId) {
+        const auto context = ubsi::buildProductionRunContext(
+            product, registrar::Stage::Primary, package);
+        const auto productionId = ledger.begin(context);
+        ledger.attachRun(productionId, runId);
+        ledger.finish(productionId, status);
+        return productionId;
+    };
+
+    const auto fullRun = addAttempt(ubsi::ProductionPackage::FullUbsi,
+        ubsi::ProductionRunStatus::NotNorm, "run-full-fail");
+    auto selected = ledger.recomputeCurrentStatus("p1", "after FULL measurement");
+    require(selected.size() == 4,
+        "FULL result must supply accepted status for all four affected components");
+    const auto yalkFail = std::find_if(selected.begin(), selected.end(), [](const auto& item) {
+        return item.componentType == "YALK-96";
+    });
+    require(yalkFail != selected.end()
+                && yalkFail->status == ubsi::ProductionRunStatus::NotNorm
+                && yalkFail->runId == "run-full-fail",
+            "current YALK status must point to the accepted failed FULL result");
+
+    addAttempt(ubsi::ProductionPackage::Yalk,
+        ubsi::ProductionRunStatus::StandError, "run-yalk-stand-error");
+    selected = ledger.recomputeCurrentStatus("p1", "after YALK equipment error");
+    const auto yalkAfterError = std::find_if(selected.begin(), selected.end(), [](const auto& item) {
+        return item.componentType == "YALK-96";
+    });
+    require(yalkAfterError != selected.end()
+                && yalkAfterError->runId == "run-full-fail"
+                && yalkAfterError->status == ubsi::ProductionRunStatus::NotNorm,
+            "equipment error must not replace the last accepted DUT verdict");
+
+    const auto yalkRerun = addAttempt(ubsi::ProductionPackage::Yalk,
+        ubsi::ProductionRunStatus::Norm, "run-yalk-rerun-ok");
+    selected = ledger.recomputeCurrentStatus("p1", "after accepted YALK rerun");
+    const auto yalkAfterRerun = std::find_if(selected.begin(), selected.end(), [](const auto& item) {
+        return item.componentType == "YALK-96";
+    });
+    require(yalkAfterRerun != selected.end()
+                && yalkAfterRerun->status == ubsi::ProductionRunStatus::Norm
+                && yalkAfterRerun->productionRunId == yalkRerun
+                && yalkAfterRerun->runId == "run-yalk-rerun-ok",
+            "accepted node rerun must become current without rewriting prior history");
+
+    const auto history = ledger.listForProduct("p1");
+    require(history.size() == 3 && history[0].runId == "run-yalk-rerun-ok"
+                && history[1].runId == "run-yalk-stand-error"
+                && history[2].runId == "run-full-fail"
+                && history[2].id == fullRun,
+            "FULL, equipment error and node rerun attempts must all remain immutable history");
+    const auto audit = ledger.statusSelectionHistory("p1");
+    const auto latestYalkSelection = std::find_if(audit.rbegin(), audit.rend(), [](const auto& item) {
+        return item.componentType == "YALK-96";
+    });
+    require(audit.size() == 12 && audit.front().productionRunId == fullRun
+                && latestYalkSelection != audit.rend()
+                && latestYalkSelection->productionRunId == yalkRerun
+                && latestYalkSelection->reason == "after accepted YALK rerun",
+            "status-source choices and reasons must remain auditable");
+}
+
 void separationContract()
 {
     const char* productionFiles[] = {
@@ -323,6 +396,7 @@ int main(int argc, char** argv)
         mandatoryCompositionContract();
         ledgerContract();
         persistedLifecycleContract();
+        rerunStatusSelectionContract();
         separationContract();
         std::cout << "KTMA UBSI production contract OK\n";
         return 0;

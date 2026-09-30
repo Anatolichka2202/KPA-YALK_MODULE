@@ -115,6 +115,18 @@ protected:
     void integrationOpenRegistrar() { setMode(ModeAdmin); }
     void integrationOpenTests() { setMode(ModeTests); }
     bool integrationResultSaved() const { return lastResultSaved_; }
+    bool integrationPersistRun(const orbita::stand::ScenarioRunResult& result)
+    {
+        if (!runStore_) return false;
+        try {
+            runStore_->save(result);
+            return true;
+        } catch (const std::exception& error) {
+            log(QStringLiteral("Не удалось сохранить run: %1")
+                .arg(QString::fromUtf8(error.what())));
+            return false;
+        }
+    }
     virtual bool integrationUsesDedicatedProductionFinalizer() const
     {
         return false;

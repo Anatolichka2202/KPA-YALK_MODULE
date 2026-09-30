@@ -68,7 +68,24 @@ WorkflowDefinition loadWorkflow(
     workflow.scenarioPath = resolvedPath(projectRoot, root.value("scenario"));
     workflow.reportPath = resolvedPath(projectRoot, root.value("report"));
     workflow.environmentPath = resolvedPath(projectRoot, root.value("environment"));
+    if (!workflow.environmentPath.empty()) {
+        const auto environment = yaml::parseFile(workflow.environmentPath);
+        if (!environment.isMap() || environment.value("schema") != "1")
+            throw yaml::Error("Unsupported environment descriptor: " + workflow.environmentPath);
+        workflow.environmentId = environment.value("id");
+        workflow.environmentTitle = environment.value("title");
+        workflow.environmentMode = environment.value("mode");
+        if (workflow.environmentId.empty() || workflow.environmentTitle.empty()
+            || (workflow.environmentMode != "observed"
+                && workflow.environmentMode != "manual_or_controlled"))
+            throw yaml::Error("Environment descriptor must define id, title and a supported mode: "
+                + workflow.environmentPath);
+    }
     workflow.referenceWorkflow = root.value("reference_workflow");
+    workflow.operatorAction = root.value("operator_action");
+    workflow.unavailableReason = root.value("unavailable_reason");
+    workflow.operatorAvailable = boolean(
+        root.value("operator_available"), true, "operator_available");
     workflow.allowDynamicScenario = boolean(
         root.value("allow_dynamic_scenario"), false, "allow_dynamic_scenario");
     workflow.allowScenarioOverrides = boolean(
@@ -401,6 +418,15 @@ ScenarioRunResult runProjectWorkflow(
             "Workflow " + workflowId + " requires a registered DUT");
     }
 
+    if (workflow->environmentMode == "manual_or_controlled") {
+        const auto confirmed = context.attributes.find("environment_confirmed");
+        const auto source = context.attributes.find("environment_confirmation_source");
+        if (confirmed == context.attributes.end() || confirmed->second != "true"
+            || source == context.attributes.end() || source->second.empty())
+            throw std::runtime_error(
+                "Workflow " + workflowId + " requires explicit environment confirmation");
+    }
+
     ScenarioDefinition loadedScenario;
     const ScenarioDefinition* scenario = scenarioOverride;
     if (scenarioOverride) {
@@ -431,6 +457,27 @@ ScenarioRunResult runProjectWorkflow(
     result.operatorName = std::move(context.operatorName);
     result.environmentProfile = workflow->environmentPath;
     result.contextAttributes = std::move(context.attributes);
+    result.contextAttributes["environment_id"] = workflow->environmentId;
+    result.contextAttributes["environment_title"] = workflow->environmentTitle;
+    result.contextAttributes["environment_mode"] = workflow->environmentMode;
+    if (!workflow->environmentPath.empty()) {
+        for (auto& event : result.evidence) ++event.sequence;
+        EvidenceEvent environmentEvent;
+        environmentEvent.sequence = 1;
+        environmentEvent.timestamp = result.startedAt;
+        environmentEvent.type = "ENVIRONMENT";
+        environmentEvent.nodeId = "workflow-environment";
+        environmentEvent.message = "Зафиксирован контекст условий проведения запуска";
+        environmentEvent.data = {
+            {"environment_id", workflow->environmentId},
+            {"environment_title", workflow->environmentTitle},
+            {"environment_mode", workflow->environmentMode},
+            {"environment_profile", workflow->environmentPath}};
+        const auto confirmation = result.contextAttributes.find("environment_confirmation_source");
+        if (confirmation != result.contextAttributes.end())
+            environmentEvent.data["confirmation_source"] = confirmation->second;
+        result.evidence.insert(result.evidence.begin(), std::move(environmentEvent));
+    }
     return result;
 }
 

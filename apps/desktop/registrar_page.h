@@ -41,7 +41,8 @@ public:
     explicit RegistrarPage(QWidget* parent = nullptr);
 
     void setRegistrar(ktma::registrar::Registrar* registrar);
-    void setProductionLedger(ktma::ubsi::ProductionLedger* ledger) { productionLedger_ = ledger; }
+    void setProductionLedger(ktma::ubsi::ProductionLedger* ledger);
+    void refreshNow();
     std::optional<ProductionSelection> selectedProductionSelection() const;
     std::optional<ProductProductionSelection> selectedProductionProduct() const;
 

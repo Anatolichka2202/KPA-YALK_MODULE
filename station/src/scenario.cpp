@@ -448,12 +448,12 @@ ScenarioRunResult ScenarioEngine::run(
     // the lease alive through engine.run() also keeps it alive through the
     // unconditional safeStopAll() at the end of this function.
     ResourceLeaseManager::Lease lease;
+    std::set<std::string> leasedResources;
     if (resourceLeases) {
-        std::set<std::string> resources;
-        collectRequiredResources(scenario.steps, resources);
-        if (!resources.empty()) {
+        collectRequiredResources(scenario.steps, leasedResources);
+        if (!leasedResources.empty()) {
             try {
-                lease = resourceLeases->acquire(run.runId, std::move(resources));
+                lease = resourceLeases->acquire(run.runId, leasedResources);
                 publish({
                     std::chrono::system_clock::now(), {}, "RESOURCE_LEASE",
                     "Ресурсы станции закреплены за запуском", RunVerdict::NotRun,
@@ -466,6 +466,17 @@ ScenarioRunResult ScenarioEngine::run(
                     "Запуск не начат: ресурс станции занят другим запуском",
                     RunVerdict::Incomplete,
                     {{"resource", error.resource()}, {"owner", error.owner()}}});
+                finish();
+                return run;
+            } catch (const ResourceRecoveryRequiredError& error) {
+                run.verdict = RunVerdict::Incomplete;
+                publish({
+                    std::chrono::system_clock::now(), {}, "RESOURCE_RECOVERY",
+                    "Запуск не начат: требуется восстановление ресурса",
+                    RunVerdict::Incomplete,
+                    {{"resource", error.resource()},
+                     {"state", toString(error.record().state)},
+                     {"reason", error.record().reason}}});
                 finish();
                 return run;
             }
@@ -486,27 +497,61 @@ ScenarioRunResult ScenarioEngine::run(
     };
 
     run.verdict = RunVerdict::Ok;
+    std::string operationFailureReason;
     try {
         for (const auto& node : scenario.steps) {
             auto step = runNode(node, context, allowPartial);
             const auto stepVerdict = step.verdict;
+            if (stepVerdict == RunVerdict::Error || stepVerdict == RunVerdict::Fail) {
+                operationFailureReason = step.message.empty()
+                    ? "scenario step failed: " + node.id : step.message;
+            }
             run.verdict = combineVerdicts(run.verdict, stepVerdict);
             run.steps.push_back(std::move(step));
             if (shouldStop(stepVerdict, allowPartial)) break;
         }
     } catch (const std::exception& error) {
         run.verdict = RunVerdict::Error;
+        operationFailureReason = error.what();
         run.events.push_back({
             std::chrono::system_clock::now(), {}, "ENGINE", error.what(),
             RunVerdict::Error});
     } catch (...) {
         run.verdict = RunVerdict::Error;
+        operationFailureReason = "Неизвестная ошибка сценарного движка";
         run.events.push_back({
             std::chrono::system_clock::now(), {}, "ENGINE",
             "Неизвестная ошибка сценарного движка", RunVerdict::Error});
     }
 
-    equipment.safeStopAll();
+    if (resourceLeases && lease) {
+        const auto stopResults = equipment.safeStopResources(leasedResources);
+        bool allConfirmed = true;
+        for (const auto& resource : leasedResources) {
+            const auto result = stopResults.find(resource);
+            const bool confirmed = result != stopResults.end() && result->second.confirmed;
+            std::string reason = result == stopResults.end()
+                ? "provider returned no safe-stop result for resource"
+                : result->second.reason;
+            if (!operationFailureReason.empty())
+                reason = "run failure: " + operationFailureReason + "; cleanup: " + reason;
+            resourceLeases->recordSafeStop(
+                resource, run.runId, confirmed, run.verdict == RunVerdict::Error, reason);
+            const auto state = !confirmed ? "INDETERMINATE"
+                : run.verdict == RunVerdict::Error ? "ERROR" : "SAFE";
+            publish({
+                std::chrono::system_clock::now(), {}, "RESOURCE_SAFE_STOP",
+                confirmed ? "Безопасная остановка ресурса подтверждена"
+                          : "Безопасная остановка ресурса не подтверждена",
+                confirmed ? RunVerdict::NotRun : RunVerdict::Error,
+                {{"resource", resource}, {"state", state}, {"reason", reason}}});
+            allConfirmed = allConfirmed && confirmed;
+        }
+        if (!allConfirmed && run.verdict == RunVerdict::Ok)
+            run.verdict = RunVerdict::Error;
+    } else {
+        equipment.safeStopAll();
+    }
     if (allowPartial && run.verdict == RunVerdict::Ok) {
         run.verdict = RunVerdict::Incomplete;
     }

@@ -19,9 +19,11 @@ private slots:
     void openGenericCheck();
     void reloadGenericScenarios();
     void editGenericScenario(const QString& path);
-    void runGenericScenario(const QString& path,
+    void runGenericScenario(const QString& workflowId,
+                            const QString& path,
                             const QString& objectSerial,
                             const QString& description,
+                            const QString& engineeringOverride,
                             const QString& reportTemplate);
     void stopGenericScenario();
     void finishGenericScenario();
@@ -35,5 +37,6 @@ private:
     GenericCheckDialog* genericDialog_ = nullptr;
     QFutureWatcher<orbita::stand::ScenarioRunResult>* genericWatcher_ = nullptr;
     QString genericDescription_;
+    QString genericEngineeringOverride_;
     QString genericTemplate_;
 };

@@ -1,6 +1,6 @@
 # 10: Environment context для normal / `+` / `−`
 
-**Статус:** todo
+**Статус:** done
 
 **Блокируется:** 01: Project package и workflow identity; 06: Сквозной immutable Evidence; 07: Project-driven operator launcher.
 
@@ -15,12 +15,26 @@
 
 ## Критерии приёмки
 
-- [ ] Environment descriptor является частью project/workflow/run context.
-- [ ] Normal, `+` и `−` запускаются как отдельные runs, не как post-climate
+- [x] Environment descriptor является частью project/workflow/run context.
+- [x] Normal, `+` и `−` запускаются как отдельные runs, не как post-climate
   flag предыдущего run.
-- [ ] Ручное подтверждение среды записывается как operator action/Evidence.
-- [ ] При наличии chamber plugin его capability проходит общий resource/safety
+- [x] Ручное подтверждение среды записывается как operator action/Evidence.
+- [x] При наличии chamber plugin его capability проходит общий resource/safety
   boundary.
-- [ ] Неизвестный setpoint не появляется автоматически из product core.
-- [ ] Есть simulator/integration tests; реальный chamber path получает
-  отдельный bench verification до `done`.
+- [x] Неизвестный setpoint не появляется автоматически из product core.
+- [x] Есть simulator/integration tests. Chamber plugin path в текущем объёме не
+  сконфигурирован; его будущая физическая реализация потребует отдельный bench
+  verification до закрытия именно этого пути.
+
+## Выполнено и проверено (2026-09-28)
+
+- Project package содержит отдельные workflow ТУ normal / climate `+` /
+  climate `−` и production climate `+` / `−`; у каждого свой descriptor.
+- Для `manual_or_controlled` runtime не запускает сценарий без подтверждения и
+  источника подтверждения. Descriptor, подтверждение и `ENVIRONMENT` Evidence
+  попадают в `ScenarioRunResult`; KTMA launch добавляет их в сохраняемый run.
+- Температурные setpoint/stabilization не заданы и не вычисляются общим кодом.
+  Chamber plugin в текущем package не сконфигурирован, поэтому физическая
+  chamber-ветка отсутствует и не заявляется как проверенная.
+- `stand.project_definition` проверяет normal/+/- IDs, отказ без подтверждения
+  и run context/Evidence после подтверждённого исполнения.

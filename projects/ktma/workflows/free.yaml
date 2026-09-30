@@ -2,6 +2,8 @@ schema: 1
 id: free
 title: Свободная инженерная проверка
 kind: free
+operator_action: station.free
+operator_available: true
 
 allow_dynamic_scenario: true
 allow_scenario_overrides: true

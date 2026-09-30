@@ -235,13 +235,21 @@ address\...
 catalog\catalog.yaml
 profiles\stand_ktma.yaml
 scenarios\...
+projects\ktma\project.yaml
+projects\ktma\workflows\...
+projects\ktma\environments\...
+data\profiles\...
+data\scenarios\...
 plugins\orbita_plugin_*.dll
 Qt6*.dll
 platforms\qwindows.dll
 Lusbapi64.dll
 ```
 
-Конкретный состав определяет packaging script. Не собирать release вручную копированием DLL «пока не запустится».
+`projects/` и package-relative `data/` доставляются вместе: пути сценариев и
+профиля внутри project package разрешаются относительно
+`projects/<id>/project.yaml`. Конкретный состав определяет packaging script.
+Не собирать release вручную копированием DLL «пока не запустится».
 
 ---
 

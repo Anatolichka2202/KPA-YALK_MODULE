@@ -15,5 +15,11 @@ workflows:
   - workflows/free.yaml
   - workflows/tu_normal.yaml
   - workflows/tu_climate.yaml
+  - workflows/tu_climate_minus.yaml
   - workflows/production.yaml
+  - workflows/production_power.yaml
+  - workflows/production_yalk.yaml
+  - workflows/production_ytp.yaml
+  - workflows/production_yvp.yaml
   - workflows/production_climate.yaml
+  - workflows/production_climate_minus.yaml

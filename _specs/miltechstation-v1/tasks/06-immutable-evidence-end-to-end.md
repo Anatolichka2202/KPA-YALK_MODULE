@@ -1,6 +1,6 @@
 # 06: Сквозной immutable Evidence
 
-**Статус:** in-progress
+**Статус:** done
 
 **Блокируется:** 01: Project package и workflow identity; 03: External process в общем run; 04: Зелёный resource-routing contract.
 

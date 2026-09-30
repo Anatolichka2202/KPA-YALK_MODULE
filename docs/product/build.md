@@ -89,6 +89,21 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass `
   -File .\scripts\package_stand_win11.ps1
 ```
 
+Для проверки уже собранного пакета вне дерева сборки распаковать архив в
+новый временный каталог и выполнить:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass `
+  -File .\scripts\smoke_stand_package_win11.ps1 `
+  -PackageDirectory <путь-к-распакованному-каталогу>
+```
+
+Smoke запускает `MilTechStation.exe --package-smoke` из внешнего рабочего
+каталога. Проверка загружает project package и stand profile, выполняет
+изолированный Free workflow с fake capability, сохраняет и повторно читает
+RunStore в тестовом подкаталоге `runs/`. Она не подключается к приборам и не
+заменяет ни CI, ни стендовые Evidence gates.
+
 Если Qt Creator использует иной generator/configuration mode, CLI-команда
 должна соответствовать существующему Kit, а не создавать параллельный
 самодельный toolchain.

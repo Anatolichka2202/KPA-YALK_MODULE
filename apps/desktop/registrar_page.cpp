@@ -76,6 +76,33 @@ QString runVerdictText(const QString& verdict)
     return verdict;
 }
 
+QString productionStatusSummary(
+    const QString& productId, const ktma::ubsi::ProductionLedger* ledger)
+{
+    if (!ledger) return QStringLiteral("Нет данных production");
+    QHash<QString, QString> latest;
+    try {
+        const auto history = ledger->statusSelectionHistory(productId.toStdString());
+        for (auto item = history.rbegin(); item != history.rend(); ++item) {
+            const QString type = QString::fromStdString(item->componentType);
+            if (latest.contains(type)) continue;
+            latest.insert(type, runVerdictText(
+                QString::fromUtf8(ktma::ubsi::toString(item->status))));
+        }
+    } catch (...) {
+        return QStringLiteral("Статус production недоступен");
+    }
+    if (latest.isEmpty()) return QStringLiteral("Нет принятых проверок");
+    QStringList items;
+    for (const auto& [type, title] : std::array<std::pair<const char*, const char*>, 4>{{
+             {"YALK-96", "ЯЛК"}, {"YTP", "ЯТП"}, {"YVP", "ЯВП"}, {"YP-P", "Питание"}}}) {
+        const auto key = QString::fromUtf8(type);
+        if (latest.contains(key))
+            items.push_back(QString::fromUtf8(title) + QStringLiteral(": ") + latest.value(key));
+    }
+    return items.join(QStringLiteral(" · "));
+}
+
 } // namespace
 
 RegistrarPage::RegistrarPage(QWidget* parent)
@@ -146,7 +173,8 @@ RegistrarPage::RegistrarPage(QWidget* parent)
     productsTable_ = new QTableWidget(this);
     productsTable_->setColumnCount(3);
     productsTable_->setHorizontalHeaderLabels(
-        {QStringLiteral("Изделие"), QStringLiteral("Тип"), QStringLiteral("Состояние")});
+        {QStringLiteral("Изделие"), QStringLiteral("Тип"),
+         QStringLiteral("Последний принятый результат по узлам")});
     productsTable_->setEditTriggers(QAbstractItemView::NoEditTriggers);
     productsTable_->setSelectionBehavior(QAbstractItemView::SelectRows);
     productsTable_->setSelectionMode(QAbstractItemView::SingleSelection);
@@ -227,6 +255,18 @@ RegistrarPage::RegistrarPage(QWidget* parent)
     connect(historyButton, &QPushButton::clicked, this, &RegistrarPage::showStageHistory);
 }
 
+void RegistrarPage::setProductionLedger(ktma::ubsi::ProductionLedger* ledger)
+{
+    productionLedger_ = ledger;
+    refreshProducts();
+}
+
+void RegistrarPage::refreshNow()
+{
+    refreshProducts();
+    refreshComposition();
+}
+
 void RegistrarPage::setRegistrar(ktma::registrar::Registrar* registrar)
 {
     registrar_ = registrar;
@@ -285,7 +325,7 @@ void RegistrarPage::refreshProducts()
             productsTable_->setItem(row, 1, new QTableWidgetItem(
                 QString::fromStdString(product.productType)));
             productsTable_->setItem(row, 2, new QTableWidgetItem(
-                verdictText(registrar_->productVerdict(product.id))));
+                productionStatusSummary(QString::fromStdString(product.id), productionLedger_)));
             if (QString::fromStdString(product.id) == selectedId)
                 productsTable_->selectRow(row);
             ++row;

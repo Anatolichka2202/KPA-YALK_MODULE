@@ -5,10 +5,13 @@
 #include <QStyleFactory>
 
 #include "universal_mainwindow.h"
+#include "package_smoke.h"
 
 int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
+    if (app.arguments().contains(QStringLiteral("--package-smoke")))
+        return runInstalledPackageSmoke();
 
     app.setStyle(QStyleFactory::create(QStringLiteral("Fusion")));
     QPalette palette;

@@ -10,6 +10,8 @@ find_package(Qt6 REQUIRED COMPONENTS Core Widgets PrintSupport Sql Svg SerialPor
 
 add_executable(MilTechStation
     main.cpp
+    package_smoke.cpp
+    package_smoke.h
     mainwindow.cpp
     mainwindow.h
     ktma_mainwindow.cpp
@@ -17,6 +19,8 @@ add_executable(MilTechStation
     ktma_generic_readiness.cpp
     universal_mainwindow.cpp
     universal_mainwindow.h
+    station_admin_dialog.cpp
+    station_admin_dialog.h
     generic_check_dialog.cpp
     generic_check_dialog.h
     home_page.cpp
@@ -168,6 +172,14 @@ add_dependencies(OrbitaRuntimeResources MilTechStation orbita_equipment_plugins
 if(BUILD_TESTING)
     add_executable(test_page_smoke_test
         tests/test_page_smoke_test.cpp
+        generic_check_dialog.cpp
+        generic_check_dialog.h
+        station_admin_dialog.cpp
+        station_admin_dialog.h
+        scenario_yaml_editor.cpp
+        scenario_yaml_editor.h
+        home_page.cpp
+        home_page.h
         test_page.cpp
         test_page.h
         equipment_control_widget.cpp
@@ -177,10 +189,12 @@ if(BUILD_TESTING)
     target_include_directories(test_page_smoke_test PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_SOURCE_DIR}/orbita/include
+        ${CMAKE_SOURCE_DIR}/station/include
     )
 
     target_link_libraries(test_page_smoke_test PRIVATE
         ktma_ubsi_procedures
+        orbita_stand_runtime
         Qt6::Core
         Qt6::Widgets
     )

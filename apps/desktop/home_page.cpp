@@ -36,6 +36,7 @@ HomePage::HomePage(QWidget* parent)
         "QPushButton#homePrimaryAction{background:#2e7de9;border-color:#58a5ff;font-size:15px;}"));
 
     auto* root = new QVBoxLayout(this);
+    rootLayout_ = root;
     root->setContentsMargins(54, 46, 54, 46);
     root->setSpacing(22);
 
@@ -57,6 +58,7 @@ HomePage::HomePage(QWidget* parent)
     root->addWidget(subtitle);
 
     auto* genericCard = new QFrame(this);
+    genericCard_ = genericCard;
     genericCard->setProperty("card", true);
     auto* genericLayout = new QVBoxLayout(genericCard);
     genericLayout->setContentsMargins(24, 22, 24, 22);
@@ -82,10 +84,12 @@ HomePage::HomePage(QWidget* parent)
     root->addWidget(genericCard);
 
     auto* section = new QLabel(QStringLiteral("СПЕЦИАЛИЗИРОВАННЫЕ ПОСТАВКИ"), this);
+    section->setObjectName(QStringLiteral("legacyWorkflowSection"));
     section->setProperty("kicker", true);
     root->addWidget(section);
 
     auto* ktmaCard = new QFrame(this);
+    ktmaCard_ = ktmaCard;
     ktmaCard->setProperty("card", true);
     auto* ktmaLayout = new QVBoxLayout(ktmaCard);
     ktmaLayout->setContentsMargins(24, 22, 24, 22);
@@ -120,4 +124,60 @@ HomePage::HomePage(QWidget* parent)
     connect(tu, &QPushButton::clicked, this, &HomePage::tuRequested);
     connect(production, &QPushButton::clicked, this, &HomePage::productionRequested);
     connect(administration, &QPushButton::clicked, this, &HomePage::administrationRequested);
+}
+
+void HomePage::setProjectWorkflows(const QVector<HomeWorkflowEntry>& workflows)
+{
+    if (!rootLayout_) return;
+    if (genericCard_) genericCard_->hide();
+    if (ktmaCard_) ktmaCard_->hide();
+    if (auto* section = findChild<QLabel*>(QStringLiteral("legacyWorkflowSection")))
+        section->hide();
+
+    if (projectWorkflowCard_) {
+        rootLayout_->removeWidget(projectWorkflowCard_);
+        delete projectWorkflowCard_;
+        projectWorkflowCard_ = nullptr;
+    }
+
+    auto* card = new QFrame(this);
+    card->setObjectName(QStringLiteral("projectWorkflowCard"));
+    card->setProperty("card", true);
+    auto* layout = new QVBoxLayout(card);
+    layout->setContentsMargins(24, 22, 24, 22);
+    layout->setSpacing(10);
+
+    auto* heading = new QLabel(QStringLiteral("ПРОЦЕССЫ ПРОЕКТА"), card);
+    heading->setProperty("kicker", true);
+    layout->addWidget(heading);
+    auto* hint = new QLabel(QStringLiteral(
+        "Доступные проверки определяются выбранным проектом."), card);
+    hint->setProperty("muted", true);
+    layout->addWidget(hint);
+
+    for (const auto& workflow : workflows) {
+        const QString title = workflow.available
+            ? workflow.title
+            : QStringLiteral("%1 · недоступно").arg(workflow.title);
+        auto* button = actionButton(title, card);
+        button->setObjectName(QStringLiteral("projectWorkflow_%1").arg(workflow.id));
+        button->setEnabled(workflow.available);
+        button->setAccessibleDescription(workflow.unavailableReason);
+        if (!workflow.unavailableReason.isEmpty())
+            button->setToolTip(workflow.unavailableReason);
+        layout->addWidget(button);
+        connect(button, &QPushButton::clicked, this,
+                [this, id = workflow.id] { emit workflowRequested(id); });
+    }
+
+    auto* stationAdmin = actionButton(QStringLiteral("АДМИНИСТРИРОВАНИЕ СТАНЦИИ"), card);
+    stationAdmin->setObjectName(QStringLiteral("stationAdminAction"));
+    stationAdmin->setToolTip(QStringLiteral(
+        "Просмотр проекта, профиля оборудования, соединений и состояния ресурсов. Транспортом напрямую не управляет."));
+    layout->addWidget(stationAdmin);
+    connect(stationAdmin, &QPushButton::clicked,
+            this, &HomePage::stationAdminRequested);
+
+    projectWorkflowCard_ = card;
+    rootLayout_->insertWidget(3, projectWorkflowCard_);
 }

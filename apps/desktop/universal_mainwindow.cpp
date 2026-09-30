@@ -3,17 +3,23 @@
 #include "generic_check_dialog.h"
 #include "home_page.h"
 #include "scenario_yaml_editor.h"
+#include "station_admin_dialog.h"
 
 #include <QCoreApplication>
+#include <QCryptographicHash>
 #include <QDateTime>
 #include <QDir>
 #include <QFileInfo>
 #include <QHash>
+#include <QMap>
 #include <QMessageBox>
+#include <QFile>
+#include <QSaveFile>
 #include <QSet>
 #include <QStringList>
 #include <QtConcurrent/QtConcurrentRun>
 
+#include <algorithm>
 #include <functional>
 #include <stdexcept>
 
@@ -38,39 +44,34 @@ QString htmlCell(const std::string& text)
     return QString::fromStdString(text).toHtmlEscaped();
 }
 
+bool componentProvides(const orbita::stand::ComponentProfile& component,
+                       const std::string& capability)
+{
+    const auto& declared = component.capabilities.empty()
+        ? component.bindings : component.capabilities;
+    return std::find(declared.begin(), declared.end(), capability) != declared.end();
+}
+
 } // namespace
 
 UniversalMainWindow::UniversalMainWindow(QWidget* parent)
     : KtmaMainWindow(parent)
     , genericWatcher_(new QFutureWatcher<orbita::stand::ScenarioRunResult>(this))
 {
-    setWindowTitle(QStringLiteral("MilTechStation · универсальная станция"));
-
-    // Project is the product-level composition root. The KTMA desktop still
-    // inherits its delivery shell during the staged migration, but the package
-    // itself now belongs to the shared station shell so all workflow surfaces
-    // can converge on one selected project identity.
-    try {
-        const QDir root(QCoreApplication::applicationDirPath());
-        const QString projectPath = qEnvironmentVariable(
-            "MILTECH_PROJECT",
-            root.filePath(QStringLiteral("projects/ktma/project.yaml")));
-        auto project = orbita::stand::loadProjectPackage(
-            projectPath.toUtf8().toStdString());
-        setWindowTitle(QStringLiteral("MilTechStation · %1")
-            .arg(QString::fromStdString(project.title)));
-        integrationLog(QStringLiteral("Project package: %1 · v%2")
-            .arg(QString::fromStdString(project.id),
-                 QString::fromStdString(project.version)));
-        integrationConfigureProject(std::move(project));
-    } catch (const std::exception& error) {
-        integrationLog(QStringLiteral("Project package не загружен: %1")
-            .arg(QString::fromUtf8(error.what())));
-    }
-
     if (auto* home = integrationHomePage()) {
         connect(home, &HomePage::genericCheckRequested,
                 this, &UniversalMainWindow::openGenericCheck);
+        connect(home, &HomePage::stationAdminRequested, this, [this] {
+            integrationEnsureStandRuntime();
+            const auto* project = integrationProject();
+            if (!project) {
+                QMessageBox::warning(this, QStringLiteral("Администрирование станции"),
+                    QStringLiteral("Пакет проекта не загружен."));
+                return;
+            }
+            StationAdminDialog dialog(*project, integrationStationSession(), this);
+            dialog.exec();
+        });
     }
 
     connect(genericWatcher_, &QFutureWatcherBase::finished,
@@ -91,15 +92,6 @@ void UniversalMainWindow::openGenericCheck()
         genericDialog_ = new GenericCheckDialog(this);
         genericDialog_->setAttribute(Qt::WA_DeleteOnClose, false);
 
-        connect(genericDialog_, &GenericCheckDialog::equipmentCheckRequested,
-                this, [this] {
-            QMessageBox::information(
-                this,
-                QStringLiteral("Оборудование"),
-                QStringLiteral(
-                    "Для свободной проверки оборудование подбирается по выбранному сценарию и текущему профилю стенда. "
-                    "Проверка связи и безопасная подготовка выполняются автоматически непосредственно перед запуском."));
-        });
         connect(genericDialog_, &GenericCheckDialog::editScenarioRequested,
                 this, &UniversalMainWindow::editGenericScenario);
         connect(genericDialog_, &GenericCheckDialog::runRequested,
@@ -120,6 +112,22 @@ void UniversalMainWindow::reloadGenericScenarios()
     integrationEnsureStandRuntime();
 
     QVector<GenericScenarioEntry> entries;
+    const auto* project = integrationProject();
+    if (!project) {
+        genericDialog_->setScenarios(entries);
+        return;
+    }
+
+    QVector<const orbita::stand::WorkflowDefinition*> dynamicWorkflows;
+    for (const auto& workflow : project->workflows) {
+        if (workflow.allowDynamicScenario || workflow.allowScenarioOverrides)
+            dynamicWorkflows.push_back(&workflow);
+    }
+    if (dynamicWorkflows.isEmpty()) {
+        genericDialog_->setScenarios(entries);
+        return;
+    }
+
     auto* engine = integrationScenarioEngine();
     if (!engine || !integrationStandRuntimeReady()) {
         genericDialog_->setScenarios(entries);
@@ -139,10 +147,53 @@ void UniversalMainWindow::reloadGenericScenarios()
                     .arg(file.fileName(), QString::fromStdString(errors.front())));
                 continue;
             }
-            entries.push_back({QString::fromStdString(scenario.title),
-                               QString::fromStdString(scenario.id),
-                               QString::fromStdString(scenario.version),
-                               file.absoluteFilePath()});
+            QMap<QString, bool> requirements;
+            std::function<void(const orbita::stand::ScenarioNode&)> collectRequirements;
+            collectRequirements = [&](const orbita::stand::ScenarioNode& node) {
+                for (const auto& capability : node.requiredCapabilities) {
+                    const bool configured = std::any_of(
+                        integrationStandProfile().components.begin(),
+                        integrationStandProfile().components.end(),
+                        [&](const auto& component) {
+                            return component.enabled && component.kind == "equipment"
+                                && componentProvides(component, capability);
+                        });
+                    requirements.insert(QString::fromStdString(capability), configured);
+                }
+                for (const auto& resource : node.requiredResources) {
+                    const auto* component = orbita::stand::findComponentByBinding(
+                        integrationStandProfile(), resource.resource);
+                    const bool configured = component && component->enabled
+                        && component->kind == "equipment"
+                        && componentProvides(*component, resource.capability);
+                    const QString key = QStringLiteral("%1:%2")
+                        .arg(QString::fromStdString(resource.resource),
+                             QString::fromStdString(resource.capability));
+                    requirements.insert(key, configured);
+                }
+                for (const auto& child : node.children) collectRequirements(child);
+            };
+            for (const auto& node : scenario.steps) collectRequirements(node);
+            QStringList required;
+            bool resourcesConfigured = true;
+            for (auto it = requirements.cbegin(); it != requirements.cend(); ++it) {
+                required.push_back(QStringLiteral("%1 %2")
+                    .arg(it.value() ? QStringLiteral("✓") : QStringLiteral("✗"), it.key()));
+                resourcesConfigured = resourcesConfigured && it.value();
+            }
+            required.sort();
+
+            for (const auto* workflow : dynamicWorkflows) {
+                entries.push_back({
+                    QString::fromStdString(workflow->id),
+                    QString::fromStdString(workflow->title),
+                    QString::fromStdString(scenario.title),
+                    QString::fromStdString(scenario.id),
+                    QString::fromStdString(scenario.version),
+                    file.absoluteFilePath(),
+                    required,
+                    resourcesConfigured});
+            }
         } catch (const std::exception& error) {
             integrationLog(QStringLiteral("Свободный сценарий %1 не загружен: %2")
                 .arg(file.fileName(), QString::fromUtf8(error.what())));
@@ -160,9 +211,11 @@ void UniversalMainWindow::editGenericScenario(const QString& path)
 }
 
 void UniversalMainWindow::runGenericScenario(
+    const QString& workflowId,
     const QString& path,
     const QString& objectSerial,
     const QString& description,
+    const QString& engineeringOverride,
     const QString& reportTemplate)
 {
     if (genericWatcher_->isRunning()) return;
@@ -182,8 +235,21 @@ void UniversalMainWindow::runGenericScenario(
     }
 
     orbita::stand::ScenarioDefinition scenario;
+    QByteArray scenarioConfigSnapshot;
     try {
+        const auto* project = integrationProject();
+        const auto* workflow = project
+            ? orbita::stand::findWorkflow(*project, workflowId.toStdString())
+            : nullptr;
+        if (!project || !workflow
+            || (!workflow->allowDynamicScenario && !workflow->allowScenarioOverrides)) {
+            throw std::runtime_error("Проект не разрешает выбранный динамический запуск");
+        }
         scenario = orbita::stand::loadScenarioYaml(path.toUtf8().toStdString());
+        QFile scenarioConfig(path);
+        if (!scenarioConfig.open(QIODevice::ReadOnly))
+            throw std::runtime_error("Не удалось прочитать снимок конфигурации сценария");
+        scenarioConfigSnapshot = scenarioConfig.readAll();
         const auto errors = engine->validate(scenario);
         if (!errors.empty()) throw std::runtime_error(errors.front());
 
@@ -228,6 +294,7 @@ void UniversalMainWindow::runGenericScenario(
     }
 
     genericDescription_ = description;
+    genericEngineeringOverride_ = engineeringOverride;
     genericTemplate_ = reportTemplate;
     genericDialog_->setRunning(true, QStringLiteral("Выполняется: %1")
         .arg(QString::fromStdString(scenario.title)));
@@ -239,7 +306,8 @@ void UniversalMainWindow::runGenericScenario(
     const std::string serial = objectSerial.toStdString();
     auto* leases = &integrationStationSession().leases();
     genericWatcher_->setFuture(QtConcurrent::run(
-        [this, scenario, profileVersion, serial, leases] {
+        [this, workflowId, path, scenario, profileVersion, serial, leases,
+         scenarioConfigSnapshot, description, engineeringOverride] {
             const auto progress = [this](const orbita::stand::RunEvent& event) {
                 QMetaObject::invokeMethod(this, [this, event] {
                     if (genericDialog_) genericDialog_->appendEvent(event);
@@ -251,20 +319,72 @@ void UniversalMainWindow::runGenericScenario(
                 context.dutType = scenario.objectType;
                 context.operatorName = qEnvironmentVariable(
                     "USERNAME", qEnvironmentVariable("USER")).toStdString();
-                context.attributes["registration"] = "disabled";
-                return orbita::stand::runProjectWorkflow(
-                    *project, "free", *integrationScenarioEngine(),
+                context.attributes["engineering_description"] = description.toUtf8().toStdString();
+                context.attributes["engineering_override_note"] = engineeringOverride.toUtf8().toStdString();
+                context.attributes["scenario_config_sha256"] = QCryptographicHash::hash(
+                    scenarioConfigSnapshot, QCryptographicHash::Sha256).toHex().toStdString();
+                context.attributes["scenario_config_source"] = path.toUtf8().toStdString();
+                auto result = orbita::stand::runProjectWorkflow(
+                    *project, workflowId.toStdString(), *integrationScenarioEngine(),
                     *integrationEquipmentRegistry(), profileVersion, serial, false,
                     std::move(context), &scenario, progress,
                     leases);
+                result.contextAttributes["engineering_description"] = description.toUtf8().toStdString();
+                result.contextAttributes["engineering_override_note"] = engineeringOverride.toUtf8().toStdString();
+                result.contextAttributes["scenario_config_sha256"] = QCryptographicHash::hash(
+                    scenarioConfigSnapshot, QCryptographicHash::Sha256).toHex().toStdString();
+                result.contextAttributes["scenario_config_source"] = path.toUtf8().toStdString();
+                for (auto& event : result.evidence) ++event.sequence;
+                orbita::stand::EvidenceEvent operatorAction;
+                operatorAction.sequence = 1;
+                operatorAction.timestamp = result.startedAt;
+                operatorAction.monotonicNs = 0;
+                operatorAction.type = "OPERATOR_ACTION";
+                operatorAction.nodeId = "free-run";
+                operatorAction.message = "Инженер подтвердил параметры свободного запуска";
+                operatorAction.data = {
+                    {"workflow_id", workflowId.toUtf8().toStdString()},
+                    {"engineering_override_note", engineeringOverride.toUtf8().toStdString()},
+                    {"scenario_config_sha256", result.contextAttributes["scenario_config_sha256"]}};
+                result.evidence.insert(result.evidence.begin(), std::move(operatorAction));
+
+                try {
+                    orbita::stand::RunArtifacts artifacts(
+                        QDir(QCoreApplication::applicationDirPath())
+                            .filePath(QStringLiteral("runs")).toUtf8().toStdString(), result.runId);
+                    QSaveFile snapshot(QDir(QString::fromUtf8(artifacts.directory().c_str()))
+                        .filePath(QStringLiteral("scenario-config.yaml")));
+                    if (!snapshot.open(QIODevice::WriteOnly)
+                        || snapshot.write(scenarioConfigSnapshot) != scenarioConfigSnapshot.size()
+                        || !snapshot.commit())
+                        throw std::runtime_error("Не удалось сохранить неизменяемый снимок YAML сценария");
+                    artifacts.attachFileTo(result, "scenario-config", "scenario-config.yaml",
+                                            "application/yaml");
+                } catch (const std::exception& error) {
+                    result.verdict = orbita::stand::RunVerdict::Error;
+                    orbita::stand::EvidenceEvent failure;
+                    failure.sequence = result.evidence.size() + 1;
+                    failure.timestamp = std::chrono::system_clock::now();
+                    failure.type = "ERROR";
+                    failure.nodeId = "free-run";
+                    failure.message = std::string("Не удалось сохранить снимок сценария: ") + error.what();
+                    failure.verdict = orbita::stand::RunVerdict::Error;
+                    result.evidence.push_back(std::move(failure));
+                }
+                return result;
             }
 
             // Compatibility fallback for development layouts that do not yet
             // deploy project packages next to the executable.
-            return orbita::stand::runScenarioWithEvidence(
+            auto result = orbita::stand::runScenarioWithEvidence(
                 *integrationScenarioEngine(), *integrationEquipmentRegistry(),
                 scenario, profileVersion, serial, false, progress,
                 leases);
+            result.contextAttributes["engineering_description"] = description.toUtf8().toStdString();
+            result.contextAttributes["engineering_override_note"] = engineeringOverride.toUtf8().toStdString();
+            result.contextAttributes["scenario_config_sha256"] = QCryptographicHash::hash(
+                scenarioConfigSnapshot, QCryptographicHash::Sha256).toHex().toStdString();
+            return result;
         }));
 }
 
@@ -280,10 +400,12 @@ void UniversalMainWindow::finishGenericScenario()
 {
     if (!genericDialog_) return;
     const auto result = genericWatcher_->result();
+    const bool saved = integrationPersistRun(result);
     const QString html = renderGenericReport(result);
     const QString summary = QStringLiteral(
-        "Свободная проверка завершена: %1. В реестр поставки результат не записан.")
-        .arg(verdictText(result.verdict));
+        "Свободная проверка завершена: %1. Run %2; в реестр поставки результат не записан.")
+        .arg(verdictText(result.verdict), saved ? QStringLiteral("сохранён")
+                                                : QStringLiteral("не сохранён"));
     genericDialog_->setReportHtml(html, summary);
     integrationLog(summary);
 }
@@ -295,6 +417,8 @@ QString UniversalMainWindow::renderGenericReport(
     if (html.trimmed().isEmpty()) {
         html = QStringLiteral(
             "<html><body><h1>Отчёт проверки</h1><p>{{description}}</p>"
+            "<p>Инженерное изменение: {{engineering_override}}</p>"
+            "<p>Сценарий SHA-256: {{scenario_config_sha256}}</p>"
             "<p>{{project_id}} · {{workflow_id}}</p>"
             "<p>{{scenario_title}} · {{object_serial}}</p><h2>{{verdict}}</h2>"
             "{{steps}}{{events}}</body></html>");
@@ -302,6 +426,10 @@ QString UniversalMainWindow::renderGenericReport(
 
     const QHash<QString, QString> replacements = {
         {QStringLiteral("{{description}}"), genericDescription_.toHtmlEscaped()},
+        {QStringLiteral("{{engineering_override}}"), genericEngineeringOverride_.toHtmlEscaped()},
+        {QStringLiteral("{{scenario_config_sha256}}"), QString::fromStdString(
+            result.contextAttributes.count("scenario_config_sha256")
+                ? result.contextAttributes.at("scenario_config_sha256") : std::string()).toHtmlEscaped()},
         {QStringLiteral("{{project_id}}"), QString::fromStdString(result.projectId).toHtmlEscaped()},
         {QStringLiteral("{{project_version}}"), QString::fromStdString(result.projectVersion).toHtmlEscaped()},
         {QStringLiteral("{{workflow_id}}"), QString::fromStdString(result.workflowId).toHtmlEscaped()},

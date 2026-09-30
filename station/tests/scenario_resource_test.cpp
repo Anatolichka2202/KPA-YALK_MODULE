@@ -67,10 +67,22 @@ public:
         stopped = true;
     }
 
+    std::map<std::string, SafeStopResult> safeStopResources(
+        const std::set<std::string>& resources) noexcept override
+    {
+        stopped = true;
+        std::map<std::string, SafeStopResult> result;
+        for (const auto& resource : resources)
+            result.emplace(resource, SafeStopResult{stopConfirmed, stopReason});
+        return result;
+    }
+
     bool resourceReady = false;
     bool resourceInvoked = false;
     bool legacyInvoked = false;
     bool stopped = false;
+    bool stopConfirmed = true;
+    std::string stopReason = "fake provider acknowledged safe state";
 };
 
 QString writeScenario(QTemporaryDir& directory)
@@ -298,6 +310,45 @@ int main(int argc, char** argv)
                 "a released resource must permit the next run through cleanup");
         require(!runLeases.busy("supply.primary"),
                 "the engine must release its lease only after its run returns");
+        require(runLeases.stateOf("supply.primary")->state == ResourceState::Safe,
+                "confirmed cleanup must record SAFE after lease release");
+
+        equipment.stopConfirmed = false;
+        equipment.stopReason = "injected timeout waiting for stop acknowledgement";
+        equipment.resourceInvoked = false;
+        const auto uncertain = engine.run(
+            scenario, equipment, "profile-1", "SN-1", false, {}, &runLeases);
+        require(uncertain.verdict == RunVerdict::Error,
+                "a successful procedure with unconfirmed cleanup must not be green");
+        const auto indeterminate = runLeases.stateOf("supply.primary");
+        require(indeterminate && indeterminate->state == ResourceState::Indeterminate
+                    && indeterminate->reason.find("timeout") != std::string::npos,
+                "unconfirmed cleanup must retain INDETERMINATE state and reason");
+
+        equipment.resourceInvoked = false;
+        const auto blockedByRecovery = engine.run(
+            scenario, equipment, "profile-1", "SN-1", false, {}, &runLeases);
+        require(blockedByRecovery.verdict == RunVerdict::Incomplete
+                    && !equipment.resourceInvoked
+                    && blockedByRecovery.events.front().stage == "RESOURCE_RECOVERY",
+                "indeterminate resource must block a new run before physical invoke");
+
+        require(!runLeases.recover("supply.primary", "operator-restart-1", [] { return false; }),
+                "failed recovery must remain unconfirmed");
+        require(runLeases.stateOf("supply.primary")->state == ResourceState::Indeterminate,
+                "failed recovery must not make resource ready");
+        require(runLeases.recover("supply.primary", "operator-restart-2", [] { return true; }),
+                "confirmed explicit recovery must succeed");
+        require(runLeases.stateOf("supply.primary")->state == ResourceState::Ready,
+                "confirmed recovery must transition resource to READY");
+        equipment.stopConfirmed = true;
+        const auto recovered = engine.run(
+            scenario, equipment, "profile-1", "SN-1", false, {}, &runLeases);
+        require(recovered.verdict == RunVerdict::Ok,
+                "resource must be usable after confirmed recovery");
+        const auto stateTrace = runLeases.stateTrace();
+        require(stateTrace.size() >= 8,
+                "resource lifecycle changes must leave a state trace");
 
         verifyLeaseContract();
         verifyScenarioEngineRejectsNestedRun();

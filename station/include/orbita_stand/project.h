@@ -31,11 +31,19 @@ struct WorkflowDefinition {
     std::string scenarioPath;
     std::string reportPath;
     std::string environmentPath;
+    std::string environmentId;
+    std::string environmentTitle;
+    std::string environmentMode;
 
     // Optional link to another workflow, e.g. a production flow may declare
     // the TU workflow that is its formal reference without teaching station
     // core what "TU" means.
     std::string referenceWorkflow;
+    // Opaque UI dispatch token owned by the project/delivery composition.
+    // Station core stores it but does not interpret product-specific actions.
+    std::string operatorAction;
+    std::string unavailableReason;
+    bool operatorAvailable = true;
 
     bool allowDynamicScenario = false;
     bool allowScenarioOverrides = false;

@@ -2,8 +2,8 @@
 
 ## Рабочая спецификация и задачи
 
-Согласованная продуктовая спецификация и декомпозиция живут в явно запрошенном
-рабочем трекере [`_spec/_spec.md`](../../_spec/_spec.md) и
+Согласованная продуктовая спецификация и декомпозиция живут в
+[`_specs/miltechstation-v1/spec.md`](../../_specs/miltechstation-v1/spec.md) и
 [`task.md`](../../task.md). Статусы задач являются источником истины только в
 `_specs/miltechstation-v1/tasks/`; этот план сохраняет архитектурные решения и
 текущие факты, а не дублирует прогресс.
@@ -17,22 +17,29 @@
 | --- | --- | --- |
 | Контракт project package и workflow | `CONTRACT_TESTED`; локальный полный CTest зелёный | `station.project_definition` проходит; `station/src/project.cpp`, `station/tests/project_definition_test.cpp`. Удалённый CI этим локальным запуском не подтверждён. |
 | Декларативный профиль, component lifecycle и сессия | `CONTRACT_TESTED` для имеющихся контрактов | `stand.component_profile`, `stand.component_runtime`, `stand.station_session` проходят; `station/src/station_session.cpp`. Это не подтверждение произвольного нового оборудования на стенде. |
-| Внешний process execution runtime | `CONTRACT_TESTED` | `stand.execution_runtime` и `stand.execution_scenario` проходят; связь с общим Evidence ещё не сделана. |
+| Внешний process execution runtime | `CONTRACT_TESTED` | `stand.execution_runtime` и `stand.execution_scenario` проходят; Evidence и artifact persistence покрыты задачей 06. Production consumer понадобится отдельной delivery-задаче, если появится. |
 | Источник сырых отсчётов и интеграционная граница | `CONTRACT_TESTED` для текущего sample bridge | `integration.orbita_sample_bridge` проходит; поддержка других источников не доказана этим тестом. |
 | Resource/capability routing | `CONTRACT_TESTED` | `stand.scenario_resource` проходит после исправления UTF-8 пути временного YAML через Qt file API; fixture принудительно использует кириллический путь. |
 | Project workflow run и сохранение контекста | `CONTRACT_TESTED` | `stand.project_definition` и `stand.run_store_context` проходят; последний выполняет generic run → SQLite save/load → HTML re-render. Measurement provenance хранит `PROVIDED` либо явный `NOT_PROVIDED`; `RunArtifacts` прикрепляет content-addressed metadata telemetry/raw packets. |
-| Защита ресурсов и восстановление | `CONTRACT_TESTED` для declared-resource lease; `PARTIAL` в целом | Common run захватывает все явно объявленные resources до возврата из `safeStopAll()`; Main, Universal Free и КТМА передают lease текущей сессии. `stand.scenario_resource` подтверждает conflict, передачу причины в progressSink и release. READY/ACTIVE/SAFE/ERROR/INDETERMINATE, подтверждённый recovery и bench gate не сделаны. |
-| Общий desktop, project selection | `PARTIAL` | Project package загружается в desktop, но выбор workflow и основной профиль оборудования ещё содержат delivery-specific composition. |
-| Производственные пакеты, повтор узла и актуальный статус изделия | `DEFINED`, не реализовано | Решение о пяти пакетах и сохранении истории принято ниже; рабочего end-to-end пути и теста агрегирования статуса пока нет. |
-| Admin/Studio, Environment, Script API | `DEFINED/TODO` | Контракты и желаемые границы описаны; готового V1-цикла нет. |
+| Защита ресурсов и восстановление | `CONTRACT_TESTED`; driver confirmation — release/bench gate | `ResourceLeaseManager` хранит READY/ACTIVE/SAFE/ERROR/INDETERMINATE и trace; сценарий требует подтверждение `safeStopResources`, otherwise результат не может быть OK и ресурс блокируется. Recovery остаётся блокирующим до явного успешного callback. `stand.scenario_resource` проверяет conflict, cleanup, timeout/unconfirmed, retry-block и recovery. Legacy plugin `void safe_stop` честно остаётся INDETERMINATE; конкретные plugin confirmations требуют отдельного bench/Evidence gate. |
+| Общий desktop, project selection, Free и Admin V1 | `CONTRACT_TESTED`; задачи 07 и 09 закрыты локально | Home перечисляет package workflows; `operator_action` маршрутизируется delivery composition. Free launcher показывает requirements, сохраняет конфигурационный snapshot/hash и разрешает только dynamic workflow. Admin V1 read-only. Published scenario save заблокирован, draft получает отдельную identity. `desktop.test_page_smoke` проверяет эти UI contract seams. |
+| Производственные пакеты, повтор узла и актуальный статус изделия | `CONTRACT_TESTED` | KTMA project package задаёт пять зарегистрированных production workflows; ledger сохраняет отдельные попытки и audit trail выбора последнего принятого результата по затронутым компонентам; stand error не заменяет verdict DUT. Contract проверяет FULL → fail → equipment error → accepted node rerun без физического DUT. |
+| Environment context | `CONTRACT_TESTED`; задача 10 закрыта локально | Отдельные normal/+/- workflows и descriptor; manual condition требует подтверждения и пишет `ENVIRONMENT` Evidence. Setpoints не угадываются. Chamber plugin отсутствует, его физический путь не подтверждён. |
+| Release proof | `PACKAGE_SMOKE_TESTED`; задача 11 остаётся `in-progress` | Release CTest 24/24; установленный package распакован вне build tree и прошёл fake-provider/RunStore smoke. GitHub Actions run `36411212720` зелёный только для базового SHA `5d4e0b74a7d23262ef3f51f1fddd07900a9caefc`. Hardware-impacting delivery Evidence gates ещё не закрыты. |
+| Studio / Script API | `DEFINED/TODO` | Tree/IR editor и Script API остаются отдельным будущим объёмом. |
 
 Локальная проверка текущей Release-сборки 28.09.2026: `ctest --test-dir
 build/Desktop_Qt_6_8_0_MinGW_64_bit-Release --output-on-failure --timeout 60`
-прошла **24/24**. Исправлены test-environment PATH для
+прошла **24/24**. `package_stand_win11.ps1` создал
+`MilTechStation-KTMA-2.0.0-local-uncommitted-task-close`; ZIP распакован в
+новый `%TEMP%` layout, `smoke_stand_package_win11.ps1` завершился
+`INSTALLED_PACKAGE_SMOKE_OK` и сохранил/загрузил fake Free run. Исправлены
+test-environment PATH для
 `ktma.ubsi.equipment_readiness` и fixture `signal=1` / negative-code для
 `ktma.ubsi.scenario_runtime`; это не изменяет методику УБСИ. Текущий статус
-удалённого CI этим локальным прогоном не подтверждён, как и bench/Evidence
-gates для hardware-impacting slices.
+удалённый CI run `36411212720` зелёный для исходного SHA `5d4e0b7`; он не
+включает текущие незакоммиченные правки. Bench/Evidence gates для физических
+delivery paths остаются открыты.
 
 ## Согласованная граница этапов (2026-09-25)
 
@@ -227,21 +234,21 @@ Windows CI относился к более раннему срезу; до во
 Сделано:
 
 - [x] build runtime сохраняет `projects/` и package-relative `data/` рядом с приложением;
-- [x] `UniversalMainWindow` загружает `ProjectDefinition` из `MILTECH_PROJECT` либо `projects/ktma/project.yaml`;
+- [x] `KtmaMainWindow` загружает `ProjectDefinition` из `MILTECH_PROJECT` либо `projects/ktma/project.yaml` до инициализации station runtime;
+- [x] профиль стенда выбирается из `ProjectDefinition.equipmentProfilePath`;
 - [x] заголовок и log получают identity выбранного project package;
 - [x] Free workflow выполняется через `runProjectWorkflow()` и получает project/workflow context;
+- [x] Home page перечисляет project workflows и отправляет выбранный workflow ID delivery-owned dispatch; Universal Free launcher принимает workflow ID, отображает requirements и блокирует запуск при отсутствующей profile binding;
+- [x] `stand.project_definition` и `desktop.test_page_smoke` проверяют package/workflow/run-context и UI dispatch/resources;
+- [x] package script включает `projects/` и package-relative `data/`; установленный runtime smoke из `build/deploy` успешно запущен и закрыт;
+- [x] полный Release CTest после UI/package изменения: 24/24;
 - [x] Free mode остаётся вне registrar;
 - [x] отсутствие package имеет compatibility fallback на старый raw ScenarioEngine path.
 
 Остаётся:
 
-- [ ] базовый desktop composition больше не должен наследовать project selection от `KtmaMainWindow`;
-- [ ] `equipment_profile` основной KTMA runtime должен браться из project package, а не из legacy `profiles/stand_ktma.yaml` выбора;
-- [ ] TU/Production launcher перевести на project workflows с сохранением текущего UX;
-- [ ] current KTMA readiness оставить delivery-owned;
-- [ ] workflow selector сделать project-driven вместо hard-coded codes;
-- [ ] integration test project selection -> workflow -> scenario -> RunContext;
-- [ ] smoke test установленного runtime package на layout, близком к чистому ПК.
+- [ ] общий desktop composition больше не должен наследовать product/project setup от `KtmaMainWindow`;
+- [x] текущую физическую readiness оставить delivery-owned; оператор видит обязательные ресурсы и проверяет их на delivery screen перед запуском.
 
 ## Этап 5 — УБСИ TU NORMAL
 

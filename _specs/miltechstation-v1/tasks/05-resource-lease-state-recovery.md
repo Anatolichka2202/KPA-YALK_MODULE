@@ -1,6 +1,6 @@
 # 05: Lease, состояния ресурсов и recovery
 
-**Статус:** in-progress
+**Статус:** done
 
 **Блокируется:** 04: Зелёный resource-routing contract.
 
@@ -14,24 +14,36 @@ Production run не стартует и оператор видит владел
 или не подтверждённый cleanup не превращаются в «готово»; восстановление
 выполняется только через определённый recovery flow и оставляет trace.
 
-## Выполненный срез (2026-09-28)
+## Реализация (2026-09-28)
 
 - `ScenarioEngine::run()` принимает optional `ResourceLeaseManager`;
 - перед первым физическим шагом он рекурсивно собирает все явно объявленные
   `ScenarioNode::requiredResources` и атомарно захватывает их;
-- lease живёт до возврата `ScenarioEngine::run()`, включая его безусловный
-  `safeStopAll()`;
+- lease живёт до возврата `ScenarioEngine::run()`, включая safety-stop;
 - конфликт не запускает процедуру и возвращает `Incomplete` с одним
   `RESOURCE_LEASE`-событием с `resource` и владельцем `owner`;
 - Main, Universal Free и КТМА передают manager текущего `StationSession` в
   common run entry point;
-- `stand.scenario_resource` подтверждает conflict, delivery причины в
-  `progressSink`, отсутствие воздействия при конфликте и release после run.
+- `ResourceLeaseManager` ведёт READY/ACTIVE/SAFE/ERROR/INDETERMINATE,
+  блокирует новый lease из ERROR/INDETERMINATE и сохраняет переходы в trace;
+- `ICapabilityProvider::safeStopResources()` — additive confirmation seam;
+  legacy `safeStopAll()` вызывается, но его отсутствие подтверждения даёт
+  INDETERMINATE, а не SAFE;
+- успешное выполнение с неподтверждённой остановкой возвращает `Error`;
+- явный `recover(resource, evidenceId, operation)` оставляет ресурс
+  заблокированным во время операции и переводит в READY только при `true`;
+  исключение/отказ остаётся INDETERMINATE;
+- `ScenarioEngine` пишет `RESOURCE_SAFE_STOP` / `RESOURCE_RECOVERY` с
+  ресурсом, состоянием и причиной;
+- `stand.scenario_resource` покрывает конфликт, отсутствие воздействия,
+  подтверждённый cleanup, timeout/unconfirmed cleanup, блокировку повторного
+  запуска, неудачное и успешное recovery.
 
-Это не закрывает задачу: `safeStopAll()` пока имеет тип `void noexcept`,
-поэтому runtime не может доказательно записать `SAFE`. READY/ACTIVE/SAFE/
-ERROR/INDETERMINATE, подтверждённый recovery и bench/Evidence gates остаются
-незакрытыми.
+**Граница подтверждения:** legacy equipment/plugin API всё ещё предоставляет
+только `void safe_stop`; такие драйверы корректно классифицируются как
+неподтверждённые. Подтверждённый production safe-stop должен быть подключён
+через новый seam конкретного provider/plugin. Физический стендовый gate для
+каждого аппаратного driver остаётся отдельным перед выпуском.
 
 ## Критерии приёмки
 
@@ -39,11 +51,21 @@ ERROR/INDETERMINATE, подтверждённый recovery и bench/Evidence gat
   если ресурс явно объявлен в сценарии.
 - [x] Независимые runs с непересекающимися явно объявленными ресурсами не
   блокируют друг друга без причины.
-- [ ] Timeout переводит ресурс в ERROR или INDETERMINATE с сохранённой
+- [x] Timeout переводит ресурс в ERROR или INDETERMINATE с сохранённой
   причиной, а не в successful verdict.
-- [ ] Safe-stop и recovery меняют состояние только после подтверждённого
+- [x] Safe-stop и recovery меняют состояние только после подтверждённого
   результата операции.
-- [ ] Есть contract/integration tests на conflict, timeout, cleanup и partial
-  failure. Сейчас есть contract-test на conflict/release.
-- [ ] Для hardware-impacting реализации назначены bench/Evidence gates до
-  статуса `done`.
+- [x] Есть contract/integration tests на conflict, timeout, cleanup и partial
+  failure.
+- [x] Для hardware-impacting реализации назначены bench/Evidence gates:
+  production-плагины должны сообщать подтверждение stop, после чего требуется
+  стендовый запуск с сохранённым `RESOURCE_SAFE_STOP` Evidence. Gate назначен,
+  но аппаратное подтверждение не заявляется этой программной задачей.
+
+## Проверка
+
+- Release build: `build/Desktop_Qt_6_8_0_MinGW_64_bit-Release` — успешно.
+- `ctest --test-dir build/Desktop_Qt_6_8_0_MinGW_64_bit-Release
+  --output-on-failure --timeout 60` — 24/24 успешно.
+- `git diff --check` — успешно; Git вывел только предупреждения о нормализации
+  CRLF.

@@ -1,12 +1,24 @@
 #include "test_page.h"
+#include "generic_check_dialog.h"
+#include "home_page.h"
+#include "scenario_yaml_editor.h"
+#include "station_admin_dialog.h"
+
+#include "orbita_stand/project.h"
+#include "orbita_stand/station_session.h"
 
 #include <QApplication>
 #include <QComboBox>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
+#include <QPlainTextEdit>
+#include <QDir>
+#include <QFile>
 #include <QPixmap>
 #include <QTableWidget>
+#include <QTabWidget>
+#include <QTemporaryDir>
 
 #include <cstdlib>
 #include <cmath>
@@ -25,6 +37,89 @@ void require(bool condition, const char* message)
 int main(int argc, char** argv)
 {
     QApplication app(argc, argv);
+
+    HomePage home;
+    home.setProjectWorkflows({
+        {QStringLiteral("tu_normal"), QStringLiteral("Проверка по ТУ"), true, {}},
+        {QStringLiteral("tu_climate"), QStringLiteral("Климатические условия"), false,
+         QStringLiteral("Environment runtime не реализован")}});
+    auto* tuWorkflow = home.findChild<QPushButton*>(QStringLiteral("projectWorkflow_tu_normal"));
+    auto* climateWorkflow = home.findChild<QPushButton*>(QStringLiteral("projectWorkflow_tu_climate"));
+    require(tuWorkflow && climateWorkflow,
+            "home page must render workflows from the selected project");
+    require(home.findChild<QPushButton*>(QStringLiteral("stationAdminAction")),
+            "home page must expose the generic station administration action");
+    require(!climateWorkflow->isEnabled(),
+            "unavailable project workflow must not be launchable");
+    QString dispatchedWorkflow;
+    QObject::connect(&home, &HomePage::workflowRequested, &home,
+        [&](const QString& workflowId) { dispatchedWorkflow = workflowId; });
+    tuWorkflow->click();
+    require(dispatchedWorkflow == QStringLiteral("tu_normal"),
+            "home page must dispatch the selected project workflow id");
+
+    GenericCheckDialog launcher;
+    launcher.setScenarios({{
+        QStringLiteral("free"), QStringLiteral("Свободная проверка проекта"),
+        QStringLiteral("Сценарий контракта"), QStringLiteral("contract.scenario"),
+        QStringLiteral("1"), QStringLiteral("scenario.yaml"),
+        {QStringLiteral("measure.reference_voltage"),
+         QStringLiteral("switch_matrix.primary:stand.switch_matrix")}}});
+    auto* launcherScenario = launcher.findChild<QComboBox*>(QStringLiteral("genericScenario"));
+    auto* launcherResources = launcher.findChild<QLabel*>(QStringLiteral("genericResourcePreview"));
+    auto* launcherRun = launcher.findChild<QPushButton*>(QStringLiteral("runGeneric"));
+    auto* overrideNote = launcher.findChild<QPlainTextEdit*>(QStringLiteral("genericEngineeringOverride"));
+    require(launcherScenario && launcherResources && launcherRun && overrideNote,
+            "project workflow launcher controls not found");
+    require(launcherScenario->currentData(Qt::UserRole + 1).toString()
+                == QStringLiteral("free"),
+            "launcher must carry selected project workflow identity");
+    require(launcherResources->text().contains(QStringLiteral("Свободная проверка проекта"))
+                && launcherResources->text().contains(QStringLiteral("measure.reference_voltage"))
+                && launcherResources->text().contains(QStringLiteral("switch_matrix.primary")),
+            "launcher must preview workflow and scenario resource requirements");
+    bool launcherRunRequested = false;
+    overrideNote->setPlainText(QStringLiteral("Допуск сценария подтверждён инженером"));
+    QObject::connect(&launcher, &GenericCheckDialog::runRequested, &launcher,
+        [&](const QString& workflowId, const QString& scenarioPath,
+            const QString&, const QString&, const QString& overrideText, const QString&) {
+            launcherRunRequested = workflowId == QStringLiteral("free")
+                && scenarioPath == QStringLiteral("scenario.yaml")
+                && overrideText == QStringLiteral("Допуск сценария подтверждён инженером");
+        });
+    launcherRun->click();
+    require(launcherRunRequested,
+            "launcher must dispatch the selected workflow together with its scenario");
+
+    orbita::stand::ProjectDefinition adminProject;
+    adminProject.id = "contract-project";
+    adminProject.title = "Contract project";
+    adminProject.version = "1";
+    orbita::stand::StationSession adminSession;
+    StationAdminDialog adminDialog(adminProject, adminSession);
+    auto* adminTabs = adminDialog.findChild<QTabWidget*>();
+    auto* adminDiagnostics = adminDialog.findChild<QPlainTextEdit*>(
+        QStringLiteral("stationAdminDiagnostics"));
+    require(adminTabs && adminTabs->count() == 3 && adminDiagnostics
+                && adminDiagnostics->isReadOnly(),
+            "station admin must expose read-only connections, resources, diagnostics tabs");
+
+    QTemporaryDir editorFixture;
+    require(editorFixture.isValid(), "cannot create editor fixture directory");
+    const auto scenarioDirectory = QDir(editorFixture.path()).filePath(QStringLiteral("scenarios"));
+    require(QDir().mkpath(scenarioDirectory), "cannot create scenario fixture directory");
+    const auto publishedPath = QDir(scenarioDirectory).filePath(QStringLiteral("published.yaml"));
+    QFile publishedFile(publishedPath);
+    require(publishedFile.open(QIODevice::WriteOnly | QIODevice::Text),
+            "cannot create published scenario fixture");
+    publishedFile.write("schema: 1\nid: published\nversion: 1\nstate: published\nsteps: []\n");
+    publishedFile.close();
+    ScenarioYamlEditor publishedEditor(publishedPath);
+    auto* publishedSave = publishedEditor.findChild<QPushButton*>(
+        QStringLiteral("saveScenarioConfig"));
+    require(publishedSave && !publishedSave->isEnabled(),
+            "published scenario configuration must not be saved in place");
+
     TestPage page;
     const QString screenshot = qEnvironmentVariable("ORBITA_UI_SCREENSHOT");
     const QString scene = qEnvironmentVariable("MILTECH_UI_SCENE", QStringLiteral("YALK"));

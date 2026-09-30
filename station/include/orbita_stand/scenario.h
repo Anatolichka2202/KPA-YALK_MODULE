@@ -197,6 +197,11 @@ struct ScenarioRunResult {
     std::vector<ArtifactReference> artifacts;
 };
 
+struct SafeStopResult {
+    bool confirmed = false;
+    std::string reason;
+};
+
 class ICapabilityProvider {
 public:
     virtual ~ICapabilityProvider() = default;
@@ -234,7 +239,25 @@ public:
     }
 
     virtual void safeStopAll() noexcept = 0;
+
+    // Legacy providers only expose a best-effort void stop and therefore
+    // cannot prove physical safety. New providers may override this method
+    // with per-resource acknowledgements. Missing acknowledgements are
+    // deliberately represented as unconfirmed.
+    virtual std::map<std::string, SafeStopResult> safeStopResources(
+        const std::set<std::string>& resources) noexcept;
 };
+
+inline std::map<std::string, SafeStopResult> ICapabilityProvider::safeStopResources(
+    const std::set<std::string>& resources) noexcept
+{
+    safeStopAll();
+    std::map<std::string, SafeStopResult> result;
+    for (const auto& resource : resources)
+        result.emplace(resource, SafeStopResult{
+            false, "provider exposes legacy safeStopAll without confirmation"});
+    return result;
+}
 
 struct ProcedureContext {
     ICapabilityProvider& equipment;

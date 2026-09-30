@@ -118,12 +118,55 @@ KtmaMainWindow::KtmaMainWindow(QWidget* parent)
         QStringLiteral("Rigol DG-1022Z / ДГ10.2"), QStringLiteral("USB / VISA"),
         QStringLiteral("Требуется только сценариям, где есть signal.generator"));
 
+    const QDir root(QCoreApplication::applicationDirPath());
     try {
-        const QDir root(QCoreApplication::applicationDirPath());
-        const QString profileName = qEnvironmentVariable(
-            "MILTECH_STAND_PROFILE", QStringLiteral("stand_ktma.yaml"));
-        const QString profilePath = root.filePath(
-            QStringLiteral("profiles/") + profileName);
+        const QString projectPath = qEnvironmentVariable(
+            "MILTECH_PROJECT",
+            root.filePath(QStringLiteral("projects/ktma/project.yaml")));
+        auto project = orbita::stand::loadProjectPackage(
+            projectPath.toUtf8().toStdString());
+        setWindowTitle(QStringLiteral("MilTechStation · %1")
+            .arg(QString::fromStdString(project.title)));
+        integrationLog(QStringLiteral("Project package: %1 · v%2")
+            .arg(QString::fromStdString(project.id),
+                 QString::fromStdString(project.version)));
+        integrationConfigureProject(std::move(project));
+    } catch (const std::exception& error) {
+        integrationLog(QStringLiteral("Project package не загружен: %1")
+            .arg(QString::fromUtf8(error.what())));
+    }
+
+    if (auto* home = integrationHomePage()) {
+        if (const auto* project = integrationProject()) {
+            QVector<HomeWorkflowEntry> entries;
+            entries.reserve(static_cast<int>(project->workflows.size()));
+            for (const auto& workflow : project->workflows) {
+                const bool hasHandler = !workflow.operatorAction.empty();
+                QString reason = QString::fromStdString(workflow.unavailableReason);
+                if (!hasHandler && reason.isEmpty())
+                    reason = QStringLiteral("Для workflow не зарегистрирован обработчик запуска");
+                entries.push_back({
+                    QString::fromStdString(workflow.id),
+                    QString::fromStdString(workflow.title),
+                    workflow.operatorAvailable && hasHandler,
+                    reason});
+            }
+            home->setProjectWorkflows(entries);
+        }
+        connect(home, &HomePage::workflowRequested,
+                this, &KtmaMainWindow::openProjectWorkflow);
+    }
+
+    try {
+        QString profilePath;
+        if (const auto* project = integrationProject(); project
+            && !project->equipmentProfilePath.empty()) {
+            profilePath = QString::fromStdString(project->equipmentProfilePath);
+        } else {
+            const QString profileName = qEnvironmentVariable(
+                "MILTECH_STAND_PROFILE", QStringLiteral("stand_ktma.yaml"));
+            profilePath = root.filePath(QStringLiteral("profiles/") + profileName);
+        }
         integrationConfigureStandProfile(
             orbita::stand::loadStandProfile(profilePath.toUtf8().toStdString()),
             profilePath);
@@ -233,6 +276,82 @@ KtmaMainWindow::KtmaMainWindow(QWidget* parent)
 }
 
 KtmaMainWindow::~KtmaMainWindow() = default;
+
+void KtmaMainWindow::openProjectWorkflow(const QString& workflowId)
+{
+    const auto* project = integrationProject();
+    auto* home = integrationHomePage();
+    if (!project || !home) return;
+    const auto* workflow = orbita::stand::findWorkflow(
+        *project, workflowId.toStdString());
+    if (!workflow) {
+        QMessageBox::warning(this, QStringLiteral("Процесс проекта"),
+            QStringLiteral("Выбранный workflow отсутствует в текущем проекте."));
+        return;
+    }
+    if (!workflow->operatorAvailable) {
+        QMessageBox::information(this, QStringLiteral("Процесс проекта"),
+            QString::fromStdString(workflow->unavailableReason));
+        return;
+    }
+
+    pendingWorkflowContext_.clear();
+    if (!workflow->environmentPath.empty()) {
+        pendingWorkflowContext_["environment_profile"] = workflow->environmentPath;
+        pendingWorkflowContext_["environment_id"] = workflow->environmentId;
+        pendingWorkflowContext_["environment_title"] = workflow->environmentTitle;
+        pendingWorkflowContext_["environment_mode"] = workflow->environmentMode;
+        pendingWorkflowContext_["workflow_id"] = workflow->id;
+        if (workflow->environmentMode == "manual_or_controlled") {
+            const auto answer = QMessageBox::question(this,
+                QStringLiteral("Подтверждение условий среды"),
+                QStringLiteral("Подтвердите, что изделие установлено и выдержано "
+                    "в условиях «%1» согласно утверждённой методике. "
+                    "Программа не задаёт и не измеряет климатические уставки.")
+                    .arg(QString::fromStdString(workflow->environmentTitle)),
+                QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+            if (answer != QMessageBox::Yes) {
+                pendingWorkflowContext_.clear();
+                return;
+            }
+            pendingWorkflowContext_["environment_confirmed"] = "true";
+            pendingWorkflowContext_["environment_confirmation_source"] = "operator_dialog";
+        } else if (workflow->environmentMode != "observed") {
+            pendingWorkflowContext_.clear();
+            QMessageBox::warning(this, QStringLiteral("Процесс проекта"),
+                QStringLiteral("Неизвестный режим подтверждения среды."));
+            return;
+        }
+    }
+
+    const auto action = QString::fromStdString(workflow->operatorAction);
+    if (action == QStringLiteral("station.free")) {
+        emit home->genericCheckRequested();
+    } else if (action == QStringLiteral("ktma.tu")) {
+        emit home->tuRequested();
+    } else if (action == QStringLiteral("ktma.production")) {
+        projectProductionCode_.clear();
+        emit home->productionRequested();
+    } else if (action.startsWith(QStringLiteral("ktma.production."))) {
+        const auto package = action.mid(QStringLiteral("ktma.production.").size());
+        const QHash<QString, QString> packageCodes{
+            {QStringLiteral("full"), QStringLiteral("PROD_FULL")},
+            {QStringLiteral("power"), QStringLiteral("PROD_POWER")},
+            {QStringLiteral("yalk"), QStringLiteral("PROD_YALK")},
+            {QStringLiteral("ytp"), QStringLiteral("PROD_YTP")},
+            {QStringLiteral("yvp"), QStringLiteral("PROD_YVP")}};
+        if (!packageCodes.contains(package)) {
+            QMessageBox::warning(this, QStringLiteral("Процесс проекта"),
+                QStringLiteral("Неизвестный пакет производства: %1").arg(package));
+            return;
+        }
+        projectProductionCode_ = packageCodes.value(package);
+        emit home->productionRequested();
+    } else {
+        QMessageBox::warning(this, QStringLiteral("Процесс проекта"),
+            QStringLiteral("Неизвестное действие проекта: %1").arg(action));
+    }
+}
 
 void KtmaMainWindow::loadTuScenarios()
 {
@@ -424,7 +543,9 @@ void KtmaMainWindow::loadProductionScenarios()
 
 QString KtmaMainWindow::productionCodeForScope(const QString& scope) const
 {
+    if (scope.startsWith(QStringLiteral("PROD_"))) return scope;
     if (scope == QStringLiteral("УБСИ ПО ТУ")) return QStringLiteral("PROD_FULL");
+    if (scope == QStringLiteral("Питание / потребление")) return QStringLiteral("PROD_POWER");
     if (scope == QStringLiteral("ЯЛК-96")) return QStringLiteral("PROD_YALK");
     if (scope == QStringLiteral("ЯТП")) return QStringLiteral("PROD_YTP");
     if (scope == QStringLiteral("ЯВП-8")) return QStringLiteral("PROD_YVP");
@@ -442,10 +563,21 @@ void KtmaMainWindow::configureProductionSelector()
     const QString previous = scope->currentData().toString();
     const QSignalBlocker blocker(scope);
     scope->clear();
-    scope->addItem(QStringLiteral("УБСИ · полная"), QStringLiteral("УБСИ ПО ТУ"));
-    scope->addItem(QStringLiteral("ЯЛК-96"), QStringLiteral("ЯЛК-96"));
-    scope->addItem(QStringLiteral("ЯТП"), QStringLiteral("ЯТП"));
-    scope->addItem(QStringLiteral("ЯВП-8"), QStringLiteral("ЯВП-8"));
+    const std::vector<std::pair<QString, QString>> packages{
+        {QStringLiteral("УБСИ · полная"), QStringLiteral("PROD_FULL")},
+        {QStringLiteral("Питание / потребление"), QStringLiteral("PROD_POWER")},
+        {QStringLiteral("ЯЛК-96"), QStringLiteral("PROD_YALK")},
+        {QStringLiteral("ЯТП"), QStringLiteral("PROD_YTP")},
+        {QStringLiteral("ЯВП-8"), QStringLiteral("PROD_YVP")}};
+    if (!projectProductionCode_.isEmpty()) {
+        const auto found = std::find_if(packages.begin(), packages.end(), [this](const auto& item) {
+            return item.second == projectProductionCode_;
+        });
+        if (found != packages.end()) scope->addItem(found->first, found->second);
+        projectProductionCode_.clear();
+    } else {
+        for (const auto& [title, code] : packages) scope->addItem(title, code);
+    }
     const int previousIndex = scope->findData(previous);
     scope->setCurrentIndex(previousIndex >= 0 ? previousIndex : 0);
     if (scope->parentWidget()) scope->parentWidget()->setVisible(true);
@@ -466,6 +598,8 @@ void KtmaMainWindow::applyProductionScenario()
     QString title;
     if (code == QStringLiteral("PROD_FULL"))
         title = QStringLiteral("Полная производственная проверка УБСИ");
+    else if (code == QStringLiteral("PROD_POWER"))
+        title = QStringLiteral("Проверка питания и потребления УБСИ");
     else if (code == QStringLiteral("PROD_YALK"))
         title = QStringLiteral("Полная ЯЛК-96");
     else if (code == QStringLiteral("PROD_YTP"))
@@ -739,7 +873,7 @@ void KtmaMainWindow::runScenario(
     auto* page = integrationTestPage();
     auto* engine = integrationScenarioEngine();
     auto* registry = integrationEquipmentRegistry();
-    auto* watcher = integrationScenarioWatcher();
+        auto* watcher = integrationScenarioWatcher();
     if (!page || !engine || !registry || !watcher || !integrationStandRuntimeReady()
         || watcher->isRunning()) {
         return;
@@ -748,6 +882,8 @@ void KtmaMainWindow::runScenario(
     QString effectiveCode = requestedCode;
     std::string serial = objectSerial.trimmed().toUtf8().toStdString();
     std::optional<ktma::ubsi::ProductionRunContext> productionContext;
+    const auto selectedWorkflowContext = pendingWorkflowContext_;
+    pendingWorkflowContext_.clear();
 
     try {
         if (integrationProductionWorkflowActive()) {
@@ -848,10 +984,14 @@ void KtmaMainWindow::runScenario(
             .arg(QString::fromStdString(scenario.id), QString::fromUtf8(serial.c_str())));
 
         const std::string profileVersion = integrationStandProfile().version;
+        const auto* project = integrationProject();
+        const std::string projectId = project ? project->id : std::string();
+        const std::string projectVersion = project ? project->version : std::string();
         auto* leases = &integrationStationSession().leases();
         watcher->setFuture(QtConcurrent::run(
             [this, engine, registry, scenario, profileVersion, serial, allowPartial,
-             yvpExcluded, overloadExcluded, survivalExcluded, leases]() {
+             yvpExcluded, overloadExcluded, survivalExcluded, leases,
+             selectedWorkflowContext, projectId, projectVersion]() {
                 auto result = orbita::stand::runScenarioWithEvidence(
                     *engine, *registry, scenario, profileVersion, serial, allowPartial,
                     [this](const orbita::stand::RunEvent& event) {
@@ -860,6 +1000,27 @@ void KtmaMainWindow::runScenario(
                                 testPage->setRunEvent(event);
                         }, Qt::QueuedConnection);
                     }, leases);
+                if (!selectedWorkflowContext.empty()) {
+                    result.projectId = projectId;
+                    result.projectVersion = projectVersion;
+                    const auto workflow = selectedWorkflowContext.find("workflow_id");
+                    if (workflow != selectedWorkflowContext.end())
+                        result.workflowId = workflow->second;
+                    const auto profile = selectedWorkflowContext.find("environment_profile");
+                    if (profile != selectedWorkflowContext.end())
+                        result.environmentProfile = profile->second;
+                    result.contextAttributes.insert(selectedWorkflowContext.begin(),
+                                                    selectedWorkflowContext.end());
+                    for (auto& event : result.evidence) ++event.sequence;
+                    orbita::stand::EvidenceEvent environmentEvent;
+                    environmentEvent.sequence = 1;
+                    environmentEvent.timestamp = result.startedAt;
+                    environmentEvent.type = "ENVIRONMENT";
+                    environmentEvent.nodeId = "workflow-environment";
+                    environmentEvent.message = "Зафиксирован контекст условий проведения запуска";
+                    environmentEvent.data = selectedWorkflowContext;
+                    result.evidence.insert(result.evidence.begin(), std::move(environmentEvent));
+                }
                 if (yvpExcluded || overloadExcluded || survivalExcluded) {
                     result.events.insert(result.events.begin(), {
                         result.startedAt, "scope", "SCOPE",
@@ -870,7 +1031,7 @@ void KtmaMainWindow::runScenario(
                          {"survival_included", survivalExcluded ? "false" : "true"}}});
                 }
                 return result;
-            }));
+             }));
     } catch (const std::exception& error) {
         if (!pendingProductionRunId_.empty() && productionLedger_) {
             try {
@@ -930,6 +1091,16 @@ void KtmaMainWindow::finalizeProductionRun()
         productionLedger_->finish(pendingProductionRunId_, status);
     } catch (const std::exception& error) {
         integrationLog(QStringLiteral("ProductionLedger: итог не сохранён: %1")
+            .arg(QString::fromUtf8(error.what())));
+    }
+    try {
+        const auto selected = productionLedger_->recomputeCurrentStatus(
+            pendingProductionContext_->productId, "production run finalized; newest accepted node result");
+        integrationLog(QStringLiteral("Production status пересчитан: затронуто узлов %1")
+            .arg(static_cast<qulonglong>(selected.size())));
+        if (auto* registrarPage = integrationRegistrarPage()) registrarPage->refreshNow();
+    } catch (const std::exception& error) {
+        integrationLog(QStringLiteral("Production status не пересчитан: %1")
             .arg(QString::fromUtf8(error.what())));
     }
 

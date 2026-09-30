@@ -1,12 +1,12 @@
 schema: 1
-id: tu_climate_plus
-title: УБСИ · проверка по ТУ · климатические условия +
+id: tu_climate_minus
+title: УБСИ · проверка по ТУ · климатические условия −
 kind: tu
 operator_action: ktma.tu
 operator_available: true
 
 scenario: ../../data/scenarios/ubsi_ulk_combined_check.yaml
-environment: environments/climate_plus.yaml
+environment: environments/climate_minus.yaml
 
 allow_dynamic_scenario: false
 allow_scenario_overrides: false

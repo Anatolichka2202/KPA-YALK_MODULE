@@ -65,9 +65,8 @@ GenericCheckDialog::GenericCheckDialog(QWidget* parent)
     root->addWidget(title);
 
     auto* hint = new QLabel(QStringLiteral(
-        "Свободная проверка на текущем стендовом профиле. Она не регистрирует изделие и не создаёт запись "
-        "в реестре поставки. Сценарий и макет отчёта задаются здесь; один и тот же тракт и оборудование "
-        "можно использовать для разных изделий и проектов."), this);
+        "Свободная проверка выбранного проекта. Перед запуском программа проверит требуемые возможности "
+        "оборудования и сообщит о технической проблеме отдельно от результата изделия."), this);
     hint->setWordWrap(true);
     hint->setStyleSheet(QStringLiteral("color:#8ea6b7;"));
     root->addWidget(hint);
@@ -89,6 +88,13 @@ GenericCheckDialog::GenericCheckDialog(QWidget* parent)
     form->addRow(QStringLiteral("Обозначение / заводской №"), serial_);
     setupLayout->addLayout(form);
 
+    resourcePreview_ = new QLabel(setup);
+    resourcePreview_->setObjectName(QStringLiteral("genericResourcePreview"));
+    resourcePreview_->setWordWrap(true);
+    resourcePreview_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    resourcePreview_->setStyleSheet(QStringLiteral("color:#b7c8d5;padding:4px 0;"));
+    setupLayout->addWidget(resourcePreview_);
+
     auto* descriptionCaption = new QLabel(QStringLiteral("ОПИСАНИЕ ПРОВЕРКИ / ИЗДЕЛИЯ"), setup);
     descriptionCaption->setProperty("caption", true);
     setupLayout->addWidget(descriptionCaption);
@@ -99,10 +105,19 @@ GenericCheckDialog::GenericCheckDialog(QWidget* parent)
         "Что проверяем, в какой схеме и для чего. Текст попадёт в отчёт."));
     setupLayout->addWidget(description_);
 
+    auto* overrideCaption = new QLabel(
+        QStringLiteral("ИНЖЕНЕРНОЕ ИЗМЕНЕНИЕ / ДОПУСК (если меняли критерий в черновике)"), setup);
+    overrideCaption->setProperty("caption", true);
+    setupLayout->addWidget(overrideCaption);
+    engineeringOverride_ = new QPlainTextEdit(setup);
+    engineeringOverride_->setObjectName(QStringLiteral("genericEngineeringOverride"));
+    engineeringOverride_->setMaximumHeight(70);
+    engineeringOverride_->setPlaceholderText(QStringLiteral(
+        "Укажите, что именно изменено. Числовые критерии берутся из приложенного снимка YAML сценария."));
+    setupLayout->addWidget(engineeringOverride_);
+
     auto* setupActions = new QHBoxLayout;
-    equipmentButton_ = new QPushButton(QStringLiteral("Проверить оборудование текущего профиля"), setup);
     editScenarioButton_ = new QPushButton(QStringLiteral("Редактировать сценарий"), setup);
-    setupActions->addWidget(equipmentButton_);
     setupActions->addWidget(editScenarioButton_);
     setupActions->addStretch(1);
     setupLayout->addLayout(setupActions);
@@ -120,7 +135,7 @@ GenericCheckDialog::GenericCheckDialog(QWidget* parent)
     auto* placeholders = new QLabel(QStringLiteral(
         "Поля: {{description}}, {{object_serial}}, {{scenario_id}}, {{scenario_title}}, "
         "{{scenario_version}}, {{profile_version}}, {{verdict}}, {{started_at}}, {{finished_at}}, "
-        "{{steps}}, {{events}}"), templatePanel);
+        "{{engineering_override}}, {{scenario_config_sha256}}, {{steps}}, {{events}}"), templatePanel);
     placeholders->setWordWrap(true);
     placeholders->setStyleSheet(QStringLiteral("color:#8ea6b7;font-size:11px;"));
     templateLayout->addWidget(placeholders);
@@ -177,8 +192,6 @@ GenericCheckDialog::GenericCheckDialog(QWidget* parent)
     actions->addWidget(closeButton);
     root->addLayout(actions);
 
-    connect(equipmentButton_, &QPushButton::clicked,
-            this, &GenericCheckDialog::equipmentCheckRequested);
     connect(editScenarioButton_, &QPushButton::clicked,
             this, &GenericCheckDialog::editScenario);
     connect(runButton_, &QPushButton::clicked,
@@ -188,6 +201,8 @@ GenericCheckDialog::GenericCheckDialog(QWidget* parent)
     connect(saveReportButton_, &QPushButton::clicked,
             this, &GenericCheckDialog::saveReport);
     connect(closeButton, &QPushButton::clicked, this, &QDialog::close);
+    connect(scenario_, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &GenericCheckDialog::updateResourcePreview);
 }
 
 void GenericCheckDialog::setScenarios(const QVector<GenericScenarioEntry>& scenarios)
@@ -197,13 +212,19 @@ void GenericCheckDialog::setScenarios(const QVector<GenericScenarioEntry>& scena
         const QString label = QStringLiteral("%1  ·  %2  ·  v%3")
             .arg(entry.title, entry.id, entry.version);
         scenario_->addItem(label, entry.path);
+        const int index = scenario_->count() - 1;
+        scenario_->setItemData(index, entry.workflowId, Qt::UserRole + 1);
+        scenario_->setItemData(index, entry.workflowTitle, Qt::UserRole + 2);
+        scenario_->setItemData(index, entry.requiredResources, Qt::UserRole + 3);
+        scenario_->setItemData(index, entry.resourcesConfigured, Qt::UserRole + 4);
     }
     const bool available = scenario_->count() > 0;
     runButton_->setEnabled(available);
     editScenarioButton_->setEnabled(available);
     status_->setText(available
         ? QStringLiteral("Доступно сценариев: %1").arg(scenario_->count())
-        : QStringLiteral("Нет валидных сценариев в каталоге scenarios"));
+        : QStringLiteral("В выбранном проекте нет доступных динамических сценариев"));
+    updateResourcePreview();
 }
 
 void GenericCheckDialog::setRunning(bool running, const QString& detail)
@@ -211,8 +232,8 @@ void GenericCheckDialog::setRunning(bool running, const QString& detail)
     scenario_->setEnabled(!running);
     serial_->setEnabled(!running);
     description_->setEnabled(!running);
+    engineeringOverride_->setEnabled(!running);
     reportTemplate_->setEnabled(!running);
-    equipmentButton_->setEnabled(!running);
     editScenarioButton_->setEnabled(!running && scenario_->count() > 0);
     runButton_->setEnabled(!running && scenario_->count() > 0);
     stopButton_->setEnabled(running);
@@ -223,6 +244,7 @@ void GenericCheckDialog::setRunning(bool running, const QString& detail)
         saveReportButton_->setEnabled(false);
     }
     if (!detail.isEmpty()) status_->setText(detail);
+    if (!running) updateResourcePreview();
 }
 
 void GenericCheckDialog::appendEvent(const orbita::stand::RunEvent& event)
@@ -254,7 +276,15 @@ void GenericCheckDialog::requestRun()
                                  QStringLiteral("Выберите сценарий."));
         return;
     }
-    emit runRequested(path, serial_->text().trimmed(), description_->toPlainText().trimmed(),
+    const QString workflowId = selectedWorkflowId();
+    if (workflowId.isEmpty()) {
+        QMessageBox::information(this, QStringLiteral("Проверка"),
+                                 QStringLiteral("В проекте не выбран разрешённый workflow."));
+        return;
+    }
+    emit runRequested(workflowId, path, serial_->text().trimmed(),
+                      description_->toPlainText().trimmed(),
+                      engineeringOverride_->toPlainText().trimmed(),
                       reportTemplate_->toPlainText());
 }
 
@@ -289,6 +319,31 @@ QString GenericCheckDialog::selectedScenarioPath() const
     return scenario_->currentData().toString();
 }
 
+QString GenericCheckDialog::selectedWorkflowId() const
+{
+    return scenario_->currentData(Qt::UserRole + 1).toString();
+}
+
+void GenericCheckDialog::updateResourcePreview()
+{
+    if (!resourcePreview_) return;
+    const QString workflow = scenario_->currentData(Qt::UserRole + 2).toString();
+    const QStringList resources = scenario_->currentData(Qt::UserRole + 3).toStringList();
+    const bool configured = scenario_->currentData(Qt::UserRole + 4).toBool();
+    if (workflow.isEmpty()) {
+        resourcePreview_->setText(QStringLiteral("Ресурсы стенда: не определены"));
+        runButton_->setEnabled(false);
+        return;
+    }
+    const QString required = resources.isEmpty()
+        ? QStringLiteral("сценарий не объявил отдельные возможности")
+        : resources.join(QStringLiteral(", "));
+    resourcePreview_->setText(QStringLiteral(
+        "Процесс: %1\nТребуемые ресурсы и привязки: %2\nФизическая готовность проверяется при запуске.")
+        .arg(workflow, required));
+    if (!stopButton_->isEnabled()) runButton_->setEnabled(configured);
+}
+
 QString GenericCheckDialog::defaultReportTemplate() const
 {
     return QStringLiteral(
@@ -300,6 +355,8 @@ QString GenericCheckDialog::defaultReportTemplate() const
         "th{background:#eef2f6;}code{font-family:Consolas,monospace;}</style></head><body>\n"
         "<h1>Отчёт проверки</h1>\n"
         "<p><b>Описание:</b> {{description}}</p>\n"
+        "<p><b>Инженерное изменение / допуск:</b> {{engineering_override}}</p>\n"
+        "<p><b>Снимок конфигурации SHA-256:</b> <code>{{scenario_config_sha256}}</code></p>\n"
         "<p><b>Объект:</b> {{object_serial}}</p>\n"
         "<p><b>Сценарий:</b> {{scenario_title}} (<code>{{scenario_id}}</code>), версия {{scenario_version}}</p>\n"
         "<p><b>Профиль стенда:</b> {{profile_version}}</p>\n"

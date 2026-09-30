@@ -1,0 +1,7 @@
+schema: 1
+id: climate_minus
+title: Климатические условия −
+mode: manual_or_controlled
+
+# Project-owned climate limits and stabilization criteria are intentionally
+# not inferred here. The operator must confirm the condition for each run.

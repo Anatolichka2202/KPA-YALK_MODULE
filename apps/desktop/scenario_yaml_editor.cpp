@@ -41,8 +41,10 @@ ScenarioYamlEditor::ScenarioYamlEditor(QString path, QWidget* parent)
     auto* actions = new QHBoxLayout;
     auto* validateButton = new QPushButton(QStringLiteral("Проверить YAML"));
     draftButton_ = new QPushButton(QStringLiteral("Создать черновик"));
+    draftButton_->setObjectName(QStringLiteral("createScenarioDraft"));
     draftButton_->setVisible(scenario_);
     saveButton_ = new QPushButton(QStringLiteral("Сохранить"));
+    saveButton_->setObjectName(QStringLiteral("saveScenarioConfig"));
     auto* closeButton = new QPushButton(QStringLiteral("Закрыть"));
     actions->addWidget(validateButton);
     actions->addWidget(draftButton_);
