@@ -50,8 +50,7 @@ HomePage::HomePage(QWidget* parent)
     root->addWidget(title);
 
     auto* subtitle = new QLabel(QStringLiteral(
-        "Сценарий определяет последовательность операций и используемый тракт. "
-        "Оборудование и ячейки стенда не принадлежат одному изделию: их можно повторно использовать в разных проектах."), this);
+        "Выберите поставку или свободный режим станции."), this);
     subtitle->setProperty("muted", true);
     subtitle->setWordWrap(true);
     subtitle->setMaximumWidth(1100);
@@ -64,26 +63,29 @@ HomePage::HomePage(QWidget* parent)
     genericLayout->setContentsMargins(24, 22, 24, 22);
     genericLayout->setSpacing(10);
 
-    auto* genericKicker = new QLabel(QStringLiteral("ОБЩАЯ СТАНЦИЯ"), genericCard);
+    auto* genericKicker = new QLabel(QStringLiteral("MILTECHSTATION · УНИВЕРСАЛЬНЫЙ КОНТУР"), genericCard);
     genericKicker->setProperty("kicker", true);
     genericLayout->addWidget(genericKicker);
 
-    auto* genericTitle = new QLabel(QStringLiteral("Проверить изделие"), genericCard);
+    auto* genericTitle = new QLabel(QStringLiteral("Свободный режим"), genericCard);
     genericTitle->setProperty("title", true);
     genericLayout->addWidget(genericTitle);
 
     auto* genericText = new QLabel(QStringLiteral(
-        "Опишите объект, выберите или отредактируйте сценарий, задайте макет отчёта и выполните проверку. "
-        "Свободная проверка не создаёт запись в реестре специализированной поставки."), genericCard);
+        "Read-only мониторинг Орбиты: выберите адреса из библиотеки параметров или TXT-набора, "
+        "запустите сбор и наблюдайте значения с допусками. Управляющих воздействий режим не выполняет."), genericCard);
     genericText->setProperty("muted", true);
     genericText->setWordWrap(true);
     genericLayout->addWidget(genericText);
 
-    auto* genericAction = actionButton(QStringLiteral("ПРОВЕРИТЬ ИЗДЕЛИЕ"), genericCard, true);
+    auto* genericAction = actionButton(QStringLiteral("ОТКРЫТЬ СВОБОДНЫЙ РЕЖИМ"), genericCard, true);
+    genericAction->setObjectName(QStringLiteral("genericFreeAction"));
+    genericAction->setAccessibleDescription(QStringLiteral(
+        "Открывает read-only мониторинг Орбиты; не открывает выбор YAML-сценария и не управляет оборудованием."));
     genericLayout->addWidget(genericAction, 0, Qt::AlignLeft);
     root->addWidget(genericCard);
 
-    auto* section = new QLabel(QStringLiteral("СПЕЦИАЛИЗИРОВАННЫЕ ПОСТАВКИ"), this);
+    auto* section = new QLabel(QStringLiteral("ПОСТАВКА"), this);
     section->setObjectName(QStringLiteral("legacyWorkflowSection"));
     section->setProperty("kicker", true);
     root->addWidget(section);
@@ -100,37 +102,40 @@ HomePage::HomePage(QWidget* parent)
     ktmaLayout->addWidget(ktmaTitle);
 
     auto* ktmaText = new QLabel(QStringLiteral(
-        "Специализированная поставка КТМА: БСИ, УБСИ, РПУ и связанные тракты. "
-        "Формальная проверка по ТУ и производственный контур используют реестр поставки. "
-        "Например, УБСИ может проверяться как напрямую, так и через БСИ по тракту «Орбита» — это задаёт сценарий."), ktmaCard);
+        "Готовые проверки и производственные маршруты оборудования КТМА."), ktmaCard);
     ktmaText->setProperty("muted", true);
     ktmaText->setWordWrap(true);
     ktmaLayout->addWidget(ktmaText);
 
-    auto* ktmaActions = new QHBoxLayout;
-    ktmaActions->setSpacing(10);
-    auto* tu = actionButton(QStringLiteral("ПРОВЕРКА ПО ТУ"), ktmaCard);
-    auto* production = actionButton(QStringLiteral("ПРОИЗВОДСТВО"), ktmaCard);
-    auto* administration = actionButton(QStringLiteral("АДМИНИСТРИРОВАНИЕ ПОСТАВКИ"), ktmaCard);
-    ktmaActions->addWidget(tu);
-    ktmaActions->addWidget(production);
-    ktmaActions->addWidget(administration);
-    ktmaActions->addStretch(1);
-    ktmaLayout->addLayout(ktmaActions);
+    auto* openKtma = actionButton(QStringLiteral("ОТКРЫТЬ КТМА"), ktmaCard, true);
+    openKtma->setObjectName(QStringLiteral("openKtmaDelivery"));
+    ktmaLayout->addWidget(openKtma, 0, Qt::AlignLeft);
     root->addWidget(ktmaCard);
+
+    stationAdminCard_ = new QFrame(this);
+    stationAdminCard_->setProperty("card", true);
+    auto* adminLayout = new QVBoxLayout(stationAdminCard_);
+    auto* adminTitle = new QLabel(QStringLiteral("Администрирование"), stationAdminCard_);
+    adminTitle->setProperty("title", true);
+    adminLayout->addWidget(adminTitle);
+    auto* adminAction = actionButton(QStringLiteral("НЕ РЕАЛИЗОВАНО"), stationAdminCard_);
+    adminAction->setObjectName(QStringLiteral("stationAdminAction"));
+    adminAction->setEnabled(false);
+    adminAction->setAccessibleDescription(QStringLiteral(
+        "Администрирование станции пока не реализовано и не открывает технические настройки."));
+    adminLayout->addWidget(adminAction, 0, Qt::AlignLeft);
+    root->addWidget(stationAdminCard_);
     root->addStretch(1);
 
-    connect(genericAction, &QPushButton::clicked, this, &HomePage::genericCheckRequested);
-    connect(tu, &QPushButton::clicked, this, &HomePage::tuRequested);
-    connect(production, &QPushButton::clicked, this, &HomePage::productionRequested);
-    connect(administration, &QPushButton::clicked, this, &HomePage::administrationRequested);
+    connect(openKtma, &QPushButton::clicked, this, [this] { showKtmaMenu(true); });
+    connect(genericAction, &QPushButton::clicked, this, &HomePage::freeWorkspaceRequested);
 }
 
 void HomePage::setProjectWorkflows(const QVector<HomeWorkflowEntry>& workflows)
 {
     if (!rootLayout_) return;
-    if (genericCard_) genericCard_->hide();
-    if (ktmaCard_) ktmaCard_->hide();
+    if (genericCard_) genericCard_->show();
+    if (ktmaCard_) ktmaCard_->show();
     if (auto* section = findChild<QLabel*>(QStringLiteral("legacyWorkflowSection")))
         section->hide();
 
@@ -147,37 +152,57 @@ void HomePage::setProjectWorkflows(const QVector<HomeWorkflowEntry>& workflows)
     layout->setContentsMargins(24, 22, 24, 22);
     layout->setSpacing(10);
 
-    auto* heading = new QLabel(QStringLiteral("ПРОЦЕССЫ ПРОЕКТА"), card);
+    auto* back = actionButton(QStringLiteral("← Главная"), card);
+    back->setObjectName(QStringLiteral("backFromKtma"));
+    layout->addWidget(back, 0, Qt::AlignLeft);
+    connect(back, &QPushButton::clicked, this, [this] { showKtmaMenu(false); });
+
+    auto* heading = new QLabel(QStringLiteral("КТМА · ПРОВЕРКИ"), card);
     heading->setProperty("kicker", true);
     layout->addWidget(heading);
     auto* hint = new QLabel(QStringLiteral(
-        "Доступные проверки определяются выбранным проектом."), card);
+        "ТУ 5.6 — фиксированный маршрут УБСИ. Производственные пакеты выбираются внутри производственной сессии."), card);
     hint->setProperty("muted", true);
+    hint->setWordWrap(true);
     layout->addWidget(hint);
 
     for (const auto& workflow : workflows) {
-        const QString title = workflow.available
-            ? workflow.title
-            : QStringLiteral("%1 · недоступно").arg(workflow.title);
-        auto* button = actionButton(title, card);
+        if (workflow.kind == QStringLiteral("free")) continue;
+        if (!workflow.available) continue;
+        QString title = workflow.title;
+        if (workflow.kind == QStringLiteral("tu"))
+            title = QStringLiteral("ПРОВЕРКА УБСИ ПО ТУ");
+        else if (workflow.kind == QStringLiteral("production"))
+            title = QStringLiteral("ПРОИЗВОДСТВО УБСИ");
+        else if (workflow.kind == QStringLiteral("free"))
+            title = QStringLiteral("СВОБОДНАЯ ИНЖЕНЕРНАЯ ПРОВЕРКА");
+        auto* button = actionButton(title, card, workflow.kind == QStringLiteral("tu"));
         button->setObjectName(QStringLiteral("projectWorkflow_%1").arg(workflow.id));
-        button->setEnabled(workflow.available);
-        button->setAccessibleDescription(workflow.unavailableReason);
-        if (!workflow.unavailableReason.isEmpty())
-            button->setToolTip(workflow.unavailableReason);
         layout->addWidget(button);
         connect(button, &QPushButton::clicked, this,
                 [this, id = workflow.id] { emit workflowRequested(id); });
     }
 
-    auto* stationAdmin = actionButton(QStringLiteral("АДМИНИСТРИРОВАНИЕ СТАНЦИИ"), card);
-    stationAdmin->setObjectName(QStringLiteral("stationAdminAction"));
-    stationAdmin->setToolTip(QStringLiteral(
-        "Просмотр проекта, профиля оборудования, соединений и состояния ресурсов. Транспортом напрямую не управляет."));
-    layout->addWidget(stationAdmin);
-    connect(stationAdmin, &QPushButton::clicked,
-            this, &HomePage::stationAdminRequested);
+    for (const auto& title : {
+             QStringLiteral("Постклиматическая проверка — не реализовано"),
+             QStringLiteral("Проверка в климате — не реализовано"),
+             QStringLiteral("Свободная проверка КТМА — не реализовано")}) {
+        auto* placeholder = actionButton(title, card);
+        placeholder->setEnabled(false);
+        layout->addWidget(placeholder);
+    }
 
     projectWorkflowCard_ = card;
-    rootLayout_->insertWidget(3, projectWorkflowCard_);
+    rootLayout_->insertWidget(rootLayout_->indexOf(genericCard_), projectWorkflowCard_);
+    showKtmaMenu(false);
+}
+
+void HomePage::showKtmaMenu(bool visible)
+{
+    if (projectWorkflowCard_) projectWorkflowCard_->setVisible(visible);
+    if (genericCard_) genericCard_->setVisible(!visible);
+    if (ktmaCard_) ktmaCard_->setVisible(!visible);
+    if (stationAdminCard_) stationAdminCard_->setVisible(!visible);
+    if (auto* section = findChild<QLabel*>(QStringLiteral("legacyWorkflowSection")))
+        section->setVisible(!visible);
 }

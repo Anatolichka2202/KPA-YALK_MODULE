@@ -21,6 +21,7 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
+#include <QPlainTextEdit>
 #include <QProgressBar>
 #include <QPushButton>
 #include <QStackedWidget>
@@ -1113,8 +1114,8 @@ QPushButton#scopeCard { min-height:74px; font-size:14px; }
 QPushButton#subCheckCard { min-height:64px; font-size:12px; }
 QPushButton#scopeCard:hover, QPushButton#subCheckCard:hover { background:#1b2129; border:2px solid #5e93b8; }
 QPushButton#scopeCard:checked, QPushButton#subCheckCard:checked { background:#18212c; border:2px solid #5e93b8; color:#9ac7ff; }
-QLineEdit, QComboBox { background:#1b2129; color:#e6eaf0; border:1px solid #2c333d; border-radius:5px; padding:7px 9px; }
-QLineEdit:focus, QComboBox:focus { border-color:#5e93b8; }
+QLineEdit, QComboBox, QPlainTextEdit { background:#1b2129; color:#e6eaf0; border:1px solid #2c333d; border-radius:5px; padding:7px 9px; }
+QLineEdit:focus, QComboBox:focus, QPlainTextEdit:focus { border-color:#5e93b8; }
 QTableWidget { background:#0e1115; alternate-background-color:#1c2128; border:1px solid #232a33; gridline-color:#1a1f26; }
 QHeaderView::section { background:#0e1115; color:#7e8a98; padding:7px; border:none; border-right:1px solid #232a33; font-weight:600; }
 QProgressBar { background:#1c222a; border:1px solid #232a33; border-radius:4px; min-height:18px; text-align:center; }

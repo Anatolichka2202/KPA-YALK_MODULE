@@ -95,6 +95,8 @@ int runInstalledPackageSmoke()
                 + (detail.empty() ? std::string() : " · " + detail));
         }
 
+        if (!QDir().mkpath(applicationDirectory.filePath(QStringLiteral("runs"))))
+            throw std::runtime_error("Cannot create RunStore parent directory");
         QTemporaryDir runDirectory(applicationDirectory.filePath(
             QStringLiteral("runs/package-smoke-XXXXXX")));
         if (!runDirectory.isValid())

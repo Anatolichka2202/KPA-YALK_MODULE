@@ -230,7 +230,7 @@ private:
 
     // Режимы
     enum Mode { ModeHome = 0, ModeTests = 1, ModeMain = 2, ModeDetail = 3, ModeConfig = 4, ModeDb = 5, ModeAdmin = 6 };
-    enum class Workflow { None, Production, Tu };
+    enum class Workflow { None, Production, Tu, Free };
 
     // Для запоминания активного действия на панели
     QAction* actTests_ = nullptr;
@@ -238,6 +238,7 @@ private:
     QAction* actDetail_ = nullptr;
     QAction* actConfig_ = nullptr;
     QAction* actDb_ = nullptr;
+    QAction* freeHomeAction_ = nullptr;
 
     // Нижняя строка статуса
     QLabel* m_statusBarLabel = nullptr;
@@ -289,6 +290,8 @@ private slots:
     void onOpenScenario();
     void onOpenCatalog();
     void onOpenStandProfile();
+    void openFreeWorkspace();
+    void leaveFreeWorkspace();
     void onRunScenario(const QString& scenarioCode, const QString& objectSerial,
                        bool allowPartial);
     void onStopScenario();

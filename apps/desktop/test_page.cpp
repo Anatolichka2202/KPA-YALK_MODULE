@@ -55,9 +55,13 @@ TestPage::TestPage(QWidget* parent)
     , impl_(std::make_unique<Impl>(this))
 {
     rebuildScopes();
+    // Комбобоксы служат только внутренней связью UI с backend. Оператор не
+    // выбирает сценарий, режим или части фиксированного маршрута испытания.
+    impl_->bridge->setObjectName(QStringLiteral("operatorConfigurationBridge"));
+    impl_->bridge->hide();
 
-    // The route at the left is navigation through one persistent test window.
-    // Backend RunEvent remains the only authority that advances the real run.
+    // Маршрут слева лишь переключает состояние одного постоянного окна испытания.
+    // Единственным источником переходов реального прогона остаётся RunEvent backend.
     for (int i = 0; i < impl_->stageLabels.size(); ++i) {
         auto* label = impl_->stageLabels[i];
         label->setProperty("routeStageIndex", i);
@@ -175,6 +179,10 @@ void TestPage::setProductionMode(bool enabled)
 {
     impl_->productionMode = enabled;
 
+    // В обоих операторских режимах скрыта техническая конфигурация. В ТУ
+    // маршрут фиксирован, а production-объём выбирается только понятными кнопками.
+    impl_->bridge->hide();
+
     impl_->sessionTitle->setText(enabled
         ? QStringLiteral("Производственная сессия")
         : QStringLiteral("Проверка УБСИ по ТУ"));
@@ -190,13 +198,19 @@ void TestPage::setProductionMode(bool enabled)
 
     impl_->operatorCaption->setVisible(enabled);
     impl_->operatorEdit->setVisible(enabled);
-    // Production never registers products from the test screen. The queue is
-    // populated from registrar.db by KtmaMainWindow. TU keeps one serial input.
+    // Экран испытания не регистрирует изделия: очередь формирует KtmaMainWindow
+    // из registrar.db. Для ТУ остаётся одно поле серийного номера.
     impl_->serialCaption->setVisible(!enabled);
     impl_->serialEdit->setVisible(!enabled);
     impl_->addProduct->setVisible(false);
+    impl_->productionContextPanel->setVisible(enabled);
     impl_->productsPanel->setVisible(enabled);
-    impl_->scopeButtons.value(QStringLiteral("ЯВП-8"))->setVisible(enabled);
+    impl_->scopeHeading->setText(enabled
+        ? QStringLiteral("Объём производственной проверки")
+        : QStringLiteral("Маршрут проверки по ТУ"));
+    for (auto* button : impl_->scopeButtons)
+        button->setVisible(enabled);
+    impl_->productionScenarioEditor->setVisible(enabled);
     impl_->yalkSubPanel->setVisible(false);
     impl_->includeYvpCheck->setChecked(enabled);
 
@@ -285,10 +299,11 @@ void TestPage::rebuildScopes()
                                   ? QStringLiteral("УБСИ · полная")
                                   : QStringLiteral("УБСИ по ТУ"),
                               QStringLiteral("УБСИ ПО ТУ"));
-    impl_->scopeCombo->addItem(QStringLiteral("ЯЛК-96"), QStringLiteral("ЯЛК-96"));
-    impl_->scopeCombo->addItem(QStringLiteral("ЯТП"), QStringLiteral("ЯТП"));
-    if (impl_->productionMode)
+    if (impl_->productionMode) {
+        impl_->scopeCombo->addItem(QStringLiteral("ЯЛК-96"), QStringLiteral("ЯЛК-96"));
+        impl_->scopeCombo->addItem(QStringLiteral("ЯТП"), QStringLiteral("ЯТП"));
         impl_->scopeCombo->addItem(QStringLiteral("ЯВП-8"), QStringLiteral("ЯВП-8"));
+    }
     const int index = impl_->scopeCombo->findData(previous);
     impl_->scopeCombo->setCurrentIndex(index >= 0 ? index : 0);
     impl_->scopeCombo->blockSignals(false);
@@ -343,7 +358,11 @@ void TestPage::updateSelectionSummary()
 
     const QString code = currentScenarioCode();
     const auto info = impl_->scenarios.value(code);
-    if (!code.isEmpty()) {
+    if (!impl_->productionMode) {
+        impl_->scenarioInfo->setText(info.available
+            ? QStringLiteral("Один маршрут: подготовка → питание → ЯЛК-96 → ЯТП → ЯВП-8 → отчёт. После ввода заводского номера перейдите к подготовке оборудования.")
+            : info.detail);
+    } else if (!code.isEmpty()) {
         impl_->scenarioInfo->setText(info.detail.isEmpty()
             ? QStringLiteral("Сценарий: %1").arg(code)
             : info.detail);
@@ -740,6 +759,16 @@ QString TestPage::currentScenarioCode() const
     if (impl_->productionMode)
         return productionScenarioForScope(impl_->scopeCombo->currentData().toString());
     return impl_->testCombo->currentData().toString();
+}
+
+QString TestPage::productionLifecycle() const
+{
+    return impl_->productionLifecycle->currentData().toString();
+}
+
+QString TestPage::productionOperatorComment() const
+{
+    return impl_->operatorComment->toPlainText().trimmed();
 }
 
 bool TestPage::includeYvp() const

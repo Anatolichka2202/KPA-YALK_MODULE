@@ -3,7 +3,8 @@ id: free
 title: Свободная инженерная проверка
 kind: free
 operator_action: station.free
-operator_available: true
+operator_available: false
+unavailable_reason: Свободный режим с live-трактом, наборами адресов, графиками и допусками не реализован. Выбор YAML-сценария не является заменой этого режима.
 
 allow_dynamic_scenario: true
 allow_scenario_overrides: true

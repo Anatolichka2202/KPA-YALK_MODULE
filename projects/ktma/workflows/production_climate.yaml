@@ -3,7 +3,8 @@ id: production_climate_plus
 title: УБСИ · производственная проверка · климатические условия +
 kind: production
 operator_action: ktma.production.full
-operator_available: true
+operator_available: false
+unavailable_reason: Производственная проверка во время климатического воздействия не реализована и не может быть заявлена готовой.
 
 scenario: ../../data/scenarios/ubsi_production_full.yaml
 environment: environments/climate_plus.yaml

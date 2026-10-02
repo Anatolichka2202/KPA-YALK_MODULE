@@ -12,6 +12,7 @@
 #include "category_grid_widget.h"
 
 class ToleranceResolver;
+class QLabel;
 
 class MainPage : public QWidget
 {
@@ -26,6 +27,7 @@ public:
     void updateData(const orbita::Snapshot& snap);
     void setSelectedChannel(int index);
     void setLayout(int layout); // 0=A, 1=B, 2=C
+    void setReadOnlyWorkspace(bool enabled);
 
 signals:
     void channelSelected(int index);
@@ -67,4 +69,6 @@ private:
     QPushButton* m_btnA;
     QPushButton* m_btnB;
     QPushButton* m_btnC;
+    QWidget* m_readOnlyHeader = nullptr;
+    QLabel* m_readOnlySummary = nullptr;
 };

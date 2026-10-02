@@ -40,17 +40,26 @@ int main(int argc, char** argv)
 
     HomePage home;
     home.setProjectWorkflows({
-        {QStringLiteral("tu_normal"), QStringLiteral("Проверка по ТУ"), true, {}},
+        {QStringLiteral("tu_normal"), QStringLiteral("Проверка по ТУ"), true, {},
+         QStringLiteral("tu")},
         {QStringLiteral("tu_climate"), QStringLiteral("Климатические условия"), false,
-         QStringLiteral("Environment runtime не реализован")}});
+         QStringLiteral("Environment runtime не реализован"), QStringLiteral("tu")}});
     auto* tuWorkflow = home.findChild<QPushButton*>(QStringLiteral("projectWorkflow_tu_normal"));
     auto* climateWorkflow = home.findChild<QPushButton*>(QStringLiteral("projectWorkflow_tu_climate"));
-    require(tuWorkflow && climateWorkflow,
-            "home page must render workflows from the selected project");
-    require(home.findChild<QPushButton*>(QStringLiteral("stationAdminAction")),
-            "home page must expose the generic station administration action");
-    require(!climateWorkflow->isEnabled(),
-            "unavailable project workflow must not be launchable");
+    require(tuWorkflow && !climateWorkflow,
+            "home page must expose the TU route and hide unavailable climate workflow");
+    auto* adminAction = home.findChild<QPushButton*>(QStringLiteral("stationAdminAction"));
+    require(adminAction && !adminAction->isEnabled(),
+            "unfinished administration must not be launchable from operator home");
+    auto* freeAction = home.findChild<QPushButton*>(QStringLiteral("genericFreeAction"));
+    require(freeAction && freeAction->isEnabled(),
+            "free mode must open the read-only workspace instead of a YAML launcher");
+    bool freeWorkspaceRequested = false;
+    QObject::connect(&home, &HomePage::freeWorkspaceRequested, &home,
+        [&] { freeWorkspaceRequested = true; });
+    freeAction->click();
+    require(freeWorkspaceRequested,
+            "free mode must dispatch the dedicated read-only workspace request");
     QString dispatchedWorkflow;
     QObject::connect(&home, &HomePage::workflowRequested, &home,
         [&](const QString& workflowId) { dispatchedWorkflow = workflowId; });
@@ -128,9 +137,16 @@ int main(int argc, char** argv)
     auto* scope = page.findChild<QComboBox*>(QStringLiteral("testScope"));
     auto* test = page.findChild<QComboBox*>(QStringLiteral("testType"));
     auto* mode = page.findChild<QComboBox*>(QStringLiteral("testMode"));
+    auto* operatorConfiguration = page.findChild<QWidget*>(
+        QStringLiteral("operatorConfigurationBridge"));
     auto* serial = page.findChild<QLineEdit*>(QStringLiteral("objectSerial"));
     auto* operatorEdit = page.findChild<QLineEdit*>(QStringLiteral("operatorName"));
     auto* operatorHistory = page.findChild<QComboBox*>(QStringLiteral("operatorHistory"));
+    auto* lifecycle = page.findChild<QComboBox*>(QStringLiteral("productionLifecycle"));
+    auto* operatorComment = page.findChild<QPlainTextEdit*>(
+        QStringLiteral("productionOperatorComment"));
+    auto* scenarioEditor = page.findChild<QPushButton*>(
+        QStringLiteral("productionScenarioEditor"));
     auto* session = page.findChild<QTableWidget*>(QStringLiteral("productionSessionTable"));
     auto* equipment = page.findChild<QTableWidget*>(QStringLiteral("equipmentTable"));
     auto* histogram = page.findChild<QWidget*>(QStringLiteral("yalkChannelHistogram"));
@@ -138,9 +154,11 @@ int main(int argc, char** argv)
     auto* overloadOverview = page.findChild<QWidget*>(QStringLiteral("yalkOverloadOverview"));
     auto* ytpHistogram = page.findChild<QWidget*>(QStringLiteral("ytpChannelHistogram"));
 
-    require(object && scope && test && mode && serial && operatorEdit && operatorHistory && session
+    require(object && scope && test && mode && operatorConfiguration && serial && operatorEdit && operatorHistory && lifecycle && operatorComment && scenarioEditor && session
                 && equipment && histogram && contacts && overloadOverview && ytpHistogram,
             "new operator UI controls not found");
+    require(operatorConfiguration->isHidden(),
+            "operator UI must not expose internal scenario, mode and diagnostic selectors");
     require(operatorEdit->placeholderText() == QStringLiteral("Фамилия Имя Отчество"),
             "operator name must not be mixed with personnel number");
     require(page.styleSheet().contains(QStringLiteral("#14171c")),
@@ -157,6 +175,20 @@ int main(int argc, char** argv)
     require(routeEntries == 6, "operator workspace must expose six clickable route stages");
 
     page.setProductionMode(true);
+    require(!lifecycle->isHidden() && !operatorComment->isHidden() && !scenarioEditor->isHidden(),
+            "production session must expose lifecycle context and scenario editor");
+    lifecycle->setCurrentIndex(lifecycle->findData(QStringLiteral("after_climate")));
+    operatorComment->setPlainText(QStringLiteral("Протокол климатической камеры №42"));
+    require(page.productionLifecycle() == QStringLiteral("after_climate")
+                && page.productionOperatorComment().contains(QStringLiteral("№42")),
+            "production lifecycle and operator comment must be readable for evidence");
+    if (!screenshot.isEmpty() && scene == QStringLiteral("PRODUCTION_SESSION")) {
+        page.resize(1664, 935);
+        page.show();
+        QApplication::processEvents();
+        require(page.grab().save(screenshot),
+                "cannot save production-session operator UI screenshot");
+    }
     const int yalkScope = scope->findData(QStringLiteral("ЯЛК-96"));
     require(yalkScope >= 0, "YALK production scope not found");
     scope->setCurrentIndex(yalkScope);
@@ -195,8 +227,8 @@ int main(int argc, char** argv)
     require(enter, "enter preparation button not found");
     enter->click();
 
-    // Feed real RunEvent shapes used by backend. The page must accept them
-    // without a synthetic demo engine.
+    // Передаём реальные формы RunEvent, используемые backend. Страница обязана
+    // обработать их без синтетического демонстрационного движка.
     page.setRunInProgress(true, QStringLiteral("full production"));
     orbita::stand::RunEvent supply;
     supply.nodeId = "supply_range";

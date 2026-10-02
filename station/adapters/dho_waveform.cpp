@@ -1,6 +1,8 @@
 #include "orbita_stand/dho_waveform.h"
 
 #include <charconv>
+#include <locale>
+#include <sstream>
 #include <stdexcept>
 #include <string_view>
 #include <vector>
@@ -21,12 +23,28 @@ std::vector<std::string_view> split(std::string_view value)
     return result;
 }
 
-template<typename T> bool number(std::string_view value, T& output)
+std::string_view trimmedNumber(std::string_view value)
 {
     while (!value.empty() && (value.back() == '\r' || value.back() == '\n' || value.back() == ' ')) value.remove_suffix(1);
     while (!value.empty() && value.front() == ' ') value.remove_prefix(1);
+    return value;
+}
+
+template<typename T> bool number(std::string_view value, T& output)
+{
+    value = trimmedNumber(value);
     const auto parsed = std::from_chars(value.data(), value.data() + value.size(), output);
     return parsed.ec == std::errc() && parsed.ptr == value.data() + value.size();
+}
+
+bool number(std::string_view value, double& output)
+{
+    // В libc++ из комплекта Qt 6.8.0 LLVM-MinGW нет перегрузки from_chars для
+    // чисел с плавающей точкой, поэтому разбор SCPI не зависит от локали ОС.
+    std::istringstream stream{std::string(trimmedNumber(value))};
+    stream.imbue(std::locale::classic());
+    stream >> std::noskipws >> output;
+    return !stream.fail() && stream.rdbuf()->in_avail() == 0;
 }
 
 std::pair<const std::uint8_t*, std::size_t> tmcPayload(const std::vector<std::uint8_t>& bytes)

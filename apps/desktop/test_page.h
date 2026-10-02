@@ -43,6 +43,8 @@ public:
                       const QString& tuReportPath = {},
                       const QString& productionReportPath = {});
     QString currentScenarioCode() const;
+    QString productionLifecycle() const;
+    QString productionOperatorComment() const;
     bool includeYvp() const;
     bool includeProductionOverload() const;
     bool includeProductionSurvival() const;
@@ -56,6 +58,7 @@ signals:
     void equipmentCheckRequested();
     void runRequested(const QString& scenarioCode, const QString& objectSerial,
                       bool allowPartial);
+    void productionScenarioEditorRequested(const QString& scenarioCode);
     void stopRequested();
 
 protected:

@@ -91,6 +91,15 @@ foreach ($plugin in Get-ChildItem -LiteralPath (Join-Path $packageRoot 'plugins'
     }
 }
 
+# Qt 6.8 may bundle an older LLVM-MinGW runtime than the selected compiler.
+# Preserve the runtime copied beside the executable by its CMake build.
+foreach ($runtimeName in @('libc++.dll', 'libunwind.dll')) {
+    $runtimeSource = Join-Path $runtimeRoot $runtimeName
+    if (Test-Path -LiteralPath $runtimeSource -PathType Leaf) {
+        Copy-Item -LiteralPath $runtimeSource -Destination $packageRoot -Force
+    }
+}
+
 $required = @(
     'MilTechStation.exe', 'parameters.db', 'profiles\stand_ktma.yaml',
     'projects\ktma\project.yaml',

@@ -3,7 +3,8 @@ id: tu_climate_plus
 title: УБСИ · проверка по ТУ · климатические условия +
 kind: tu
 operator_action: ktma.tu
-operator_available: true
+operator_available: false
+unavailable_reason: "Проверка во время климатического воздействия не реализована: физический маршрут, длительность и повторяемость не подтверждены."
 
 scenario: ../../data/scenarios/ubsi_ulk_combined_check.yaml
 environment: environments/climate_plus.yaml

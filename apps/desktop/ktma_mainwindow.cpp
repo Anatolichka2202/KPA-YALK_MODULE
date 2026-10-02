@@ -7,6 +7,7 @@
 #include "orbita_stand/catalog.h"
 #include "orbita_stand/config.h"
 #include "registrar.h"
+#include "scenario_yaml_editor.h"
 
 #include <QAction>
 #include <QApplication>
@@ -141,6 +142,10 @@ KtmaMainWindow::KtmaMainWindow(QWidget* parent)
             QVector<HomeWorkflowEntry> entries;
             entries.reserve(static_cast<int>(project->workflows.size()));
             for (const auto& workflow : project->workflows) {
+                // Оператору доступны только маршруты верхнего уровня, а не
+                // все внутренние варианты сценариев и пакетов проекта.
+                if (workflow.id != "tu_normal" && workflow.id != "production"
+                    && workflow.id != "free") continue;
                 const bool hasHandler = !workflow.operatorAction.empty();
                 QString reason = QString::fromStdString(workflow.unavailableReason);
                 if (!hasHandler && reason.isEmpty())
@@ -149,7 +154,8 @@ KtmaMainWindow::KtmaMainWindow(QWidget* parent)
                     QString::fromStdString(workflow.id),
                     QString::fromStdString(workflow.title),
                     workflow.operatorAvailable && hasHandler,
-                    reason});
+                    reason,
+                    QString::fromStdString(workflow.kind)});
             }
             home->setProjectWorkflows(entries);
         }
@@ -237,9 +243,25 @@ KtmaMainWindow::KtmaMainWindow(QWidget* parent)
     integrationDisableBaseScenarioRunner();
     connect(page, &TestPage::runRequested,
             this, &KtmaMainWindow::runScenario);
+    connect(page, &TestPage::productionScenarioEditorRequested, this,
+            [this](const QString& scenarioCode) {
+        if (!integrationProductionWorkflowActive()) return;
+        const QString path = integrationScenarioPaths().value(scenarioCode);
+        if (path.isEmpty() || !QFileInfo::exists(path)) {
+            QMessageBox::warning(this, QStringLiteral("Редактор сценария"),
+                QStringLiteral("Исходный YAML выбранного производственного сценария не найден."));
+            return;
+        }
 
-    // Physical readiness is delivery-owned: UBSI probes only devices required
-    // by the selected scenario and preserves its confirmed power-up order.
+        // Опубликованный YAML редактор не меняет на месте: он создаёт черновик,
+        // поэтому открытие из production-сессии не способно незаметно изменить
+        // утверждённую процедуру текущего испытания.
+        ScenarioYamlEditor editor(path, this);
+        editor.exec();
+    });
+
+    // Физическая готовность принадлежит поставке: УБСИ проверяет только
+    // приборы выбранного сценария и сохраняет подтверждённый порядок включения.
     connect(page, &TestPage::equipmentCheckRequested,
             this, &KtmaMainWindow::checkSelectedEquipment);
 
@@ -260,8 +282,8 @@ KtmaMainWindow::KtmaMainWindow(QWidget* parent)
         connect(home, &HomePage::tuRequested, this, [this] {
             QTimer::singleShot(0, this, [this] {
                 restoreTuSelector();
-                // Selection does not touch equipment. The check is performed
-                // only from Preparation for the chosen TU scenario.
+                // Выбор маршрута не воздействует на оборудование. Проверка
+                // запускается из «Подготовки» только для выбранного сценария ТУ.
             });
         });
     }
@@ -326,9 +348,15 @@ void KtmaMainWindow::openProjectWorkflow(const QString& workflowId)
 
     const auto action = QString::fromStdString(workflow->operatorAction);
     if (action == QStringLiteral("station.free")) {
-        emit home->genericCheckRequested();
+        // YAML-лаунчер не подменяет свободный live-режим оператора. Даже при
+        // ошибочной декларации workflow он не должен открываться из КТМА.
+        QMessageBox::information(this, QStringLiteral("Свободный режим"),
+            QStringLiteral("Свободный операторский режим ещё не реализован."));
     } else if (action == QStringLiteral("ktma.tu")) {
         emit home->tuRequested();
+    } else if (workflowId == QStringLiteral("production")) {
+        projectProductionCode_.clear();
+        emit home->productionRequested();
     } else if (action == QStringLiteral("ktma.production")) {
         projectProductionCode_.clear();
         emit home->productionRequested();
@@ -377,8 +405,8 @@ void KtmaMainWindow::loadTuScenarios()
         return;
     }
 
-    // Product-owned procedures are registered by the KTMA delivery, not by the
-    // reusable Station/Orbita shell.
+    // Процедуры изделия регистрирует поставка КТМА, а не переиспользуемая
+    // оболочка Station/Orbita: так особенности УБСИ не попадают в общий слой.
     orbita::stand::registerUbsiProcedures(*engine);
 
     const QHash<QString, QString> ids = {
@@ -646,8 +674,8 @@ void KtmaMainWindow::checkSelectedEquipment()
     auto& session = integrationStationSession();
     auto& profile = integrationStandProfile();
 
-    // Only physical routes are reset. Built-ins already installed by the shell
-    // (notably orbita.parameter_source) survive this readiness pass.
+    // Сбрасываются только физические маршруты. Встроенные сервисы оболочки,
+    // включая orbita.parameter_source, сохраняются после этой проверки готовности.
     session.clearPhysicalEquipment();
 
     const std::string catalogDatabase = QDir(QCoreApplication::applicationDirPath())
@@ -882,7 +910,7 @@ void KtmaMainWindow::runScenario(
     QString effectiveCode = requestedCode;
     std::string serial = objectSerial.trimmed().toUtf8().toStdString();
     std::optional<ktma::ubsi::ProductionRunContext> productionContext;
-    const auto selectedWorkflowContext = pendingWorkflowContext_;
+    auto selectedWorkflowContext = pendingWorkflowContext_;
     pendingWorkflowContext_.clear();
 
     try {
@@ -906,6 +934,10 @@ void KtmaMainWindow::runScenario(
                 report, ktma::registrar::Stage::Primary, package);
             effectiveCode = QString::fromStdString(productionContext->scenarioCode);
             serial = productionContext->productSerial;
+            selectedWorkflowContext["production_lifecycle"] =
+                page->productionLifecycle().toUtf8().toStdString();
+            selectedWorkflowContext["operator_comment"] =
+                page->productionOperatorComment().toUtf8().toStdString();
         } else if (integrationTuWorkflowActive()) {
             if (objectSerial.trimmed().isEmpty())
                 throw std::runtime_error("Введите заводской номер проверяемого УБСИ");
@@ -1015,9 +1047,9 @@ void KtmaMainWindow::runScenario(
                     orbita::stand::EvidenceEvent environmentEvent;
                     environmentEvent.sequence = 1;
                     environmentEvent.timestamp = result.startedAt;
-                    environmentEvent.type = "ENVIRONMENT";
-                    environmentEvent.nodeId = "workflow-environment";
-                    environmentEvent.message = "Зафиксирован контекст условий проведения запуска";
+                    environmentEvent.type = "RUN_CONTEXT";
+                    environmentEvent.nodeId = "workflow-context";
+                    environmentEvent.message = "Зафиксирован контекст проведения запуска";
                     environmentEvent.data = selectedWorkflowContext;
                     result.evidence.insert(result.evidence.begin(), std::move(environmentEvent));
                 }

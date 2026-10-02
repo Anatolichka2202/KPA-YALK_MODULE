@@ -213,6 +213,8 @@ void MainWindow::setupUi()
     connect(homePage_, &HomePage::administrationRequested, this, [this] {
         setMode(ModeAdmin);
     });
+    connect(homePage_, &HomePage::freeWorkspaceRequested,
+            this, &MainWindow::openFreeWorkspace);
     connect(testPage_, &TestPage::homeRequested, this, [this] {
         activeWorkflow_ = Workflow::None;
         testPage_->setProductionMode(false);
@@ -464,6 +466,13 @@ void MainWindow::setupToolBar()
     connect(actDetail_, &QAction::triggered, [this]() { setMode(ModeDetail); });
     connect(actConfig_, &QAction::triggered, [this]() { setMode(ModeConfig); });
     connect(actDb_, &QAction::triggered, [this]() { setMode(ModeDb); });
+
+    freeHomeAction_ = toolbar->addAction(QStringLiteral("← Главная"));
+    freeHomeAction_->setObjectName(QStringLiteral("leaveFreeWorkspace"));
+    freeHomeAction_->setToolTip(QStringLiteral(
+        "Закрыть свободный режим и вернуться на главный экран"));
+    freeHomeAction_->setVisible(false);
+    connect(freeHomeAction_, &QAction::triggered, this, &MainWindow::leaveFreeWorkspace);
 
     toolbar->addSeparator();
 
@@ -971,7 +980,17 @@ void MainWindow::setMode(int mode)
     if (actTests_)
         actTests_->setChecked(mode == ModeTests);
 
-    const bool telemetryControlsVisible = mode != ModeTests && mode != ModeHome && mode != ModeAdmin;
+    const bool freeWorkspace = ubsiEngineering_ && activeWorkflow_ == Workflow::Free
+        && mode == ModeMain;
+    const bool telemetryControlsVisible = ubsiEngineering_
+        ? freeWorkspace
+        : mode != ModeTests && mode != ModeHome && mode != ModeAdmin;
+    if (ubsiEngineering_ && mainToolbar_) mainToolbar_->setVisible(freeWorkspace);
+    if (freeHomeAction_) freeHomeAction_->setVisible(freeWorkspace);
+    if (accessModeCombo_) accessModeCombo_->setVisible(!ubsiEngineering_);
+    for (auto* action : {actTests_, actMain_, actDetail_, actConfig_, actDb_}) {
+        if (action && ubsiEngineering_) action->setVisible(false);
+    }
     statusBar()->setVisible(telemetryControlsVisible);
     configCombo_->setVisible(telemetryControlsVisible);
     startBtn_->setVisible(telemetryControlsVisible);
@@ -984,7 +1003,14 @@ void MainWindow::setMode(int mode)
     errPhraseLabel_->setVisible(telemetryControlsVisible);
     errGroupLabel_->setVisible(telemetryControlsVisible);
 
-    // Доки пользователь сам показывает/прячет через меню «Вид» — не навязываем по режиму.
+    // Свободный режим использует только библиотеку параметров и активный набор:
+    // первый даёт выбор из БД, второй — контроль адресов и сохранение TXT-набора.
+    // Конфигурация стенда в операторском маршруте не открывается.
+    if (ubsiEngineering_) {
+        if (paramDock_) paramDock_->setVisible(freeWorkspace);
+        if (watchSetDock_) watchSetDock_->setVisible(freeWorkspace);
+        if (configDock_) configDock_->hide();
+    }
 
     // Если перешли в детальный режим и есть выбранный канал – обновляем DetailView
     if (mode == ModeDetail && selectedChannelIndex_ >= 0) {
@@ -995,6 +1021,25 @@ void MainWindow::setMode(int mode)
             // Значение обновится в updateData
         }
     }
+}
+
+void MainWindow::openFreeWorkspace()
+{
+    activeWorkflow_ = Workflow::Free;
+    if (mainPage_) mainPage_->setReadOnlyWorkspace(true);
+    setMode(ModeMain);
+    log(QStringLiteral(
+        "Свободный режим: выберите адреса в библиотеке параметров или загрузите TXT-набор, затем запустите read-only сбор Орбиты"));
+}
+
+void MainWindow::leaveFreeWorkspace()
+{
+    // Сбор чтения прекращается при уходе, чтобы свободный экран не оставлял
+    // открытый драйвер E2010 в фоне без видимого оператору состояния.
+    if (isRunning_) onStop();
+    if (mainPage_) mainPage_->setReadOnlyWorkspace(false);
+    activeWorkflow_ = Workflow::None;
+    setMode(ModeHome);
 }
 
 // ----------------------------------------------------------------------------

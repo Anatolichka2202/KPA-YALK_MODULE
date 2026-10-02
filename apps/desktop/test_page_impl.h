@@ -130,6 +130,62 @@ struct TestPage::Impl
                 if (index > 0) operatorEdit->setText(operatorHistory->itemText(index));
             });
 
+        productionContextPanel = panel();
+        productionContextPanel->setObjectName(QStringLiteral("productionLifecyclePanel"));
+        auto* productionContextLayout = new QVBoxLayout(productionContextPanel);
+        productionContextLayout->setContentsMargins(13, 9, 13, 9);
+        productionContextLayout->setSpacing(6);
+        productionContextLayout->addWidget(sectionLabel(
+            QStringLiteral("Контекст производственного прогона")));
+        auto* lifecycleLine = new QHBoxLayout;
+        lifecycleLine->addWidget(new QLabel(QStringLiteral("Состояние изделия")));
+        productionLifecycle = new QComboBox;
+        productionLifecycle->setObjectName(QStringLiteral("productionLifecycle"));
+        productionLifecycle->addItem(QStringLiteral("Не указано"),
+                                     QStringLiteral("not_specified"));
+        productionLifecycle->addItem(QStringLiteral("Первичная проверка"),
+                                     QStringLiteral("primary"));
+        productionLifecycle->addItem(QStringLiteral("После климатического воздействия"),
+                                     QStringLiteral("after_climate"));
+        productionLifecycle->addItem(QStringLiteral("После виброиспытания"),
+                                     QStringLiteral("after_vibration"));
+        productionLifecycle->addItem(QStringLiteral("Повторный прогон / другое"),
+                                     QStringLiteral("other"));
+        productionLifecycle->setMinimumWidth(330);
+        lifecycleLine->addWidget(productionLifecycle);
+        lifecycleLine->addStretch(1);
+        productionContextLayout->addLayout(lifecycleLine);
+        operatorComment = new QPlainTextEdit;
+        operatorComment->setObjectName(QStringLiteral("productionOperatorComment"));
+        operatorComment->setPlaceholderText(QStringLiteral(
+            "Комментарий оператора: причина повторного прогона, номер протокола или условия проведения"));
+        operatorComment->setFixedHeight(58);
+        productionContextLayout->addWidget(operatorComment);
+        productionContextHint = mutedLabel(QStringLiteral(
+            "Укажите состояние изделия. Для прогона после климатического или вибрационного воздействия рекомендуется добавить комментарий."));
+        productionContextHint->setObjectName(QStringLiteral("productionLifecycleHint"));
+        productionContextLayout->addWidget(productionContextHint);
+        layout->addWidget(productionContextPanel);
+
+        // Контекст остаётся мягким требованием: программа не вправе объявлять
+        // внешнее воздействие подтверждённым, но должна заметно попросить
+        // оператора оставить след в evidence до запуска production-прогона.
+        const auto updateProductionContextHint = [this] {
+            const QString lifecycle = productionLifecycle->currentData().toString();
+            const bool needsComment = lifecycle == QStringLiteral("after_climate")
+                || lifecycle == QStringLiteral("after_vibration")
+                || lifecycle == QStringLiteral("other");
+            productionContextHint->setText(needsComment && operatorComment->toPlainText().trimmed().isEmpty()
+                ? QStringLiteral("Рекомендуется комментарий: программа не подтверждает климатическое или вибрационное воздействие самостоятельно.")
+                : lifecycle == QStringLiteral("not_specified")
+                    ? QStringLiteral("Состояние изделия не указано. Запуск возможен, но это будет явно отмечено в evidence.")
+                    : QStringLiteral("Контекст будет сохранён в evidence запуска."));
+        };
+        QObject::connect(productionLifecycle, QOverload<int>::of(&QComboBox::currentIndexChanged), q,
+            [updateProductionContextHint](int) { updateProductionContextHint(); });
+        QObject::connect(operatorComment, &QPlainTextEdit::textChanged, q,
+            updateProductionContextHint);
+
         auto* body = new QHBoxLayout;
         body->setSpacing(10);
         productsPanel = panel();
@@ -152,7 +208,8 @@ struct TestPage::Impl
         auto* scopePanel = panel();
         auto* scopeLayout = new QVBoxLayout(scopePanel);
         scopeLayout->setContentsMargins(11,11,11,11);
-        scopeLayout->addWidget(sectionLabel(QStringLiteral("Объём проверки")));
+        scopeHeading = sectionLabel(QStringLiteral("Объём проверки"));
+        scopeLayout->addWidget(scopeHeading);
         scopeGroup = new QButtonGroup(q);
         scopeGroup->setExclusive(true);
         auto* scopeGrid = new QGridLayout;
@@ -204,6 +261,11 @@ struct TestPage::Impl
 
         scenarioInfo = subtitleLabel(QStringLiteral("Полная проверка УБСИ: питание → ЯЛК-96 → ЯТП → ЯВП-8 → завершение."));
         scopeLayout->addWidget(scenarioInfo);
+        productionScenarioEditor = new QPushButton(QStringLiteral("Редактор сценария и процедур"));
+        productionScenarioEditor->setObjectName(QStringLiteral("productionScenarioEditor"));
+        productionScenarioEditor->setToolTip(QStringLiteral(
+            "Инженерный редактор YAML: опубликованный сценарий сначала копируется в черновик. Запуск сценарий не выполняет."));
+        scopeLayout->addWidget(productionScenarioEditor, 0, Qt::AlignLeft);
         scopeLayout->addStretch();
         enterPreparation = new QPushButton(QStringLiteral("Перейти к подготовке"));
         enterPreparation->setObjectName(QStringLiteral("enterPreparation"));
@@ -231,6 +293,10 @@ struct TestPage::Impl
         QObject::connect(yalkSubGroup,&QButtonGroup::idClicked,q,[this](int id){
             if(id==0){scenarioInfo->setText(QStringLiteral("Полная ЯЛК-96 · backend PROD_YALK"));enterPreparation->setEnabled(true);}
             else {scenarioInfo->setText(QStringLiteral("Отдельный Production scenario для этой подпроверки пока не зарегистрирован. Полная ЯЛК-96 работает через backend."));enterPreparation->setEnabled(false);}
+        });
+        QObject::connect(productionScenarioEditor, &QPushButton::clicked, q, [this] {
+            if (!productionMode) return;
+            emit q->productionScenarioEditorRequested(q->currentScenarioCode());
         });
         QObject::connect(enterPreparation,&QPushButton::clicked,q,[this]{ enterWorkspace(); });
     }
@@ -486,7 +552,7 @@ struct TestPage::Impl
     TestPage* q=nullptr;
     QVBoxLayout* root=nullptr;QStackedWidget* pages=nullptr;QWidget* bridge=nullptr;QWidget* sessionPage=nullptr;QWidget* workspacePage=nullptr;
     QComboBox* objectCombo=nullptr;QComboBox* scopeCombo=nullptr;QComboBox* testCombo=nullptr;QComboBox* modeCombo=nullptr;QCheckBox* partial=nullptr;QCheckBox* includeYvpCheck=nullptr;QCheckBox* includeOverload=nullptr;QCheckBox* includeSurvival=nullptr;
-    QPushButton* home=nullptr;QLabel* sessionTitle=nullptr;QLabel* sessionSubtitle=nullptr;QLabel* workflowBadge=nullptr;QFrame* sessionDataPanel=nullptr;QLabel* operatorCaption=nullptr;QLineEdit* operatorEdit=nullptr;QComboBox* operatorHistory=nullptr;QLabel* serialCaption=nullptr;QLineEdit* serialEdit=nullptr;QPushButton* addProduct=nullptr;QFrame* productsPanel=nullptr;QTableWidget* productTable=nullptr;QButtonGroup* scopeGroup=nullptr;QHash<QString,QPushButton*> scopeButtons;QWidget* yalkSubPanel=nullptr;QButtonGroup* yalkSubGroup=nullptr;QLabel* scenarioInfo=nullptr;QPushButton* enterPreparation=nullptr;QFrame* engineerBridgePanel=nullptr;
+    QPushButton* home=nullptr;QLabel* sessionTitle=nullptr;QLabel* sessionSubtitle=nullptr;QLabel* workflowBadge=nullptr;QFrame* sessionDataPanel=nullptr;QLabel* operatorCaption=nullptr;QLineEdit* operatorEdit=nullptr;QComboBox* operatorHistory=nullptr;QLabel* serialCaption=nullptr;QLineEdit* serialEdit=nullptr;QPushButton* addProduct=nullptr;QFrame* productionContextPanel=nullptr;QComboBox* productionLifecycle=nullptr;QPlainTextEdit* operatorComment=nullptr;QLabel* productionContextHint=nullptr;QFrame* productsPanel=nullptr;QTableWidget* productTable=nullptr;QButtonGroup* scopeGroup=nullptr;QHash<QString,QPushButton*> scopeButtons;QWidget* yalkSubPanel=nullptr;QButtonGroup* yalkSubGroup=nullptr;QLabel* scopeHeading=nullptr;QLabel* scenarioInfo=nullptr;QPushButton* productionScenarioEditor=nullptr;QPushButton* enterPreparation=nullptr;QFrame* engineerBridgePanel=nullptr;
     QPushButton* backSession=nullptr;QLabel* workspaceTitle=nullptr;QLabel* workspaceSubtitle=nullptr;QLabel* operatorBadge=nullptr;QPushButton* stopButton=nullptr;QLabel* sideTitle=nullptr;QVector<QLabel*> stageLabels;QVector<QLabel*> yalkPhaseLabels;QVector<QLabel*> tuCheckLabels;QStackedWidget* workStack=nullptr;QLabel* elapsed=nullptr;QLabel* footerStage=nullptr;QProgressBar* progress=nullptr;TrendPlot* consumption=nullptr;
     QLabel* preparationSubtitle=nullptr;QTableWidget* equipmentTable=nullptr;QLabel* readiness=nullptr;QPushButton* checkButton=nullptr;QPushButton* startButton=nullptr;
     QLabel* powerSet=nullptr;QLabel* powerActual=nullptr;QLabel* powerCurrent=nullptr;QLabel* powerHold=nullptr;TrendPlot* powerTrend=nullptr;StepPlot* powerSteps=nullptr;

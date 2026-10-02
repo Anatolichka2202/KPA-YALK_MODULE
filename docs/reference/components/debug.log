@@ -1,6 +1,0 @@
-[0928/092903.296:ERROR:third_party\crashpad\crashpad\util\win\registration_protocol_win.cc:136] TransactNamedPipe: С обоих концов канала отсутствуют процессы. (0xE9)
-[0928/092903.303:ERROR:third_party\crashpad\crashpad\util\win\registration_protocol_win.cc:136] TransactNamedPipe: С обоих концов канала отсутствуют процессы. (0xE9)
-[0928/092903.378:ERROR:third_party\crashpad\crashpad\util\win\registration_protocol_win.cc:136] TransactNamedPipe: С обоих концов канала отсутствуют процессы. (0xE9)
-[0928/092903.452:ERROR:third_party\crashpad\crashpad\util\win\registration_protocol_win.cc:136] TransactNamedPipe: С обоих концов канала отсутствуют процессы. (0xE9)
-[0928/092906.824:ERROR:third_party\crashpad\crashpad\util\win\registration_protocol_win.cc:136] TransactNamedPipe: С обоих концов канала отсутствуют процессы. (0xE9)
-[0928/092906.917:ERROR:third_party\crashpad\crashpad\util\win\registration_protocol_win.cc:136] TransactNamedPipe: С обоих концов канала отсутствуют процессы. (0xE9)

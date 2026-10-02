@@ -96,8 +96,9 @@ int main()
             "Free workflow must permit a dynamic unregistered scenario");
         require(!free->registration.required && !free->registration.attachIfFound,
             "Free workflow must stay outside the production registrar lifecycle");
-        require(free->operatorAction == "station.free" && free->operatorAvailable,
-            "Free workflow must declare its operator-launch action");
+        require(free->operatorAction == "station.free" && !free->operatorAvailable
+                && !free->unavailableReason.empty(),
+            "Free YAML workflow must stay unavailable until the live operator mode exists");
 
         const auto* tu = findWorkflow(project, "tu_normal");
         require(tu && filename(tu->scenarioPath) == "ubsi_ulk_combined_check.yaml",
@@ -140,20 +141,20 @@ int main()
                 && filename(tuClimatePlus->environmentPath) == "climate_plus.yaml"
                 && filename(tuClimateMinus->environmentPath) == "climate_minus.yaml",
             "TU climate + and − must be separate workflows with separate descriptors");
-        require(tuClimatePlus->operatorAction == "ktma.tu" && tuClimatePlus->operatorAvailable
+        require(tuClimatePlus->operatorAction == "ktma.tu" && !tuClimatePlus->operatorAvailable
                 && tuClimatePlus->environmentId == "climate_plus"
                 && tuClimatePlus->environmentMode == "manual_or_controlled",
-            "TU climate + must use explicit manual environment context");
-        require(tuClimateMinus->operatorAction == "ktma.tu" && tuClimateMinus->operatorAvailable
+            "TU climate + must keep context but remain unavailable to the operator");
+        require(tuClimateMinus->operatorAction == "ktma.tu" && !tuClimateMinus->operatorAvailable
                 && tuClimateMinus->environmentId == "climate_minus",
-            "TU climate − must be independently launchable");
+            "TU climate − must keep context but remain unavailable to the operator");
         require(productionClimate
                 && productionClimate->referenceWorkflow == "tu_climate_plus"
                 && productionClimateMinus
                 && productionClimateMinus->referenceWorkflow == "tu_climate_minus"
-                && productionClimate->operatorAvailable
-                && productionClimateMinus->operatorAvailable,
-            "Climate production +/− workflows must be separate and reference matching TU workflows");
+                && !productionClimate->operatorAvailable
+                && !productionClimateMinus->operatorAvailable,
+            "Climate production +/− workflows must remain unavailable until the physical function exists");
 
         const auto profile = loadStandProfile(project.equipmentProfilePath);
         require(profile.id == "ktma-main", "KTMA project must compose the verified stand profile");

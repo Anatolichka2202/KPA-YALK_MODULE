@@ -101,6 +101,20 @@ if(WIN32)
                 ${LUSBAPI_DLL} $<TARGET_FILE_DIR:MilTechStation>
         )
     endif()
+
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+        get_filename_component(_miltech_compiler_bin "${CMAKE_CXX_COMPILER}" DIRECTORY)
+        foreach(_miltech_runtime_dll IN ITEMS libc++.dll libunwind.dll)
+            set(_miltech_runtime_path "${_miltech_compiler_bin}/${_miltech_runtime_dll}")
+            if(EXISTS "${_miltech_runtime_path}")
+                add_custom_command(TARGET MilTechStation POST_BUILD
+                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                        "${_miltech_runtime_path}" $<TARGET_FILE_DIR:MilTechStation>
+                    VERBATIM
+                )
+            endif()
+        endforeach()
+    endif()
 endif()
 
 set(ADDR_SRC ${CMAKE_SOURCE_DIR}/orbita/config/address)

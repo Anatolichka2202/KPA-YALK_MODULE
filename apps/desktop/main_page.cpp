@@ -11,13 +11,35 @@ MainPage::MainPage(QWidget *parent) : QWidget(parent)
     mainLayout->setContentsMargins(0, 0, 0, 0);
     mainLayout->setSpacing(0);
 
+    m_readOnlyHeader = new QWidget(this);
+    m_readOnlyHeader->setObjectName(QStringLiteral("freeWorkspaceHeader"));
+    m_readOnlyHeader->setStyleSheet(QStringLiteral(
+        "#freeWorkspaceHeader{background:#102235;border-bottom:1px solid #28506d;}"));
+    auto* headerLayout = new QHBoxLayout(m_readOnlyHeader);
+    headerLayout->setContentsMargins(18, 10, 18, 10);
+    auto* heading = new QLabel(QStringLiteral("СВОБОДНЫЙ РЕЖИМ · LIVE МОНИТОРИНГ"), m_readOnlyHeader);
+    heading->setStyleSheet(QStringLiteral("color:#9ac7ff;font-weight:700;font-size:16px;"));
+    heading->setAccessibleName(QStringLiteral("Свободный read-only режим мониторинга"));
+    headerLayout->addWidget(heading);
+    headerLayout->addStretch(1);
+    m_readOnlySummary = new QLabel(m_readOnlyHeader);
+    m_readOnlySummary->setObjectName(QStringLiteral("freeWorkspaceSummary"));
+    m_readOnlySummary->setStyleSheet(QStringLiteral(
+        "color:#d7e8f5;border:1px solid #315b79;border-radius:5px;padding:5px 9px;"));
+    headerLayout->addWidget(m_readOnlySummary);
+    m_readOnlyHeader->setVisible(false);
+    mainLayout->addWidget(m_readOnlyHeader);
+
     // Панель переключения компоновок
     m_layoutButtonsLayout = new QHBoxLayout;
     m_layoutButtonsLayout->setContentsMargins(8, 6, 8, 6);
     m_layoutButtonsLayout->addStretch();
-    m_btnA = new QPushButton("A");
-    m_btnB = new QPushButton("B");
-    m_btnC = new QPushButton("C");
+    m_btnA = new QPushButton(QStringLiteral("Сводка"));
+    m_btnB = new QPushButton(QStringLiteral("Таблица"));
+    m_btnC = new QPushButton(QStringLiteral("Группы"));
+    m_btnA->setAccessibleName(QStringLiteral("Сводный вид live-данных"));
+    m_btnB->setAccessibleName(QStringLiteral("Табличный вид live-данных"));
+    m_btnC->setAccessibleName(QStringLiteral("Групповой вид live-данных"));
     m_btnA->setCheckable(true);
     m_btnB->setCheckable(true);
     m_btnC->setCheckable(true);
@@ -155,6 +177,10 @@ void MainPage::setChannels(const std::vector<orbita::ChannelSpec>& specs)
     m_barChartB->setChannels(specs);
     m_table->setChannels(specs);
     m_categoryGrid->setChannels(specs);
+    if (m_readOnlySummary)
+        m_readOnlySummary->setText(specs.empty()
+            ? QStringLiteral("Набор адресов не выбран")
+            : QStringLiteral("Адресов в наборе: %1").arg(specs.size()));
 }
 
 void MainPage::updateData(const orbita::Snapshot& snap)
@@ -197,4 +223,17 @@ void MainPage::setSelectedChannel(int index)
 void MainPage::setLayout(int layout)
 {
     onLayoutButtonClicked(layout);
+}
+
+void MainPage::setReadOnlyWorkspace(bool enabled)
+{
+    // Этот заголовок не управляет сбором и не меняет набор параметров. Он
+    // постоянно объясняет оператору границу режима, пока используются общие
+    // с инженерной оболочкой виджеты live-мониторинга.
+    m_readOnlyHeader->setVisible(enabled);
+    if (enabled && m_readOnlySummary) {
+        m_readOnlySummary->setText(m_specs.empty()
+            ? QStringLiteral("Набор адресов не выбран")
+            : QStringLiteral("Адресов в наборе: %1").arg(m_specs.size()));
+    }
 }
