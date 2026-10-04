@@ -70,6 +70,15 @@ void WatchSetWidget::addParams(const std::vector<orbita::ChannelSpec>& specs) {
     }
 }
 
+std::vector<orbita::ChannelSpec> WatchSetWidget::enabledSpecs() const {
+    std::vector<orbita::ChannelSpec> enabled;
+    for (const auto& entry : entries_) {
+        if (entry.enabled)
+            enabled.push_back(entry.spec);
+    }
+    return enabled;
+}
+
 void WatchSetWidget::rebuildTable() {
     updating_ = true;
     table_->setRowCount(static_cast<int>(entries_.size()));
@@ -148,8 +157,5 @@ void WatchSetWidget::onSave() {
 }
 
 void WatchSetWidget::emitChanged() {
-    std::vector<orbita::ChannelSpec> enabled;
-    for (const auto& e : entries_)
-        if (e.enabled) enabled.push_back(e.spec);
-    emit watchSetChanged(enabled);
+    emit watchSetChanged(enabledSpecs());
 }

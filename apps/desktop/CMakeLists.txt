@@ -42,6 +42,12 @@ add_executable(MilTechStation
     tolerance_resolver.cpp
     watch_set_widget.cpp
     watch_set_widget.h
+    address_set_model.cpp
+    address_set_model.h
+    address_sets_widget.cpp
+    address_sets_widget.h
+    address_sets_overview.cpp
+    address_sets_overview.h
     parameter_browser.cpp
     parameter_browser.h
     encoding_utils.cpp
@@ -59,8 +65,10 @@ add_executable(MilTechStation
     channel_status.h
     plot_theme.h
     scenario_yaml_editor.h scenario_yaml_editor.cpp
+    scenario_visual_editor.h scenario_visual_editor.cpp
     adapter_monitor_widget.h adapter_monitor_widget.cpp
     equipment_control_widget.h equipment_control_widget.cpp
+    free_workspace_widget.h free_workspace_widget.cpp
 )
 
 target_include_directories(MilTechStation PRIVATE
@@ -192,12 +200,18 @@ if(BUILD_TESTING)
         station_admin_dialog.h
         scenario_yaml_editor.cpp
         scenario_yaml_editor.h
+        scenario_visual_editor.cpp
+        scenario_visual_editor.h
         home_page.cpp
         home_page.h
         test_page.cpp
         test_page.h
         equipment_control_widget.cpp
         equipment_control_widget.h
+        free_workspace_widget.cpp
+        free_workspace_widget.h
+        address_set_model.cpp
+        address_set_model.h
     )
 
     target_include_directories(test_page_smoke_test PRIVATE

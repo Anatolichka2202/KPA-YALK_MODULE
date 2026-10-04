@@ -36,13 +36,14 @@
 #include "detail_view.h"
 #include "parameter_browser.h"
 #include "config_manager_widget.h"
-#include "watch_set_widget.h"
+#include "address_sets_widget.h"
 #include "test_page.h"
 #include "home_page.h"
 #include "registrar_page.h"
 
 class QMenu;
 class QCloseEvent;
+class FreeWorkspaceWidget;
 
 class MainWindow : public QMainWindow
 {
@@ -208,7 +209,7 @@ private:
 
     ConfigManagerWidget* configDockWidget_ = nullptr;
     ParameterBrowser* paramDockWidget_ = nullptr;
-    WatchSetWidget* watchSetDockWidget_ = nullptr;
+    AddressSetsWidget* watchSetDockWidget_ = nullptr;
 
     // Элементы панели инструментов
     QLabel* mtvLabel_ = nullptr;
@@ -239,6 +240,7 @@ private:
     QAction* actConfig_ = nullptr;
     QAction* actDb_ = nullptr;
     QAction* freeHomeAction_ = nullptr;
+    QAction* freeEquipmentAction_ = nullptr;
 
     // Нижняя строка статуса
     QLabel* m_statusBarLabel = nullptr;
@@ -292,6 +294,7 @@ private slots:
     void onOpenStandProfile();
     void openFreeWorkspace();
     void leaveFreeWorkspace();
+    void openFreeCommandConsole();
     void onRunScenario(const QString& scenarioCode, const QString& objectSerial,
                        bool allowPartial);
     void onStopScenario();

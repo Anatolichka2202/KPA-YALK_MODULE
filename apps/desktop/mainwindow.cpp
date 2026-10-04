@@ -1,4 +1,5 @@
 #include "mainwindow.h"
+#include "free_workspace_widget.h"
 #include "channel_status.h"
 #include "encoding_utils.h"
 #include <QVBoxLayout>
@@ -30,6 +31,7 @@
 #include <regex>
 #include <iomanip>
 #include <functional>
+#include <set>
 
 #include "orbita_stand/report_writer.h"
 #include "orbita_stand/telemetry_procedures.h"
@@ -67,9 +69,9 @@ MainWindow::MainWindow(QWidget* parent)
     // Теперь все элементы созданы — можно выставить начальный режим
     setMode(ModeHome);
 
-    // Station runtime is initialized by the concrete application/delivery after
-    // it provides its profile. Calling a delivery hook from this base
-    // constructor would dispatch to MainWindow, not the derived package.
+    // Runtime станции настраивается конкретным приложением или поставкой после
+    // передачи профиля. Вызов виртуального расширения из базового конструктора
+    // был бы ошибкой: диспетчеризация ещё не дошла бы до производного класса.
 
     // Физический источник телеметрии принадлежит ComponentRuntime и открывается
     // только по явному старту мониторинга. Производственный контур УБСИ его не
@@ -85,7 +87,7 @@ MainWindow::MainWindow(QWidget* parent)
 bool MainWindow::initializeTelemetrySource()
 {
     if (!telemetrySampleSource_) {
-        log(QStringLiteral("Источник отсчётов Орбиты не объявлен поставкой"));
+        log(QStringLiteral("Источник отсчётов Орбиты не настроен в текущем профиле станции"));
         return false;
     }
     if (telemetrySampleSource_->isOpen()) return true;
@@ -142,7 +144,7 @@ void MainWindow::closeEvent(QCloseEvent* event)
 // ----------------------------------------------------------------------------
 void MainWindow::setupUi()
 {
-    setWindowTitle(QString("MilTechStation — КТМА · %1").arg(MILTECHSTATION_VERSION));
+    setWindowTitle(QString("MilTechStation · %1").arg(MILTECHSTATION_VERSION));
     resize(1280, 800);
 
     // Центральный стек
@@ -287,7 +289,7 @@ void MainWindow::setupDockWidgets()
     // --- Создаём виджеты ---
     configDockWidget_ = new ConfigManagerWidget(dbProvider_.get(), this);
     paramDockWidget_ = new ParameterBrowser(dbProvider_.get(), this);
-    watchSetDockWidget_ = new WatchSetWidget(dbProvider_.get(), this);
+    watchSetDockWidget_ = new AddressSetsWidget(dbProvider_.get(), this);
 
     // --- Док-виджеты ---
     configDock_ = new QDockWidget("Конфигурации", this);
@@ -300,7 +302,7 @@ void MainWindow::setupDockWidgets()
     paramDock_->setMinimumWidth(300);
     addDockWidget(Qt::RightDockWidgetArea, paramDock_);
 
-    watchSetDock_ = new QDockWidget("Активный набор", this);
+    watchSetDock_ = new QDockWidget("Наборы адресов", this);
     watchSetDock_->setWidget(watchSetDockWidget_);
     watchSetDock_->setMinimumWidth(300);
     addDockWidget(Qt::RightDockWidgetArea, watchSetDock_);
@@ -338,10 +340,16 @@ void MainWindow::setupDockWidgets()
     connect(paramDockWidget_, &ParameterBrowser::toleranceSavedToDb,
             [this](QString address) { toleranceResolver_.clearOverride(address); });
 
-    connect(watchSetDockWidget_, &WatchSetWidget::watchSetChanged,
+    connect(watchSetDockWidget_, &AddressSetsWidget::combinedWatchSetChanged,
             this, &MainWindow::onWatchSetChanged);
-    connect(watchSetDockWidget_, &WatchSetWidget::configSaved,
+    connect(watchSetDockWidget_, &AddressSetsWidget::addressSetsChanged,
+            this, [this](const std::vector<AddressSetDefinition>& sets) {
+                if (mainPage_) mainPage_->setAddressSets(sets);
+            });
+    connect(watchSetDockWidget_, &AddressSetsWidget::configSaved,
             [this]() { if (configDockWidget_) configDockWidget_->refreshFileList(); });
+    if (mainPage_)
+        mainPage_->setAddressSets(watchSetDockWidget_->definitions());
 
     // --- Заменяем страницы Конфиг и БД в центральном стеке на реальные виджеты ---
     // Удаляем временные placeholder'ы
@@ -473,6 +481,13 @@ void MainWindow::setupToolBar()
         "Закрыть свободный режим и вернуться на главный экран"));
     freeHomeAction_->setVisible(false);
     connect(freeHomeAction_, &QAction::triggered, this, &MainWindow::leaveFreeWorkspace);
+    freeEquipmentAction_ = toolbar->addAction(QStringLiteral("Команды плагинов"));
+    freeEquipmentAction_->setObjectName(QStringLiteral("openFreeCommandConsole"));
+    freeEquipmentAction_->setToolTip(QStringLiteral(
+        "Выбрать capability активного профиля и выполнить подтверждённую команду плагина."));
+    freeEquipmentAction_->setVisible(false);
+    connect(freeEquipmentAction_, &QAction::triggered,
+            this, &MainWindow::openFreeCommandConsole);
 
     toolbar->addSeparator();
 
@@ -980,16 +995,16 @@ void MainWindow::setMode(int mode)
     if (actTests_)
         actTests_->setChecked(mode == ModeTests);
 
-    const bool freeWorkspace = ubsiEngineering_ && activeWorkflow_ == Workflow::Free
-        && mode == ModeMain;
-    const bool telemetryControlsVisible = ubsiEngineering_
-        ? freeWorkspace
-        : mode != ModeTests && mode != ModeHome && mode != ModeAdmin;
-    if (ubsiEngineering_ && mainToolbar_) mainToolbar_->setVisible(freeWorkspace);
+    const bool freeWorkspace = activeWorkflow_ == Workflow::Free && mode == ModeMain;
+    const bool telemetryControlsVisible = freeWorkspace || (!ubsiEngineering_
+        && mode != ModeTests && mode != ModeHome && mode != ModeAdmin);
+    if (mainToolbar_) mainToolbar_->setVisible(freeWorkspace || (!ubsiEngineering_
+        && mode != ModeHome && mode != ModeAdmin));
     if (freeHomeAction_) freeHomeAction_->setVisible(freeWorkspace);
-    if (accessModeCombo_) accessModeCombo_->setVisible(!ubsiEngineering_);
+    if (freeEquipmentAction_) freeEquipmentAction_->setVisible(freeWorkspace);
+    if (accessModeCombo_) accessModeCombo_->setVisible(!ubsiEngineering_ && !freeWorkspace);
     for (auto* action : {actTests_, actMain_, actDetail_, actConfig_, actDb_}) {
-        if (action && ubsiEngineering_) action->setVisible(false);
+        if (action && (ubsiEngineering_ || freeWorkspace)) action->setVisible(false);
     }
     statusBar()->setVisible(telemetryControlsVisible);
     configCombo_->setVisible(telemetryControlsVisible);
@@ -1003,10 +1018,10 @@ void MainWindow::setMode(int mode)
     errPhraseLabel_->setVisible(telemetryControlsVisible);
     errGroupLabel_->setVisible(telemetryControlsVisible);
 
-    // Свободный режим использует только библиотеку параметров и активный набор:
-    // первый даёт выбор из БД, второй — контроль адресов и сохранение TXT-набора.
-    // Конфигурация стенда в операторском маршруте не открывается.
-    if (ubsiEngineering_) {
+    // Свободный контур использует библиотеку параметров и активный набор:
+    // первый даёт выбор адресов, второй — состав набора и TXT-ассет. Профиль
+    // КТМА не управляет доступностью этих инструментов.
+    if (freeWorkspace) {
         if (paramDock_) paramDock_->setVisible(freeWorkspace);
         if (watchSetDock_) watchSetDock_->setVisible(freeWorkspace);
         if (configDock_) configDock_->hide();
@@ -1026,10 +1041,10 @@ void MainWindow::setMode(int mode)
 void MainWindow::openFreeWorkspace()
 {
     activeWorkflow_ = Workflow::Free;
-    if (mainPage_) mainPage_->setReadOnlyWorkspace(true);
+    if (mainPage_) mainPage_->setFreeWorkspace(true);
     setMode(ModeMain);
     log(QStringLiteral(
-        "Свободный режим: выберите адреса в библиотеке параметров или загрузите TXT-набор, затем запустите read-only сбор Орбиты"));
+        "Свободный контур MilTechStation открыт независимо от поставки; выберите источник, адреса и доступные действия плагина"));
 }
 
 void MainWindow::leaveFreeWorkspace()
@@ -1037,9 +1052,58 @@ void MainWindow::leaveFreeWorkspace()
     // Сбор чтения прекращается при уходе, чтобы свободный экран не оставлял
     // открытый драйвер E2010 в фоне без видимого оператору состояния.
     if (isRunning_) onStop();
-    if (mainPage_) mainPage_->setReadOnlyWorkspace(false);
+    if (mainPage_) mainPage_->setFreeWorkspace(false);
     activeWorkflow_ = Workflow::None;
     setMode(ModeHome);
+}
+
+void MainWindow::openFreeCommandConsole()
+{
+    if (activeWorkflow_ != Workflow::Free || !equipmentRegistry_) return;
+
+    std::vector<FreeWorkspaceCapability> capabilities;
+    std::set<std::string> seen;
+    for (const auto& component : standProfile_.components) {
+        if (!component.enabled || component.kind != "equipment") continue;
+        const auto& declared = component.capabilities.empty()
+            ? component.bindings : component.capabilities;
+        for (const auto& capability : declared) {
+            if (!equipmentRegistry_->hasCapability(capability) || !seen.insert(capability).second)
+                continue;
+            const QString title = QStringLiteral("%1 · %2")
+                .arg(QString::fromStdString(component.id),
+                     QString::fromStdString(capability));
+            capabilities.push_back({QString::fromStdString(capability), title});
+        }
+    }
+    if (capabilities.empty()) {
+        QMessageBox::information(this, QStringLiteral("Свободный контур"),
+            QStringLiteral("В текущем профиле нет готовых capabilities оборудования. "
+                           "Сначала загрузите и безопасно проверьте профиль станции."));
+        return;
+    }
+
+    auto* console = new FreeWorkspaceWidget(std::move(capabilities),
+        [this](const std::string& capability, const std::string& operation,
+               const std::map<std::string, std::string>& arguments) {
+            if (!equipmentRegistry_ || !equipmentRegistry_->hasCapability(capability)) {
+                throw std::runtime_error("Выбранная capability недоступна в текущем профиле");
+            }
+            return equipmentRegistry_->invoke(capability, operation, arguments);
+        }, {}, this);
+    connect(console, &FreeWorkspaceWidget::adapterMonitoringRequested,
+            this, [this](const QString& capability) {
+                if (capability != QStringLiteral("ulk.parameter_source")
+                    || !equipmentRegistry_
+                    || !equipmentRegistry_->hasCapability("ulk.parameter_source")) {
+                    return;
+                }
+                auto* monitor = new AdapterMonitorWidget([this] {
+                    return equipmentRegistry_->invoke("ulk.parameter_source", "read_frame", {});
+                }, this);
+                monitor->show();
+            });
+    console->show();
 }
 
 // ----------------------------------------------------------------------------

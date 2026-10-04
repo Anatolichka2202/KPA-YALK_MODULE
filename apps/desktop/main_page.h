@@ -10,9 +10,11 @@
 #include "bar_chart_widget.h"
 #include "table_widget.h"
 #include "category_grid_widget.h"
+#include "address_set_model.h"
 
 class ToleranceResolver;
 class QLabel;
+class AddressSetsOverview;
 
 class MainPage : public QWidget
 {
@@ -27,7 +29,10 @@ public:
     void updateData(const orbita::Snapshot& snap);
     void setSelectedChannel(int index);
     void setLayout(int layout); // 0=A, 1=B, 2=C
-    void setReadOnlyWorkspace(bool enabled);
+    // Переключает заголовок самостоятельного инженерного контура. Метод не
+    // ограничивает возможности плагинов и не изменяет набор адресов.
+    void setFreeWorkspace(bool enabled);
+    void setAddressSets(const std::vector<AddressSetDefinition>& sets);
 
 signals:
     void channelSelected(int index);
@@ -69,6 +74,8 @@ private:
     QPushButton* m_btnA;
     QPushButton* m_btnB;
     QPushButton* m_btnC;
-    QWidget* m_readOnlyHeader = nullptr;
-    QLabel* m_readOnlySummary = nullptr;
+    QWidget* m_freeWorkspaceHeader = nullptr;
+    QLabel* m_freeWorkspaceSummary = nullptr;
+    AddressSetsOverview* m_addressSetsOverview = nullptr;
+    bool m_freeWorkspaceActive = false;
 };

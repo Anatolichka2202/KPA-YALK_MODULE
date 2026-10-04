@@ -1,7 +1,10 @@
 #include "test_page.h"
+#include "address_set_model.h"
 #include "generic_check_dialog.h"
 #include "home_page.h"
+#include "free_workspace_widget.h"
 #include "scenario_yaml_editor.h"
+#include "scenario_visual_editor.h"
 #include "station_admin_dialog.h"
 
 #include "orbita_stand/project.h"
@@ -18,6 +21,7 @@
 #include <QPixmap>
 #include <QTableWidget>
 #include <QTabWidget>
+#include <QTreeWidget>
 #include <QTemporaryDir>
 
 #include <cstdlib>
@@ -38,6 +42,25 @@ int main(int argc, char** argv)
 {
     QApplication app(argc, argv);
 
+    AddressSetModel addressSets;
+    require(addressSets.count() == 1 && addressSets.activeIndex() == 0,
+            "address-set model must start with one unambiguous active set");
+    addressSets.addToActive({{"M16P1A70", "Первый", "Контур А"}});
+    const int comparisonSet = addressSets.addSet(QStringLiteral("Сравнение"));
+    addressSets.addToActive({{"M16P1A70", "Повтор", "Контур Б"},
+                             {"M16P1A71", "Второй", "Контур Б"}});
+    require(addressSets.count() == 2 && comparisonSet == 1,
+            "free workspace must allow two independent address sets");
+    const auto combinedAddresses = addressSets.combinedSpecs();
+    require(combinedAddresses.size() == 2
+                && combinedAddresses[0].address == "M16P1A70"
+                && combinedAddresses[1].address == "M16P1A71",
+            "parallel address sets must send one de-duplicated address list to Orbita");
+    addressSets.setActiveIndex(0);
+    addressSets.replaceActive({{"M16P1A72", "Заменён", "Контур А"}});
+    require(addressSets.combinedSpecs().size() == 3,
+            "replacing one set must preserve another set being observed in parallel");
+
     HomePage home;
     home.setProjectWorkflows({
         {QStringLiteral("tu_normal"), QStringLiteral("Проверка по ТУ"), true, {},
@@ -53,13 +76,16 @@ int main(int argc, char** argv)
             "unfinished administration must not be launchable from operator home");
     auto* freeAction = home.findChild<QPushButton*>(QStringLiteral("genericFreeAction"));
     require(freeAction && freeAction->isEnabled(),
-            "free mode must open the read-only workspace instead of a YAML launcher");
+            "free workspace must be available independently of project workflows");
+    require(!freeAction->accessibleDescription().contains(QStringLiteral("read-only"),
+            Qt::CaseInsensitive),
+            "free workspace must not claim that engineering commands are unavailable");
     bool freeWorkspaceRequested = false;
     QObject::connect(&home, &HomePage::freeWorkspaceRequested, &home,
         [&] { freeWorkspaceRequested = true; });
     freeAction->click();
     require(freeWorkspaceRequested,
-            "free mode must dispatch the dedicated read-only workspace request");
+            "free workspace must dispatch its dedicated request without a project workflow");
     QString dispatchedWorkflow;
     QObject::connect(&home, &HomePage::workflowRequested, &home,
         [&](const QString& workflowId) { dispatchedWorkflow = workflowId; });
@@ -100,6 +126,41 @@ int main(int argc, char** argv)
     require(launcherRunRequested,
             "launcher must dispatch the selected workflow together with its scenario");
 
+    bool commandConfirmed = false;
+    int commandInvocations = 0;
+    std::map<std::string, std::string> receivedArguments;
+    FreeWorkspaceWidget freeConsole({{
+            QStringLiteral("test.capability"), QStringLiteral("Тестовая capability")}},
+        [&](const std::string& capability, const std::string& operation,
+            const std::map<std::string, std::string>& arguments) {
+            ++commandInvocations;
+            require(capability == "test.capability" && operation == "measure",
+                    "free console must invoke the selected capability and operation");
+            receivedArguments = arguments;
+            return std::string("value=42\n");
+        },
+        [&](const QString&) { return commandConfirmed; });
+    auto* freeOperation = freeConsole.findChild<QLineEdit*>(QStringLiteral("freeOperation"));
+    auto* freeArguments = freeConsole.findChild<QPlainTextEdit*>(
+        QStringLiteral("freeOperationArguments"));
+    auto* invokeFreeOperation = freeConsole.findChild<QPushButton*>(
+        QStringLiteral("invokeFreeOperation"));
+    auto* freeOutput = freeConsole.findChild<QPlainTextEdit*>(
+        QStringLiteral("freeOperationOutput"));
+    require(freeOperation && freeArguments && invokeFreeOperation && freeOutput,
+            "free console controls not found");
+    freeOperation->setText(QStringLiteral("measure"));
+    freeArguments->setPlainText(QStringLiteral("address=101\nsample_count=4"));
+    invokeFreeOperation->click();
+    require(commandInvocations == 0,
+            "free console must not invoke a command before confirmation");
+    commandConfirmed = true;
+    invokeFreeOperation->click();
+    require(commandInvocations == 1 && receivedArguments.at("address") == "101"
+                && receivedArguments.at("sample_count") == "4"
+                && freeOutput->toPlainText().contains(QStringLiteral("value=42")),
+            "free console must invoke a confirmed command through its capability and show response");
+
     orbita::stand::ProjectDefinition adminProject;
     adminProject.id = "contract-project";
     adminProject.title = "Contract project";
@@ -128,6 +189,45 @@ int main(int argc, char** argv)
         QStringLiteral("saveScenarioConfig"));
     require(publishedSave && !publishedSave->isEnabled(),
             "published scenario configuration must not be saved in place");
+
+    const auto visualPath = QDir(scenarioDirectory).filePath(QStringLiteral("visual_draft.yaml"));
+    QFile visualFile(visualPath);
+    require(visualFile.open(QIODevice::WriteOnly | QIODevice::Text),
+            "cannot create visual-editor scenario fixture");
+    visualFile.write(
+        "schema: 1\n"
+        "id: visual\n"
+        "title: Visual draft\n"
+        "version: 1\n"
+        "state: draft\n"
+        "steps:\n"
+        "  - id: root\n"
+        "    title: Original step\n"
+        "    procedure: test.procedure\n"
+        "    args:\n"
+        "      technical_retries: 3\n"
+        "      sample_count: 4\n");
+    visualFile.close();
+    ScenarioVisualEditor visualEditor(visualPath);
+    auto* visualTree = visualEditor.findChild<QTreeWidget*>(QStringLiteral("scenarioVisualTree"));
+    auto* visualTitle = visualEditor.findChild<QLineEdit*>(QStringLiteral("scenarioStepTitle"));
+    auto* visualProcedure = visualEditor.findChild<QLineEdit*>(QStringLiteral("scenarioStepProcedure"));
+    auto* visualApply = visualEditor.findChild<QPushButton*>(QStringLiteral("applyScenarioVisualStep"));
+    auto* visualSave = visualEditor.findChild<QPushButton*>(QStringLiteral("saveScenarioVisual"));
+    require(visualTree && visualTree->topLevelItemCount() == 1 && visualTitle
+                && visualProcedure && visualApply && visualSave
+                && visualProcedure->text() == QStringLiteral("test.procedure"),
+            "visual editor must render the existing YAML procedure as an editable step");
+    visualTitle->setText(QStringLiteral("Изменённый этап"));
+    visualApply->click();
+    visualSave->click();
+    const auto visualScenario = orbita::stand::loadScenarioYaml(visualPath.toStdString());
+    require(visualScenario.steps.size() == 1
+                && visualScenario.steps[0].title == "Изменённый этап"
+                && visualScenario.steps[0].procedure == "test.procedure"
+                && visualScenario.steps[0].policy.technicalRetries == 3
+                && visualScenario.steps[0].arguments.at("sample_count") == "4",
+            "visual editor must save the same scenario YAML schema without losing procedure policy");
 
     TestPage page;
     const QString screenshot = qEnvironmentVariable("ORBITA_UI_SCREENSHOT");

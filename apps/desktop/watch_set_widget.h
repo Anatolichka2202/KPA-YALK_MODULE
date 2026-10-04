@@ -1,11 +1,11 @@
 #pragma once
 /**
  * @file watch_set_widget.h
- * @brief Активный набор отслеживаемых каналов (WatchSet) — единый источник истины UI.
+ * @brief Один редактируемый набор отслеживаемых каналов (WatchSet).
  *
- * И загрузка конфига, и добавление из библиотеки пишут сюда. Любое изменение
- * эмитит watchSetChanged(enabledSpecs) -> MainWindow зовёт orbita_->setChannels().
- * Поддерживает вкл/выкл/удаление на лету и сохранение набора в .txt-конфиг.
+ * И загрузка конфига, и добавление из библиотеки пишут сюда. Контейнер наборов
+ * решает, как объединить изменения нескольких WatchSet перед передачей ядру.
+ * Виджет поддерживает включение, удаление на лету и сохранение в .txt-конфиг.
  */
 
 #include <QWidget>
@@ -23,6 +23,7 @@ public:
 
     void setFromSpecs(const std::vector<orbita::ChannelSpec>& specs); // заменить (конфиг)
     void addParams(const std::vector<orbita::ChannelSpec>& specs);    // добавить (библиотека)
+    std::vector<orbita::ChannelSpec> enabledSpecs() const;
 
 signals:
     void watchSetChanged(const std::vector<orbita::ChannelSpec>& enabledSpecs);

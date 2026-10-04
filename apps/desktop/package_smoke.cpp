@@ -1,4 +1,5 @@
 #include "package_smoke.h"
+#include "home_page.h"
 
 #include "orbita_stand/config.h"
 #include "orbita_stand/project.h"
@@ -6,6 +7,7 @@
 
 #include <QCoreApplication>
 #include <QDir>
+#include <QPushButton>
 #include <QTemporaryDir>
 
 #include <iostream>
@@ -36,6 +38,23 @@ public:
 int runInstalledPackageSmoke()
 {
     try {
+        // Свободный контур принадлежит MilTechStation, поэтому его вход
+        // проверяется до чтения project package КТМА. Так package smoke ловит
+        // ошибку, при которой поставка случайно становится его зависимостью.
+        HomePage freeHome;
+        auto* freeAction = freeHome.findChild<QPushButton*>(
+            QStringLiteral("genericFreeAction"));
+        if (!freeAction || !freeAction->isEnabled())
+            throw std::runtime_error(
+                "Free Workspace is unavailable before loading a delivery project");
+        bool freeWorkspaceRequested = false;
+        QObject::connect(&freeHome, &HomePage::freeWorkspaceRequested, &freeHome,
+            [&freeWorkspaceRequested] { freeWorkspaceRequested = true; });
+        freeAction->click();
+        if (!freeWorkspaceRequested)
+            throw std::runtime_error(
+                "Free Workspace did not dispatch its independent launch request");
+
         const QDir applicationDirectory(QCoreApplication::applicationDirPath());
         const auto projectPath = qEnvironmentVariable(
             "MILTECH_PROJECT",

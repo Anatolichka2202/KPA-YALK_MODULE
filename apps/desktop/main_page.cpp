@@ -1,4 +1,5 @@
 #include "main_page.h"
+#include "address_sets_overview.h"
 #include "tolerance_resolver.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -11,24 +12,27 @@ MainPage::MainPage(QWidget *parent) : QWidget(parent)
     mainLayout->setContentsMargins(0, 0, 0, 0);
     mainLayout->setSpacing(0);
 
-    m_readOnlyHeader = new QWidget(this);
-    m_readOnlyHeader->setObjectName(QStringLiteral("freeWorkspaceHeader"));
-    m_readOnlyHeader->setStyleSheet(QStringLiteral(
+    m_freeWorkspaceHeader = new QWidget(this);
+    m_freeWorkspaceHeader->setObjectName(QStringLiteral("freeWorkspaceHeader"));
+    m_freeWorkspaceHeader->setStyleSheet(QStringLiteral(
         "#freeWorkspaceHeader{background:#102235;border-bottom:1px solid #28506d;}"));
-    auto* headerLayout = new QHBoxLayout(m_readOnlyHeader);
+    auto* headerLayout = new QHBoxLayout(m_freeWorkspaceHeader);
     headerLayout->setContentsMargins(18, 10, 18, 10);
-    auto* heading = new QLabel(QStringLiteral("СВОБОДНЫЙ РЕЖИМ · LIVE МОНИТОРИНГ"), m_readOnlyHeader);
+    auto* heading = new QLabel(QStringLiteral("СВОБОДНЫЙ КОНТУР · LIVE РАБОЧЕЕ ПРОСТРАНСТВО"), m_freeWorkspaceHeader);
     heading->setStyleSheet(QStringLiteral("color:#9ac7ff;font-weight:700;font-size:16px;"));
-    heading->setAccessibleName(QStringLiteral("Свободный read-only режим мониторинга"));
+    heading->setAccessibleName(QStringLiteral("Свободный инженерный контур MilTechStation"));
     headerLayout->addWidget(heading);
     headerLayout->addStretch(1);
-    m_readOnlySummary = new QLabel(m_readOnlyHeader);
-    m_readOnlySummary->setObjectName(QStringLiteral("freeWorkspaceSummary"));
-    m_readOnlySummary->setStyleSheet(QStringLiteral(
+    m_freeWorkspaceSummary = new QLabel(m_freeWorkspaceHeader);
+    m_freeWorkspaceSummary->setObjectName(QStringLiteral("freeWorkspaceSummary"));
+    m_freeWorkspaceSummary->setStyleSheet(QStringLiteral(
         "color:#d7e8f5;border:1px solid #315b79;border-radius:5px;padding:5px 9px;"));
-    headerLayout->addWidget(m_readOnlySummary);
-    m_readOnlyHeader->setVisible(false);
-    mainLayout->addWidget(m_readOnlyHeader);
+    headerLayout->addWidget(m_freeWorkspaceSummary);
+    m_freeWorkspaceHeader->setVisible(false);
+    mainLayout->addWidget(m_freeWorkspaceHeader);
+
+    m_addressSetsOverview = new AddressSetsOverview(this);
+    mainLayout->addWidget(m_addressSetsOverview);
 
     // Панель переключения компоновок
     m_layoutButtonsLayout = new QHBoxLayout;
@@ -155,6 +159,7 @@ void MainPage::setMetadataService(MetadataService* db)
     m_barChartB->setMetadataService(db);
     m_table->setMetadataService(db);
     m_categoryGrid->setMetadataService(db);
+    m_addressSetsOverview->setMetadataService(db);
 }
 
 void MainPage::setToleranceResolver(ToleranceResolver* r)
@@ -166,6 +171,7 @@ void MainPage::setToleranceResolver(ToleranceResolver* r)
     m_barChartB->setToleranceResolver(r);
     m_table->setToleranceResolver(r);
     m_categoryGrid->setToleranceResolver(r);
+    m_addressSetsOverview->setToleranceResolver(r);
 }
 
 void MainPage::setChannels(const std::vector<orbita::ChannelSpec>& specs)
@@ -177,8 +183,8 @@ void MainPage::setChannels(const std::vector<orbita::ChannelSpec>& specs)
     m_barChartB->setChannels(specs);
     m_table->setChannels(specs);
     m_categoryGrid->setChannels(specs);
-    if (m_readOnlySummary)
-        m_readOnlySummary->setText(specs.empty()
+    if (m_freeWorkspaceSummary)
+        m_freeWorkspaceSummary->setText(specs.empty()
             ? QStringLiteral("Набор адресов не выбран")
             : QStringLiteral("Адресов в наборе: %1").arg(specs.size()));
 }
@@ -196,6 +202,7 @@ void MainPage::updateData(const orbita::Snapshot& snap)
     m_barChartB->updateValues(values);
     m_table->updateValues(values);
     m_categoryGrid->updateValues(values);
+    m_addressSetsOverview->updateData(snap);
 
     // Обновляем readout, если выбранный канал есть
     if (m_selectedIndex >= 0 && m_selectedIndex < (int)m_specs.size()) {
@@ -225,15 +232,23 @@ void MainPage::setLayout(int layout)
     onLayoutButtonClicked(layout);
 }
 
-void MainPage::setReadOnlyWorkspace(bool enabled)
+void MainPage::setFreeWorkspace(bool enabled)
 {
-    // Этот заголовок не управляет сбором и не меняет набор параметров. Он
-    // постоянно объясняет оператору границу режима, пока используются общие
-    // с инженерной оболочкой виджеты live-мониторинга.
-    m_readOnlyHeader->setVisible(enabled);
-    if (enabled && m_readOnlySummary) {
-        m_readOnlySummary->setText(m_specs.empty()
+    // Заголовок лишь объясняет контекст. Управление оборудованием остаётся в
+    // capability плагина, поэтому включение контура не выдаёт и не отнимает
+    // аппаратные права само по себе.
+    m_freeWorkspaceActive = enabled;
+    m_freeWorkspaceHeader->setVisible(enabled);
+    m_addressSetsOverview->setVisible(enabled);
+    if (enabled && m_freeWorkspaceSummary) {
+        m_freeWorkspaceSummary->setText(m_specs.empty()
             ? QStringLiteral("Набор адресов не выбран")
             : QStringLiteral("Адресов в наборе: %1").arg(m_specs.size()));
     }
+}
+
+void MainPage::setAddressSets(const std::vector<AddressSetDefinition>& sets)
+{
+    m_addressSetsOverview->setAddressSets(sets);
+    m_addressSetsOverview->setVisible(m_freeWorkspaceActive && !sets.empty());
 }

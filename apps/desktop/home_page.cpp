@@ -72,8 +72,8 @@ HomePage::HomePage(QWidget* parent)
     genericLayout->addWidget(genericTitle);
 
     auto* genericText = new QLabel(QStringLiteral(
-        "Read-only мониторинг Орбиты: выберите адреса из библиотеки параметров или TXT-набора, "
-        "запустите сбор и наблюдайте значения с допусками. Управляющих воздействий режим не выполняет."), genericCard);
+        "Инженерское рабочее пространство MilTechStation: выбирайте доступные источники и адреса, "
+        "наблюдайте live-данные и выполняйте разрешённые командами плагинов действия."), genericCard);
     genericText->setProperty("muted", true);
     genericText->setWordWrap(true);
     genericLayout->addWidget(genericText);
@@ -81,7 +81,8 @@ HomePage::HomePage(QWidget* parent)
     auto* genericAction = actionButton(QStringLiteral("ОТКРЫТЬ СВОБОДНЫЙ РЕЖИМ"), genericCard, true);
     genericAction->setObjectName(QStringLiteral("genericFreeAction"));
     genericAction->setAccessibleDescription(QStringLiteral(
-        "Открывает read-only мониторинг Орбиты; не открывает выбор YAML-сценария и не управляет оборудованием."));
+        "Открывает независимое инженерное рабочее пространство MilTechStation; "
+        "не открывает выбор YAML-сценария КТМА."));
     genericLayout->addWidget(genericAction, 0, Qt::AlignLeft);
     root->addWidget(genericCard);
 

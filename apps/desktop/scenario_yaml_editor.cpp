@@ -1,4 +1,5 @@
 #include "scenario_yaml_editor.h"
+#include "scenario_visual_editor.h"
 
 #include "orbita_stand/yaml_lite.h"
 
@@ -40,6 +41,9 @@ ScenarioYamlEditor::ScenarioYamlEditor(QString path, QWidget* parent)
     layout->addWidget(status_);
     auto* actions = new QHBoxLayout;
     auto* validateButton = new QPushButton(QStringLiteral("Проверить YAML"));
+    auto* visualButton = new QPushButton(QStringLiteral("Визуальный редактор"));
+    visualButton->setObjectName(QStringLiteral("openScenarioVisualEditor"));
+    visualButton->setVisible(scenario_);
     draftButton_ = new QPushButton(QStringLiteral("Создать черновик"));
     draftButton_->setObjectName(QStringLiteral("createScenarioDraft"));
     draftButton_->setVisible(scenario_);
@@ -47,12 +51,18 @@ ScenarioYamlEditor::ScenarioYamlEditor(QString path, QWidget* parent)
     saveButton_->setObjectName(QStringLiteral("saveScenarioConfig"));
     auto* closeButton = new QPushButton(QStringLiteral("Закрыть"));
     actions->addWidget(validateButton);
+    actions->addWidget(visualButton);
     actions->addWidget(draftButton_);
     actions->addStretch(1);
     actions->addWidget(saveButton_);
     actions->addWidget(closeButton);
     layout->addLayout(actions);
     connect(validateButton, &QPushButton::clicked, this, &ScenarioYamlEditor::validate);
+    connect(visualButton, &QPushButton::clicked, this, [this]() {
+        ScenarioVisualEditor visual(path_, this);
+        visual.exec();
+        load();
+    });
     connect(draftButton_, &QPushButton::clicked, this, &ScenarioYamlEditor::createDraft);
     connect(saveButton_, &QPushButton::clicked, this, &ScenarioYamlEditor::save);
     connect(closeButton, &QPushButton::clicked, this, &QDialog::accept);
