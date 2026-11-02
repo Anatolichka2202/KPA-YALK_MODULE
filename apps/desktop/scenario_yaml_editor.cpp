@@ -11,6 +11,7 @@
 #include <QLabel>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QRegularExpression>
 #include <QSaveFile>
 #include <QTextEdit>
 #include <QVBoxLayout>
@@ -27,7 +28,8 @@ ScenarioYamlEditor::ScenarioYamlEditor(QString path, QWidget* parent)
     auto* layout = new QVBoxLayout(this);
     auto* explanation = new QLabel(scenario_ ? QStringLiteral(
         "Сценарий содержит типизированные процедуры. Низкоуровневые HTTP/SCPI/UDP-команды "
-        "находятся внутри плагинов. Опубликованная версия неизменяема — для правки создайте черновик.")
+        "находятся внутри плагинов. Порядок и параметры этапов можно изменить "
+        "и сохранить в том же YAML, который читает сценарный движок.")
         : QStringLiteral("Инженерная конфигурация каталога или профиля стенда. "
                          "Перед сохранением проверьте YAML; изменения применятся после повторной проверки оборудования."));
     explanation->setWordWrap(true);
@@ -46,7 +48,7 @@ ScenarioYamlEditor::ScenarioYamlEditor(QString path, QWidget* parent)
     visualButton->setVisible(scenario_);
     draftButton_ = new QPushButton(QStringLiteral("Создать черновик"));
     draftButton_->setObjectName(QStringLiteral("createScenarioDraft"));
-    draftButton_->setVisible(scenario_);
+    draftButton_->setVisible(false);
     saveButton_ = new QPushButton(QStringLiteral("Сохранить"));
     saveButton_->setObjectName(QStringLiteral("saveScenarioConfig"));
     auto* closeButton = new QPushButton(QStringLiteral("Закрыть"));
@@ -63,12 +65,11 @@ ScenarioYamlEditor::ScenarioYamlEditor(QString path, QWidget* parent)
         visual.exec();
         load();
     });
-    connect(draftButton_, &QPushButton::clicked, this, &ScenarioYamlEditor::createDraft);
     connect(saveButton_, &QPushButton::clicked, this, &ScenarioYamlEditor::save);
+    connect(draftButton_, &QPushButton::clicked, this, &ScenarioYamlEditor::createDraft);
     connect(closeButton, &QPushButton::clicked, this, &QDialog::accept);
     load();
 }
-
 void ScenarioYamlEditor::load()
 {
     QFile file(path_);
@@ -82,13 +83,14 @@ void ScenarioYamlEditor::load()
         const auto root = orbita::stand::yaml::parse(editor_->toPlainText().toStdString());
         published_ = scenario_ && root.value("state") == "published";
     } catch (...) {
-        published_ = false;
+        // Некорректный исходный сценарий нельзя безопасно считать черновиком.
+        published_ = scenario_;
     }
     saveButton_->setEnabled(!published_);
-    status_->setText(published_
-        ? QStringLiteral("Опубликованная версия: сохранение поверх файла запрещено")
-        : scenario_ ? QStringLiteral("Черновик можно редактировать и сохранять")
-                    : QStringLiteral("Конфигурацию можно редактировать и сохранять"));
+    draftButton_->setVisible(published_);
+    status_->setText(published_ ? QStringLiteral("Исходный сценарий защищён: создайте черновик")
+                              : scenario_ ? QStringLiteral("Сценарий можно редактировать и сохранять")
+                              : QStringLiteral("Конфигурацию можно редактировать и сохранять"));
 }
 
 bool ScenarioYamlEditor::validate()
@@ -141,17 +143,34 @@ void ScenarioYamlEditor::save()
 
 void ScenarioYamlEditor::createDraft()
 {
+    if (!published_ || !validate()) return;
     QString content = editor_->toPlainText();
-    content.replace(QStringLiteral("state: published"), QStringLiteral("state: draft"));
-    const QFileInfo source(path_);
-    const QString draftPath = source.dir().filePath(source.completeBaseName() + QStringLiteral("_draft.yaml"));
-    if (!write(draftPath, content)) {
-        QMessageBox::critical(this, QStringLiteral("Черновик"), QStringLiteral("Не удалось создать черновик"));
+    const QRegularExpression state(QStringLiteral("(?m)^state\\s*:\\s*['\"]?published['\"]?\\s*(?:#.*)?$"));
+    if (!state.match(content).hasMatch()) {
+        status_->setText(QStringLiteral("Не удалось определить состояние опубликованного сценария"));
         return;
     }
+    content.replace(state, QStringLiteral("state: draft"));
+    const QFileInfo source(path_);
+    const QString draftPath = source.dir().filePath(source.completeBaseName() + QStringLiteral("_draft.yaml"));
+    // NewOnly исключает перезапись ранее созданного оператором черновика.
+    QFile draft(draftPath);
+    if (!draft.open(QIODevice::WriteOnly | QIODevice::NewOnly)) {
+        status_->setText(QStringLiteral("Не удалось создать черновик: %1").arg(draft.errorString()));
+        return;
+    }
+    const auto bytes = content.toUtf8();
+    if (draft.write(bytes) != bytes.size() || !draft.flush()) {
+        status_->setText(QStringLiteral("Не удалось полностью записать черновик: %1").arg(draft.errorString()));
+        draft.close();
+        QFile::remove(draftPath);
+        return;
+    }
+    draft.close();
     path_ = draftPath;
     published_ = false;
-    saveButton_->setEnabled(true);
     editor_->setPlainText(content);
+    saveButton_->setEnabled(true);
+    draftButton_->setVisible(false);
     status_->setText(QStringLiteral("Создан черновик: %1").arg(path_));
 }

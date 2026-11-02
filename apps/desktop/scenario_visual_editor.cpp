@@ -3,6 +3,7 @@
 #include <QDialogButtonBox>
 #include <QDir>
 #include <QFileInfo>
+#include <QFile>
 #include <QFormLayout>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -26,7 +27,6 @@ QString pathToText(const std::vector<int>& path)
         parts << QString::number(part);
     return parts.join(QLatin1Char('/'));
 }
-
 std::vector<int> textToPath(const QString& text)
 {
     std::vector<int> path;
@@ -34,7 +34,6 @@ std::vector<int> textToPath(const QString& text)
         path.push_back(part.toInt());
     return path;
 }
-
 std::string trimmedUtf8(const QString& value)
 {
     return value.trimmed().toUtf8().toStdString();
@@ -51,8 +50,9 @@ ScenarioVisualEditor::ScenarioVisualEditor(QString path, QWidget* parent)
     auto* layout = new QVBoxLayout(this);
     auto* explanation = new QLabel(QStringLiteral(
         "Форма изменяет schema: 1 YAML текущего сценария. Процедура, ресурсы и аргументы "
-        "сохраняются в том же формате, который читает сценарный движок. При сохранении "
-        "визуальный редактор нормализует разметку YAML; комментарии исходного файла не сохраняются."), this);
+        "сохраняются в том же формате, который читает сценарный движок. Порядок этапов "
+        "можно менять кнопками вверх/вниз. При сохранении визуальный редактор "
+        "нормализует разметку YAML; комментарии исходного файла не сохраняются."), this);
     explanation->setWordWrap(true);
     explanation->setObjectName(QStringLiteral("scenarioVisualEditorExplanation"));
     layout->addWidget(explanation);
@@ -108,19 +108,25 @@ ScenarioVisualEditor::ScenarioVisualEditor(QString path, QWidget* parent)
     auto* addRoot = new QPushButton(QStringLiteral("Добавить этап"), this);
     auto* addChild = new QPushButton(QStringLiteral("Добавить подэтап"), this);
     auto* remove = new QPushButton(QStringLiteral("Удалить этап"), this);
+    auto* moveUp = new QPushButton(QStringLiteral("Вверх"), this);
+    auto* moveDown = new QPushButton(QStringLiteral("Вниз"), this);
     draftButton_ = new QPushButton(QStringLiteral("Создать черновик"), this);
+    draftButton_->setObjectName(QStringLiteral("createScenarioVisualDraft"));
     saveButton_ = new QPushButton(QStringLiteral("Сохранить YAML"), this);
     auto* close = new QPushButton(QStringLiteral("Закрыть"), this);
     addRoot->setObjectName(QStringLiteral("addScenarioRootStep"));
     addChild->setObjectName(QStringLiteral("addScenarioChildStep"));
     remove->setObjectName(QStringLiteral("removeScenarioStep"));
-    draftButton_->setObjectName(QStringLiteral("createScenarioVisualDraft"));
+    moveUp->setObjectName(QStringLiteral("moveScenarioStepUp"));
+    moveDown->setObjectName(QStringLiteral("moveScenarioStepDown"));
     saveButton_->setObjectName(QStringLiteral("saveScenarioVisual"));
     actions->addWidget(addRoot);
     actions->addWidget(addChild);
     actions->addWidget(remove);
-    actions->addStretch(1);
+    actions->addWidget(moveUp);
+    actions->addWidget(moveDown);
     actions->addWidget(draftButton_);
+    actions->addStretch(1);
     actions->addWidget(saveButton_);
     actions->addWidget(close);
     layout->addLayout(actions);
@@ -131,6 +137,8 @@ ScenarioVisualEditor::ScenarioVisualEditor(QString path, QWidget* parent)
     connect(addRoot, &QPushButton::clicked, this, &ScenarioVisualEditor::addRootStep);
     connect(addChild, &QPushButton::clicked, this, &ScenarioVisualEditor::addChildStep);
     connect(remove, &QPushButton::clicked, this, &ScenarioVisualEditor::removeStep);
+    connect(moveUp, &QPushButton::clicked, this, &ScenarioVisualEditor::moveStepUp);
+    connect(moveDown, &QPushButton::clicked, this, &ScenarioVisualEditor::moveStepDown);
     connect(saveButton_, &QPushButton::clicked, this, &ScenarioVisualEditor::save);
     connect(draftButton_, &QPushButton::clicked, this, &ScenarioVisualEditor::createDraft);
     connect(close, &QPushButton::clicked, this, &QDialog::accept);
@@ -150,7 +158,6 @@ void ScenarioVisualEditor::load()
         setEditorEnabled(false);
     }
 }
-
 void ScenarioVisualEditor::rebuildTree()
 {
     tree_->clear();
@@ -181,7 +188,6 @@ void ScenarioVisualEditor::appendNode(QTreeWidgetItem* parent,
         appendNode(item, node.children[static_cast<std::size_t>(index)], childPath);
     }
 }
-
 void ScenarioVisualEditor::setEditorEnabled(bool enabled)
 {
     id_->setEnabled(enabled);
@@ -193,6 +199,11 @@ void ScenarioVisualEditor::setEditorEnabled(bool enabled)
     arguments_->setEnabled(enabled);
     applyButton_->setEnabled(enabled);
     saveButton_->setEnabled(enabled);
+    for (const auto* name : {"addScenarioRootStep", "addScenarioChildStep", "removeScenarioStep",
+                             "moveScenarioStepUp", "moveScenarioStepDown"}) {
+        if (auto* button = findChild<QPushButton*>(QString::fromLatin1(name)))
+            button->setEnabled(enabled);
+    }
     draftButton_->setVisible(published_);
 }
 
@@ -200,6 +211,15 @@ ScenarioVisualEditor::StepPath ScenarioVisualEditor::selectedPath() const
 {
     const auto* item = tree_->currentItem();
     return item ? textToPath(item->data(0, Qt::UserRole).toString()) : StepPath{};
+}
+
+void ScenarioVisualEditor::selectPath(const StepPath& path)
+{
+    if (path.empty()) return;
+    auto* item = tree_->topLevelItem(path.front());
+    for (std::size_t level = 1; item && level < path.size(); ++level)
+        item = item->child(path[level]);
+    if (item) tree_->setCurrentItem(item);
 }
 
 orbita::stand::ScenarioNode* ScenarioVisualEditor::findNode(const StepPath& path)
@@ -265,13 +285,24 @@ void ScenarioVisualEditor::clearNodeEditor()
 
 void ScenarioVisualEditor::applyStep()
 {
+    if (!commitEditorToSelectedNode()) return;
+    rebuildTree();
+}
+
+bool ScenarioVisualEditor::commitEditorToSelectedNode()
+{
     auto* node = findNode(selectedPath());
-    if (!node) return;
+    // Пустое дерево и отсутствие выбранного элемента допустимы для кнопок
+    // добавления: в этом случае нечего синхронизировать с моделью.
+    if (!node) return true;
     const auto id = trimmedUtf8(id_->text());
     if (id.empty()) {
         QMessageBox::warning(this, QStringLiteral("Шаг сценария"), QStringLiteral("Нужен идентификатор шага."));
-        return;
+        return false;
     }
+    // Поля формы являются временным состоянием Qt-редактора. Перед любой
+    // перестановкой или изменением дерева сначала переносим их в модель
+    // сценария, иначе rebuildTree() заменит форму данными до редактирования.
     node->id = id;
     node->title = trimmedUtf8(title_->text());
     node->tuRequirement = trimmedUtf8(tu_->text());
@@ -281,11 +312,12 @@ void ScenarioVisualEditor::applyStep()
         node->requiredCapabilities.insert(capability);
     node->requiredResources = resources(resources_->toPlainText());
     node->arguments = arguments(arguments_->toPlainText());
-    rebuildTree();
+    return true;
 }
 
 void ScenarioVisualEditor::addRootStep()
 {
+    if (!commitEditorToSelectedNode()) return;
     const int next = static_cast<int>(scenario_.steps.size()) + 1;
     scenario_.steps.push_back({"step_" + std::to_string(next), "Новый этап", "", "", {}, {}, {}});
     rebuildTree();
@@ -294,6 +326,7 @@ void ScenarioVisualEditor::addRootStep()
 
 void ScenarioVisualEditor::addChildStep()
 {
+    if (!commitEditorToSelectedNode()) return;
     auto* node = findNode(selectedPath());
     if (!node) {
         addRootStep();
@@ -306,6 +339,7 @@ void ScenarioVisualEditor::addChildStep()
 
 void ScenarioVisualEditor::removeStep()
 {
+    if (!commitEditorToSelectedNode()) return;
     const StepPath path = selectedPath();
     auto* siblings = siblingsFor(path);
     if (!siblings) return;
@@ -313,6 +347,38 @@ void ScenarioVisualEditor::removeStep()
     if (index < 0 || index >= static_cast<int>(siblings->size())) return;
     siblings->erase(siblings->begin() + index);
     rebuildTree();
+}
+
+void ScenarioVisualEditor::moveStepUp()
+{
+    if (!commitEditorToSelectedNode()) return;
+    const StepPath path = selectedPath();
+    auto* siblings = siblingsFor(path);
+    if (!siblings || path.empty()) return;
+    const int index = path.back();
+    if (index <= 0 || index >= static_cast<int>(siblings->size())) return;
+    std::swap((*siblings)[static_cast<std::size_t>(index)],
+              (*siblings)[static_cast<std::size_t>(index - 1)]);
+    rebuildTree();
+    auto selected = path;
+    --selected.back();
+    selectPath(selected);
+}
+
+void ScenarioVisualEditor::moveStepDown()
+{
+    if (!commitEditorToSelectedNode()) return;
+    const StepPath path = selectedPath();
+    auto* siblings = siblingsFor(path);
+    if (!siblings || path.empty()) return;
+    const int index = path.back();
+    if (index < 0 || index + 1 >= static_cast<int>(siblings->size())) return;
+    std::swap((*siblings)[static_cast<std::size_t>(index)],
+              (*siblings)[static_cast<std::size_t>(index + 1)]);
+    rebuildTree();
+    auto selected = path;
+    ++selected.back();
+    selectPath(selected);
 }
 
 QString ScenarioVisualEditor::quote(const std::string& value)
@@ -334,8 +400,9 @@ QString ScenarioVisualEditor::serialize() const
         output += QStringLiteral("catalog_version: %1\n").arg(quote(scenario_.catalogVersion));
     if (!scenario_.objectType.empty())
         output += QStringLiteral("object_type: %1\n").arg(quote(scenario_.objectType));
-    output += QStringLiteral("state: %1\nsteps:\n").arg(
+    output += QStringLiteral("state: %1\n").arg(
         scenario_.publicationState == orbita::stand::PublicationState::Published ? QStringLiteral("published") : QStringLiteral("draft"));
+    output += scenario_.steps.empty() ? QStringLiteral("steps: []\n") : QStringLiteral("steps:\n");
     for (const auto& step : scenario_.steps)
         appendNodeYaml(output, step, 2);
     return output;
@@ -424,8 +491,7 @@ bool ScenarioVisualEditor::write(const QString& path, const QString& content)
 
 void ScenarioVisualEditor::save()
 {
-    if (published_) return;
-    applyStep();
+    if (published_ || !commitEditorToSelectedNode()) return;
     if (!write(path_, serialize())) {
         QMessageBox::critical(this, QStringLiteral("Сохранение"), QStringLiteral("Не удалось сохранить YAML."));
         return;
@@ -441,13 +507,28 @@ void ScenarioVisualEditor::save()
 
 void ScenarioVisualEditor::createDraft()
 {
+    if (!published_) return;
     const QFileInfo source(path_);
     const QString draftPath = source.dir().filePath(source.completeBaseName() + QStringLiteral("_draft.yaml"));
-    scenario_.publicationState = orbita::stand::PublicationState::Draft;
-    if (!write(draftPath, serialize())) {
-        QMessageBox::critical(this, QStringLiteral("Черновик"), QStringLiteral("Не удалось создать черновик YAML."));
+    QFile draft(draftPath);
+    // Существующий черновик принадлежит пользователю и не перезаписывается.
+    if (!draft.open(QIODevice::WriteOnly | QIODevice::NewOnly)) {
+        QMessageBox::warning(this, QStringLiteral("Черновик"),
+            QStringLiteral("Не удалось создать черновик: %1").arg(draft.errorString()));
         return;
     }
+    scenario_.publicationState = orbita::stand::PublicationState::Draft;
+    const auto bytes = serialize().toUtf8();
+    if (draft.write(bytes) != bytes.size() || !draft.flush()) {
+        scenario_.publicationState = orbita::stand::PublicationState::Published;
+        const auto error = draft.errorString();
+        draft.close();
+        QFile::remove(draftPath);
+        QMessageBox::critical(this, QStringLiteral("Черновик"),
+            QStringLiteral("Не удалось записать черновик: %1").arg(error));
+        return;
+    }
+    draft.close();
     path_ = draftPath;
     published_ = false;
     setEditorEnabled(true);

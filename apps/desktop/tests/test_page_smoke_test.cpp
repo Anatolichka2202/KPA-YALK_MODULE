@@ -179,18 +179,67 @@ int main(int argc, char** argv)
     require(editorFixture.isValid(), "cannot create editor fixture directory");
     const auto scenarioDirectory = QDir(editorFixture.path()).filePath(QStringLiteral("scenarios"));
     require(QDir().mkpath(scenarioDirectory), "cannot create scenario fixture directory");
-    const auto publishedPath = QDir(scenarioDirectory).filePath(QStringLiteral("published.yaml"));
-    QFile publishedFile(publishedPath);
-    require(publishedFile.open(QIODevice::WriteOnly | QIODevice::Text),
-            "cannot create published scenario fixture");
-    publishedFile.write("schema: 1\nid: published\nversion: 1\nstate: published\nsteps: []\n");
-    publishedFile.close();
-    ScenarioYamlEditor publishedEditor(publishedPath);
-    auto* publishedSave = publishedEditor.findChild<QPushButton*>(
+    const auto scenarioPath = QDir(scenarioDirectory).filePath(QStringLiteral("scenario.yaml"));
+    QFile scenarioFile(scenarioPath);
+    require(scenarioFile.open(QIODevice::WriteOnly | QIODevice::Text),
+            "cannot create scenario fixture");
+    scenarioFile.write("schema: 1\nid: scenario\nversion: 1\nstate: published\nsteps: []\n");
+    scenarioFile.close();
+    ScenarioYamlEditor yamlEditor(scenarioPath);
+    auto* scenarioSave = yamlEditor.findChild<QPushButton*>(
         QStringLiteral("saveScenarioConfig"));
-    require(publishedSave && !publishedSave->isEnabled(),
-            "published scenario configuration must not be saved in place");
+    auto* makeDraft = yamlEditor.findChild<QPushButton*>(QStringLiteral("createScenarioDraft"));
+    require(scenarioSave && !scenarioSave->isEnabled() && makeDraft,
+            "published scenario must be protected until a draft is created");
+    makeDraft->click();
+    require(scenarioSave->isEnabled(), "creating a draft must enable editing");
+    require(scenarioFile.open(QIODevice::ReadOnly | QIODevice::Text),
+            "cannot read published scenario after creating draft");
+    require(scenarioFile.readAll().contains("state: published"),
+            "creating a draft must not modify the published scenario");
+    scenarioFile.close();
+    QFile copiedScenario(QDir(scenarioDirectory).filePath(QStringLiteral("scenario_draft.yaml")));
+    require(copiedScenario.open(QIODevice::ReadOnly | QIODevice::Text)
+                && copiedScenario.readAll().contains("state: draft"),
+            "created scenario copy must be a draft");
+    copiedScenario.close();
+    require(copiedScenario.open(QIODevice::Append | QIODevice::Text),
+            "cannot mark existing draft");
+    copiedScenario.write("# existing draft marker\n");
+    copiedScenario.close();
+    ScenarioYamlEditor duplicateEditor(scenarioPath);
+    auto* duplicateDraft = duplicateEditor.findChild<QPushButton*>(QStringLiteral("createScenarioDraft"));
+    require(duplicateDraft, "draft action must be available for a published scenario");
+    duplicateDraft->click();
+    require(copiedScenario.open(QIODevice::ReadOnly | QIODevice::Text)
+                && copiedScenario.readAll().contains("# existing draft marker"),
+            "an existing draft must not be replaced");
+    copiedScenario.close();
 
+    const auto visualPublishedPath = QDir(scenarioDirectory).filePath(QStringLiteral("visual_published.yaml"));
+    QFile visualPublishedFile(visualPublishedPath);
+    require(visualPublishedFile.open(QIODevice::WriteOnly | QIODevice::Text),
+            "cannot create published visual scenario fixture");
+    visualPublishedFile.write("schema: 1\nid: visual_published\nversion: 1\nstate: published\nsteps: []\n");
+    visualPublishedFile.close();
+    ScenarioVisualEditor publishedVisual(visualPublishedPath);
+    auto* publishedVisualSave = publishedVisual.findChild<QPushButton*>(QStringLiteral("saveScenarioVisual"));
+    auto* publishedVisualAdd = publishedVisual.findChild<QPushButton*>(QStringLiteral("addScenarioRootStep"));
+    auto* publishedVisualDraft = publishedVisual.findChild<QPushButton*>(QStringLiteral("createScenarioVisualDraft"));
+    require(publishedVisualSave && !publishedVisualSave->isEnabled()
+                && publishedVisualAdd && !publishedVisualAdd->isEnabled() && publishedVisualDraft,
+            "visual editor must protect published scenarios");
+    publishedVisualDraft->click();
+    require(publishedVisualSave->isEnabled() && publishedVisualAdd->isEnabled(),
+            "visual draft must enable editing");
+    const auto visualCopy = orbita::stand::loadScenarioYaml(
+        QDir(scenarioDirectory).filePath(QStringLiteral("visual_published_draft.yaml")).toStdString());
+    require(visualCopy.publicationState == orbita::stand::PublicationState::Draft,
+            "visual copy must be a draft");
+    require(visualPublishedFile.open(QIODevice::ReadOnly | QIODevice::Text)
+                && visualPublishedFile.readAll().contains("state: published"),
+            "visual draft creation must leave the original unchanged");
+    visualPublishedFile.close();
     const auto invalidPath = QDir(scenarioDirectory).filePath(QStringLiteral("invalid_draft.yaml"));
     QFile invalidFile(invalidPath);
     require(invalidFile.open(QIODevice::WriteOnly | QIODevice::Text),
@@ -229,27 +278,36 @@ int main(int argc, char** argv)
         "    procedure: test.procedure\n"
         "    args:\n"
         "      technical_retries: 3\n"
-        "      sample_count: 4\n");
+        "      sample_count: 4\n"
+        "  - id: second\n"
+        "    title: Second step\n"
+        "    procedure: second.procedure\n");
     visualFile.close();
     ScenarioVisualEditor visualEditor(visualPath);
     auto* visualTree = visualEditor.findChild<QTreeWidget*>(QStringLiteral("scenarioVisualTree"));
     auto* visualTitle = visualEditor.findChild<QLineEdit*>(QStringLiteral("scenarioStepTitle"));
     auto* visualProcedure = visualEditor.findChild<QLineEdit*>(QStringLiteral("scenarioStepProcedure"));
     auto* visualApply = visualEditor.findChild<QPushButton*>(QStringLiteral("applyScenarioVisualStep"));
+    auto* visualMoveUp = visualEditor.findChild<QPushButton*>(QStringLiteral("moveScenarioStepUp"));
     auto* visualSave = visualEditor.findChild<QPushButton*>(QStringLiteral("saveScenarioVisual"));
-    require(visualTree && visualTree->topLevelItemCount() == 1 && visualTitle
-                && visualProcedure && visualApply && visualSave
+    require(visualTree && visualTree->topLevelItemCount() == 2 && visualTitle
+                && visualProcedure && visualApply && visualMoveUp && visualSave
                 && visualProcedure->text() == QStringLiteral("test.procedure"),
             "visual editor must render the existing YAML procedure as an editable step");
     visualTitle->setText(QStringLiteral("Изменённый этап"));
     visualApply->click();
+    visualTree->setCurrentItem(visualTree->topLevelItem(1));
+    visualTitle->setText(QStringLiteral("Переставленный этап"));
+    visualMoveUp->click();
     visualSave->click();
     const auto visualScenario = orbita::stand::loadScenarioYaml(visualPath.toStdString());
-    require(visualScenario.steps.size() == 1
-                && visualScenario.steps[0].title == "Изменённый этап"
-                && visualScenario.steps[0].procedure == "test.procedure"
-                && visualScenario.steps[0].policy.technicalRetries == 3
-                && visualScenario.steps[0].arguments.at("sample_count") == "4",
+    require(visualScenario.steps.size() == 2
+                && visualScenario.steps[0].title == "Переставленный этап"
+                && visualScenario.steps[0].procedure == "second.procedure"
+                && visualScenario.steps[1].title == "Изменённый этап"
+                && visualScenario.steps[1].procedure == "test.procedure"
+                && visualScenario.steps[1].policy.technicalRetries == 3
+                && visualScenario.steps[1].arguments.at("sample_count") == "4",
             "visual editor must save the same scenario YAML schema without losing procedure policy");
 
     TestPage page;

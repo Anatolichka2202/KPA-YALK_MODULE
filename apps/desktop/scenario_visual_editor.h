@@ -33,6 +33,8 @@ private slots:
     void addRootStep();
     void addChildStep();
     void removeStep();
+    void moveStepUp();
+    void moveStepDown();
     void save();
     void createDraft();
 
@@ -45,10 +47,12 @@ private:
                     const StepPath& path);
     void setEditorEnabled(bool enabled);
     StepPath selectedPath() const;
+    void selectPath(const StepPath& path);
     orbita::stand::ScenarioNode* findNode(const StepPath& path);
     std::vector<orbita::stand::ScenarioNode>* siblingsFor(const StepPath& path);
     void showNode(const orbita::stand::ScenarioNode& node);
     void clearNodeEditor();
+    bool commitEditorToSelectedNode();
     QString serialize() const;
     static QString quote(const std::string& value);
     static std::vector<std::string> lines(const QString& text);
