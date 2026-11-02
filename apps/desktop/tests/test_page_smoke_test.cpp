@@ -14,6 +14,7 @@
 #include <QComboBox>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMessageBox>
 #include <QPushButton>
 #include <QPlainTextEdit>
 #include <QDir>
@@ -23,6 +24,7 @@
 #include <QTabWidget>
 #include <QTreeWidget>
 #include <QTemporaryDir>
+#include <QTimer>
 #include <QTextEdit>
 
 #include <cstdlib>
@@ -295,7 +297,22 @@ int main(int argc, char** argv)
                 && visualProcedure->text() == QStringLiteral("test.procedure"),
             "visual editor must render the existing YAML procedure as an editable step");
     visualTitle->setText(QStringLiteral("Изменённый этап"));
+    auto* visualArguments = visualEditor.findChild<QPlainTextEdit*>(QStringLiteral("scenarioStepArguments"));
+    require(visualArguments, "visual editor arguments must be available");
+    const auto validArguments = visualArguments->toPlainText();
+    visualArguments->setPlainText(QStringLiteral("unfinished argument"));
+    QTimer::singleShot(0, [] {
+        if (auto* message = qobject_cast<QMessageBox*>(QApplication::activeModalWidget()))
+            message->accept();
+    });
     visualTree->setCurrentItem(visualTree->topLevelItem(1));
+    require(visualTree->currentItem() == visualTree->topLevelItem(0)
+                && visualArguments->toPlainText() == QStringLiteral("unfinished argument"),
+            "unfinished arguments must remain visible and block step switching");
+    visualArguments->setPlainText(validArguments);
+    visualTree->setCurrentItem(visualTree->topLevelItem(1));
+    require(visualTree->topLevelItem(0)->text(0) == QStringLiteral("Изменённый этап"),
+            "step tree must show the updated title after switching");
     visualTree->setCurrentItem(visualTree->topLevelItem(0));
     require(visualTitle->text() == QStringLiteral("Изменённый этап"),
             "switching steps must retain changes entered in the previous step");

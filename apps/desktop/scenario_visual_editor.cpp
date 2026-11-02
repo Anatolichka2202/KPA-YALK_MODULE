@@ -18,6 +18,7 @@
 #include <QVBoxLayout>
 
 #include <algorithm>
+#include <set>
 #include <sstream>
 
 namespace {
@@ -141,6 +142,14 @@ ScenarioVisualEditor::ScenarioVisualEditor(QString path, QWidget* parent)
                 const QSignalBlocker block(tree_);
                 tree_->setCurrentItem(previous);
                 return;
+            }
+            if (previous && !published_) {
+                if (const auto* node = findNode(textToPath(previous->data(0, Qt::UserRole).toString()))) {
+                    previous->setText(0, QString::fromStdString(node->title.empty() ? node->id : node->title));
+                    previous->setText(1, QString::fromStdString(node->tuRequirement));
+                    previous->setToolTip(0, QStringLiteral("%1\n%2").arg(
+                        QString::fromStdString(node->id), QString::fromStdString(node->procedure)));
+                }
             }
             selectStep(current);
         });
@@ -321,6 +330,33 @@ bool ScenarioVisualEditor::commitEditorToNode(const StepPath& path)
     if (id.empty()) {
         QMessageBox::warning(this, QStringLiteral("Шаг сценария"), QStringLiteral("Нужен идентификатор шага."));
         return false;
+    }
+    // Незаконченные строки нельзя молча пропускать при разборе формы:
+    // оператор должен иметь возможность вернуться к ним и завершить ввод.
+    std::set<std::string> argumentNames;
+    for (const auto& line : arguments_->toPlainText().split(QLatin1Char('\n'))) {
+        if (!line.trimmed().isEmpty() && (line.indexOf(QLatin1Char('=')) < 1
+                                         || line.section(QLatin1Char('='), 0, 0).trimmed().isEmpty())) {
+            QMessageBox::warning(this, QStringLiteral("Шаг сценария"),
+                QStringLiteral("Каждый аргумент задаётся в виде «имя = значение»."));
+            return false;
+        }
+        if (!line.trimmed().isEmpty()
+            && !argumentNames.insert(trimmedUtf8(line.section(QLatin1Char('='), 0, 0))).second) {
+            QMessageBox::warning(this, QStringLiteral("Шаг сценария"),
+                QStringLiteral("Имена аргументов в шаге не должны повторяться."));
+            return false;
+        }
+    }
+    for (const auto& line : resources_->toPlainText().split(QLatin1Char('\n'))) {
+        if (line.trimmed().isEmpty()) continue;
+        const int separator = line.indexOf(QLatin1Char('|'));
+        if (separator < 1 || line.left(separator).trimmed().isEmpty()
+            || line.mid(separator + 1).trimmed().isEmpty()) {
+            QMessageBox::warning(this, QStringLiteral("Шаг сценария"),
+                QStringLiteral("Каждый ресурс задаётся в виде «ресурс | возможность»."));
+            return false;
+        }
     }
     // Поля формы являются временным состоянием Qt-редактора. Перед любой
     // перестановкой или изменением дерева сначала переносим их в модель
