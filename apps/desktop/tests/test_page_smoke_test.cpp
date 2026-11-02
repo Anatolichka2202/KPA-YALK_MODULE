@@ -295,7 +295,10 @@ int main(int argc, char** argv)
                 && visualProcedure->text() == QStringLiteral("test.procedure"),
             "visual editor must render the existing YAML procedure as an editable step");
     visualTitle->setText(QStringLiteral("Изменённый этап"));
-    visualApply->click();
+    visualTree->setCurrentItem(visualTree->topLevelItem(1));
+    visualTree->setCurrentItem(visualTree->topLevelItem(0));
+    require(visualTitle->text() == QStringLiteral("Изменённый этап"),
+            "switching steps must retain changes entered in the previous step");
     visualTree->setCurrentItem(visualTree->topLevelItem(1));
     visualTitle->setText(QStringLiteral("Переставленный этап"));
     visualMoveUp->click();

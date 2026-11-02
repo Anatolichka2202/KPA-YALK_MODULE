@@ -12,6 +12,7 @@
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSaveFile>
+#include <QSignalBlocker>
 #include <QSplitter>
 #include <QTreeWidget>
 #include <QVBoxLayout>
@@ -132,7 +133,17 @@ ScenarioVisualEditor::ScenarioVisualEditor(QString path, QWidget* parent)
     layout->addLayout(actions);
 
     connect(tree_, &QTreeWidget::currentItemChanged, this,
-        [this](QTreeWidgetItem* current, QTreeWidgetItem*) { selectStep(current); });
+        [this](QTreeWidgetItem* current, QTreeWidgetItem* previous) {
+            // Сначала переносим поля предыдущего шага в черновик, иначе
+            // показ нового шага уничтожит ещё не применённый ввод оператора.
+            if (previous && !published_
+                && !commitEditorToNode(textToPath(previous->data(0, Qt::UserRole).toString()))) {
+                const QSignalBlocker block(tree_);
+                tree_->setCurrentItem(previous);
+                return;
+            }
+            selectStep(current);
+        });
     connect(applyButton_, &QPushButton::clicked, this, &ScenarioVisualEditor::applyStep);
     connect(addRoot, &QPushButton::clicked, this, &ScenarioVisualEditor::addRootStep);
     connect(addChild, &QPushButton::clicked, this, &ScenarioVisualEditor::addChildStep);
@@ -160,13 +171,17 @@ void ScenarioVisualEditor::load()
 }
 void ScenarioVisualEditor::rebuildTree()
 {
+    // При перестроении элементы уничтожаются; сигнал выбора в этот момент
+    // не должен сохранять поля в узел с уже изменившимся индексом.
+    const QSignalBlocker block(tree_);
     tree_->clear();
     for (int index = 0; index < static_cast<int>(scenario_.steps.size()); ++index)
         appendNode(nullptr, scenario_.steps[static_cast<std::size_t>(index)], {index});
     tree_->expandAll();
-    if (tree_->topLevelItemCount() > 0)
+    if (tree_->topLevelItemCount() > 0) {
         tree_->setCurrentItem(tree_->topLevelItem(0));
-    else
+        selectStep(tree_->currentItem());
+    } else
         clearNodeEditor();
 }
 
@@ -285,13 +300,20 @@ void ScenarioVisualEditor::clearNodeEditor()
 
 void ScenarioVisualEditor::applyStep()
 {
+    const auto path = selectedPath();
     if (!commitEditorToSelectedNode()) return;
     rebuildTree();
+    selectPath(path);
 }
 
 bool ScenarioVisualEditor::commitEditorToSelectedNode()
 {
-    auto* node = findNode(selectedPath());
+    return commitEditorToNode(selectedPath());
+}
+
+bool ScenarioVisualEditor::commitEditorToNode(const StepPath& path)
+{
+    auto* node = findNode(path);
     // Пустое дерево и отсутствие выбранного элемента допустимы для кнопок
     // добавления: в этом случае нечего синхронизировать с моделью.
     if (!node) return true;

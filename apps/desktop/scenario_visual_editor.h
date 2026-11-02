@@ -53,6 +53,7 @@ private:
     void showNode(const orbita::stand::ScenarioNode& node);
     void clearNodeEditor();
     bool commitEditorToSelectedNode();
+    bool commitEditorToNode(const StepPath& path);
     QString serialize() const;
     static QString quote(const std::string& value);
     static std::vector<std::string> lines(const QString& text);
