@@ -15,7 +15,7 @@ public:
 
 private:
     void load();
-    void validate();
+    bool validate();
     void save();
     void createDraft();
     bool write(const QString& path, const QString& content);

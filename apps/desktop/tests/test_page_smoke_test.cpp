@@ -23,6 +23,7 @@
 #include <QTabWidget>
 #include <QTreeWidget>
 #include <QTemporaryDir>
+#include <QTextEdit>
 
 #include <cstdlib>
 #include <cmath>
@@ -189,6 +190,28 @@ int main(int argc, char** argv)
         QStringLiteral("saveScenarioConfig"));
     require(publishedSave && !publishedSave->isEnabled(),
             "published scenario configuration must not be saved in place");
+
+    const auto invalidPath = QDir(scenarioDirectory).filePath(QStringLiteral("invalid_draft.yaml"));
+    QFile invalidFile(invalidPath);
+    require(invalidFile.open(QIODevice::WriteOnly | QIODevice::Text),
+            "cannot create draft scenario fixture");
+    invalidFile.write("schema: 1\nid: draft\nversion: 1\nstate: draft\nsteps: []\n");
+    invalidFile.close();
+    ScenarioYamlEditor invalidEditor(invalidPath);
+    auto* invalidSave = invalidEditor.findChild<QPushButton*>(QStringLiteral("saveScenarioConfig"));
+    auto* invalidText = invalidEditor.findChild<QTextEdit*>();
+    require(invalidSave && invalidSave->isEnabled() && invalidText,
+            "draft scenario editor must be available");
+    const auto originalDraft = invalidText->toPlainText();
+    invalidText->setPlainText(QStringLiteral("schema: 1\nid: broken\n"));
+    invalidSave->click();
+    require(invalidFile.open(QIODevice::ReadOnly | QIODevice::Text),
+            "cannot read scenario after failed validation");
+    require(QString::fromUtf8(invalidFile.readAll()) == originalDraft,
+            "invalid scenario must not overwrite the existing file");
+    invalidFile.close();
+    require(invalidText->toPlainText().contains(QStringLiteral("broken")),
+            "failed validation must retain the editor draft");
 
     const auto visualPath = QDir(scenarioDirectory).filePath(QStringLiteral("visual_draft.yaml"));
     QFile visualFile(visualPath);

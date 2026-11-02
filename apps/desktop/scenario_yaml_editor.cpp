@@ -91,7 +91,7 @@ void ScenarioYamlEditor::load()
                     : QStringLiteral("Конфигурацию можно редактировать и сохранять"));
 }
 
-void ScenarioYamlEditor::validate()
+bool ScenarioYamlEditor::validate()
 {
     try {
         const auto root = orbita::stand::yaml::parse(editor_->toPlainText().toStdString());
@@ -110,9 +110,11 @@ void ScenarioYamlEditor::validate()
         }
         status_->setText(QStringLiteral("YAML корректен; обязательные разделы присутствуют"));
         status_->setStyleSheet(QStringLiteral("color:#70d79b"));
+        return true;
     } catch (const std::exception& error) {
         status_->setText(QStringLiteral("Ошибка: %1").arg(QString::fromUtf8(error.what())));
         status_->setStyleSheet(QStringLiteral("color:#e1766d"));
+        return false;
     }
 }
 
@@ -120,14 +122,16 @@ bool ScenarioYamlEditor::write(const QString& path, const QString& content)
 {
     QSaveFile file(path);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
-    file.write(content.toUtf8());
+    const auto bytes = content.toUtf8();
+    if (file.write(bytes) != bytes.size()) return false;
     return file.commit();
 }
 
 void ScenarioYamlEditor::save()
 {
     if (published_) return;
-    validate();
+    // Ошибка проверки оставляет исходный файл и введённый черновик без изменений.
+    if (!validate()) return;
     if (!write(path_, editor_->toPlainText())) {
         QMessageBox::critical(this, QStringLiteral("Сохранение"), QStringLiteral("Не удалось сохранить сценарий"));
         return;
