@@ -3,13 +3,18 @@
 #include "watch_set_widget.h"
 
 #include <QHBoxLayout>
+#include <QFile>
+#include <QFileDialog>
 #include <QInputDialog>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QSaveFile>
+#include <QSignalBlocker>
 #include <QTabWidget>
 #include <QVBoxLayout>
+#include <utility>
 
 AddressSetsWidget::AddressSetsWidget(MetadataService* db, QWidget* parent)
     : QWidget(parent)
@@ -22,7 +27,7 @@ AddressSetsWidget::AddressSetsWidget(MetadataService* db, QWidget* parent)
     auto* caption = new QLabel(
         QStringLiteral("Параллельные наборы параметров. Все включённые параметры "
                        "поступают из одного live-потока; вкладки не запускают "
-                       "отдельные декодеры."), this);
+                       "отдельные декодеры. В файл сохраняются только включённые параметры."), this);
     caption->setWordWrap(true);
     caption->setObjectName(QStringLiteral("addressSetsExplanation"));
     caption->setStyleSheet(QStringLiteral("color:#b6c8d8; padding:4px;"));
@@ -37,6 +42,8 @@ AddressSetsWidget::AddressSetsWidget(MetadataService* db, QWidget* parent)
     auto* add = new QPushButton(QStringLiteral("Добавить набор"), this);
     auto* rename = new QPushButton(QStringLiteral("Переименовать"), this);
     auto* remove = new QPushButton(QStringLiteral("Убрать набор"), this);
+    auto* save = new QPushButton(QStringLiteral("Сохранить наборы…"), this);
+    auto* load = new QPushButton(QStringLiteral("Загрузить наборы…"), this);
     add->setObjectName(QStringLiteral("addAddressSet"));
     rename->setObjectName(QStringLiteral("renameAddressSet"));
     remove->setObjectName(QStringLiteral("removeAddressSet"));
@@ -45,6 +52,8 @@ AddressSetsWidget::AddressSetsWidget(MetadataService* db, QWidget* parent)
     actions->addWidget(rename);
     actions->addWidget(remove);
     actions->addStretch(1);
+    actions->addWidget(load);
+    actions->addWidget(save);
     layout->addLayout(actions);
 
     createEditorForSet(0);
@@ -53,6 +62,8 @@ AddressSetsWidget::AddressSetsWidget(MetadataService* db, QWidget* parent)
     connect(add, &QPushButton::clicked, this, &AddressSetsWidget::addAddressSet);
     connect(rename, &QPushButton::clicked, this, &AddressSetsWidget::renameAddressSet);
     connect(remove, &QPushButton::clicked, this, &AddressSetsWidget::removeAddressSet);
+    connect(save, &QPushButton::clicked, this, &AddressSetsWidget::saveView);
+    connect(load, &QPushButton::clicked, this, &AddressSetsWidget::loadView);
     connect(tabs_, &QTabWidget::currentChanged, this, &AddressSetsWidget::setCurrentAddressSet);
 }
 
@@ -124,6 +135,61 @@ void AddressSetsWidget::renameAddressSet()
         return;
     model_.renameSet(index, title);
     refreshTabTitle(index);
+    emit addressSetsChanged(definitions());
+}
+
+void AddressSetsWidget::saveView()
+{
+    const auto path = QFileDialog::getSaveFileName(this, QStringLiteral("Сохранить наборы параметров"),
+        QString(), QStringLiteral("Наборы параметров (*.json)"));
+    if (path.isEmpty()) return;
+    QSaveFile file(path);
+    const auto data = model_.serialize();
+    if (!file.open(QIODevice::WriteOnly) || file.write(data) != data.size() || !file.commit()) {
+        QMessageBox::critical(this, QStringLiteral("Сохранение"),
+            QStringLiteral("Не удалось сохранить наборы: %1").arg(file.errorString()));
+    }
+}
+
+void AddressSetsWidget::loadView()
+{
+    const auto path = QFileDialog::getOpenFileName(this, QStringLiteral("Загрузить наборы параметров"),
+        QString(), QStringLiteral("Наборы параметров (*.json)"));
+    if (path.isEmpty()) return;
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        QMessageBox::critical(this, QStringLiteral("Загрузка"),
+            QStringLiteral("Не удалось открыть файл: %1").arg(file.errorString()));
+        return;
+    }
+    AddressSetModel imported;
+    QString error;
+    if (!imported.restore(file.readAll(), &error)) {
+        QMessageBox::warning(this, QStringLiteral("Загрузка"), error);
+        return;
+    }
+    if (QMessageBox::question(this, QStringLiteral("Загрузка наборов"),
+        QStringLiteral("Заменить текущие наборы параметров загруженными?")) != QMessageBox::Yes)
+        return;
+
+    // На время перестроения не отправляем частично восстановленную подписку
+    // декодеру: он получит единый список после загрузки всех вкладок.
+    const QSignalBlocker block(tabs_);
+    while (tabs_->count()) {
+        auto* page = tabs_->widget(0);
+        tabs_->removeTab(0);
+        delete page;
+    }
+    model_ = std::move(imported);
+    for (int i = 0; i < model_.count(); ++i) {
+        createEditorForSet(i);
+        auto* editor = qobject_cast<WatchSetWidget*>(tabs_->widget(i));
+        const QSignalBlocker editorBlock(editor);
+        editor->setFromSpecs(model_.at(i).specs);
+        refreshTabTitle(i);
+    }
+    tabs_->setCurrentIndex(model_.activeIndex());
+    emitCombinedChanged();
 }
 
 void AddressSetsWidget::setCurrentAddressSet(int index)

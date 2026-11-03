@@ -12,6 +12,7 @@
 #include "orbita.h"
 
 #include <QString>
+#include <QByteArray>
 #include <vector>
 
 struct AddressSetDefinition {
@@ -35,6 +36,8 @@ public:
     void replaceActive(const std::vector<orbita::ChannelSpec>& specs);
     void addToActive(const std::vector<orbita::ChannelSpec>& specs);
     std::vector<orbita::ChannelSpec> combinedSpecs() const;
+    QByteArray serialize() const;
+    bool restore(const QByteArray& data, QString* error = nullptr);
 
 private:
     bool containsInActive(const std::string& address) const;

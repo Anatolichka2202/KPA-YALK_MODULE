@@ -38,6 +38,8 @@ private slots:
     void renameAddressSet();
     void setCurrentAddressSet(int index);
     void onCurrentSetChanged(const std::vector<orbita::ChannelSpec>& specs);
+    void saveView();
+    void loadView();
 
 private:
     void createEditorForSet(int index);

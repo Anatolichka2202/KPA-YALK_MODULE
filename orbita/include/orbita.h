@@ -45,6 +45,9 @@ struct ChannelSpec {
     std::string category;   ///< категория (для группировки), может быть пустой
 };
 
+/// Проверяет адрес тем же разбором, который используется при подписке на канал.
+bool isValidChannelAddress(const std::string& address) noexcept;
+
 /// Значение одного канала на выходе.
 struct ChannelValue {
     std::string address;    ///< тот же ключ, что во входном ChannelSpec

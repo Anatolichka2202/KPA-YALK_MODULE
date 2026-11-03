@@ -63,6 +63,23 @@ int main(int argc, char** argv)
     addressSets.replaceActive({{"M16P1A72", "Заменён", "Контур А"}});
     require(addressSets.combinedSpecs().size() == 3,
             "replacing one set must preserve another set being observed in parallel");
+    addressSets.setActiveIndex(1);
+    const auto savedSets = addressSets.serialize();
+    AddressSetModel restoredSets;
+    QString setsError;
+    require(restoredSets.restore(savedSets, &setsError) && restoredSets.count() == 2
+                && restoredSets.activeIndex() == 1
+                && restoredSets.at(1).title == QStringLiteral("Сравнение")
+                && restoredSets.combinedSpecs().size() == 3,
+            "saved parameter sets must restore titles, active tab and combined channels");
+    require(!restoredSets.restore(QByteArrayLiteral("{\"schema\":1,\"active\":0,\"sets\":[{}]}"), &setsError)
+                && !setsError.isEmpty() && restoredSets.serialize() == savedSets,
+            "invalid parameter-set import must not change the active configuration");
+    require(!restoredSets.restore(QByteArrayLiteral(
+                "{\"schema\":1,\"active\":0,\"sets\":[{\"title\":\"x\",\"channels\":["
+                "{\"address\":\"invalid\",\"name\":\"\",\"category\":\"\"}]}]}"), &setsError)
+                && restoredSets.serialize() == savedSets,
+            "an invalid decoder address must not replace the active configuration");
 
     HomePage home;
     home.setProjectWorkflows({

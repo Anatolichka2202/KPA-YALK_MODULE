@@ -1,7 +1,24 @@
 #include "../include/orbita.h"
 #include "orbita_core.h"
+#include "../address/address_parser.h"
+
+#include <cctype>
 
 namespace orbita {
+
+bool isValidChannelAddress(const std::string& address) noexcept {
+    // Не передаём заведомо короткую строку в разбор и не допускаем суффикс
+    // после пробела: парсер файла иначе сочтёт его текстовым комментарием.
+    if (address.size() < 4) return false;
+    for (const unsigned char c : address)
+        if (std::isspace(c)) return false;
+    try {
+        (void)AddressParser::parseLine(address);
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
 
 Orbita::Orbita() : ctx_(std::make_unique<Context>()) {}
 Orbita::~Orbita() = default;
