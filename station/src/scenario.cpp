@@ -267,6 +267,14 @@ void ScenarioEngine::registerProcedure(std::string id, ProcedureFunction procedu
     procedures_[std::move(id)] = std::move(procedure);
 }
 
+std::vector<std::string> ScenarioEngine::registeredProcedures() const
+{
+    std::vector<std::string> result;
+    result.reserve(procedures_.size());
+    for (const auto& procedure : procedures_) result.push_back(procedure.first);
+    return result;
+}
+
 std::vector<std::string> ScenarioEngine::validate(const ScenarioDefinition& scenario) const
 {
     std::vector<std::string> errors;

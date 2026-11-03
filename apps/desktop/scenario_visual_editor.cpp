@@ -1,6 +1,7 @@
 #include "scenario_visual_editor.h"
 
 #include <QDialogButtonBox>
+#include <QComboBox>
 #include <QDir>
 #include <QFileInfo>
 #include <QFile>
@@ -80,6 +81,15 @@ ScenarioVisualEditor::ScenarioVisualEditor(QString path, QWidget* parent)
     form->addRow(QStringLiteral("Название:"), title_);
     form->addRow(QStringLiteral("Требование ТУ:"), tu_);
     form->addRow(QStringLiteral("Процедура:"), procedure_);
+    procedureChoice_ = new QComboBox(formHost);
+    procedureChoice_->setObjectName(QStringLiteral("availableScenarioProcedures"));
+    procedureChoice_->addItem(QStringLiteral("Выберите процедуру…"), QString());
+    procedureChoice_->setToolTip(QStringLiteral("Регистрация процедуры не означает готовность оборудования"));
+    form->addRow(QStringLiteral("Процедуры станции:"), procedureChoice_);
+    connect(procedureChoice_, &QComboBox::activated, this, [this](int index) {
+        const auto id = procedureChoice_->itemData(index).toString();
+        if (!id.isEmpty()) procedure_->setText(id);
+    });
     formLayout->addLayout(form);
 
     requires_ = new QPlainTextEdit(formHost);
@@ -165,6 +175,20 @@ ScenarioVisualEditor::ScenarioVisualEditor(QString path, QWidget* parent)
     load();
 }
 
+void ScenarioVisualEditor::setAvailableProcedures(const std::vector<std::string>& procedures)
+{
+    const QSignalBlocker block(procedureChoice_);
+    procedureChoice_->clear();
+    procedureChoice_->addItem(QStringLiteral("Выберите процедуру…"), QString());
+    for (const auto& procedure : procedures) {
+        const auto id = QString::fromStdString(procedure);
+        const auto title = id == QStringLiteral("telemetry.health")
+            ? QStringLiteral("Проверить состояние потока «Орбита»") : id;
+        procedureChoice_->addItem(title, id);
+    }
+    procedureChoice_->setCurrentIndex(0);
+}
+
 void ScenarioVisualEditor::load()
 {
     try {
@@ -218,6 +242,7 @@ void ScenarioVisualEditor::setEditorEnabled(bool enabled)
     title_->setEnabled(enabled);
     tu_->setEnabled(enabled);
     procedure_->setEnabled(enabled);
+    procedureChoice_->setEnabled(enabled);
     requires_->setEnabled(enabled);
     resources_->setEnabled(enabled);
     arguments_->setEnabled(enabled);
@@ -285,6 +310,9 @@ void ScenarioVisualEditor::showNode(const orbita::stand::ScenarioNode& node)
     title_->setText(QString::fromStdString(node.title));
     tu_->setText(QString::fromStdString(node.tuRequirement));
     procedure_->setText(QString::fromStdString(node.procedure));
+    // Список — команда выбора, а не отображение текущего поля: при переходе
+    // на другой шаг он не должен показывать ранее выбранную процедуру.
+    procedureChoice_->setCurrentIndex(0);
     QStringList required;
     for (const auto& capability : node.requiredCapabilities)
         required << QString::fromStdString(capability);

@@ -692,6 +692,7 @@ void MainWindow::onOpenScenario()
         return;
     }
     ScenarioYamlEditor editor(path, this);
+    if (scenarioEngine_) editor.setAvailableProcedures(scenarioEngine_->registeredProcedures());
     editor.exec();
 }
 

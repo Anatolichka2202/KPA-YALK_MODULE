@@ -233,6 +233,20 @@ int main(int argc, char** argv)
                 && copiedScenario.readAll().contains("state: draft"),
             "created scenario copy must be a draft");
     copiedScenario.close();
+    yamlEditor.setAvailableProcedures({"telemetry.health"});
+    auto* openVisual = yamlEditor.findChild<QPushButton*>(QStringLiteral("openScenarioVisualEditor"));
+    bool proceduresForwarded = false;
+    require(openVisual, "visual editor action must be available");
+    QTimer::singleShot(0, [&proceduresForwarded] {
+        auto* dialog = qobject_cast<ScenarioVisualEditor*>(QApplication::activeModalWidget());
+        if (!dialog) return;
+        auto* choices = dialog->findChild<QComboBox*>(QStringLiteral("availableScenarioProcedures"));
+        proceduresForwarded = choices && choices->count() == 2
+            && choices->itemData(1).toString() == QStringLiteral("telemetry.health");
+        dialog->accept();
+    });
+    openVisual->click();
+    require(proceduresForwarded, "YAML editor must pass registered procedures to the visual editor");
     require(copiedScenario.open(QIODevice::Append | QIODevice::Text),
             "cannot mark existing draft");
     copiedScenario.write("# existing draft marker\n");
@@ -314,9 +328,15 @@ int main(int argc, char** argv)
         "    procedure: second.procedure\n");
     visualFile.close();
     ScenarioVisualEditor visualEditor(visualPath);
+    orbita::stand::ScenarioEngine procedureEngine;
+    procedureEngine.registerProcedure("telemetry.health", [](const auto&, auto&) {
+        return orbita::stand::ProcedureResult{};
+    });
+    visualEditor.setAvailableProcedures(procedureEngine.registeredProcedures());
     auto* visualTree = visualEditor.findChild<QTreeWidget*>(QStringLiteral("scenarioVisualTree"));
     auto* visualTitle = visualEditor.findChild<QLineEdit*>(QStringLiteral("scenarioStepTitle"));
     auto* visualProcedure = visualEditor.findChild<QLineEdit*>(QStringLiteral("scenarioStepProcedure"));
+    auto* procedureChoice = visualEditor.findChild<QComboBox*>(QStringLiteral("availableScenarioProcedures"));
     auto* visualApply = visualEditor.findChild<QPushButton*>(QStringLiteral("applyScenarioVisualStep"));
     auto* visualMoveUp = visualEditor.findChild<QPushButton*>(QStringLiteral("moveScenarioStepUp"));
     auto* visualSave = visualEditor.findChild<QPushButton*>(QStringLiteral("saveScenarioVisual"));
@@ -324,6 +344,16 @@ int main(int argc, char** argv)
                 && visualProcedure && visualApply && visualMoveUp && visualSave
                 && visualProcedure->text() == QStringLiteral("test.procedure"),
             "visual editor must render the existing YAML procedure as an editable step");
+    require(procedureChoice && procedureChoice->count() == 2
+                && procedureChoice->itemData(1).toString() == QStringLiteral("telemetry.health"),
+            "procedure choices must reflect the registered scenario engine procedures");
+    QMetaObject::invokeMethod(procedureChoice, "activated", Q_ARG(int, 1));
+    require(visualProcedure->text() == QStringLiteral("telemetry.health"),
+            "selecting a registered procedure must fill its identifier");
+    visualSave->click();
+    require(orbita::stand::loadScenarioYaml(visualPath.toStdString()).steps[0].procedure == "telemetry.health",
+            "selected procedure must survive saving and reloading the scenario");
+    visualProcedure->setText(QStringLiteral("test.procedure"));
     visualTitle->setText(QStringLiteral("Изменённый этап"));
     auto* visualArguments = visualEditor.findChild<QPlainTextEdit*>(QStringLiteral("scenarioStepArguments"));
     require(visualArguments, "visual editor arguments must be available");

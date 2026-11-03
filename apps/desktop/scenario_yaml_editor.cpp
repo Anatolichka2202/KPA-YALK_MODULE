@@ -62,6 +62,7 @@ ScenarioYamlEditor::ScenarioYamlEditor(QString path, QWidget* parent)
     connect(validateButton, &QPushButton::clicked, this, &ScenarioYamlEditor::validate);
     connect(visualButton, &QPushButton::clicked, this, [this]() {
         ScenarioVisualEditor visual(path_, this);
+        visual.setAvailableProcedures(availableProcedures_);
         visual.exec();
         load();
     });
@@ -69,6 +70,11 @@ ScenarioYamlEditor::ScenarioYamlEditor(QString path, QWidget* parent)
     connect(draftButton_, &QPushButton::clicked, this, &ScenarioYamlEditor::createDraft);
     connect(closeButton, &QPushButton::clicked, this, &QDialog::accept);
     load();
+}
+
+void ScenarioYamlEditor::setAvailableProcedures(std::vector<std::string> procedures)
+{
+    availableProcedures_ = std::move(procedures);
 }
 void ScenarioYamlEditor::load()
 {

@@ -257,6 +257,8 @@ KtmaMainWindow::KtmaMainWindow(QWidget* parent)
         // запуском оператор явно сохраняет изменения и повторно проверяет
         // выбранную процедуру.
         ScenarioYamlEditor editor(path, this);
+        if (auto* engine = integrationScenarioEngine())
+            editor.setAvailableProcedures(engine->registeredProcedures());
         editor.exec();
     });
 

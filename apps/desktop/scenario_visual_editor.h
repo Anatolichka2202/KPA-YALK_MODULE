@@ -16,6 +16,7 @@
 #include <vector>
 
 class QLineEdit;
+class QComboBox;
 class QPlainTextEdit;
 class QPushButton;
 class QTreeWidget;
@@ -26,6 +27,7 @@ class ScenarioVisualEditor final : public QDialog {
 
 public:
     explicit ScenarioVisualEditor(QString path, QWidget* parent = nullptr);
+    void setAvailableProcedures(const std::vector<std::string>& procedures);
 
 private slots:
     void selectStep(QTreeWidgetItem* item);
@@ -72,6 +74,7 @@ private:
     QLineEdit* title_ = nullptr;
     QLineEdit* tu_ = nullptr;
     QLineEdit* procedure_ = nullptr;
+    QComboBox* procedureChoice_ = nullptr;
     QPlainTextEdit* requires_ = nullptr;
     QPlainTextEdit* resources_ = nullptr;
     QPlainTextEdit* arguments_ = nullptr;

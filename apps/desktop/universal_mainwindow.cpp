@@ -206,6 +206,8 @@ void UniversalMainWindow::editGenericScenario(const QString& path)
 {
     if (genericWatcher_->isRunning() || !QFileInfo::exists(path)) return;
     ScenarioYamlEditor editor(path, this);
+    if (auto* engine = integrationScenarioEngine())
+        editor.setAvailableProcedures(engine->registeredProcedures());
     editor.exec();
     reloadGenericScenarios();
 }

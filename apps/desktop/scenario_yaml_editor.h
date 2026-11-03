@@ -1,6 +1,8 @@
 #pragma once
 
 #include <QDialog>
+#include <vector>
+#include <string>
 
 class QLabel;
 class QPushButton;
@@ -12,6 +14,7 @@ class ScenarioYamlEditor final : public QDialog
 
 public:
     explicit ScenarioYamlEditor(QString path, QWidget* parent = nullptr);
+    void setAvailableProcedures(std::vector<std::string> procedures);
 
 private:
     void load();
@@ -27,4 +30,5 @@ private:
     bool scenario_ = false;
     bool published_ = false;
     QPushButton* draftButton_ = nullptr;
+    std::vector<std::string> availableProcedures_;
 };

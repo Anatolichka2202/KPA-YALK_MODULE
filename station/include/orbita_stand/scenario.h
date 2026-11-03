@@ -273,6 +273,7 @@ using ProcedureFunction = std::function<ProcedureResult(
 class ScenarioEngine final {
 public:
     void registerProcedure(std::string id, ProcedureFunction procedure);
+    std::vector<std::string> registeredProcedures() const;
     std::vector<std::string> validate(const ScenarioDefinition& scenario) const;
     ScenarioRunResult run(
         const ScenarioDefinition& scenario,
