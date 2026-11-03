@@ -13,7 +13,7 @@ ParameterBrowser::ParameterBrowser(MetadataService* db, QWidget *parent)
 
     // Верхняя часть: дерево параметров
     tree_ = new QTreeWidget;
-    tree_->setHeaderLabels({"Параметр", "Адрес", "Категория"});
+    tree_->setHeaderLabels({"Параметр", "Категория"});
     tree_->setSelectionMode(QAbstractItemView::ExtendedSelection);
     mainLayout->addWidget(tree_);
 
@@ -25,7 +25,7 @@ ParameterBrowser::ParameterBrowser(MetadataService* db, QWidget *parent)
     QGroupBox* editorBox = new QGroupBox("Редактор допусков");
     QVBoxLayout* editorLayout = new QVBoxLayout(editorBox);
 
-    // Показываем адрес текущего параметра
+    // Адрес остаётся техническим ключом; инженер выбирает параметр по имени.
     addressLabel_ = new QLabel("Нет выбранного параметра");
     addressLabel_->setStyleSheet("color: #aab4c0; font-weight: bold;");
     editorLayout->addWidget(addressLabel_);
@@ -85,9 +85,9 @@ void ParameterBrowser::rebuildTree() {
         for (auto it = params.begin(); it != params.end(); ++it) {
             QTreeWidgetItem* paramItem = new QTreeWidgetItem(catItem);
             paramItem->setText(0, it.value());              // имя параметра
-            paramItem->setText(1, it.key());                // нормализованный адрес
-            paramItem->setText(2, cat);
+            paramItem->setText(1, cat);
             paramItem->setData(0, Qt::UserRole, it.key());  // сохраняем адрес
+            paramItem->setToolTip(0, QStringLiteral("Адрес декодера: %1").arg(it.key()));
         }
         catItem->setExpanded(true);
     }
@@ -138,7 +138,7 @@ void ParameterBrowser::updateEditorPanel() {
     currentAddress_ = item->data(0, Qt::UserRole).toString();
 
     if (!db_ || currentAddress_.isEmpty()) {
-        addressLabel_->setText("Ошибка адреса");
+        addressLabel_->setText("Параметр не имеет адресной привязки");
         saveSessionBtn_->setEnabled(false);
         saveDbBtn_->setEnabled(false);
         return;
@@ -147,7 +147,7 @@ void ParameterBrowser::updateEditorPanel() {
     // Получаем информацию из БД
     auto info = db_->lookup(currentAddress_);
     if (!info) {
-        addressLabel_->setText(QString("Адрес: %1 (не найден в БД)").arg(currentAddress_));
+        addressLabel_->setText(QString("Параметр: %1 (не найден в БД)").arg(item->text(0)));
         loSpinBox_->setValue(0);
         nominalSpinBox_->setValue(0);
         hiSpinBox_->setValue(0);
@@ -156,7 +156,7 @@ void ParameterBrowser::updateEditorPanel() {
         return;
     }
 
-    addressLabel_->setText(QString("Адрес: %1").arg(currentAddress_));
+    addressLabel_->setText(QString("Параметр: %1").arg(info->name));
 
     if (info->hasTolerance) {
         loSpinBox_->setValue(info->lo);

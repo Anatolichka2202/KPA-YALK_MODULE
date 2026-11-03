@@ -185,8 +185,8 @@ void MainPage::setChannels(const std::vector<orbita::ChannelSpec>& specs)
     m_categoryGrid->setChannels(specs);
     if (m_freeWorkspaceSummary)
         m_freeWorkspaceSummary->setText(specs.empty()
-            ? QStringLiteral("Набор адресов не выбран")
-            : QStringLiteral("Адресов в наборе: %1").arg(specs.size()));
+            ? QStringLiteral("Параметры не выбраны")
+            : QStringLiteral("Параметров: %1").arg(specs.size()));
 }
 
 void MainPage::updateData(const orbita::Snapshot& snap)
@@ -242,8 +242,8 @@ void MainPage::setFreeWorkspace(bool enabled)
     m_addressSetsOverview->setVisible(enabled);
     if (enabled && m_freeWorkspaceSummary) {
         m_freeWorkspaceSummary->setText(m_specs.empty()
-            ? QStringLiteral("Набор адресов не выбран")
-            : QStringLiteral("Адресов в наборе: %1").arg(m_specs.size()));
+            ? QStringLiteral("Набор параметров не выбран")
+            : QStringLiteral("Параметров в наборе: %1").arg(m_specs.size()));
     }
 }
 

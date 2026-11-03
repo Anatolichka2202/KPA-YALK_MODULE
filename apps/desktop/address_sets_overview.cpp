@@ -13,7 +13,7 @@ AddressSetsOverview::AddressSetsOverview(QWidget* parent) : QWidget(parent)
     setObjectName(QStringLiteral("parallelAddressSetOverview"));
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(8, 6, 8, 8);
-    auto* caption = new QLabel(QStringLiteral("ПАРАЛЛЕЛЬНЫЕ НАБОРЫ · LIVE"), this);
+    auto* caption = new QLabel(QStringLiteral("ПАРАЛЛЕЛЬНЫЕ НАБОРЫ ПАРАМЕТРОВ · LIVE"), this);
     caption->setStyleSheet(QStringLiteral("color:#9ac7ff;font-weight:700;font-size:13px;"));
     layout->addWidget(caption);
     auto* scroll = new QScrollArea(this);
@@ -87,8 +87,8 @@ void AddressSetsOverview::updateData(const orbita::Snapshot& snapshot)
         for (const auto& spec : card.specs)
             if (values.contains(QString::fromStdString(spec.address))) ++received;
         card.status->setText(received == 0
-            ? QStringLiteral("НЕТ ДАННЫХ · адресов: %1").arg(card.specs.size())
-            : QStringLiteral("ДАННЫЕ: %1 из %2 адресов").arg(received).arg(card.specs.size()));
+            ? QStringLiteral("НЕТ ДАННЫХ · параметров: %1").arg(card.specs.size())
+            : QStringLiteral("ДАННЫЕ: %1 из %2 параметров").arg(received).arg(card.specs.size()));
         card.chart->updateValues(values);
     }
 }

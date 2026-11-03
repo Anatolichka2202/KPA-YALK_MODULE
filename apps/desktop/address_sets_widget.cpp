@@ -20,7 +20,7 @@ AddressSetsWidget::AddressSetsWidget(MetadataService* db, QWidget* parent)
     layout->setSpacing(8);
 
     auto* caption = new QLabel(
-        QStringLiteral("Параллельные наборы адресов. Все включённые адреса "
+        QStringLiteral("Параллельные наборы параметров. Все включённые параметры "
                        "поступают из одного live-потока; вкладки не запускают "
                        "отдельные декодеры."), this);
     caption->setWordWrap(true);
@@ -40,7 +40,7 @@ AddressSetsWidget::AddressSetsWidget(MetadataService* db, QWidget* parent)
     add->setObjectName(QStringLiteral("addAddressSet"));
     rename->setObjectName(QStringLiteral("renameAddressSet"));
     remove->setObjectName(QStringLiteral("removeAddressSet"));
-    add->setAccessibleDescription(QStringLiteral("Создать ещё один независимый набор адресов"));
+    add->setAccessibleDescription(QStringLiteral("Создать ещё один независимый набор параметров"));
     actions->addWidget(add);
     actions->addWidget(rename);
     actions->addWidget(remove);
@@ -100,8 +100,8 @@ void AddressSetsWidget::removeAddressSet()
 {
     const int index = tabs_->currentIndex();
     if (!model_.removeSet(index)) {
-        QMessageBox::information(this, QStringLiteral("Наборы адресов"),
-            QStringLiteral("Должен остаться хотя бы один набор адресов."));
+        QMessageBox::information(this, QStringLiteral("Наборы параметров"),
+            QStringLiteral("Должен остаться хотя бы один набор параметров."));
         return;
     }
 

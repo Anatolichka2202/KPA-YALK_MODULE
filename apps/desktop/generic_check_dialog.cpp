@@ -106,7 +106,7 @@ GenericCheckDialog::GenericCheckDialog(QWidget* parent)
     setupLayout->addWidget(description_);
 
     auto* overrideCaption = new QLabel(
-        QStringLiteral("ИНЖЕНЕРНОЕ ИЗМЕНЕНИЕ / ДОПУСК (если меняли критерий в черновике)"), setup);
+        QStringLiteral("ИНЖЕНЕРНОЕ ИЗМЕНЕНИЕ / ДОПУСК (если меняли критерий)"), setup);
     overrideCaption->setProperty("caption", true);
     setupLayout->addWidget(overrideCaption);
     engineeringOverride_ = new QPlainTextEdit(setup);

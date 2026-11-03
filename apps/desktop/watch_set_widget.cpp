@@ -21,7 +21,7 @@ WatchSetWidget::WatchSetWidget(MetadataService* db, QWidget* parent)
 
     table_ = new QTableWidget;
     table_->setColumnCount(3);
-    table_->setHorizontalHeaderLabels({"Канал", "Параметр", "Тип"});
+    table_->setHorizontalHeaderLabels({"Параметр", "Категория", "Тип"});
     table_->horizontalHeader()->setStretchLastSection(true);
     table_->setSelectionBehavior(QAbstractItemView::SelectRows);
     table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -85,21 +85,24 @@ void WatchSetWidget::rebuildTable() {
     for (int i = 0; i < static_cast<int>(entries_.size()); ++i) {
         const auto& e = entries_[i];
 
-        auto* addrItem = new QTableWidgetItem(QString::fromStdString(e.spec.address));
-        addrItem->setFlags(Qt::ItemIsUserCheckable | Qt::ItemIsEnabled | Qt::ItemIsSelectable);
-        addrItem->setCheckState(e.enabled ? Qt::Checked : Qt::Unchecked);
+        const QString address = QString::fromStdString(e.spec.address);
+        const auto info = db_ ? db_->lookup(address) : std::nullopt;
+        const QString name = !e.spec.name.empty() ? QString::fromStdString(e.spec.name)
+            : info ? info->name : address;
+        auto* parameterItem = new QTableWidgetItem(name);
+        parameterItem->setFlags(Qt::ItemIsUserCheckable | Qt::ItemIsEnabled | Qt::ItemIsSelectable);
+        parameterItem->setCheckState(e.enabled ? Qt::Checked : Qt::Unchecked);
+        parameterItem->setData(Qt::UserRole, address);
+        parameterItem->setToolTip(QStringLiteral("Адрес декодера: %1").arg(address));
 
         QString type;
-        if (db_) {
-            auto info = db_->lookup(QString::fromStdString(e.spec.address));
-            if (info) {
-                type = info->signalType;
-                if (info->isZu) type += " · ЗУ";
-            }
+        if (info) {
+            type = info->signalType;
+            if (info->isZu) type += " · ЗУ";
         }
 
-        table_->setItem(i, 0, addrItem);
-        table_->setItem(i, 1, new QTableWidgetItem(QString::fromStdString(e.spec.name)));
+        table_->setItem(i, 0, parameterItem);
+        table_->setItem(i, 1, new QTableWidgetItem(info ? info->category : QString()));
         table_->setItem(i, 2, new QTableWidgetItem(type));
     }
     table_->resizeColumnToContents(0);
@@ -138,8 +141,8 @@ void WatchSetWidget::onSave() {
     if (entries_.empty()) return;
     QString dir = QCoreApplication::applicationDirPath() + "/address";
     QDir().mkpath(dir);
-    QString path = QFileDialog::getSaveFileName(this, "Сохранить набор как конфиг",
-                                                dir + "/новый.txt", "Text files (*.txt)");
+    QString path = QFileDialog::getSaveFileName(this, "Сохранить набор параметров",
+                                                dir + "/новый_набор.txt", "Text files (*.txt)");
     if (path.isEmpty()) return;
 
     QFile f(path);

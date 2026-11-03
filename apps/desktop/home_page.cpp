@@ -72,7 +72,7 @@ HomePage::HomePage(QWidget* parent)
     genericLayout->addWidget(genericTitle);
 
     auto* genericText = new QLabel(QStringLiteral(
-        "Инженерское рабочее пространство MilTechStation: выбирайте доступные источники и адреса, "
+        "Инженерское рабочее пространство MilTechStation: выбирайте доступные источники и параметры, "
         "наблюдайте live-данные и выполняйте разрешённые командами плагинов действия."), genericCard);
     genericText->setProperty("muted", true);
     genericText->setWordWrap(true);
@@ -182,15 +182,6 @@ void HomePage::setProjectWorkflows(const QVector<HomeWorkflowEntry>& workflows)
         layout->addWidget(button);
         connect(button, &QPushButton::clicked, this,
                 [this, id = workflow.id] { emit workflowRequested(id); });
-    }
-
-    for (const auto& title : {
-             QStringLiteral("Постклиматическая проверка — не реализовано"),
-             QStringLiteral("Проверка в климате — не реализовано"),
-             QStringLiteral("Свободная проверка КТМА — не реализовано")}) {
-        auto* placeholder = actionButton(title, card);
-        placeholder->setEnabled(false);
-        layout->addWidget(placeholder);
     }
 
     projectWorkflowCard_ = card;

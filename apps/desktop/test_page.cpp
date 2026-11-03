@@ -4,6 +4,8 @@
 
 #include <QEvent>
 
+#include <functional>
+
 namespace {
 
 QString productionScenarioForScope(const QString& scope)
@@ -46,6 +48,56 @@ QString yalkStepText(const QString& node)
     if (node.contains(QStringLiteral("reference"))) return QStringLiteral("Эталон 6,2 В");
     if (node.contains(QStringLiteral("cleanup"))) return QStringLiteral("Безопасное завершение ЯЛК");
     return QStringLiteral("Выполняется");
+}
+
+orbita::stand::RunVerdict moreSevere(
+    orbita::stand::RunVerdict left,
+    orbita::stand::RunVerdict right)
+{
+    const auto rank = [](orbita::stand::RunVerdict verdict) {
+        switch (verdict) {
+        case orbita::stand::RunVerdict::Error: return 5;
+        case orbita::stand::RunVerdict::Aborted: return 4;
+        case orbita::stand::RunVerdict::Fail: return 3;
+        case orbita::stand::RunVerdict::Incomplete: return 2;
+        case orbita::stand::RunVerdict::Ok: return 1;
+        case orbita::stand::RunVerdict::NotRun: return 0;
+        }
+        return 0;
+    };
+    return rank(right) > rank(left) ? right : left;
+}
+
+QString blockVerdictText(
+    const orbita::stand::ScenarioRunResult& result,
+    const std::function<bool(const QString&)>& matches,
+    bool* found)
+{
+    auto verdict = orbita::stand::RunVerdict::NotRun;
+    *found = false;
+    std::function<void(const std::vector<orbita::stand::StepRunResult>&)> visit;
+    visit = [&](const std::vector<orbita::stand::StepRunResult>& steps) {
+        for (const auto& step : steps) {
+            const QString nodeId = QString::fromStdString(step.nodeId);
+            if (matches(nodeId)) {
+                *found = true;
+                verdict = moreSevere(verdict, step.verdict);
+            }
+            visit(step.children);
+        }
+    };
+    visit(result.steps);
+
+    if (!*found) return QStringLiteral("нет данных");
+    switch (verdict) {
+    case orbita::stand::RunVerdict::Ok: return QStringLiteral("OK");
+    case orbita::stand::RunVerdict::Fail: return QStringLiteral("НЕ НОРМА");
+    case orbita::stand::RunVerdict::Incomplete: return QStringLiteral("НЕПОЛНО");
+    case orbita::stand::RunVerdict::Error: return QStringLiteral("ОШИБКА СТЕНДА");
+    case orbita::stand::RunVerdict::Aborted: return QStringLiteral("ПРЕРВАНО");
+    case orbita::stand::RunVerdict::NotRun: return QStringLiteral("не выполнялось");
+    }
+    return QStringLiteral("нет данных");
 }
 
 } // namespace
@@ -734,12 +786,27 @@ void TestPage::setRunResult(const orbita::stand::ScenarioRunResult& result,
             .arg(verdictColor(result.verdict).name()));
     impl_->finishDetail->setText(QStringLiteral("SN %1 · run_id %2")
         .arg(impl_->activeSerial, QString::fromStdString(result.runId)));
-    impl_->finishPower->setText(QStringLiteral("завершено"));
-    impl_->finishYalk->setText(QStringLiteral("завершено"));
-    impl_->finishYtp->setText(QStringLiteral("завершено"));
+    bool powerFound = false;
+    bool yalkFound = false;
+    bool ytpFound = false;
+    bool yvpFound = false;
+    impl_->finishPower->setText(blockVerdictText(result,
+        [](const QString& node) {
+            return node == QStringLiteral("readiness")
+                || node == QStringLiteral("supply_range")
+                || node == QStringLiteral("supply_status");
+        }, &powerFound));
+    impl_->finishYalk->setText(blockVerdictText(result,
+        [](const QString& node) { return node.startsWith(QStringLiteral("yalk_")); },
+        &yalkFound));
+    impl_->finishYtp->setText(blockVerdictText(result,
+        [](const QString& node) { return node.startsWith(QStringLiteral("ytp_")); },
+        &ytpFound));
     impl_->finishYvp->setText(impl_->includeYvpCheck->isChecked()
-        ? QStringLiteral("по сценарию")
-        : QStringLiteral("—"));
+        ? blockVerdictText(result,
+            [](const QString& node) { return node.startsWith(QStringLiteral("yvp_")); },
+            &yvpFound)
+        : QStringLiteral("не включено"));
     impl_->reportButton->setEnabled(!tuReportPath.isEmpty() || !productionReportPath.isEmpty());
 
     if (impl_->productionMode

@@ -253,9 +253,9 @@ KtmaMainWindow::KtmaMainWindow(QWidget* parent)
             return;
         }
 
-        // Опубликованный YAML редактор не меняет на месте: он создаёт черновик,
-        // поэтому открытие из production-сессии не способно незаметно изменить
-        // утверждённую процедуру текущего испытания.
+        // Редактор работает с тем же YAML, который выбран поставкой. Перед
+        // запуском оператор явно сохраняет изменения и повторно проверяет
+        // выбранную процедуру.
         ScenarioYamlEditor editor(path, this);
         editor.exec();
     });
@@ -348,10 +348,9 @@ void KtmaMainWindow::openProjectWorkflow(const QString& workflowId)
 
     const auto action = QString::fromStdString(workflow->operatorAction);
     if (action == QStringLiteral("station.free")) {
-        // YAML-лаунчер не подменяет свободный live-режим оператора. Даже при
-        // ошибочной декларации workflow он не должен открываться из КТМА.
-        QMessageBox::information(this, QStringLiteral("Свободный режим"),
-            QStringLiteral("Свободный операторский режим ещё не реализован."));
+        // Свободный live-контур уже является частью Host. Workflow только
+        // выбирает его, а не запускает отдельный сценарий или маршрут КТМА.
+        emit home->freeWorkspaceRequested();
     } else if (action == QStringLiteral("ktma.tu")) {
         emit home->tuRequested();
     } else if (workflowId == QStringLiteral("production")) {

@@ -650,6 +650,26 @@ int main(int argc, char** argv)
         require(page.grab().save(screenshot), "cannot save operator UI screenshot");
     }
 
+    orbita::stand::ScenarioRunResult partialResult;
+    partialResult.runId = "smoke-partial-run";
+    partialResult.verdict = orbita::stand::RunVerdict::Incomplete;
+    partialResult.steps = {
+        {"supply_range", "Питание", {}, orbita::stand::RunVerdict::Ok, {}, {}, {}},
+        {"yalk_channels", "ЯЛК", {}, orbita::stand::RunVerdict::Fail, {}, {}, {}},
+        {"ytp_channels", "ЯТП", {}, orbita::stand::RunVerdict::Incomplete, {}, {}, {}}
+    };
+    page.setRunResult(partialResult);
+    auto* finishPower = page.findChild<QLabel*>(QStringLiteral("finishPowerStatus"));
+    auto* finishYalk = page.findChild<QLabel*>(QStringLiteral("finishYalkStatus"));
+    auto* finishYtp = page.findChild<QLabel*>(QStringLiteral("finishYtpStatus"));
+    auto* finishYvp = page.findChild<QLabel*>(QStringLiteral("finishYvpStatus"));
+    require(finishPower && finishYalk && finishYtp && finishYvp
+                && finishPower->text() == QStringLiteral("OK")
+                && finishYalk->text() == QStringLiteral("НЕ НОРМА")
+                && finishYtp->text() == QStringLiteral("НЕПОЛНО")
+                && finishYvp->text() == QStringLiteral("нет данных"),
+            "run result screen must show the verdict of each executed block without inventing completion");
+
     if (!screenshot.isEmpty() && scene == QStringLiteral("TU_YALK")) {
         page.setProductionMode(false);
         page.setScenarioInfo(QStringLiteral("ULK_COMBINED_CHECK"), true, false, {}, QString());

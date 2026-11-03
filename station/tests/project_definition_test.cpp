@@ -96,9 +96,8 @@ int main()
             "Free workflow must permit a dynamic unregistered scenario");
         require(!free->registration.required && !free->registration.attachIfFound,
             "Free workflow must stay outside the production registrar lifecycle");
-        require(free->operatorAction == "station.free" && !free->operatorAvailable
-                && !free->unavailableReason.empty(),
-            "Free YAML workflow must stay unavailable until the live operator mode exists");
+        require(free->operatorAction == "station.free" && free->operatorAvailable,
+            "Free workflow must open the existing live operator workspace");
 
         const auto* tu = findWorkflow(project, "tu_normal");
         require(tu && filename(tu->scenarioPath) == "ubsi_ulk_combined_check.yaml",

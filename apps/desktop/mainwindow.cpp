@@ -302,7 +302,7 @@ void MainWindow::setupDockWidgets()
     paramDock_->setMinimumWidth(300);
     addDockWidget(Qt::RightDockWidgetArea, paramDock_);
 
-    watchSetDock_ = new QDockWidget("Наборы адресов", this);
+    watchSetDock_ = new QDockWidget("Наборы параметров", this);
     watchSetDock_->setWidget(watchSetDockWidget_);
     watchSetDock_->setMinimumWidth(300);
     addDockWidget(Qt::RightDockWidgetArea, watchSetDock_);
@@ -580,7 +580,7 @@ void MainWindow::setupToolBar()
     toolsMenu_ = menuBar()->addMenu("Инструменты");
     actScenario_ = toolsMenu_->addAction("Редактор сценариев (экспериментальный)");
     connect(actScenario_, &QAction::triggered, this, &MainWindow::onOpenScenario);
-    auto* catalogAction = toolsMenu_->addAction("Каталог параметров и адресов");
+    auto* catalogAction = toolsMenu_->addAction("Каталог параметров");
     connect(catalogAction, &QAction::triggered, this, &MainWindow::onOpenCatalog);
     auto* profileAction = toolsMenu_->addAction("Профиль стенда и маршруты");
     connect(profileAction, &QAction::triggered, this, &MainWindow::onOpenStandProfile);
