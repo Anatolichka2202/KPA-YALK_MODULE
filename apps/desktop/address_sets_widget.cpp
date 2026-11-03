@@ -27,7 +27,7 @@ AddressSetsWidget::AddressSetsWidget(MetadataService* db, QWidget* parent)
     auto* caption = new QLabel(
         QStringLiteral("Параллельные наборы параметров. Все включённые параметры "
                        "поступают из одного live-потока; вкладки не запускают "
-                       "отдельные декодеры. В файл сохраняются только включённые параметры."), this);
+                       "отдельные декодеры."), this);
     caption->setWordWrap(true);
     caption->setObjectName(QStringLiteral("addressSetsExplanation"));
     caption->setStyleSheet(QStringLiteral("color:#b6c8d8; padding:4px;"));
@@ -185,7 +185,7 @@ void AddressSetsWidget::loadView()
         createEditorForSet(i);
         auto* editor = qobject_cast<WatchSetWidget*>(tabs_->widget(i));
         const QSignalBlocker editorBlock(editor);
-        editor->setFromSpecs(model_.at(i).specs);
+        editor->setFromState(model_.at(i).specs, model_.at(i).disabledSpecs, model_.at(i).order);
         refreshTabTitle(i);
     }
     tabs_->setCurrentIndex(model_.activeIndex());
@@ -208,6 +208,8 @@ void AddressSetsWidget::onCurrentSetChanged(const std::vector<orbita::ChannelSpe
 
     model_.setActiveIndex(index);
     model_.replaceActive(specs);
+    model_.replaceDisabled(editor->disabledSpecs());
+    model_.replaceOrder(editor->orderedAddresses());
     refreshTabTitle(index);
     emitCombinedChanged();
 }

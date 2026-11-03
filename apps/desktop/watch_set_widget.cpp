@@ -50,9 +50,24 @@ bool WatchSetWidget::contains(const std::string& address) const {
 }
 
 void WatchSetWidget::setFromSpecs(const std::vector<orbita::ChannelSpec>& specs) {
+    setFromState(specs, {});
+}
+
+void WatchSetWidget::setFromState(const std::vector<orbita::ChannelSpec>& specs,
+                                  const std::vector<orbita::ChannelSpec>& disabled,
+                                  const std::vector<std::string>& order) {
     entries_.clear();
     for (const auto& s : specs)
         entries_.push_back({s, true});
+    for (const auto& s : disabled)
+        entries_.push_back({s, false});
+    if (!order.empty()) {
+        // Файл хранит исходный порядок независимо от состояния флажков.
+        std::stable_sort(entries_.begin(), entries_.end(), [&order](const Entry& a, const Entry& b) {
+            return std::find(order.begin(), order.end(), a.spec.address)
+                 < std::find(order.begin(), order.end(), b.spec.address);
+        });
+    }
     rebuildTable();
     emitChanged();
 }
@@ -68,6 +83,21 @@ void WatchSetWidget::addParams(const std::vector<orbita::ChannelSpec>& specs) {
         rebuildTable();
         emitChanged();
     }
+}
+
+std::vector<std::string> WatchSetWidget::orderedAddresses() const {
+    std::vector<std::string> order;
+    for (const auto& entry : entries_) order.push_back(entry.spec.address);
+    return order;
+}
+
+std::vector<orbita::ChannelSpec> WatchSetWidget::disabledSpecs() const {
+    std::vector<orbita::ChannelSpec> disabled;
+    for (const auto& entry : entries_) {
+        if (!entry.enabled)
+            disabled.push_back(entry.spec);
+    }
+    return disabled;
 }
 
 std::vector<orbita::ChannelSpec> WatchSetWidget::enabledSpecs() const {

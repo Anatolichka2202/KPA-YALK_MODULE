@@ -64,14 +64,19 @@ int main(int argc, char** argv)
     require(addressSets.combinedSpecs().size() == 3,
             "replacing one set must preserve another set being observed in parallel");
     addressSets.setActiveIndex(1);
+    addressSets.replaceDisabled({{"M16P1A73", "Отключённый", "Контур Б"}});
+    addressSets.replaceOrder({"M16P1A70", "M16P1A73", "M16P1A71"});
     const auto savedSets = addressSets.serialize();
     AddressSetModel restoredSets;
     QString setsError;
     require(restoredSets.restore(savedSets, &setsError) && restoredSets.count() == 2
                 && restoredSets.activeIndex() == 1
                 && restoredSets.at(1).title == QStringLiteral("Сравнение")
+                && restoredSets.at(1).disabledSpecs.size() == 1
+                && restoredSets.at(1).disabledSpecs[0].address == "M16P1A73"
+                && restoredSets.at(1).order == std::vector<std::string>({"M16P1A70", "M16P1A73", "M16P1A71"})
                 && restoredSets.combinedSpecs().size() == 3,
-            "saved parameter sets must restore titles, active tab and combined channels");
+            "saved parameter sets must restore disabled channels without subscribing to them");
     require(!restoredSets.restore(QByteArrayLiteral("{\"schema\":1,\"active\":0,\"sets\":[{}]}"), &setsError)
                 && !setsError.isEmpty() && restoredSets.serialize() == savedSets,
             "invalid parameter-set import must not change the active configuration");
@@ -80,6 +85,12 @@ int main(int argc, char** argv)
                 "{\"address\":\"invalid\",\"name\":\"\",\"category\":\"\"}]}]}"), &setsError)
                 && restoredSets.serialize() == savedSets,
             "an invalid decoder address must not replace the active configuration");
+    AddressSetModel oldSets;
+    require(oldSets.restore(QByteArrayLiteral(
+                "{\"schema\":1,\"active\":0,\"sets\":[{\"title\":\"old\",\"channels\":["
+                "{\"address\":\"M16P1A70\",\"name\":\"\",\"category\":\"\"}]}]}"))
+                && oldSets.combinedSpecs().size() == 1 && oldSets.at(0).disabledSpecs.empty(),
+            "schema 1 files must remain readable with all saved channels enabled");
 
     HomePage home;
     home.setProjectWorkflows({

@@ -81,6 +81,18 @@ void AddressSetModel::replaceActive(const std::vector<orbita::ChannelSpec>& spec
     sets_[static_cast<std::size_t>(activeIndex_)].specs = specs;
 }
 
+void AddressSetModel::replaceDisabled(const std::vector<orbita::ChannelSpec>& specs)
+{
+    at(activeIndex_);
+    sets_[static_cast<std::size_t>(activeIndex_)].disabledSpecs = specs;
+}
+
+void AddressSetModel::replaceOrder(const std::vector<std::string>& order)
+{
+    at(activeIndex_);
+    sets_[static_cast<std::size_t>(activeIndex_)].order = order;
+}
+
 bool AddressSetModel::containsInActive(const std::string& address) const
 {
     const auto& active = at(activeIndex_).specs;
@@ -120,15 +132,26 @@ QByteArray AddressSetModel::serialize() const
     QJsonArray sets;
     for (const auto& set : sets_) {
         QJsonArray channels;
-        for (const auto& spec : set.specs) {
+        const auto append = [&channels](const orbita::ChannelSpec& spec, bool enabled) {
             channels.append(QJsonObject{{QStringLiteral("address"), QString::fromStdString(spec.address)},
                                        {QStringLiteral("name"), QString::fromStdString(spec.name)},
-                                       {QStringLiteral("category"), QString::fromStdString(spec.category)}});
-        }
+                                       {QStringLiteral("category"), QString::fromStdString(spec.category)},
+                                       {QStringLiteral("enabled"), enabled}});
+        };
+        std::set<std::string> emitted;
+        const auto appendByAddress = [&](const std::string& address) {
+            for (const auto& spec : set.specs)
+                if (spec.address == address && emitted.insert(address).second) { append(spec, true); return; }
+            for (const auto& spec : set.disabledSpecs)
+                if (spec.address == address && emitted.insert(address).second) { append(spec, false); return; }
+        };
+        for (const auto& address : set.order) appendByAddress(address);
+        for (const auto& spec : set.specs) appendByAddress(spec.address);
+        for (const auto& spec : set.disabledSpecs) appendByAddress(spec.address);
         sets.append(QJsonObject{{QStringLiteral("title"), set.title},
                                 {QStringLiteral("channels"), channels}});
     }
-    return QJsonDocument(QJsonObject{{QStringLiteral("schema"), 1},
+    return QJsonDocument(QJsonObject{{QStringLiteral("schema"), 2},
                                      {QStringLiteral("active"), activeIndex_},
                                      {QStringLiteral("sets"), sets}}).toJson(QJsonDocument::Indented);
 }
@@ -144,7 +167,8 @@ bool AddressSetModel::restore(const QByteArray& data, QString* error)
     if (parseError.error != QJsonParseError::NoError || !document.isObject())
         return fail(QStringLiteral("Файл не является корректным JSON-объектом"));
     const auto root = document.object();
-    if (root.value(QStringLiteral("schema")) != QJsonValue(1)
+    const auto schema = root.value(QStringLiteral("schema"));
+    if ((schema != QJsonValue(1) && schema != QJsonValue(2))
         || !root.value(QStringLiteral("sets")).isArray())
         return fail(QStringLiteral("Неизвестная версия или отсутствуют наборы параметров"));
     const auto sets = root.value(QStringLiteral("sets")).toArray();
@@ -166,6 +190,8 @@ bool AddressSetModel::restore(const QByteArray& data, QString* error)
         if (i == 0) candidate.renameSet(0, item.value(QStringLiteral("title")).toString());
         else candidate.addSet(item.value(QStringLiteral("title")).toString());
         std::vector<orbita::ChannelSpec> channels;
+        std::vector<orbita::ChannelSpec> disabled;
+        std::vector<std::string> order;
         std::set<std::string> seen;
         for (const auto& value : item.value(QStringLiteral("channels")).toArray()) {
             if (!value.isObject()) return fail(QStringLiteral("Параметр должен быть объектом"));
@@ -173,16 +199,22 @@ bool AddressSetModel::restore(const QByteArray& data, QString* error)
             const auto address = channel.value(QStringLiteral("address"));
             const auto name = channel.value(QStringLiteral("name"));
             const auto category = channel.value(QStringLiteral("category"));
+            const auto enabled = channel.value(QStringLiteral("enabled"));
             if (!address.isString() || address.toString().trimmed().isEmpty()
-                || !name.isString() || !category.isString())
+                || !name.isString() || !category.isString()
+                || (schema == QJsonValue(2) ? !enabled.isBool() : !enabled.isUndefined()))
                 return fail(QStringLiteral("У параметра должны быть адрес, имя и категория"));
             const auto key = address.toString().toStdString();
             if (!orbita::isValidChannelAddress(key))
                 return fail(QStringLiteral("Некорректный адрес параметра: %1").arg(address.toString()));
             if (!seen.insert(key).second) return fail(QStringLiteral("Повтор адреса внутри набора"));
-            channels.push_back({key, name.toString().toStdString(), category.toString().toStdString()});
+            order.push_back(key);
+            auto& target = enabled.isUndefined() || enabled.toBool() ? channels : disabled;
+            target.push_back({key, name.toString().toStdString(), category.toString().toStdString()});
         }
         candidate.replaceActive(channels);
+        candidate.replaceDisabled(disabled);
+        candidate.replaceOrder(order);
     }
     candidate.setActiveIndex(active.toInt());
     *this = std::move(candidate);

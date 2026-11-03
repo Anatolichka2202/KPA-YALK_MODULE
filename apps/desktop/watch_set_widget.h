@@ -24,6 +24,11 @@ public:
     void setFromSpecs(const std::vector<orbita::ChannelSpec>& specs); // заменить (конфиг)
     void addParams(const std::vector<orbita::ChannelSpec>& specs);    // добавить (библиотека)
     std::vector<orbita::ChannelSpec> enabledSpecs() const;
+    std::vector<orbita::ChannelSpec> disabledSpecs() const;
+    std::vector<std::string> orderedAddresses() const;
+    void setFromState(const std::vector<orbita::ChannelSpec>& enabled,
+                      const std::vector<orbita::ChannelSpec>& disabled,
+                      const std::vector<std::string>& order = {});
 
 signals:
     void watchSetChanged(const std::vector<orbita::ChannelSpec>& enabledSpecs);

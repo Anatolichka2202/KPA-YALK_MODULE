@@ -19,6 +19,8 @@ struct AddressSetDefinition {
     QString id;
     QString title;
     std::vector<orbita::ChannelSpec> specs;
+    std::vector<orbita::ChannelSpec> disabledSpecs;
+    std::vector<std::string> order;
 };
 
 class AddressSetModel final {
@@ -34,6 +36,8 @@ public:
     bool removeSet(int index);
     void renameSet(int index, const QString& title);
     void replaceActive(const std::vector<orbita::ChannelSpec>& specs);
+    void replaceDisabled(const std::vector<orbita::ChannelSpec>& specs);
+    void replaceOrder(const std::vector<std::string>& order);
     void addToActive(const std::vector<orbita::ChannelSpec>& specs);
     std::vector<orbita::ChannelSpec> combinedSpecs() const;
     QByteArray serialize() const;
