@@ -2,6 +2,7 @@
 
 #include <QDialogButtonBox>
 #include <QComboBox>
+#include <QDoubleSpinBox>
 #include <QDir>
 #include <QFileInfo>
 #include <QFile>
@@ -10,6 +11,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
+#include <QLocale>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSaveFile>
@@ -19,6 +21,7 @@
 #include <QVBoxLayout>
 
 #include <algorithm>
+#include <cmath>
 #include <set>
 #include <sstream>
 
@@ -90,6 +93,14 @@ ScenarioVisualEditor::ScenarioVisualEditor(QString path, QWidget* parent)
         const auto id = procedureChoice_->itemData(index).toString();
         if (!id.isEmpty()) procedure_->setText(id);
     });
+    telemetrySettings_ = new QPushButton(QStringLiteral("Настроить проверку потока…"), formHost);
+    telemetrySettings_->setObjectName(QStringLiteral("configureTelemetryHealth"));
+    form->addRow(QString(), telemetrySettings_);
+    connect(telemetrySettings_, &QPushButton::clicked, this, &ScenarioVisualEditor::configureTelemetryHealth);
+    connect(procedure_, &QLineEdit::textChanged, this, [this](const QString& procedure) {
+        healthConfigured_ = false;
+        telemetrySettings_->setEnabled(!published_ && procedure == QStringLiteral("telemetry.health"));
+    });
     formLayout->addLayout(form);
 
     requires_ = new QPlainTextEdit(formHost);
@@ -101,6 +112,14 @@ ScenarioVisualEditor::ScenarioVisualEditor(QString path, QWidget* parent)
     arguments_ = new QPlainTextEdit(formHost);
     arguments_->setObjectName(QStringLiteral("scenarioStepArguments"));
     arguments_->setPlaceholderText(QStringLiteral("имя = значение — одна строка на аргумент"));
+    connect(arguments_, &QPlainTextEdit::textChanged, this, [this] {
+        healthConfigured_ = false;
+    });
+    const auto onRequirementsChanged = [this] {
+        healthConfigured_ = false;
+    };
+    connect(requires_, &QPlainTextEdit::textChanged, this, onRequirementsChanged);
+    connect(resources_, &QPlainTextEdit::textChanged, this, onRequirementsChanged);
     formLayout->addWidget(new QLabel(QStringLiteral("Требуемые capabilities:"), formHost));
     formLayout->addWidget(requires_, 1);
     formLayout->addWidget(new QLabel(QStringLiteral("Ресурсы поставки:"), formHost));
@@ -243,6 +262,7 @@ void ScenarioVisualEditor::setEditorEnabled(bool enabled)
     tu_->setEnabled(enabled);
     procedure_->setEnabled(enabled);
     procedureChoice_->setEnabled(enabled);
+    telemetrySettings_->setEnabled(enabled && procedure_->text() == QStringLiteral("telemetry.health"));
     requires_->setEnabled(enabled);
     resources_->setEnabled(enabled);
     arguments_->setEnabled(enabled);
@@ -306,6 +326,7 @@ void ScenarioVisualEditor::selectStep(QTreeWidgetItem* item)
 
 void ScenarioVisualEditor::showNode(const orbita::stand::ScenarioNode& node)
 {
+    healthConfigured_ = false;
     id_->setText(QString::fromStdString(node.id));
     title_->setText(QString::fromStdString(node.title));
     tu_->setText(QString::fromStdString(node.tuRequirement));
@@ -327,6 +348,9 @@ void ScenarioVisualEditor::showNode(const orbita::stand::ScenarioNode& node)
         argumentLines << QStringLiteral("%1 = %2").arg(QString::fromStdString(key),
             QString::fromStdString(value));
     arguments_->setPlainText(argumentLines.join(QLatin1Char('\n')));
+    healthOriginalArguments_ = arguments_->toPlainText();
+    healthOriginalRequires_ = requires_->toPlainText();
+    healthOriginalResources_ = resources_->toPlainText();
 }
 
 void ScenarioVisualEditor::clearNodeEditor()
@@ -359,6 +383,12 @@ bool ScenarioVisualEditor::commitEditorToNode(const StepPath& path)
         QMessageBox::warning(this, QStringLiteral("Шаг сценария"), QStringLiteral("Нужен идентификатор шага."));
         return false;
     }
+    const bool healthArgumentsChanged = arguments_->toPlainText() != healthOriginalArguments_;
+    const bool healthRequirementsChanged = requires_->toPlainText() != healthOriginalRequires_
+        || resources_->toPlainText() != healthOriginalResources_;
+    if ((node->procedure != "telemetry.health" || healthArgumentsChanged)
+        && procedure_->text() == QStringLiteral("telemetry.health")
+        && !healthConfigured_ && !configureTelemetryHealthForNode(node)) return false;
     // Незаконченные строки нельзя молча пропускать при разборе формы:
     // оператор должен иметь возможность вернуться к ним и завершить ввод.
     std::set<std::string> argumentNames;
@@ -386,6 +416,21 @@ bool ScenarioVisualEditor::commitEditorToNode(const StepPath& path)
             return false;
         }
     }
+    if (procedure_->text() == QStringLiteral("telemetry.health")
+        && (node->procedure != "telemetry.health" || healthArgumentsChanged
+            || healthRequirementsChanged || healthConfigured_)) {
+        const auto required = lines(requires_->toPlainText());
+        const auto bound = resources(resources_->toPlainText());
+        const bool hasCapability = std::find(required.begin(), required.end(), "orbita.parameter_source") != required.end()
+            || std::any_of(bound.begin(), bound.end(), [](const auto& item) {
+                return item.capability == "orbita.parameter_source";
+            });
+        if (!hasCapability) {
+            QMessageBox::warning(this, QStringLiteral("Проверка потока"),
+                QStringLiteral("Для проверки необходим источник параметров «Орбита»."));
+            return false;
+        }
+    }
     // Поля формы являются временным состоянием Qt-редактора. Перед любой
     // перестановкой или изменением дерева сначала переносим их в модель
     // сценария, иначе rebuildTree() заменит форму данными до редактирования.
@@ -398,6 +443,122 @@ bool ScenarioVisualEditor::commitEditorToNode(const StepPath& path)
         node->requiredCapabilities.insert(capability);
     node->requiredResources = resources(resources_->toPlainText());
     node->arguments = arguments(arguments_->toPlainText());
+    // После применения новый состав полей становится базой для следующего
+    // изменения, в том числе когда сохранение не перестраивает дерево.
+    healthOriginalArguments_ = arguments_->toPlainText();
+    healthOriginalRequires_ = requires_->toPlainText();
+    healthOriginalResources_ = resources_->toPlainText();
+    healthConfigured_ = false;
+    return true;
+}
+
+void ScenarioVisualEditor::configureTelemetryHealth()
+{
+    const auto* node = findNode(selectedPath());
+    configureTelemetryHealthForNode(node);
+}
+
+bool ScenarioVisualEditor::configureTelemetryHealthForNode(const orbita::stand::ScenarioNode* node)
+{
+    if (published_ || procedure_->text() != QStringLiteral("telemetry.health") || !node) return false;
+    const bool newHealthAction = node->procedure != "telemetry.health";
+    // Сначала проверяем исходный текст: разбор arguments() не должен молча
+    // отбросить незаконченные или повторные строки при переходе к форме.
+    std::set<std::string> names;
+    for (const auto& line : arguments_->toPlainText().split(QLatin1Char('\n'))) {
+        if (line.trimmed().isEmpty()) continue;
+        const int separator = line.indexOf(QLatin1Char('='));
+        const auto key = trimmedUtf8(line.left(separator));
+        if (separator < 1 || key.empty() || !names.insert(key).second) {
+            QMessageBox::warning(this, QStringLiteral("Проверка потока"),
+                QStringLiteral("Исправьте незаконченные или повторяющиеся аргументы шага."));
+            return false;
+        }
+    }
+    auto args = arguments(arguments_->toPlainText());
+    const auto readPercent = [&args](const char* key, double& value) {
+        const auto it = args.find(key);
+        if (it == args.end()) { value = 0.0; return true; }
+        bool ok = false;
+        value = QLocale::c().toDouble(QString::fromStdString(it->second), &ok);
+        return ok && std::isfinite(value) && value >= 0.0 && value <= 100.0;
+    };
+    double phrase = 0.0, group = 0.0;
+    const auto flag = args.find("diagnostic_only");
+    const auto flagText = flag == args.end() ? std::string{} : flag->second;
+    if (!readPercent("max_phrase_error_percent", phrase) || !readPercent("max_group_error_percent", group)
+        || (!flagText.empty() && flagText != "true" && flagText != "false" && flagText != "1"
+            && flagText != "0" && flagText != "yes" && flagText != "no")) {
+        QMessageBox::warning(this, QStringLiteral("Проверка потока"),
+            QStringLiteral("Существующие настройки нельзя представить в форме. Проверьте аргументы вручную."));
+        return false;
+    }
+
+    QDialog dialog(this);
+    dialog.setWindowTitle(QStringLiteral("Настройка проверки потока"));
+    auto* layout = new QVBoxLayout(&dialog);
+    auto* explanation = new QLabel(QStringLiteral(
+        "Проверка оценивает приём и декодирование потока, а не соответствие изделия ТУ. "
+        "Пределы ошибок относятся к потоку. Если отключить режим диагностики, "
+        "успешный результат шага будет означать только исправность потока."), &dialog);
+    explanation->setWordWrap(true);
+    layout->addWidget(explanation);
+    auto* form = new QFormLayout;
+    auto* phraseLimit = new QDoubleSpinBox(&dialog);
+    auto* groupLimit = new QDoubleSpinBox(&dialog);
+    phraseLimit->setObjectName(QStringLiteral("telemetryPhraseLimit"));
+    groupLimit->setObjectName(QStringLiteral("telemetryGroupLimit"));
+    for (auto* spin : {phraseLimit, groupLimit}) {
+        spin->setRange(0.0, 100.0);
+        spin->setDecimals(12);
+        spin->setSuffix(QStringLiteral(" %"));
+    }
+    phraseLimit->setValue(phrase);
+    groupLimit->setValue(group);
+    if (phraseLimit->value() != phrase || groupLimit->value() != group) {
+        QMessageBox::warning(this, QStringLiteral("Проверка потока"),
+            QStringLiteral("Точность сохранённого предела не поддерживается формой. Аргументы не изменены."));
+        return false;
+    }
+    form->addRow(QStringLiteral("Максимум ошибок фраз:"), phraseLimit);
+    form->addRow(QStringLiteral("Максимум ошибок групп:"), groupLimit);
+    layout->addLayout(form);
+    auto* diagnostic = new QComboBox(&dialog);
+    diagnostic->setObjectName(QStringLiteral("telemetryDiagnosticMode"));
+    QString prompt = QStringLiteral("Выберите режим проверки…");
+    if (!newHealthAction) {
+        const bool previous = flagText == "true" || flagText == "1" || flagText == "yes";
+        prompt = previous ? QStringLiteral("Выберите режим (сейчас: диагностика)")
+                          : QStringLiteral("Выберите режим (сейчас: оценка потока)");
+    }
+    diagnostic->addItem(prompt);
+    diagnostic->addItem(QStringLiteral("Диагностика — результат НЕПОЛНО"), true);
+    diagnostic->addItem(QStringLiteral("Оценка потока — возможен результат НОРМА"), false);
+    layout->addWidget(diagnostic);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    buttons->button(QDialogButtonBox::Ok)->setEnabled(false);
+    connect(diagnostic, &QComboBox::currentIndexChanged, &dialog, [buttons](int index) {
+        buttons->button(QDialogButtonBox::Ok)->setEnabled(index > 0);
+    });
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    layout->addWidget(buttons);
+    if (dialog.exec() != QDialog::Accepted || diagnostic->currentIndex() == 0) return false;
+
+    args["max_phrase_error_percent"] = QString::number(phraseLimit->value(), 'g', 15).toStdString();
+    args["max_group_error_percent"] = QString::number(groupLimit->value(), 'g', 15).toStdString();
+    args["diagnostic_only"] = diagnostic->currentData().toBool() ? "true" : "false";
+    QStringList argumentLines;
+    for (const auto& [key, value] : args)
+        argumentLines << QStringLiteral("%1 = %2").arg(QString::fromStdString(key), QString::fromStdString(value));
+    arguments_->setPlainText(argumentLines.join(QLatin1Char('\n')));
+    auto required = lines(requires_->toPlainText());
+    if (std::find(required.begin(), required.end(), "orbita.parameter_source") == required.end()) {
+        QString text = requires_->toPlainText();
+        if (!text.isEmpty() && !text.endsWith(QLatin1Char('\n'))) text += QLatin1Char('\n');
+        requires_->setPlainText(text + QStringLiteral("orbita.parameter_source"));
+    }
+    healthConfigured_ = true;
     return true;
 }
 

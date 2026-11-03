@@ -39,6 +39,7 @@ private slots:
     void moveStepDown();
     void save();
     void createDraft();
+    void configureTelemetryHealth();
 
 private:
     using StepPath = std::vector<int>;
@@ -56,6 +57,7 @@ private:
     void clearNodeEditor();
     bool commitEditorToSelectedNode();
     bool commitEditorToNode(const StepPath& path);
+    bool configureTelemetryHealthForNode(const orbita::stand::ScenarioNode* node);
     QString serialize() const;
     static QString quote(const std::string& value);
     static std::vector<std::string> lines(const QString& text);
@@ -68,6 +70,10 @@ private:
     QString path_;
     orbita::stand::ScenarioDefinition scenario_;
     bool published_ = false;
+    bool healthConfigured_ = false;
+    QString healthOriginalArguments_;
+    QString healthOriginalRequires_;
+    QString healthOriginalResources_;
 
     QTreeWidget* tree_ = nullptr;
     QLineEdit* id_ = nullptr;
@@ -81,4 +87,5 @@ private:
     QPushButton* applyButton_ = nullptr;
     QPushButton* saveButton_ = nullptr;
     QPushButton* draftButton_ = nullptr;
+    QPushButton* telemetrySettings_ = nullptr;
 };

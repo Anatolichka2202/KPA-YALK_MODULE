@@ -12,6 +12,7 @@
 
 #include <QApplication>
 #include <QComboBox>
+#include <QDoubleSpinBox>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
@@ -233,6 +234,27 @@ int main(int argc, char** argv)
                 && copiedScenario.readAll().contains("state: draft"),
             "created scenario copy must be a draft");
     copiedScenario.close();
+    const auto legacyHealthPath = QDir(scenarioDirectory).filePath(QStringLiteral("legacy_health.yaml"));
+    QFile legacyHealthFile(legacyHealthPath);
+    require(legacyHealthFile.open(QIODevice::WriteOnly | QIODevice::Text),
+            "cannot create legacy health scenario fixture");
+    legacyHealthFile.write("schema: 1\nid: legacy\nversion: 1\nstate: draft\nsteps:\n"
+                           "  - id: health\n    procedure: telemetry.health\n"
+                           "  - id: next\n    procedure: test.procedure\n");
+    legacyHealthFile.close();
+    ScenarioVisualEditor legacyHealthEditor(legacyHealthPath);
+    auto* legacyTree = legacyHealthEditor.findChild<QTreeWidget*>(QStringLiteral("scenarioVisualTree"));
+    require(legacyTree && legacyTree->topLevelItemCount() == 2, "legacy scenario must load");
+    auto* legacyRequires = legacyHealthEditor.findChild<QPlainTextEdit*>(QStringLiteral("scenarioStepRequires"));
+    require(legacyRequires, "legacy scenario requirements field must be available");
+    legacyRequires->setPlainText(QStringLiteral("temporary"));
+    legacyRequires->clear();
+    QTimer::singleShot(0, [] {
+        if (auto* message = qobject_cast<QMessageBox*>(QApplication::activeModalWidget())) message->accept();
+    });
+    legacyTree->setCurrentItem(legacyTree->topLevelItem(1));
+    require(legacyTree->currentItem() == legacyTree->topLevelItem(1),
+            "legacy health steps without explicit requirements must remain navigable");
     yamlEditor.setAvailableProcedures({"telemetry.health"});
     auto* openVisual = yamlEditor.findChild<QPushButton*>(QStringLiteral("openScenarioVisualEditor"));
     bool proceduresForwarded = false;
@@ -350,9 +372,78 @@ int main(int argc, char** argv)
     QMetaObject::invokeMethod(procedureChoice, "activated", Q_ARG(int, 1));
     require(visualProcedure->text() == QStringLiteral("telemetry.health"),
             "selecting a registered procedure must fill its identifier");
+    auto* healthSettings = visualEditor.findChild<QPushButton*>(QStringLiteral("configureTelemetryHealth"));
+    require(healthSettings && healthSettings->isEnabled(), "telemetry settings must be available");
+    auto* rawArgsBeforeSettings = visualEditor.findChild<QPlainTextEdit*>(QStringLiteral("scenarioStepArguments"));
+    auto* requiredBeforeSettings = visualEditor.findChild<QPlainTextEdit*>(QStringLiteral("scenarioStepRequires"));
+    require(rawArgsBeforeSettings && requiredBeforeSettings, "scenario fields must be available");
+    rawArgsBeforeSettings->appendPlainText(QStringLiteral("diagnostic_only = false"));
+    const auto originalArgs = rawArgsBeforeSettings->toPlainText();
+    const auto originalRequirements = requiredBeforeSettings->toPlainText();
+    bool modeRequired = false;
+    QTimer::singleShot(0, [] {
+        if (auto* dialog = qobject_cast<QDialog*>(QApplication::activeModalWidget())) dialog->reject();
+    });
+    healthSettings->click();
+    require(rawArgsBeforeSettings->toPlainText() == originalArgs
+                && requiredBeforeSettings->toPlainText() == originalRequirements,
+            "cancelling telemetry settings must not change the scenario draft");
+    QTimer::singleShot(0, [] {
+        if (auto* dialog = qobject_cast<QDialog*>(QApplication::activeModalWidget())) dialog->reject();
+    });
+    visualTree->setCurrentItem(visualTree->topLevelItem(1));
+    require(visualTree->currentItem() == visualTree->topLevelItem(0)
+                && rawArgsBeforeSettings->toPlainText() == originalArgs,
+            "switching away from an unconfigured health action must not commit it");
+    QTimer::singleShot(0, [&modeRequired] {
+        auto* dialog = qobject_cast<QDialog*>(QApplication::activeModalWidget());
+        if (!dialog) return;
+        auto* phrase = dialog->findChild<QDoubleSpinBox*>(QStringLiteral("telemetryPhraseLimit"));
+        auto* group = dialog->findChild<QDoubleSpinBox*>(QStringLiteral("telemetryGroupLimit"));
+        auto* diagnostic = dialog->findChild<QComboBox*>(QStringLiteral("telemetryDiagnosticMode"));
+        if (phrase && group && diagnostic) {
+            modeRequired = diagnostic->currentIndex() == 0;
+            phrase->setValue(2.5);
+            group->setValue(3.0);
+            diagnostic->setCurrentIndex(1);
+        }
+        dialog->accept();
+    });
+    healthSettings->click();
+    require(modeRequired,
+            "a health procedure must require an explicit mode even if an old argument was false");
+    requiredBeforeSettings->clear();
+    QTimer::singleShot(0, [] {
+        if (auto* dialog = qobject_cast<QDialog*>(QApplication::activeModalWidget())) dialog->reject();
+    });
     visualSave->click();
-    require(orbita::stand::loadScenarioYaml(visualPath.toStdString()).steps[0].procedure == "telemetry.health",
-            "selected procedure must survive saving and reloading the scenario");
+    require(orbita::stand::loadScenarioYaml(visualPath.toStdString()).steps[0].procedure == "test.procedure",
+            "editing the configured dependency must require confirming the health settings again");
+    QTimer::singleShot(0, [] {
+        auto* dialog = qobject_cast<QDialog*>(QApplication::activeModalWidget());
+        if (!dialog) return;
+        if (auto* mode = dialog->findChild<QComboBox*>(QStringLiteral("telemetryDiagnosticMode")))
+            mode->setCurrentIndex(1);
+        dialog->accept();
+    });
+    healthSettings->click();
+    visualSave->click();
+    const auto healthStep = orbita::stand::loadScenarioYaml(visualPath.toStdString()).steps[0];
+    require(healthStep.procedure == "telemetry.health"
+                && healthStep.requiredCapabilities.count("orbita.parameter_source") == 1
+                && healthStep.arguments.at("max_phrase_error_percent") == "2.5"
+                && healthStep.arguments.at("max_group_error_percent") == "3"
+                && healthStep.arguments.at("diagnostic_only") == "true"
+                && healthStep.arguments.at("sample_count") == "4",
+            "typed health settings must preserve other arguments and survive YAML reload");
+    rawArgsBeforeSettings->setPlainText(rawArgsBeforeSettings->toPlainText().replace(
+        QStringLiteral("diagnostic_only = true"), QStringLiteral("diagnostic_only = false")));
+    QTimer::singleShot(0, [] {
+        if (auto* dialog = qobject_cast<QDialog*>(QApplication::activeModalWidget())) dialog->reject();
+    });
+    visualSave->click();
+    require(orbita::stand::loadScenarioYaml(visualPath.toStdString()).steps[0].arguments.at("diagnostic_only") == "true",
+            "changing the raw diagnostic mode must require explicit confirmation");
     visualProcedure->setText(QStringLiteral("test.procedure"));
     visualTitle->setText(QStringLiteral("Изменённый этап"));
     auto* visualArguments = visualEditor.findChild<QPlainTextEdit*>(QStringLiteral("scenarioStepArguments"));
