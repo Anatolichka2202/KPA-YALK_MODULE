@@ -385,6 +385,27 @@ int main(int argc, char** argv)
         auto* guardedTitle = guardedEditor.findChild<QLineEdit*>(QStringLiteral("scenarioStepTitle"));
         auto* status = guardedEditor.findChild<QLabel*>(QStringLiteral("scenarioDraftStatus"));
         require(guardedTitle && status, "draft status controls unavailable");
+        auto* actionName = guardedEditor.findChild<QLabel*>(QStringLiteral("currentScenarioAction"));
+        auto* details = guardedEditor.findChild<QWidget*>(QStringLiteral("scenarioTechnicalSettings"));
+        auto* toggle = guardedEditor.findChild<QPushButton*>(QStringLiteral("toggleScenarioTechnicalSettings"));
+        require(actionName && !actionName->text().isEmpty() && details && details->isHidden() && toggle,
+                "scenario action or collapsed technical details unavailable");
+        toggle->click();
+        require(!details->isHidden(), "technical details could not be opened");
+        toggle->click();
+        require(details->isHidden(), "technical details could not be closed");
+        auto* guardedId = guardedEditor.findChild<QLineEdit*>(QStringLiteral("scenarioStepId"));
+        auto* guardedApply = guardedEditor.findChild<QPushButton*>(QStringLiteral("applyScenarioVisualStep"));
+        require(guardedId && guardedApply, "scenario step controls unavailable");
+        const auto originalId = guardedId->text();
+        guardedId->clear();
+        QTimer::singleShot(0, [] {
+            if (auto* box = qobject_cast<QMessageBox*>(QApplication::activeModalWidget())) box->accept();
+        });
+        guardedApply->click();
+        require(!details->isHidden(), "invalid hidden identifier did not reveal technical settings");
+        guardedId->setText(originalId);
+        toggle->click();
         guardedTitle->setText(QStringLiteral("Черновик оператора"));
         require(status->text().contains(QStringLiteral("несохранённые")), "unsaved changes not shown");
         QTimer::singleShot(0, [] {

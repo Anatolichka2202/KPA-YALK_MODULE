@@ -18,6 +18,7 @@
 #include <QTemporaryFile>
 #include <QSignalBlocker>
 #include <QScopedValueRollback>
+#include <QScrollArea>
 #include <QSplitter>
 #include <QTreeWidget>
 #include <QVBoxLayout>
@@ -71,9 +72,12 @@ ScenarioVisualEditor::ScenarioVisualEditor(QString path, QWidget* parent)
     tree_ = new QTreeWidget(splitter);
     tree_->setObjectName(QStringLiteral("scenarioVisualTree"));
     tree_->setHeaderLabels({QStringLiteral("Шаг / процедура"), QStringLiteral("ТУ")});
-    tree_->setMinimumWidth(400);
+    tree_->setMinimumWidth(200);
 
-    auto* formHost = new QWidget(splitter);
+    auto* formScroll = new QScrollArea(splitter);
+    formScroll->setWidgetResizable(true);
+    auto* formHost = new QWidget;
+    formScroll->setWidget(formHost);
     auto* formLayout = new QVBoxLayout(formHost);
     auto* form = new QFormLayout;
     id_ = new QLineEdit(formHost);
@@ -87,7 +91,18 @@ ScenarioVisualEditor::ScenarioVisualEditor(QString path, QWidget* parent)
     form->addRow(QStringLiteral("Идентификатор:"), id_);
     form->addRow(QStringLiteral("Название:"), title_);
     form->addRow(QStringLiteral("Требование ТУ:"), tu_);
-    form->addRow(QStringLiteral("Процедура:"), procedure_);
+    form->addRow(QStringLiteral("Идентификатор действия:"), procedure_);
+    auto* currentProcedure = new QLabel(formHost);
+    currentProcedure->setObjectName(QStringLiteral("currentScenarioAction"));
+    currentProcedure->setWordWrap(true);
+    const auto updateCurrentProcedure = [currentProcedure](const QString& id) {
+        currentProcedure->setText(id.isEmpty() ? QStringLiteral("Действие не выбрано")
+            : id == QStringLiteral("telemetry.health") ? QStringLiteral("Проверка состояния потока «Орбита»")
+            : QStringLiteral("Действие: %1").arg(id));
+    };
+    connect(procedure_, &QLineEdit::textChanged, this, updateCurrentProcedure);
+    updateCurrentProcedure(procedure_->text());
+    form->addRow(QStringLiteral("Текущее действие:"), currentProcedure);
     procedureChoice_ = new QComboBox(formHost);
     procedureChoice_->setObjectName(QStringLiteral("availableScenarioProcedures"));
     procedureChoice_->addItem(QStringLiteral("Выберите процедуру…"), QString());
@@ -106,14 +121,37 @@ ScenarioVisualEditor::ScenarioVisualEditor(QString path, QWidget* parent)
         telemetrySettings_->setEnabled(!published_ && procedure == QStringLiteral("telemetry.health"));
     });
     formLayout->addLayout(form);
+    auto* technicalToggle = new QPushButton(QStringLiteral("Технические настройки ▸"), formHost);
+    technicalToggle->setObjectName(QStringLiteral("toggleScenarioTechnicalSettings"));
+    technicalToggle->setCheckable(true);
+    formLayout->addWidget(technicalToggle);
+    auto* technicalFields = new QWidget(formHost);
+    technicalFields->setObjectName(QStringLiteral("scenarioTechnicalSettings"));
+    auto* technicalLayout = new QVBoxLayout(technicalFields);
+    technicalLayout->setContentsMargins(0, 0, 0, 0);
+    technicalFields->hide();
+    form->labelForField(id_)->hide();
+    id_->hide();
+    form->labelForField(procedure_)->hide();
+    procedure_->hide();
+    connect(technicalToggle, &QPushButton::toggled, this,
+        [=](bool visible) {
+            technicalFields->setVisible(visible);
+            form->labelForField(id_)->setVisible(visible);
+            id_->setVisible(visible);
+            form->labelForField(procedure_)->setVisible(visible);
+            procedure_->setVisible(visible);
+            technicalToggle->setText(visible ? QStringLiteral("Технические настройки ▾")
+                                             : QStringLiteral("Технические настройки ▸"));
+        });
 
-    requires_ = new QPlainTextEdit(formHost);
+    requires_ = new QPlainTextEdit(technicalFields);
     requires_->setObjectName(QStringLiteral("scenarioStepRequires"));
     requires_->setPlaceholderText(QStringLiteral("Одна capability в строке"));
-    resources_ = new QPlainTextEdit(formHost);
+    resources_ = new QPlainTextEdit(technicalFields);
     resources_->setObjectName(QStringLiteral("scenarioStepResources"));
     resources_->setPlaceholderText(QStringLiteral("resource | capability — одна строка на ресурс"));
-    arguments_ = new QPlainTextEdit(formHost);
+    arguments_ = new QPlainTextEdit(technicalFields);
     arguments_->setObjectName(QStringLiteral("scenarioStepArguments"));
     arguments_->setPlaceholderText(QStringLiteral("имя = значение — одна строка на аргумент"));
     connect(arguments_, &QPlainTextEdit::textChanged, this, [this] {
@@ -124,18 +162,19 @@ ScenarioVisualEditor::ScenarioVisualEditor(QString path, QWidget* parent)
     };
     connect(requires_, &QPlainTextEdit::textChanged, this, onRequirementsChanged);
     connect(resources_, &QPlainTextEdit::textChanged, this, onRequirementsChanged);
-    formLayout->addWidget(new QLabel(QStringLiteral("Требуемые capabilities:"), formHost));
-    formLayout->addWidget(requires_, 1);
-    formLayout->addWidget(new QLabel(QStringLiteral("Ресурсы поставки:"), formHost));
-    formLayout->addWidget(resources_, 1);
-    formLayout->addWidget(new QLabel(QStringLiteral("Аргументы процедуры:"), formHost));
-    formLayout->addWidget(arguments_, 2);
+    technicalLayout->addWidget(new QLabel(QStringLiteral("Требуемые возможности:"), technicalFields));
+    technicalLayout->addWidget(requires_, 1);
+    technicalLayout->addWidget(new QLabel(QStringLiteral("Ресурсы поставки:"), technicalFields));
+    technicalLayout->addWidget(resources_, 1);
+    technicalLayout->addWidget(new QLabel(QStringLiteral("Аргументы действия:"), technicalFields));
+    technicalLayout->addWidget(arguments_, 2);
+    formLayout->addWidget(technicalFields, 1);
     applyButton_ = new QPushButton(QStringLiteral("Применить к шагу"), formHost);
     applyButton_->setObjectName(QStringLiteral("applyScenarioVisualStep"));
     formLayout->addWidget(applyButton_);
 
     splitter->addWidget(tree_);
-    splitter->addWidget(formHost);
+    splitter->addWidget(formScroll);
     splitter->setStretchFactor(1, 1);
     layout->addWidget(splitter, 1);
 
@@ -414,9 +453,15 @@ bool ScenarioVisualEditor::commitEditorToNode(const StepPath& path)
     // Пустое дерево и отсутствие выбранного элемента допустимы для кнопок
     // добавления: в этом случае нечего синхронизировать с моделью.
     if (!node) return true;
+    const auto showTechnicalField = [this](QWidget* field) {
+        if (auto* toggle = findChild<QPushButton*>(QStringLiteral("toggleScenarioTechnicalSettings")))
+            toggle->setChecked(true);
+        field->setFocus();
+    };
     const auto id = trimmedUtf8(id_->text());
     if (id.empty()) {
         QMessageBox::warning(this, QStringLiteral("Шаг сценария"), QStringLiteral("Нужен идентификатор шага."));
+        showTechnicalField(id_);
         return false;
     }
     const bool healthArgumentsChanged = arguments_->toPlainText() != healthOriginalArguments_;
@@ -433,12 +478,14 @@ bool ScenarioVisualEditor::commitEditorToNode(const StepPath& path)
                                          || line.section(QLatin1Char('='), 0, 0).trimmed().isEmpty())) {
             QMessageBox::warning(this, QStringLiteral("Шаг сценария"),
                 QStringLiteral("Каждый аргумент задаётся в виде «имя = значение»."));
+            showTechnicalField(arguments_);
             return false;
         }
         if (!line.trimmed().isEmpty()
             && !argumentNames.insert(trimmedUtf8(line.section(QLatin1Char('='), 0, 0))).second) {
             QMessageBox::warning(this, QStringLiteral("Шаг сценария"),
                 QStringLiteral("Имена аргументов в шаге не должны повторяться."));
+            showTechnicalField(arguments_);
             return false;
         }
     }
@@ -449,6 +496,7 @@ bool ScenarioVisualEditor::commitEditorToNode(const StepPath& path)
             || line.mid(separator + 1).trimmed().isEmpty()) {
             QMessageBox::warning(this, QStringLiteral("Шаг сценария"),
                 QStringLiteral("Каждый ресурс задаётся в виде «ресурс | возможность»."));
+            showTechnicalField(resources_);
             return false;
         }
     }
@@ -464,6 +512,7 @@ bool ScenarioVisualEditor::commitEditorToNode(const StepPath& path)
         if (!hasCapability) {
             QMessageBox::warning(this, QStringLiteral("Проверка потока"),
                 QStringLiteral("Для проверки необходим источник параметров «Орбита»."));
+            showTechnicalField(requires_);
             return false;
         }
     }
