@@ -4,8 +4,16 @@
 #include "home_page.h"
 #include "scenario_visual_editor.h"
 #include "station_admin_dialog.h"
+#include "orbita_stand/yaml_lite.h"
 
 #include <QCoreApplication>
+#include <QInputDialog>
+#include <QLineEdit>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QStandardPaths>
+#include <QTemporaryFile>
+#include <QUuid>
 #include <QCryptographicHash>
 #include <QDateTime>
 #include <QDir>
@@ -92,6 +100,8 @@ void UniversalMainWindow::openGenericCheck()
         genericDialog_ = new GenericCheckDialog(this);
         genericDialog_->setAttribute(Qt::WA_DeleteOnClose, false);
 
+        connect(genericDialog_, &GenericCheckDialog::createScenarioRequested,
+                this, &UniversalMainWindow::createGenericScenario);
         connect(genericDialog_, &GenericCheckDialog::editScenarioRequested,
                 this, &UniversalMainWindow::editGenericScenario);
         connect(genericDialog_, &GenericCheckDialog::runRequested,
@@ -112,6 +122,7 @@ void UniversalMainWindow::reloadGenericScenarios()
     integrationEnsureStandRuntime();
 
     QVector<GenericScenarioEntry> entries;
+    genericDialog_->setCreationAvailable(false);
     const auto* project = integrationProject();
     if (!project) {
         genericDialog_->setScenarios(entries);
@@ -134,69 +145,116 @@ void UniversalMainWindow::reloadGenericScenarios()
         return;
     }
 
-    const QDir directory(QDir(QCoreApplication::applicationDirPath())
-                             .filePath(QStringLiteral("scenarios")));
-    for (const auto& file : directory.entryInfoList(
-             {QStringLiteral("*.yaml")}, QDir::Files, QDir::Name)) {
-        try {
-            const auto scenario = orbita::stand::loadScenarioYaml(
-                file.absoluteFilePath().toUtf8().toStdString());
-            const auto errors = engine->validate(scenario);
-            QMap<QString, bool> requirements;
-            std::function<void(const orbita::stand::ScenarioNode&)> collectRequirements;
-            collectRequirements = [&](const orbita::stand::ScenarioNode& node) {
-                for (const auto& capability : node.requiredCapabilities) {
-                    const bool configured = std::any_of(
-                        integrationStandProfile().components.begin(),
-                        integrationStandProfile().components.end(),
-                        [&](const auto& component) {
-                            return component.enabled && component.kind == "equipment"
-                                && componentProvides(component, capability);
-                        });
-                    requirements.insert(QString::fromStdString(capability), configured);
+    genericDialog_->setCreationAvailable(true);
+    const QString userRoot = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
+    QList<QDir> directories = {
+        QDir(QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("scenarios")))};
+    if (!userRoot.isEmpty()) directories.push_back(QDir(QDir(userRoot).filePath(QStringLiteral("scenarios"))));
+    for (const auto& directory : directories) {
+        for (const auto& file : directory.entryInfoList(
+                 {QStringLiteral("*.yaml")}, QDir::Files, QDir::Name)) {
+            try {
+                const auto scenario = orbita::stand::loadScenarioYaml(
+                    file.absoluteFilePath().toUtf8().toStdString());
+                const auto errors = engine->validate(scenario);
+                QMap<QString, bool> requirements;
+                std::function<void(const orbita::stand::ScenarioNode&)> collectRequirements;
+                collectRequirements = [&](const orbita::stand::ScenarioNode& node) {
+                    for (const auto& capability : node.requiredCapabilities) {
+                        const bool configured = std::any_of(
+                            integrationStandProfile().components.begin(),
+                            integrationStandProfile().components.end(),
+                            [&](const auto& component) {
+                                return component.enabled && component.kind == "equipment"
+                                    && componentProvides(component, capability);
+                            });
+                        requirements.insert(QString::fromStdString(capability), configured);
+                    }
+                    for (const auto& resource : node.requiredResources) {
+                        const auto* component = orbita::stand::findComponentByBinding(
+                            integrationStandProfile(), resource.resource);
+                        const bool configured = component && component->enabled
+                            && component->kind == "equipment"
+                            && componentProvides(*component, resource.capability);
+                        const QString key = QStringLiteral("%1:%2")
+                            .arg(QString::fromStdString(resource.resource),
+                                 QString::fromStdString(resource.capability));
+                        requirements.insert(key, configured);
+                    }
+                    for (const auto& child : node.children) collectRequirements(child);
+                };
+                for (const auto& node : scenario.steps) collectRequirements(node);
+                QStringList required;
+                bool resourcesConfigured = true;
+                for (auto it = requirements.cbegin(); it != requirements.cend(); ++it) {
+                    required.push_back(QStringLiteral("%1 %2")
+                        .arg(it.value() ? QStringLiteral("✓") : QStringLiteral("✗"), it.key()));
+                    resourcesConfigured = resourcesConfigured && it.value();
                 }
-                for (const auto& resource : node.requiredResources) {
-                    const auto* component = orbita::stand::findComponentByBinding(
-                        integrationStandProfile(), resource.resource);
-                    const bool configured = component && component->enabled
-                        && component->kind == "equipment"
-                        && componentProvides(*component, resource.capability);
-                    const QString key = QStringLiteral("%1:%2")
-                        .arg(QString::fromStdString(resource.resource),
-                             QString::fromStdString(resource.capability));
-                    requirements.insert(key, configured);
-                }
-                for (const auto& child : node.children) collectRequirements(child);
-            };
-            for (const auto& node : scenario.steps) collectRequirements(node);
-            QStringList required;
-            bool resourcesConfigured = true;
-            for (auto it = requirements.cbegin(); it != requirements.cend(); ++it) {
-                required.push_back(QStringLiteral("%1 %2")
-                    .arg(it.value() ? QStringLiteral("✓") : QStringLiteral("✗"), it.key()));
-                resourcesConfigured = resourcesConfigured && it.value();
-            }
-            required.sort();
+                required.sort();
 
-            for (const auto* workflow : dynamicWorkflows) {
-                entries.push_back({
-                    QString::fromStdString(workflow->id),
-                    QString::fromStdString(workflow->title),
-                    QString::fromStdString(scenario.title),
-                    QString::fromStdString(scenario.id),
-                    QString::fromStdString(scenario.version),
-                    file.absoluteFilePath(),
-                    required,
-                    resourcesConfigured,
-                    scenario.publicationState == orbita::stand::PublicationState::Published,
-                    errors.empty() ? QString() : QString::fromStdString(errors.front())});
+                for (const auto* workflow : dynamicWorkflows) {
+                    entries.push_back({
+                        QString::fromStdString(workflow->id),
+                        QString::fromStdString(workflow->title),
+                        QString::fromStdString(scenario.title),
+                        QString::fromStdString(scenario.id),
+                        QString::fromStdString(scenario.version),
+                        file.absoluteFilePath(),
+                        required,
+                        resourcesConfigured,
+                        scenario.publicationState == orbita::stand::PublicationState::Published,
+                        errors.empty() ? QString() : QString::fromStdString(errors.front())});
+                }
+            } catch (const std::exception& error) {
+                integrationLog(QStringLiteral("Свободный сценарий %1 не загружен: %2")
+                    .arg(file.fileName(), QString::fromUtf8(error.what())));
             }
-        } catch (const std::exception& error) {
-            integrationLog(QStringLiteral("Свободный сценарий %1 не загружен: %2")
-                .arg(file.fileName(), QString::fromUtf8(error.what())));
         }
     }
     genericDialog_->setScenarios(entries);
+}
+
+void UniversalMainWindow::createGenericScenario()
+{
+    if (genericWatcher_->isRunning() || !genericDialog_) return;
+    const auto* project = integrationProject();
+    if (!project || std::none_of(project->workflows.begin(), project->workflows.end(),
+        [](const auto& workflow) { return workflow.allowDynamicScenario || workflow.allowScenarioOverrides; })) return;
+    bool accepted = false;
+    const QString title = QInputDialog::getText(this, QStringLiteral("Новая проверка"),
+        QStringLiteral("Название проверки:"), QLineEdit::Normal, {}, &accepted).trimmed();
+    if (!accepted || title.isEmpty()) return;
+    const QString root = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
+    if (root.isEmpty() || !QDir().mkpath(QDir(root).filePath(QStringLiteral("scenarios")))) {
+        QMessageBox::warning(this, QStringLiteral("Новая проверка"), QStringLiteral("Каталог пользовательских проверок недоступен."));
+        return;
+    }
+    const QDir directory(QDir(root).filePath(QStringLiteral("scenarios")));
+    try {
+        const QString catalogPath = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("catalog/catalog.yaml"));
+        const auto catalog = orbita::stand::yaml::parseFile(catalogPath.toUtf8().toStdString());
+        const QString catalogVersion = QString::fromStdString(catalog.value("version"));
+        if (catalogVersion.isEmpty()) throw std::runtime_error("Версия каталога не определена");
+        const auto scalar = [](const QString& value) {
+            const QByteArray encoded = QJsonDocument(QJsonArray{value}).toJson(QJsonDocument::Compact);
+            return QString::fromUtf8(encoded.mid(1, encoded.size() - 2));
+        };
+        const QString id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        const QByteArray contents = QStringLiteral("schema: 1\nid: %1\ntitle: %2\nversion: \"1\"\ncatalog_version: %3\nstate: draft\nsteps: []\n")
+            .arg(scalar(id), scalar(title), scalar(catalogVersion)).toUtf8();
+        const QString path = directory.filePath(id + QStringLiteral(".yaml"));
+        QTemporaryFile candidate(directory.filePath(QStringLiteral(".scenario-new-XXXXXX")));
+        if (!candidate.open() || candidate.write(contents) != contents.size() || !candidate.flush())
+            throw std::runtime_error("Не удалось записать новую проверку");
+        (void)orbita::stand::loadScenarioYaml(candidate.fileName().toUtf8().toStdString());
+        candidate.close();
+        if (!candidate.rename(path)) throw std::runtime_error("Не удалось сохранить новую проверку");
+        candidate.setAutoRemove(false);
+        editGenericScenario(path);
+    } catch (const std::exception& error) {
+        QMessageBox::warning(this, QStringLiteral("Новая проверка"), QString::fromUtf8(error.what()));
+    }
 }
 
 void UniversalMainWindow::editGenericScenario(const QString& path)
@@ -204,6 +262,12 @@ void UniversalMainWindow::editGenericScenario(const QString& path)
     if (genericWatcher_->isRunning() || !QFileInfo::exists(path)) return;
     const QString workflowId = genericDialog_ ? genericDialog_->currentWorkflowId() : QString();
     ScenarioVisualEditor editor(path, this);
+    const QString userRoot = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
+    const QString userScenarios = userRoot.isEmpty() ? QString()
+        : QDir(userRoot).filePath(QStringLiteral("scenarios"));
+    QStringList versionDirectories{QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("scenarios"))};
+    if (!userScenarios.isEmpty()) versionDirectories.push_back(userScenarios);
+    editor.setScenarioStorage(userScenarios, versionDirectories);
     if (auto* engine = integrationScenarioEngine()) {
         editor.setAvailableProcedures(engine->registeredProcedures());
         editor.setScenarioValidator([engine](const auto& scenario) { return engine->validate(scenario); });

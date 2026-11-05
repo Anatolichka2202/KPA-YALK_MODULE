@@ -18,6 +18,7 @@ public:
 private slots:
     void openGenericCheck();
     void reloadGenericScenarios();
+    void createGenericScenario();
     void editGenericScenario(const QString& path);
     void runGenericScenario(const QString& workflowId,
                             const QString& path,

@@ -25,6 +25,8 @@
 #include <QProcess>
 #include <QPushButton>
 #include <QSqlDatabase>
+#include <QStandardPaths>
+#include <QUuid>
 #include <QSqlQuery>
 #include <QTemporaryDir>
 #include <QTableWidget>
@@ -411,6 +413,50 @@ int runChild(const QString& mode)
                     && scenarios->currentData().toString() == createdVersion,
                 "version validation, conflict handling or selection failed");
     }
+    if (mode == "--create-new") {
+        auto* create = dialog->findChild<QPushButton*>(QStringLiteral("createGenericScenario"));
+        require(create && create->isEnabled(), "new scenario action unavailable");
+        bool edited = false;
+        QTimer::singleShot(0, [&] {
+            auto* input = qobject_cast<QInputDialog*>(QApplication::activeModalWidget());
+            if (!input) return;
+            input->setTextValue(QStringLiteral("Новая проверка имитатора"));
+            QTimer::singleShot(0, [&] {
+                auto* editor = qobject_cast<ScenarioVisualEditor*>(QApplication::activeModalWidget());
+                if (!editor) return;
+                createdDraft = editor->currentPath();
+                auto* add = editor->findChild<QPushButton*>(QStringLiteral("addScenarioRootStep"));
+                auto* tu = editor->findChild<QLineEdit*>(QStringLiteral("scenarioStepTu"));
+                auto* actions = editor->findChild<QComboBox*>(QStringLiteral("availableScenarioProcedures"));
+                auto* version = editor->findChild<QPushButton*>(QStringLiteral("createRunnableScenarioVersion"));
+                if (!add || !tu || !actions || !version) return;
+                add->click();
+                tu->setText(QStringLiteral("test.1"));
+                const int actionIndex = actions->findData(QStringLiteral("test.simulator"));
+                if (actionIndex < 0) return;
+                actions->setCurrentIndex(actionIndex);
+                QMetaObject::invokeMethod(actions, "activated", Q_ARG(int, actionIndex));
+                QTimer::singleShot(0, [] {
+                    if (auto* versionInput = qobject_cast<QInputDialog*>(QApplication::activeModalWidget())) {
+                        versionInput->setTextValue(QStringLiteral("2"));
+                        versionInput->accept();
+                    }
+                });
+                version->click();
+                createdVersion = editor->currentPath();
+                edited = createdVersion != createdDraft && createdVersion.endsWith(QStringLiteral("_v2.yaml"));
+                editor->accept();
+            });
+            input->accept();
+        });
+        create->click();
+        require(edited && run->isEnabled() && scenarios->currentData().toString() == createdVersion
+                    && createdVersion.startsWith(QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation)),
+                "new scenario was not created in user storage and selected for execution");
+        require(QMetaObject::invokeMethod(&window, "openGenericCheck", Qt::DirectConnection)
+                    && scenarios->currentData().toString() == createdVersion && run->isEnabled(),
+                "reopening did not rediscover the user scenario");
+    }
     run->click();
     require(!run->isEnabled(), "scenario was not started from the dialog");
     const QString lockConnection = QStringLiteral("gui_stop_lock");
@@ -486,16 +532,19 @@ int runChild(const QString& mode)
             "completed GUI report did not show the simulator measurement");
     orbita::stand::RunStore store(QDir(QCoreApplication::applicationDirPath())
         .filePath("runs/runs.db").toStdString());
-    if (mode != "--new-version")
+    if (mode != "--new-version" && mode != "--create-new")
         require(store.unfinishedRuns().empty(), "completed GUI run was not finalized");
     const auto persisted = store.load(window.runId());
-    require(persisted && (mode != "--new-version" || (persisted->scenarioVersion == "2"
-                && persisted->steps.front().title == "Изменённый шаг"))
-                && persisted->verdict == orbita::stand::RunVerdict::Ok
-                && persisted->steps.size() == 2 && persisted->steps.front().measurements.size() == 1
+    require(persisted && persisted->verdict == orbita::stand::RunVerdict::Ok
+                && persisted->steps.size() == (mode == "--create-new" ? 1u : 2u)
+                && (mode != "--new-version" || (persisted->scenarioVersion == "2"
+                    && persisted->steps.front().title == "Изменённый шаг"))
+                && (mode != "--create-new" || (persisted->scenarioVersion == "2"
+                    && persisted->scenarioTitle == "Новая проверка имитатора"))
+                && persisted->steps.front().measurements.size() == 1
                 && persisted->steps.front().measurements.front().measured == 42,
             "completed GUI run lost its persisted measurement");
-    if (mode == "--new-version") {
+    if (mode == "--new-version" || mode == "--create-new") {
         require(QFile::remove(createdVersion) && QFile::remove(createdDraft), "cannot remove test versions");
     }
     return 0;
@@ -628,6 +677,7 @@ int runParent()
                 && commands.readAll() == beforeRecovery + "first\nfirst\n",
             "GUI stop did not prevent the next simulator action after recovery");
     execute("--new-version", 0);
+    execute("--create-new", 0);
     return 0;
 }
 }
@@ -635,6 +685,9 @@ int runParent()
 int main(int argc, char** argv)
 {
     QApplication app(argc, argv);
+    QStandardPaths::setTestModeEnabled(true);
+    QCoreApplication::setApplicationName(QStringLiteral("station-gui-test-")
+        + QUuid::createUuid().toString(QUuid::WithoutBraces));
     try {
         return app.arguments().size() > 1 && app.arguments().at(1).startsWith("--")
             ? runChild(app.arguments().at(1)) : runParent();

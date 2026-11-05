@@ -37,12 +37,14 @@ public:
 
     void setScenarios(const QVector<GenericScenarioEntry>& scenarios);
     void selectScenario(const QString& path, const QString& workflowId = {});
+    void setCreationAvailable(bool available);
     QString currentWorkflowId() const;
     void setRunning(bool running, const QString& detail = {});
     void appendEvent(const orbita::stand::RunEvent& event);
     void setReportHtml(const QString& html, const QString& summary);
 
 signals:
+    void createScenarioRequested();
     void editScenarioRequested(const QString& path);
     void runRequested(const QString& workflowId,
                       const QString& scenarioPath,
@@ -73,6 +75,8 @@ private:
     QTextBrowser* reportPreview_ = nullptr;
     QLabel* status_ = nullptr;
     QPushButton* editScenarioButton_ = nullptr;
+    QPushButton* createScenarioButton_ = nullptr;
+    bool creationAvailable_ = false;
     QPushButton* runButton_ = nullptr;
     QPushButton* stopButton_ = nullptr;
     QPushButton* saveReportButton_ = nullptr;

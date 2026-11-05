@@ -117,6 +117,10 @@ GenericCheckDialog::GenericCheckDialog(QWidget* parent)
     setupLayout->addWidget(engineeringOverride_);
 
     auto* setupActions = new QHBoxLayout;
+    createScenarioButton_ = new QPushButton(QStringLiteral("Новая проверка"), setup);
+    createScenarioButton_->setObjectName(QStringLiteral("createGenericScenario"));
+    createScenarioButton_->setEnabled(false);
+    setupActions->addWidget(createScenarioButton_);
     editScenarioButton_ = new QPushButton(QStringLiteral("Редактировать сценарий"), setup);
     editScenarioButton_->setObjectName(QStringLiteral("editGenericScenario"));
     setupActions->addWidget(editScenarioButton_);
@@ -194,6 +198,7 @@ GenericCheckDialog::GenericCheckDialog(QWidget* parent)
     actions->addWidget(closeButton);
     root->addLayout(actions);
 
+    connect(createScenarioButton_, &QPushButton::clicked, this, &GenericCheckDialog::createScenarioRequested);
     connect(editScenarioButton_, &QPushButton::clicked,
             this, &GenericCheckDialog::editScenario);
     connect(runButton_, &QPushButton::clicked,
@@ -232,8 +237,15 @@ void GenericCheckDialog::setScenarios(const QVector<GenericScenarioEntry>& scena
     editScenarioButton_->setEnabled(available && !running);
     if (!running) status_->setText(available
         ? QStringLiteral("Доступно сценариев: %1").arg(scenario_->count())
-        : QStringLiteral("В выбранном проекте нет доступных динамических сценариев"));
+        : creationAvailable_ ? QStringLiteral("Проверок пока нет — создайте новую")
+                             : QStringLiteral("В выбранном проекте нет доступных динамических сценариев"));
     updateResourcePreview();
+}
+
+void GenericCheckDialog::setCreationAvailable(bool available)
+{
+    creationAvailable_ = available;
+    createScenarioButton_->setEnabled(available && !stopButton_->isEnabled());
 }
 
 void GenericCheckDialog::selectScenario(const QString& path, const QString& workflowId)
@@ -260,6 +272,7 @@ void GenericCheckDialog::setRunning(bool running, const QString& detail)
     engineeringOverride_->setEnabled(!running);
     reportTemplate_->setEnabled(!running);
     editScenarioButton_->setEnabled(!running && scenario_->count() > 0);
+    createScenarioButton_->setEnabled(!running && creationAvailable_);
     runButton_->setEnabled(!running && scenario_->count() > 0);
     stopButton_->setEnabled(running);
     if (running) {

@@ -12,6 +12,7 @@
 #include "orbita_stand/config.h"
 
 #include <QDialog>
+#include <QStringList>
 
 #include <vector>
 #include <functional>
@@ -31,6 +32,7 @@ public:
     explicit ScenarioVisualEditor(QString path, QWidget* parent = nullptr);
     void setAvailableProcedures(const std::vector<std::string>& procedures);
     QString currentPath() const { return path_; }
+    void setScenarioStorage(QString writableDirectory, QStringList versionDirectories);
     void setScenarioValidator(std::function<std::vector<std::string>(
         const orbita::stand::ScenarioDefinition&)> validator);
 
@@ -78,6 +80,9 @@ private:
     bool write(const QString& path, const QString& content);
 
     QString path_;
+    QString writableDirectory_;
+    bool storageConfigured_ = false;
+    QStringList versionDirectories_;
     orbita::stand::ScenarioDefinition scenario_;
     bool published_ = false;
     bool dirty_ = false;

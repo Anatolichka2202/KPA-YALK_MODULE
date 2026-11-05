@@ -273,6 +273,13 @@ void ScenarioVisualEditor::done(int result)
     QDialog::done(result);
 }
 
+void ScenarioVisualEditor::setScenarioStorage(QString writableDirectory, QStringList versionDirectories)
+{
+    storageConfigured_ = true;
+    writableDirectory_ = std::move(writableDirectory);
+    versionDirectories_ = std::move(versionDirectories);
+}
+
 void ScenarioVisualEditor::setScenarioValidator(
     std::function<std::vector<std::string>(const orbita::stand::ScenarioDefinition&)> validator)
 {
@@ -889,26 +896,42 @@ void ScenarioVisualEditor::createDraft()
 {
     if (!published_) return;
     const QFileInfo source(path_);
-    const QString draftPath = source.dir().filePath(source.completeBaseName() + QStringLiteral("_draft.yaml"));
-    QFile draft(draftPath);
-    // Существующий черновик принадлежит пользователю и не перезаписывается.
-    if (!draft.open(QIODevice::WriteOnly | QIODevice::NewOnly)) {
+    if (storageConfigured_ && writableDirectory_.isEmpty()) {
+        QMessageBox::warning(this, QStringLiteral("Черновик"), QStringLiteral("Каталог пользовательских проверок недоступен."));
+        return;
+    }
+    const QDir directory = storageConfigured_ ? QDir(writableDirectory_) : source.dir();
+    if (!QDir().mkpath(directory.absolutePath())) {
+        QMessageBox::warning(this, QStringLiteral("Черновик"), QStringLiteral("Каталог черновиков недоступен."));
+        return;
+    }
+    const QString draftPath = directory.filePath(source.completeBaseName() + QStringLiteral("_draft.yaml"));
+    scenario_.publicationState = orbita::stand::PublicationState::Draft;
+    const auto bytes = serialize().toUtf8();
+    scenario_.publicationState = orbita::stand::PublicationState::Published;
+    // Черновик сначала записывается и проверяется под временным именем;
+    // прерывание не оставляет неполный сценарий в пользовательском списке.
+    QTemporaryFile draft(directory.filePath(QStringLiteral(".scenario-draft-XXXXXX")));
+    if (!draft.open() || draft.write(bytes) != bytes.size() || !draft.flush()) {
+        QMessageBox::warning(this, QStringLiteral("Черновик"),
+            QStringLiteral("Не удалось записать черновик: %1").arg(draft.errorString()));
+        return;
+    }
+    orbita::stand::ScenarioDefinition checked;
+    try {
+        checked = orbita::stand::loadScenarioYaml(draft.fileName().toUtf8().toStdString());
+    } catch (const std::exception& error) {
+        QMessageBox::warning(this, QStringLiteral("Черновик"), QString::fromUtf8(error.what()));
+        return;
+    }
+    draft.close();
+    if (!draft.rename(draftPath)) {
         QMessageBox::warning(this, QStringLiteral("Черновик"),
             QStringLiteral("Не удалось создать черновик: %1").arg(draft.errorString()));
         return;
     }
-    scenario_.publicationState = orbita::stand::PublicationState::Draft;
-    const auto bytes = serialize().toUtf8();
-    if (draft.write(bytes) != bytes.size() || !draft.flush()) {
-        scenario_.publicationState = orbita::stand::PublicationState::Published;
-        const auto error = draft.errorString();
-        draft.close();
-        QFile::remove(draftPath);
-        QMessageBox::critical(this, QStringLiteral("Черновик"),
-            QStringLiteral("Не удалось записать черновик: %1").arg(error));
-        return;
-    }
-    draft.close();
+    draft.setAutoRemove(false);
+    scenario_ = std::move(checked);
     path_ = draftPath;
     published_ = false;
     setEditorEnabled(true);
@@ -930,19 +953,24 @@ void ScenarioVisualEditor::createRunnableVersion()
         return;
     }
     const QDir directory = QFileInfo(path_).dir();
-    for (const auto& file : directory.entryInfoList({QStringLiteral("*.yaml")}, QDir::Files)) {
-        try {
-            const auto other = orbita::stand::loadScenarioYaml(file.absoluteFilePath().toUtf8().toStdString());
-            if (other.id == scenario_.id && other.version == version.toUtf8().toStdString()) {
+    QStringList directories = versionDirectories_;
+    if (!directories.contains(directory.absolutePath())) directories.push_back(directory.absolutePath());
+    directories.removeDuplicates();
+    for (const auto& directoryPath : directories) {
+        for (const auto& file : QDir(directoryPath).entryInfoList({QStringLiteral("*.yaml")}, QDir::Files)) {
+            try {
+                const auto other = orbita::stand::loadScenarioYaml(file.absoluteFilePath().toUtf8().toStdString());
+                if (other.id == scenario_.id && other.version == version.toUtf8().toStdString()) {
+                    QMessageBox::warning(this, QStringLiteral("Версия проверки"),
+                        QStringLiteral("Проверка с таким номером версии уже существует."));
+                    return;
+                }
+            } catch (const std::exception& error) {
                 QMessageBox::warning(this, QStringLiteral("Версия проверки"),
-                    QStringLiteral("Проверка с таким номером версии уже существует."));
+                    QStringLiteral("Невозможно проверить файл %1: %2")
+                        .arg(file.fileName(), QString::fromUtf8(error.what())));
                 return;
             }
-        } catch (const std::exception& error) {
-            QMessageBox::warning(this, QStringLiteral("Версия проверки"),
-                QStringLiteral("Невозможно проверить файл %1: %2")
-                    .arg(file.fileName(), QString::fromUtf8(error.what())));
-            return;
         }
     }
     const QString versionPath = directory.filePath(QFileInfo(path_).completeBaseName()
