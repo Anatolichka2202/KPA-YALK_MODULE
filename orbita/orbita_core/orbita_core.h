@@ -60,6 +60,8 @@ public:
 
 private:
     std::unique_ptr<FrameDecoderM16> decoder_;
+    // Доступ к записи и декодеру синхронизируется с рабочим потоком.
+    mutable std::recursive_mutex decoder_mutex_;
 
     // Битовый конвейер
     FifoBuffer          bitFifo_;
@@ -88,6 +90,9 @@ private:
     std::queue<std::vector<int16_t>> sample_queue_;
     std::mutex               queue_mutex_;
     std::condition_variable  queue_cv_;
+    std::condition_variable  processed_cv_;
+    uint64_t queued_count_ = 0;
+    uint64_t processed_count_ = 0;
 
     // Сигнализация «данные готовы»
     mutable std::mutex       data_mutex_;

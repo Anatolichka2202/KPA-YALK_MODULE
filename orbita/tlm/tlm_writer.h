@@ -22,11 +22,15 @@ public:
     void writeBlock(uint32_t blockNum, uint32_t elapsedMs,
                     const std::vector<uint16_t>& data);
 
-    bool isOpen() const { return file_.is_open(); }
+    bool isOpen() const { return file_.is_open() && file_.good(); }
+    bool finish();
 
 private:
     std::ofstream file_;
     int informativnost_;
+    uint32_t currentBlock_ = 0;
+    uint32_t currentWords_ = 0;
+    std::streampos headerPosition_{};
 
     void writeHeader();
 };

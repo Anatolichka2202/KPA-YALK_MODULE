@@ -6,7 +6,11 @@
 #include "orbita_stand/telemetry_procedures.h"
 #include "miltech/orbita_sample_simulator.h"
 
+#include <QTemporaryDir>
+#include <QFile>
 #include <cstdint>
+#include <cstring>
+#include <thread>
 #include <chrono>
 #include <iostream>
 #include <stdexcept>
@@ -221,6 +225,40 @@ void syntheticStreamContract()
             if (value.valid) { valid = true; measured = value.value; }
         }
     }
+    QTemporaryDir recordingDirectory;
+    require(recordingDirectory.isValid(), "recording directory unavailable");
+    bool rejected = false;
+    try { decoder.startRecording(recordingDirectory.filePath("missing/out.tlm").toUtf8().toStdString()); }
+    catch (const std::exception&) { rejected = true; }
+    require(rejected && !decoder.isRecording(), "failed recording start was reported as active");
+    const auto recordingPath = recordingDirectory.filePath("record.tlm");
+    decoder.startRecording(recordingPath.toUtf8().toStdString());
+    std::this_thread::sleep_for(std::chrono::milliseconds(800));
+    QFile during(recordingPath);
+    require(during.open(QIODevice::ReadOnly) && during.size() > 256,
+            "recording was not flushed while running");
+    during.close();
+    decoder.stopRecording();
+    QFile recording(recordingPath);
+    require(recording.open(QIODevice::ReadOnly) && recording.size() > 256,
+            "recording lost received words on stop");
+    const QByteArray bytes = recording.readAll();
+    qsizetype position = 256;
+    std::uint32_t previousBlock = 0, previousTime = 0;
+    while (position < bytes.size()) {
+        require(bytes.size() - position >= 24, "truncated block header");
+        std::uint32_t block = 0, count = 0, elapsed = 0;
+        std::memcpy(&block, bytes.constData() + position, 4);
+        std::memcpy(&count, bytes.constData() + position + 4, 4);
+        std::memcpy(&elapsed, bytes.constData() + position + 8, 4);
+        require(block == previousBlock + 1 && count > 0 && count <= 65536
+                    && elapsed >= previousTime, "invalid block sequence or time");
+        position += 24 + static_cast<qsizetype>(count) * 2;
+        require(position <= bytes.size(), "truncated block data");
+        previousBlock = block;
+        previousTime = elapsed;
+    }
+    require(position == bytes.size() && previousBlock > 0, "recording contains no complete blocks");
     bridge.stop();
     require(valid && measured == 15,
             "synthetic M16 samples did not decode to the expected simulator value");

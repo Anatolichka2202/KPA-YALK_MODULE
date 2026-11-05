@@ -2,6 +2,7 @@
 #include "../orbita_core/logger.h"
 #include <cstring>
 #include <chrono>
+#include <filesystem>
 
 namespace orbita {
 
@@ -10,7 +11,7 @@ static const int HEADER_SIZE = 256;
 TlmWriter::TlmWriter(const std::string& filename, int informativnost)
     : informativnost_(informativnost)
 {
-    file_.open(filename, std::ios::binary | std::ios::out | std::ios::trunc);
+    file_.open(std::filesystem::u8path(filename), std::ios::binary | std::ios::out | std::ios::trunc);
     if (!file_.is_open()) {
         LOG_ERROR("TlmWriter: cannot open file: %s", filename.c_str());
         return;
@@ -52,17 +53,36 @@ void TlmWriter::writeBlock(uint32_t blockNum, uint32_t elapsedMs,
 {
     if (!file_.is_open()) return;
 
-    // Block header: blockNum(4) + wordCount(4) + timeMs(4) + reserved(12) = 24 bytes
-    uint32_t wordCount = static_cast<uint32_t>(data.size());
-    char blockHeader[24] = {};
-    std::memcpy(blockHeader + 0,  &blockNum,  4);
-    std::memcpy(blockHeader + 4,  &wordCount, 4);
-    std::memcpy(blockHeader + 8,  &elapsedMs, 4);
-    // bytes 12..23: reserved, already zero
-
-    file_.write(blockHeader, sizeof(blockHeader));
+    // Блок дополняется порциями; заголовок обновляется после каждой
+    // выгрузки, а полный цикл сохраняет прежнюю границу в 65536 слов.
+    if (currentBlock_ != blockNum) {
+        currentBlock_ = blockNum;
+        currentWords_ = 0;
+        headerPosition_ = file_.tellp();
+        char blockHeader[24] = {};
+        std::memcpy(blockHeader, &blockNum, 4);
+        std::memcpy(blockHeader + 8, &elapsedMs, 4);
+        file_.write(blockHeader, sizeof(blockHeader));
+    }
+    const auto wordCount = static_cast<uint32_t>(data.size());
     file_.write(reinterpret_cast<const char*>(data.data()),
                 static_cast<std::streamsize>(wordCount * sizeof(uint16_t)));
+    currentWords_ += wordCount;
+    const auto end = file_.tellp();
+    file_.seekp(headerPosition_ + std::streamoff(4));
+    file_.write(reinterpret_cast<const char*>(&currentWords_), sizeof(currentWords_));
+    // Время блока относится к его последней записанной порции, как и раньше
+    // относилось к моменту завершения полного цикла.
+    file_.write(reinterpret_cast<const char*>(&elapsedMs), sizeof(elapsedMs));
+    file_.seekp(end);
+    file_.flush();
+}
+
+bool TlmWriter::finish() {
+    file_.flush();
+    const bool ok = file_.good();
+    file_.close();
+    return ok && !file_.fail();
 }
 
 } // namespace orbita

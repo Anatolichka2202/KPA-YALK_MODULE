@@ -38,7 +38,7 @@ public:
     //Управление записью tlm
     void startTlm(const std::string& filename);
     void stopTlm();
-    bool isTlmActive() const {return tlmWriter_!=nullptr;}
+    bool isTlmActive() const;
 
     //полчуение бортового времени
     uint32_t getCurrentTimeSeconds() const { return current_time_seconds_; }
@@ -109,6 +109,7 @@ private:
     int tlmOneGcCounter_;      // 1..4, аналог iOneGC
     uint32_t tlmStartTimeMs_;
     uint32_t tlmBlockNum_;
+    uint32_t tlmWordsInBlock_ = 0;
     void FillArrayCircle();        //  для TLM-записи
         //тлм маркеры
         bool flBeg;

@@ -138,10 +138,12 @@ void Context::start() {
         std::lock_guard<std::mutex> lock(queue_mutex_);
         std::queue<std::vector<int16_t>> empty;
         sample_queue_.swap(empty);
+        queued_count_ = 0;
+        processed_count_ = 0;
     }
     bitFifo_.reset();
     recoverer_.reset();
-    decoder_->reset();
+    { std::lock_guard<std::recursive_mutex> lock(decoder_mutex_); decoder_->reset(); }
     {
         std::lock_guard<std::mutex> lock(values_mutex_);
         std::fill(values_.begin(), values_.end(), 0.0);
@@ -190,15 +192,25 @@ void Context::setInvertSignal(bool invert) {
 //  Запись TLM (делегируем декодеру)
 // ------------------------------------------------------------------
 void Context::startRecording(const std::string& filename) {
-    if (decoder_) decoder_->startTlm(filename);
-    else LOG_WARNING("startRecording: decoder not ready");
+    std::lock_guard<std::recursive_mutex> lock(decoder_mutex_);
+    if (!decoder_ || !is_running_) throw orbita_error("Декодер не запущен");
+    decoder_->startTlm(filename);
 }
 
 void Context::stopRecording() {
+    // Сначала завершаем обработку отсчётов, уже переданных источником в момент
+    // нажатия «Стоп записи»; поступившие позже могут остаться вне записи.
+    if (decoder_thread_.joinable() && std::this_thread::get_id() != decoder_thread_.get_id()) {
+        std::unique_lock<std::mutex> lock(queue_mutex_);
+        const auto target = queued_count_;
+        processed_cv_.wait(lock, [this, target] { return processed_count_ >= target; });
+    }
+    std::lock_guard<std::recursive_mutex> lock(decoder_mutex_);
     if (decoder_) decoder_->stopTlm();
 }
 
 bool Context::isRecording() const {
+    std::lock_guard<std::recursive_mutex> lock(decoder_mutex_);
     return decoder_ && decoder_->isTlmActive();
 }
 
@@ -207,7 +219,9 @@ bool Context::isRecording() const {
 // ------------------------------------------------------------------
 void Context::pushToQueue(const std::vector<int16_t>& samples) {
     std::lock_guard<std::mutex> lock(queue_mutex_);
+    if (stop_worker_) return;
     sample_queue_.push(samples);
+    ++queued_count_;
     queue_cv_.notify_one();
 }
 
@@ -218,14 +232,16 @@ void Context::decoderLoop() {
     bool threshold_computed = false;
     LOG_INFO("Decoder thread started");
 
-    while (!stop_worker_) {
+    while (true) {
         std::vector<int16_t> samples;
         {
             std::unique_lock<std::mutex> lock(queue_mutex_);
             if (!queue_cv_.wait_for(lock, std::chrono::milliseconds(100),
                     [this] { return !sample_queue_.empty() || stop_worker_.load(); }))
                 continue;
-            if (stop_worker_) break;
+            // После остановки источника обрабатываем принятую очередь.
+            if (sample_queue_.empty() && stop_worker_) break;
+            if (sample_queue_.empty()) continue;
             samples = std::move(sample_queue_.front());
             sample_queue_.pop();
         }
@@ -236,13 +252,18 @@ void Context::decoderLoop() {
         }
 
         recoverer_.processSamples(samples.data(), samples.size());
-        decoder_->process();
+        { std::lock_guard<std::recursive_mutex> lock(decoder_mutex_); decoder_->process(); }
 
         samples_processed_ += samples.size();
+        {
+            std::lock_guard<std::mutex> lock(queue_mutex_);
+            ++processed_count_;
+        }
+        processed_cv_.notify_all();
     }
 
     recoverer_.flush();
-    if (decoder_) decoder_->process();
+    { std::lock_guard<std::recursive_mutex> lock(decoder_mutex_); if (decoder_) decoder_->process(); }
     LOG_INFO("Decoder thread finished. Total: %llu samples",
              (unsigned long long)samples_processed_.load());
 }
@@ -374,6 +395,7 @@ std::optional<double> Context::getValueByAddress(const std::string& address) con
 }
 
 Stats Context::getStats() const {
+    std::lock_guard<std::recursive_mutex> lock(decoder_mutex_);
     Stats s;
     if (decoder_) {
         int pe = 0, ge = 0;

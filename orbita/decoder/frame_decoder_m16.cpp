@@ -1,3 +1,4 @@
+#include <stdexcept>
 #include "frame_decoder_m16.h"
 #include "../orbita_core/logger.h"
 #include <cstring>
@@ -366,12 +367,16 @@ void FrameDecoderM16::getErrors(int& phrase_err, int& group_err) const {
 //TLM
 
 void FrameDecoderM16::startTlm(const std::string& filename) {
-    tlmWriter_ = std::make_unique<TlmWriter>(filename, 16);
+    if (tlmWriter_) throw std::runtime_error("Запись уже ведётся");
+    auto writer = std::make_unique<TlmWriter>(filename, 16);
+    if (!writer->isOpen()) throw std::runtime_error("Не удалось открыть файл записи");
+    tlmWriter_ = std::move(writer);
     tlmCycleBuffer_.clear();
     tlmCycleBuffer_.reserve(masCircleSize);
     tlmStartTimeMs_ = std::chrono::duration_cast<std::chrono::milliseconds>(
                           std::chrono::steady_clock::now().time_since_epoch()).count();
     tlmBlockNum_ = 1;
+    tlmWordsInBlock_ = 0;
     tlmOneGcCounter_ = 4;          // Delphi: iOneGC := 4
     // Сброс флагов (как в Delphi при старте записи, но не при остановке)
     flBeg = false;
@@ -379,10 +384,22 @@ void FrameDecoderM16::startTlm(const std::string& filename) {
     // flKadr, flagOutFraseNum остаются – они придут из сигнала
 }
 
+bool FrameDecoderM16::isTlmActive() const {
+    return tlmWriter_ && tlmWriter_->isOpen();
+}
+
 void FrameDecoderM16::stopTlm() {
     if (tlmWriter_) {
-        // Неполный цикл не пишем – как в Delphi
+        // При остановке сохраняем фактически полученную неполную порцию.
+        if (!tlmCycleBuffer_.empty()) {
+            const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now().time_since_epoch()).count() - tlmStartTimeMs_;
+            tlmWriter_->writeBlock(tlmBlockNum_, static_cast<uint32_t>(elapsedMs), tlmCycleBuffer_);
+        }
+        const bool saved = tlmWriter_->finish();
         tlmWriter_.reset();
+        tlmCycleBuffer_.clear();
+        if (!saved) throw std::runtime_error("Не удалось завершить запись потока");
     }
     tlmCycleBuffer_.clear();
 }
@@ -409,11 +426,15 @@ void FrameDecoderM16::FillArrayCircle() {
 
     tlmCycleBuffer_.push_back(word);
 
-    if (tlmCycleBuffer_.size() == masCircleSize ) { // полный цикл (masCircleSize)
+    if (tlmCycleBuffer_.size() == GROUP_SIZE) { // Периодическая выгрузка порции.
         uint32_t elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
                                  std::chrono::steady_clock::now().time_since_epoch()).count() - tlmStartTimeMs_;
         tlmWriter_->writeBlock(tlmBlockNum_, elapsedMs, tlmCycleBuffer_);
-        tlmBlockNum_++;
+        tlmWordsInBlock_ += static_cast<uint32_t>(tlmCycleBuffer_.size());
+        if (tlmWordsInBlock_ == masCircleSize) {
+            ++tlmBlockNum_;
+            tlmWordsInBlock_ = 0;
+        }
         tlmCycleBuffer_.clear();
     }
 }

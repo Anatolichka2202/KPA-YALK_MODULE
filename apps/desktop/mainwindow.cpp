@@ -1,3 +1,5 @@
+#include <QStandardPaths>
+#include <QUuid>
 #include "mainwindow.h"
 #include "free_workspace_widget.h"
 #include "channel_status.h"
@@ -144,6 +146,9 @@ void MainWindow::closeEvent(QCloseEvent* event)
         event->ignore();
         return;
     }
+    // Остановка сначала дренирует источник, затем завершает запись, чтобы
+    // закрытие окна не теряло последнюю неполную порцию телеметрии.
+    if (isRunning_ || isRecording_) onStop();
     QMainWindow::closeEvent(event);
 }
 
@@ -1265,13 +1270,13 @@ void MainWindow::onStart()
 
 void MainWindow::onStop()
 {
-    if (isRecording_) onToggleRecording();
     if (orbitaSampleBridge_) {
         orbitaSampleBridge_->stop();
     } else {
         if (telemetrySampleSource_) telemetrySampleSource_->stop();
         if (orbita_ && orbita_->isRunning()) orbita_->stop();
     }
+    if (isRecording_) onToggleRecording();
     isRunning_ = false;
     monitorSnapshot_.reset();
     detailLastUpdate_ = {};
@@ -1294,29 +1299,42 @@ void MainWindow::onStop()
 // ----------------------------------------------------------------------------
 QString MainWindow::nextRecordingPath() const
 {
-    QString dir = QCoreApplication::applicationDirPath() + "/records";
-    QDir().mkpath(dir);
-    QString ts = QDateTime::currentDateTime().toString("yyyy-MM-dd_HH-mm-ss");
-    return dir + "/" + ts + ".tlm";
+    const QString base = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
+    if (base.isEmpty()) throw std::runtime_error("Каталог данных пользователя недоступен");
+    const QString dir = base + QStringLiteral("/records");
+    if (!QDir().mkpath(dir)) throw std::runtime_error("Не удалось создать каталог записей");
+    const QString name = QDateTime::currentDateTime().toString("yyyy-MM-dd_HH-mm-ss")
+        + QStringLiteral("-") + QUuid::createUuid().toString(QUuid::WithoutBraces);
+    return dir + QStringLiteral("/") + name + QStringLiteral(".tlm");
 }
 
 void MainWindow::onToggleRecording()
 {
-    if (!isRecording_) {
-        QString path = nextRecordingPath();
-        orbita_->startRecording(path.toStdString());
-        isRecording_ = true;
-        recordBtn_->setText("⏹ Стоп");
-        recordingLabel_->setText("● " + path.section('/', -1));
-        recordingLabel_->setStyleSheet("color: #cf5b52; font-weight: bold;");
-        log("Запись: " + path);
-    } else {
-        orbita_->stopRecording();
+    try {
+        if (!isRecording_) {
+            const QString path = nextRecordingPath();
+            orbita_->startRecording(path.toUtf8().toStdString());
+            isRecording_ = true;
+            recordBtn_->setText(QStringLiteral("⏹ Стоп"));
+            recordingLabel_->setText(QStringLiteral("● ") + path.section('/', -1));
+            recordingLabel_->setStyleSheet("color: #cf5b52; font-weight: bold;");
+            log(QStringLiteral("Запись: ") + path);
+        } else {
+            orbita_->stopRecording();
+            isRecording_ = false;
+            recordBtn_->setText(QStringLiteral("⏺ Запись"));
+            recordingLabel_->setText(QStringLiteral("—"));
+            recordingLabel_->setStyleSheet("color: #7e8a98;");
+            log(QStringLiteral("Запись остановлена"));
+        }
+    } catch (const std::exception& error) {
         isRecording_ = false;
-        recordBtn_->setText("⏺ Запись");
-        recordingLabel_->setText("—");
-        recordingLabel_->setStyleSheet("color: #7e8a98;");
-        log("Запись остановлена");
+        recordBtn_->setText(QStringLiteral("⏺ Запись"));
+        recordingLabel_->setText(QStringLiteral("Ошибка записи"));
+        recordingLabel_->setStyleSheet("color: #cf5b52; font-weight: bold;");
+        const QString message = QString::fromUtf8(error.what());
+        log(QStringLiteral("Запись не подтверждена: ") + message);
+        QMessageBox::warning(this, QStringLiteral("Ошибка записи"), message);
     }
 }
 
@@ -1382,6 +1400,11 @@ void MainWindow::updateData()
         if (m_statusBarLabel)
             m_statusBarLabel->setText("● сбор остановлен");
         return;
+    }
+
+    if (isRecording_ && !orbita_->isRecording()) {
+        // Ошибку вывода показываем, пока приём ещё выполняется.
+        onToggleRecording();
     }
 
     if (!orbitaSampleBridge_ || !orbitaSampleBridge_->isRunning()) {
