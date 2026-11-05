@@ -509,15 +509,24 @@ QString UniversalMainWindow::renderSteps(
 {
     QString html;
     if (level == 0)
-        html += QStringLiteral("<table><thead><tr><th>Этап</th><th>Требование</th><th>Результат</th><th>Сообщение</th></tr></thead><tbody>");
+        html += QStringLiteral("<table><thead><tr><th>Этап / измерение</th><th>Требование</th><th>Измерено</th><th>Результат</th><th>Сообщение</th></tr></thead><tbody>");
     for (const auto& step : steps) {
         const QString indent(level * 4, QChar(0x00A0));
-        html += QStringLiteral("<tr><td>%1%2</td><td>%3</td><td><b>%4</b></td><td>%5</td></tr>")
+        html += QStringLiteral("<tr><td>%1%2</td><td>%3</td><td></td><td><b>%4</b></td><td>%5</td></tr>")
             .arg(indent,
                  htmlCell(step.title),
                  htmlCell(step.tuRequirement),
                  verdictText(step.verdict).toHtmlEscaped(),
                  htmlCell(step.message));
+        for (const auto& measurement : step.measurements) {
+            html += QStringLiteral("<tr><td>%1%2</td><td></td><td>%3 %4</td><td>%5</td><td>%6</td></tr>")
+                .arg(indent + QString(4, QChar(0x00A0)),
+                     htmlCell(measurement.title),
+                     QString::number(measurement.measured, 'g', 12).toHtmlEscaped(),
+                     htmlCell(measurement.unit),
+                     verdictText(measurement.verdict).toHtmlEscaped(),
+                     htmlCell(measurement.message));
+        }
         if (!step.children.empty()) html += renderSteps(step.children, level + 1);
     }
     if (level == 0) html += QStringLiteral("</tbody></table>");

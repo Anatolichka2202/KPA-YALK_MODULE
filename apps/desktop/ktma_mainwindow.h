@@ -33,7 +33,7 @@ protected:
     // Universal/free scenarios use the current delivery's physical readiness
     // policy without becoming part of the delivery registry.  The ordering is
     // still KTMA/UBSI-owned (power -> independent devices -> boot wait -> ULK).
-    void integrationPrepareEquipmentForScenario(
+    virtual void integrationPrepareEquipmentForScenario(
         const orbita::stand::ScenarioDefinition& scenario,
         const std::shared_ptr<orbita::stand::StationSession::Activity>& activity);
 

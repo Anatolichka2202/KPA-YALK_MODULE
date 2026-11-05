@@ -7,7 +7,7 @@
 
 class GenericCheckDialog;
 
-class UniversalMainWindow final : public KtmaMainWindow
+class UniversalMainWindow : public KtmaMainWindow
 {
     Q_OBJECT
 

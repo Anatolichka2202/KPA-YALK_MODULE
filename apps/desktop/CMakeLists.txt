@@ -3,10 +3,9 @@ project(MilTechStationDesktop)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Core Widgets PrintSupport Sql Svg SerialPort Concurrent)
+find_package(Qt6 6.8 REQUIRED COMPONENTS Core Widgets PrintSupport Sql Svg SerialPort Concurrent)
 
 add_executable(MilTechStation
     main.cpp
@@ -192,6 +191,26 @@ add_dependencies(OrbitaRuntimeResources MilTechStation orbita_equipment_plugins
     orbita_yvp_rokt_probe visa_discover)
 
 if(BUILD_TESTING)
+    get_target_property(station_gui_test_sources MilTechStation SOURCES)
+    list(REMOVE_ITEM station_gui_test_sources main.cpp package_smoke.cpp package_smoke.h)
+    qt_add_executable(station_gui_simulator_test
+        tests/station_gui_simulator_test.cpp
+        ${station_gui_test_sources}
+    )
+    target_include_directories(station_gui_simulator_test PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_SOURCE_DIR}/orbita/include
+        ${CMAKE_SOURCE_DIR}/deliveries/ktma/registrar/include
+    )
+    get_target_property(station_gui_test_libraries MilTechStation LINK_LIBRARIES)
+    target_link_libraries(station_gui_simulator_test PRIVATE ${station_gui_test_libraries})
+    target_compile_definitions(station_gui_simulator_test PRIVATE
+        MILTECHSTATION_VERSION="${CMAKE_PROJECT_VERSION}"
+        STATION_GUI_TEST_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+    )
+    add_test(NAME desktop.station_gui_simulator COMMAND station_gui_simulator_test -platform offscreen)
+    set_tests_properties(desktop.station_gui_simulator PROPERTIES TIMEOUT 90)
+
     add_executable(test_page_smoke_test
         tests/test_page_smoke_test.cpp
         generic_check_dialog.cpp
@@ -233,10 +252,17 @@ if(BUILD_TESTING)
     add_test(NAME desktop.test_page_smoke COMMAND test_page_smoke_test -platform offscreen)
 
     get_filename_component(QT_TEST_PLUGIN_DIR "${Qt6_DIR}/../../../plugins" ABSOLUTE)
+    set_tests_properties(desktop.station_gui_simulator PROPERTIES
+        ENVIRONMENT "QT_PLUGIN_PATH=${QT_TEST_PLUGIN_DIR}"
+    )
     set_tests_properties(desktop.test_page_smoke PROPERTIES
         ENVIRONMENT "QT_PLUGIN_PATH=${QT_TEST_PLUGIN_DIR}"
     )
     if(WIN32)
+        set_tests_properties(desktop.station_gui_simulator PROPERTIES
+            ENVIRONMENT_MODIFICATION
+                "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
+        )
         set_tests_properties(desktop.test_page_smoke PROPERTIES
             ENVIRONMENT_MODIFICATION
                 "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"

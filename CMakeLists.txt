@@ -31,6 +31,17 @@ add_subdirectory(station)
 add_subdirectory(integrations/orbita)
 add_subdirectory(deliveries/ktma/registrar)
 add_subdirectory(deliveries/ktma/ubsi)
+find_package(Qt6 6.8 REQUIRED COMPONENTS Core Network)
+# Сохраняем прежние каталоги исполняемых файлов, от которых зависят
+# существующие скрипты упаковки; Qt иначе переносит их в корень сборки.
+if(NOT DEFINED CMAKE_RUNTIME_OUTPUT_DIRECTORY)
+    set(_station_restore_runtime_output TRUE)
+endif()
+qt_standard_project_setup()
+if(_station_restore_runtime_output)
+    unset(CMAKE_RUNTIME_OUTPUT_DIRECTORY)
+    unset(_station_restore_runtime_output)
+endif()
 add_subdirectory(apps/desktop)
 add_subdirectory(apps/simulator)
 

@@ -11,6 +11,7 @@
 
 #include <atomic>
 #include <cctype>
+#include <filesystem>
 #include <fstream>
 #include <set>
 #include <sstream>
@@ -75,7 +76,9 @@ std::string normalizeLegacyAddress(std::string line)
 
 std::vector<std::string> loadAddressFile(const std::string& path)
 {
-    std::ifstream input(path, std::ios::binary);
+    // Путь передаётся из Qt в UTF-8; на Windows узкий ifstream иначе
+    // интерпретирует его в системной кодировке и не найдёт каталог пользователя.
+    std::ifstream input(std::filesystem::u8path(path), std::ios::binary);
     if (!input) throw yaml::Error("Cannot open catalog address file: " + path);
     std::vector<std::string> result;
     for (std::string line; std::getline(input, line);) {
