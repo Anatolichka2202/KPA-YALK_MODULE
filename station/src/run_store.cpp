@@ -208,6 +208,7 @@ RunStore::RunStore(std::string sqlitePath) : impl_(std::make_unique<Impl>())
     QSqlQuery query(impl_->database);
     for (const auto& sql : {
              "PRAGMA foreign_keys = ON",
+             "PRAGMA busy_timeout = 250",
              "CREATE TABLE IF NOT EXISTS test_runs(run_id TEXT PRIMARY KEY,scenario_id TEXT NOT NULL,scenario_version TEXT NOT NULL,catalog_version TEXT NOT NULL,profile_version TEXT NOT NULL,object_serial TEXT NOT NULL,started_ms INTEGER NOT NULL,finished_ms INTEGER NOT NULL,verdict TEXT NOT NULL)",
              "CREATE TABLE IF NOT EXISTS run_steps(run_id TEXT NOT NULL REFERENCES test_runs(run_id) ON DELETE CASCADE,node_id TEXT NOT NULL,parent_node TEXT NOT NULL,sort_order INTEGER NOT NULL,title TEXT NOT NULL,tu_requirement TEXT NOT NULL,verdict TEXT NOT NULL,message TEXT NOT NULL,PRIMARY KEY(run_id,node_id))",
              "CREATE TABLE IF NOT EXISTS run_measurements(run_id TEXT NOT NULL,node_id TEXT NOT NULL,sort_order INTEGER NOT NULL,parameter_key TEXT NOT NULL,title TEXT NOT NULL,reference REAL NOT NULL,measured REAL NOT NULL,lower_limit REAL NOT NULL,upper_limit REAL NOT NULL,unit TEXT NOT NULL,verdict TEXT NOT NULL,message TEXT NOT NULL,attributes TEXT NOT NULL DEFAULT '',PRIMARY KEY(run_id,node_id,sort_order),FOREIGN KEY(run_id,node_id) REFERENCES run_steps(run_id,node_id) ON DELETE CASCADE)",
@@ -288,6 +289,8 @@ void RunStore::saveImpl(const ScenarioRunResult& run, bool replaceIncomplete)
             const bool finished = exists && query.value(0).toLongLong() != 0;
             query.finish();
             if (finished) throw std::runtime_error("Завершённый запуск нельзя перезаписать");
+            if (!exists && run.finishedAt == std::chrono::system_clock::time_point{})
+                throw std::runtime_error("Начало запуска не было записано");
             if (exists) {
                 // Удаление и повторная вставка выполняются в одной транзакции;
                 // сбой на любом шаге восстанавливает предыдущий снимок целиком.
@@ -386,6 +389,7 @@ std::function<void(const ScenarioRunResult&)> makeIntermediateCheckpointSink(std
     struct State {
         std::string path;
         std::unique_ptr<RunStore> store;
+        bool started = false;
     };
     auto state = std::make_shared<State>();
     state->path = std::move(sqlitePath);
@@ -393,7 +397,14 @@ std::function<void(const ScenarioRunResult&)> makeIntermediateCheckpointSink(std
         // Итоговый результат сначала дополняется контекстом и отчётами окна.
         if (run.finishedAt != std::chrono::system_clock::time_point{}) return;
         if (!state->store) state->store = std::make_unique<RunStore>(state->path);
-        state->store->saveCheckpoint(run);
+        if (!state->started) {
+            // Новый запуск всегда добавляется отдельной записью: совпавший
+            // идентификатор не должен заменить незавершённую проверку.
+            state->store->save(run);
+            state->started = true;
+        } else {
+            state->store->saveCheckpoint(run);
+        }
     };
 }
 

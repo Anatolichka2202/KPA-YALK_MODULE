@@ -5,6 +5,7 @@
 
 #include <QCoreApplication>
 #include <QFile>
+#include <QElapsedTimer>
 #include <QProcess>
 #include <QSqlDatabase>
 #include <QSqlQuery>
@@ -56,7 +57,8 @@ public:
         return "echo=" + value->second;
     }
 
-    void safeStopAll() noexcept override {}
+    void safeStopAll() noexcept override { ++safeStops; }
+    int safeStops = 0;
 };
 
 void runInterruptedChild(const std::string& databasePath, const QString& markerPath)
@@ -73,9 +75,13 @@ void runInterruptedChild(const std::string& databasePath, const QString& markerP
     step.title = "Первое измерение";
     step.tuRequirement = "test.1";
     step.procedure = "test.measure";
-    scenario.steps.push_back(step);
+    ScenarioNode group;
+    group.id = "group";
+    group.title = "Группа измерений";
+    group.children.push_back(step);
     step.id = "second";
-    scenario.steps.push_back(step);
+    group.children.push_back(step);
+    scenario.steps.push_back(group);
     ScenarioEngine engine;
     engine.registerProcedure("test.measure", [](const ScenarioNode&, ProcedureContext& context) {
         (void)context.equipment.invoke("test.echo", "ping", {{"value", "42"}});
@@ -89,7 +95,8 @@ void runInterruptedChild(const std::string& databasePath, const QString& markerP
     AuditEquipment equipment;
     (void)runScenarioWithEvidence(engine, equipment, scenario, "simulator", "SN", false,
         {}, nullptr, [&](const ScenarioRunResult& snapshot) {
-            store.saveCheckpoint(snapshot);
+            if (snapshot.steps.empty()) store.save(snapshot);
+            else store.saveCheckpoint(snapshot);
             if (!snapshot.steps.empty()) {
                 QFile marker(markerPath);
                 if (!marker.open(QIODevice::WriteOnly | QIODevice::Truncate)) std::_Exit(24);
@@ -287,7 +294,10 @@ int main(int argc, char** argv)
         checkpoint.evidence.clear();
         checkpoint.artifacts.clear();
         checkpoint.artifactDirectory.clear();
-        store.saveCheckpoint(checkpoint);
+        store.save(checkpoint);
+        bool collisionRejected = false;
+        try { store.save(checkpoint); } catch (const std::exception&) { collisionRejected = true; }
+        require(collisionRejected, "a new run replaced an existing incomplete run");
         auto partial = store.load(checkpoint.runId);
         require(partial && partial->verdict == RunVerdict::Incomplete && partial->steps.empty(),
                 "initial checkpoint was not persisted");
@@ -314,6 +324,32 @@ int main(int argc, char** argv)
         partial = store.load(checkpoint.runId);
         require(completedRunProtected && partial && partial->verdict == RunVerdict::Ok,
                 "completed run was replaced by a stale checkpoint");
+
+        auto lockedRun = checkpoint;
+        lockedRun.runId = "locked-run";
+        lockedRun.finishedAt = {};
+        lockedRun.verdict = RunVerdict::Incomplete;
+        store.save(lockedRun);
+        const QString lockConnection = QStringLiteral("checkpoint_lock_test");
+        {
+            auto blocker = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), lockConnection);
+            blocker.setDatabaseName(path);
+            require(blocker.open(), "cannot open competing database connection");
+            QSqlQuery lockQuery(blocker);
+            require(lockQuery.exec(QStringLiteral("BEGIN EXCLUSIVE")), "cannot lock test database");
+            QElapsedTimer elapsed;
+            elapsed.start();
+            bool lockedRejected = false;
+            try { store.saveCheckpoint(lockedRun); }
+            catch (const std::exception&) { lockedRejected = true; }
+            require(lockedRejected && elapsed.elapsed() < 2000,
+                    "database lock blocked checkpoint failure for too long");
+            require(lockQuery.exec(QStringLiteral("ROLLBACK")), "cannot release test database lock");
+            blocker.close();
+        }
+        QSqlDatabase::removeDatabase(lockConnection);
+        require(store.load(lockedRun.runId).has_value(),
+                "locked checkpoint damaged the previously stored run");
 
         ScenarioDefinition liveScenario;
         liveScenario.id = "live-check";
@@ -349,7 +385,10 @@ int main(int argc, char** argv)
         AuditEquipment simulatedEquipment;
         auto liveResult = runScenarioWithEvidence(liveEngine, simulatedEquipment, liveScenario,
             "simulator", "SN", false, {}, nullptr,
-            [&](const ScenarioRunResult& snapshot) { store.saveCheckpoint(snapshot); });
+            [&](const ScenarioRunResult& snapshot) {
+                if (snapshot.steps.empty()) store.save(snapshot);
+                else store.saveCheckpoint(snapshot);
+            });
         require(performed == 2 && liveResult.verdict == RunVerdict::Ok,
                 "live scenario did not finish");
         const auto persistedLive = store.load(liveResult.runId);
@@ -393,18 +432,21 @@ int main(int argc, char** argv)
 
         int writes = 0;
         performed = 0;
+        const int stopsBeforeFailedStart = simulatedEquipment.safeStops;
         auto failedStart = runScenarioWithEvidence(liveEngine, simulatedEquipment, liveScenario,
             "simulator", "SN", false, {}, nullptr,
             [&](const ScenarioRunResult&) { throw std::runtime_error("database unavailable"); });
         require(performed == 0 && failedStart.persistenceFailed
-                    && failedStart.verdict == RunVerdict::Error,
+                    && failedStart.verdict == RunVerdict::Error
+                    && simulatedEquipment.safeStops == stopsBeforeFailedStart + 1,
                 "failure to create the initial checkpoint allowed a simulated action");
 
         auto failedWrite = runScenarioWithEvidence(liveEngine, simulatedEquipment, liveScenario,
             "simulator", "SN", false, {}, nullptr,
             [&](const ScenarioRunResult& snapshot) {
                 if (++writes == 2) throw std::runtime_error("simulated write failure");
-                store.saveCheckpoint(snapshot);
+                if (snapshot.steps.empty()) store.save(snapshot);
+                else store.saveCheckpoint(snapshot);
             });
         require(performed == 1 && failedWrite.persistenceFailed
                     && failedWrite.verdict == RunVerdict::Error
@@ -433,11 +475,14 @@ int main(int argc, char** argv)
         require(recovered && recovered->verdict == RunVerdict::Incomplete
                     && recovered->finishedAt == std::chrono::system_clock::time_point{}
                     && recovered->steps.size() == 1
-                    && recovered->steps.front().measurements.size() == 1,
-                "interrupted run did not retain the confirmed measurement");
+                    && recovered->steps.front().nodeId == "group"
+                    && recovered->steps.front().children.size() == 1
+                    && recovered->steps.front().children.front().nodeId == "first"
+                    && recovered->steps.front().children.front().measurements.size() == 1,
+                "interrupted run did not retain the nested confirmed measurement");
         const auto unfinished = recoveredStore.unfinishedRuns();
         require(unfinished.size() == 1 && unfinished.front().runId == interruptedId
-                    && unfinished.front().steps.front().measurements.front().measured == 42,
+                    && unfinished.front().steps.front().children.front().measurements.front().measured == 42,
                 "interrupted run was not available in the recovery list");
 
         const auto restored = store.load("context-run");

@@ -590,6 +590,13 @@ void MainWindow::setupToolBar()
     auto* unfinishedRunsAction = toolsMenu_->addAction(QStringLiteral("Незавершённые проверки"));
     unfinishedRunsAction->setObjectName(QStringLiteral("unfinishedRunsAction"));
     connect(unfinishedRunsAction, &QAction::triggered, this, [this] {
+        // Просмотр открывает отдельное соединение с БД. Во время проверки
+        // доступен её текущий экран; история открывается после завершения.
+        if (stationSession_.busy()) {
+            QMessageBox::information(this, QStringLiteral("Незавершённые проверки"),
+                QStringLiteral("Откройте историю после завершения активной проверки."));
+            return;
+        }
         const auto path = QDir(QCoreApplication::applicationDirPath()).filePath("runs/runs.db");
         if (!QFileInfo::exists(path)) {
             QMessageBox::information(this, QStringLiteral("Незавершённые проверки"),
@@ -885,7 +892,11 @@ void MainWindow::initializeStandRuntime()
                             .arg(productionReportPath));
                 }
             } catch (const std::exception& error) {
-                log(QStringLiteral("Не удалось сохранить результат: %1").arg(QString::fromUtf8(error.what())));
+                const auto detail = QString::fromUtf8(error.what());
+                log(QStringLiteral("Не удалось сохранить результат: %1").arg(detail));
+                QMessageBox::warning(this, QStringLiteral("Результат не сохранён"),
+                    QStringLiteral("Результат проверки остался в памяти и не записан в базу.\n%1")
+                        .arg(detail));
             }
             if (!dedicatedProductionFinalizer)
                 testPage_->setRunResult(result, tuReportPath, productionReportPath);

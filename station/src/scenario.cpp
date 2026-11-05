@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <iomanip>
+#include <optional>
 #include <random>
 #include <sstream>
 #include <stdexcept>
@@ -489,6 +490,10 @@ ScenarioRunResult ScenarioEngine::run(
         run.verdict = RunVerdict::Error;
         run.events.push_back({std::chrono::system_clock::now(), {}, "PERSISTENCE_ERROR",
                               run.persistenceError, RunVerdict::Error});
+        // Подготовка могла быть выполнена до запуска сценария. Даже если
+        // начало проверки не удалось записать, ранее созданные приборы
+        // должны получить команду завершения.
+        equipment.safeStopAll();
         finish();
         return run;
     }
@@ -538,15 +543,39 @@ ScenarioRunResult ScenarioEngine::run(
         }
     }
 
-    std::vector<StepRunResult> completedSteps;
+    std::map<std::string, StepRunResult> completedSteps;
+    std::function<std::optional<StepRunResult>(const ScenarioNode&)> partialNode;
+    partialNode = [&](const ScenarioNode& node) -> std::optional<StepRunResult> {
+        if (node.children.empty()) {
+            const auto found = completedSteps.find(node.id);
+            return found == completedSteps.end() ? std::nullopt
+                                                  : std::optional<StepRunResult>(found->second);
+        }
+        StepRunResult group;
+        group.nodeId = node.id;
+        group.title = node.title;
+        group.tuRequirement = node.tuRequirement;
+        group.verdict = RunVerdict::Incomplete;
+        group.message = "Группа не завершена";
+        for (const auto& child : node.children) {
+            auto partial = partialNode(child);
+            if (partial) group.children.push_back(std::move(*partial));
+        }
+        if (group.children.empty()) return std::nullopt;
+        return group;
+    };
     ProcedureContext context{equipment, stopRequested_, publish, run.runId, {}, {}};
     if (checkpointSink) {
         context.stepCompleted = [&](const StepRunResult& step) {
-            completedSteps.push_back(step);
+            completedSteps[step.nodeId] = step;
             auto partial = run;
-            // Промежуточные результаты листовых шагов видны по мере готовности;
-            // итоговый снимок содержит полное дерево групп.
-            partial.steps = completedSteps;
+            // В промежуточном снимке сохраняем путь каждого законченного
+            // шага, чтобы после прерывания восстановить его группу и порядок.
+            partial.steps.clear();
+            for (const auto& root : scenario.steps) {
+                auto node = partialNode(root);
+                if (node) partial.steps.push_back(std::move(*node));
+            }
             partial.verdict = RunVerdict::Incomplete;
             partial.finishedAt = {};
             if (!checkpoint(partial)) {
