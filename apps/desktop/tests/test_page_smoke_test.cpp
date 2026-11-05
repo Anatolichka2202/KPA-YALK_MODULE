@@ -160,6 +160,29 @@ int main(int argc, char** argv)
     require(launcherRunRequested,
             "launcher must dispatch the selected workflow together with its scenario");
 
+    const QVector<GenericScenarioEntry> launcherEntries = {
+        {QStringLiteral("first"), QStringLiteral("Первый"), QStringLiteral("Проверка"),
+         QStringLiteral("check"), QStringLiteral("1"), QStringLiteral("same.yaml"), {}},
+        {QStringLiteral("second"), QStringLiteral("Второй"), QStringLiteral("Проверка"),
+         QStringLiteral("check"), QStringLiteral("1"), QStringLiteral("same.yaml"), {}}};
+    launcher.setScenarios(launcherEntries);
+    launcher.selectScenario(QStringLiteral("same.yaml"), QStringLiteral("second"));
+    require(launcher.currentWorkflowId() == QStringLiteral("second"), "scenario selection lost workflow");
+    launcher.setRunning(true, QStringLiteral("Выполняется проверка"));
+    launcher.setScenarios(launcherEntries);
+    auto* launcherEdit = launcher.findChild<QPushButton*>(QStringLiteral("editGenericScenario"));
+    require(launcherEdit && !launcherEdit->isEnabled() && !launcherRun->isEnabled()
+                && !launcherScenario->isEnabled()
+                && launcher.currentWorkflowId() == QStringLiteral("second"),
+            "refreshing scenarios changed active workflow or enabled controls during a run");
+    launcher.setRunning(false);
+    launcher.setScenarios({{QStringLiteral("free"), QStringLiteral("Проверка"), QStringLiteral("Нет модуля"),
+        QStringLiteral("missing"), QStringLiteral("1"), QStringLiteral("missing.yaml"), {}, true, true,
+        QStringLiteral("Модуль действия не найден")}});
+    require(!launcherRun->isEnabled() && launcherEdit->isEnabled()
+                && launcherResources->text().contains(QStringLiteral("Модуль действия не найден")),
+            "scenario with missing module was hidden or offered for execution");
+
     bool commandConfirmed = false;
     int commandInvocations = 0;
     std::map<std::string, std::string> receivedArguments;

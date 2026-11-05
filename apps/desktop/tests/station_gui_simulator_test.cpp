@@ -1,5 +1,6 @@
 #include "universal_mainwindow.h"
 #include "generic_check_dialog.h"
+#include "scenario_visual_editor.h"
 #include "main_page.h"
 #include "metadata_service.h"
 #include "address_sets_widget.h"
@@ -317,6 +318,42 @@ int runChild(const QString& mode)
     auto* events = dialog->findChild<QTextBrowser*>(QStringLiteral("genericEventLog"));
     require(scenarios && scenarios->count() == 1 && run && run->isEnabled(),
             "simulated scenario is unavailable in dialog");
+    if (mode == "--complete") {
+        auto* edit = dialog->findChild<QPushButton*>(QStringLiteral("editGenericScenario"));
+        require(edit && edit->isEnabled(), "scenario edit action unavailable");
+        bool visualOpened = false;
+        bool draftCreated = false;
+        QTimer::singleShot(0, [&visualOpened, &draftCreated] {
+            if (auto* editor = qobject_cast<ScenarioVisualEditor*>(QApplication::activeModalWidget())) {
+                visualOpened = true;
+                auto* copy = editor->findChild<QPushButton*>(QStringLiteral("createScenarioVisualDraft"));
+                if (copy && copy->isVisible()) {
+                    copy->click();
+                    draftCreated = editor->currentPath().endsWith(QStringLiteral("_draft.yaml"));
+                    auto* add = editor->findChild<QPushButton*>(QStringLiteral("addScenarioRootStep"));
+                    auto* save = editor->findChild<QPushButton*>(QStringLiteral("saveScenarioVisual"));
+                    if (add && save) { add->click(); save->click(); }
+                    else draftCreated = false;
+                }
+                editor->accept();
+            }
+        });
+        edit->click();
+        auto* preview = dialog->findChild<QLabel*>(QStringLiteral("genericResourcePreview"));
+        require(visualOpened && draftCreated && scenarios->count() == 2 && preview
+                    && preview->text().contains(QStringLiteral("Требует настройки"))
+                    && scenarios->currentText().contains(QStringLiteral("Черновик")) && !run->isEnabled(),
+                "draft creation did not return to the new non-runnable scenario");
+        const QString draftPath = scenarios->currentData().toString();
+        for (int i = 0; i < scenarios->count(); ++i) {
+            if (!scenarios->itemText(i).contains(QStringLiteral("Черновик"))) {
+                scenarios->setCurrentIndex(i);
+                break;
+            }
+        }
+        require(run->isEnabled(), "published simulator scenario became unavailable");
+        require(QFile::remove(draftPath), "cannot remove isolated test draft");
+    }
     run->click();
     require(!run->isEnabled(), "scenario was not started from the dialog");
     const QString lockConnection = QStringLiteral("gui_stop_lock");

@@ -118,6 +118,7 @@ GenericCheckDialog::GenericCheckDialog(QWidget* parent)
 
     auto* setupActions = new QHBoxLayout;
     editScenarioButton_ = new QPushButton(QStringLiteral("Редактировать сценарий"), setup);
+    editScenarioButton_->setObjectName(QStringLiteral("editGenericScenario"));
     setupActions->addWidget(editScenarioButton_);
     setupActions->addStretch(1);
     setupLayout->addLayout(setupActions);
@@ -208,24 +209,47 @@ GenericCheckDialog::GenericCheckDialog(QWidget* parent)
 
 void GenericCheckDialog::setScenarios(const QVector<GenericScenarioEntry>& scenarios)
 {
+    const QString previousPath = selectedScenarioPath();
+    const QString previousWorkflow = selectedWorkflowId();
     scenario_->clear();
     for (const auto& entry : scenarios) {
         const QString label = QStringLiteral("%1  ·  %2  ·  v%3")
             .arg(entry.title, entry.id, entry.version);
-        scenario_->addItem(label, entry.path);
+        scenario_->addItem(entry.published ? label : label + QStringLiteral("  ·  Черновик"), entry.path);
         const int index = scenario_->count() - 1;
         scenario_->setItemData(index, entry.workflowId, Qt::UserRole + 1);
         scenario_->setItemData(index, entry.workflowTitle, Qt::UserRole + 2);
         scenario_->setItemData(index, entry.requiredResources, Qt::UserRole + 3);
         scenario_->setItemData(index, entry.resourcesConfigured, Qt::UserRole + 4);
+        scenario_->setItemData(index, entry.published, Qt::UserRole + 5);
+        scenario_->setItemData(index, entry.validationError, Qt::UserRole + 6);
     }
+    selectScenario(previousPath, previousWorkflow);
     const bool available = scenario_->count() > 0;
-    runButton_->setEnabled(available);
-    editScenarioButton_->setEnabled(available);
-    status_->setText(available
+    const bool running = stopButton_->isEnabled();
+    scenario_->setEnabled(!running);
+    runButton_->setEnabled(available && !running);
+    editScenarioButton_->setEnabled(available && !running);
+    if (!running) status_->setText(available
         ? QStringLiteral("Доступно сценариев: %1").arg(scenario_->count())
         : QStringLiteral("В выбранном проекте нет доступных динамических сценариев"));
     updateResourcePreview();
+}
+
+void GenericCheckDialog::selectScenario(const QString& path, const QString& workflowId)
+{
+    for (int index = 0; index < scenario_->count(); ++index) {
+        if (scenario_->itemData(index).toString() == path
+            && (workflowId.isEmpty() || scenario_->itemData(index, Qt::UserRole + 1).toString() == workflowId)) {
+            scenario_->setCurrentIndex(index);
+            return;
+        }
+    }
+}
+
+QString GenericCheckDialog::currentWorkflowId() const
+{
+    return selectedWorkflowId();
 }
 
 void GenericCheckDialog::setRunning(bool running, const QString& detail)
@@ -331,6 +355,8 @@ void GenericCheckDialog::updateResourcePreview()
     const QString workflow = scenario_->currentData(Qt::UserRole + 2).toString();
     const QStringList resources = scenario_->currentData(Qt::UserRole + 3).toStringList();
     const bool configured = scenario_->currentData(Qt::UserRole + 4).toBool();
+    const bool published = scenario_->currentData(Qt::UserRole + 5).toBool();
+    const QString validationError = scenario_->currentData(Qt::UserRole + 6).toString();
     if (workflow.isEmpty()) {
         resourcePreview_->setText(QStringLiteral("Ресурсы стенда: не определены"));
         runButton_->setEnabled(false);
@@ -341,8 +367,9 @@ void GenericCheckDialog::updateResourcePreview()
         : resources.join(QStringLiteral(", "));
     resourcePreview_->setText(QStringLiteral(
         "Процесс: %1\nТребуемые ресурсы и привязки: %2\nФизическая готовность проверяется при запуске.")
-        .arg(workflow, required));
-    if (!stopButton_->isEnabled()) runButton_->setEnabled(configured);
+        .arg(workflow, required) + (published ? QString() : QStringLiteral("\nЧерновик нельзя запустить как приёмочную проверку."))
+        + (validationError.isEmpty() ? QString() : QStringLiteral("\nТребует настройки: %1").arg(validationError)));
+    if (!stopButton_->isEnabled()) runButton_->setEnabled(configured && published && validationError.isEmpty());
 }
 
 QString GenericCheckDialog::defaultReportTemplate() const

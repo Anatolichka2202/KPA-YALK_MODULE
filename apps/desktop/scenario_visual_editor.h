@@ -29,6 +29,7 @@ class ScenarioVisualEditor final : public QDialog {
 public:
     explicit ScenarioVisualEditor(QString path, QWidget* parent = nullptr);
     void setAvailableProcedures(const std::vector<std::string>& procedures);
+    QString currentPath() const { return path_; }
 
 public slots:
     void done(int result) override;

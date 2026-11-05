@@ -24,6 +24,8 @@ struct GenericScenarioEntry
     QString path;
     QStringList requiredResources;
     bool resourcesConfigured = true;
+    bool published = true;
+    QString validationError;
 };
 
 class GenericCheckDialog final : public QDialog
@@ -34,6 +36,8 @@ public:
     explicit GenericCheckDialog(QWidget* parent = nullptr);
 
     void setScenarios(const QVector<GenericScenarioEntry>& scenarios);
+    void selectScenario(const QString& path, const QString& workflowId = {});
+    QString currentWorkflowId() const;
     void setRunning(bool running, const QString& detail = {});
     void appendEvent(const orbita::stand::RunEvent& event);
     void setReportHtml(const QString& html, const QString& summary);

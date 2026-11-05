@@ -2,7 +2,7 @@
 
 #include "generic_check_dialog.h"
 #include "home_page.h"
-#include "scenario_yaml_editor.h"
+#include "scenario_visual_editor.h"
 #include "station_admin_dialog.h"
 
 #include <QCoreApplication>
@@ -142,11 +142,6 @@ void UniversalMainWindow::reloadGenericScenarios()
             const auto scenario = orbita::stand::loadScenarioYaml(
                 file.absoluteFilePath().toUtf8().toStdString());
             const auto errors = engine->validate(scenario);
-            if (!errors.empty()) {
-                integrationLog(QStringLiteral("Свободный сценарий %1 пропущен: %2")
-                    .arg(file.fileName(), QString::fromStdString(errors.front())));
-                continue;
-            }
             QMap<QString, bool> requirements;
             std::function<void(const orbita::stand::ScenarioNode&)> collectRequirements;
             collectRequirements = [&](const orbita::stand::ScenarioNode& node) {
@@ -192,7 +187,9 @@ void UniversalMainWindow::reloadGenericScenarios()
                     QString::fromStdString(scenario.version),
                     file.absoluteFilePath(),
                     required,
-                    resourcesConfigured});
+                    resourcesConfigured,
+                    scenario.publicationState == orbita::stand::PublicationState::Published,
+                    errors.empty() ? QString() : QString::fromStdString(errors.front())});
             }
         } catch (const std::exception& error) {
             integrationLog(QStringLiteral("Свободный сценарий %1 не загружен: %2")
@@ -205,11 +202,14 @@ void UniversalMainWindow::reloadGenericScenarios()
 void UniversalMainWindow::editGenericScenario(const QString& path)
 {
     if (genericWatcher_->isRunning() || !QFileInfo::exists(path)) return;
-    ScenarioYamlEditor editor(path, this);
+    const QString workflowId = genericDialog_ ? genericDialog_->currentWorkflowId() : QString();
+    ScenarioVisualEditor editor(path, this);
     if (auto* engine = integrationScenarioEngine())
         editor.setAvailableProcedures(engine->registeredProcedures());
     editor.exec();
+    const QString currentPath = editor.currentPath();
     reloadGenericScenarios();
+    if (genericDialog_) genericDialog_->selectScenario(currentPath, workflowId);
 }
 
 void UniversalMainWindow::runGenericScenario(
