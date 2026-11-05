@@ -58,6 +58,24 @@ public:
     // до завершения подготовки, выполнения и безопасной остановки приборов.
     std::shared_ptr<Activity> beginActivity();
 
+    // Доступ к операциям подготовки действует только внутри prepare();
+    // резерв удерживается на всю последовательность обращения к приборам.
+    class Preparation final {
+        friend class StationSession;
+        explicit Preparation(StationSession& session) : session_(session) {}
+    public:
+        Preparation(const Preparation&) = delete;
+        Preparation& operator=(const Preparation&) = delete;
+        void clearPhysicalEquipment();
+        std::shared_ptr<EquipmentDevice> createEquipmentComponent(const std::string& componentId);
+        void bindEquipmentComponent(const std::string& componentId,
+            const std::shared_ptr<EquipmentDevice>& device, bool bindDefaultCapabilities = true);
+    private:
+        StationSession& session_;
+    };
+    void prepare(const std::shared_ptr<Activity>& activity,
+                 const std::function<void(Preparation&)>& operation);
+
     ScenarioEngine& scenarioEngine() noexcept { return *scenarioEngine_; }
     void resetScenarioEngine();
     void requestStop() noexcept { scenarioEngine_->requestStop(); }
@@ -168,6 +186,10 @@ private:
     };
     std::shared_ptr<Activity> claimActivity(std::shared_ptr<Activity> activity);
     void releaseActivity(const std::shared_ptr<Activity>& activity) noexcept;
+    void clearPhysicalEquipmentUnchecked() noexcept;
+    std::shared_ptr<EquipmentDevice> createEquipmentComponentUnchecked(const std::string& componentId);
+    void bindEquipmentComponentUnchecked(const std::string& componentId,
+        const std::shared_ptr<EquipmentDevice>& device, bool bindDefaultCapabilities);
     void clearEquipmentUnchecked() noexcept;
     void clearUnchecked() noexcept;
     void retainEquipmentDeviceUnchecked(std::shared_ptr<EquipmentDevice> device);

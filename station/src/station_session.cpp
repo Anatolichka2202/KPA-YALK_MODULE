@@ -74,6 +74,31 @@ StationSession::ActivityUse::ActivityUse(StationSession& session,
 
 StationSession::ActivityUse::~ActivityUse() { session_.releaseActivity(activity_); }
 
+void StationSession::prepare(const std::shared_ptr<Activity>& activity,
+    const std::function<void(Preparation&)>& operation)
+{
+    ActivityUse use(*this, activity);
+    Preparation preparation(*this);
+    operation(preparation);
+}
+
+void StationSession::Preparation::clearPhysicalEquipment()
+{
+    session_.clearPhysicalEquipmentUnchecked();
+}
+
+std::shared_ptr<EquipmentDevice> StationSession::Preparation::createEquipmentComponent(
+    const std::string& componentId)
+{
+    return session_.createEquipmentComponentUnchecked(componentId);
+}
+
+void StationSession::Preparation::bindEquipmentComponent(const std::string& componentId,
+    const std::shared_ptr<EquipmentDevice>& device, bool bindDefaultCapabilities)
+{
+    session_.bindEquipmentComponentUnchecked(componentId, device, bindDefaultCapabilities);
+}
+
 void StationSession::resetScenarioEngine()
 {
     ActivityGuard guard(*active_);
@@ -167,6 +192,12 @@ std::shared_ptr<EquipmentDevice> StationSession::createEquipmentComponent(
     const std::string& componentId, std::shared_ptr<Activity> activity)
 {
     ActivityUse use(*this, std::move(activity));
+    return createEquipmentComponentUnchecked(componentId);
+}
+
+std::shared_ptr<EquipmentDevice> StationSession::createEquipmentComponentUnchecked(
+    const std::string& componentId)
+{
     if (!configured_) {
         throw std::logic_error("StationSession must be configured before equipment readiness");
     }
@@ -212,6 +243,12 @@ void StationSession::bindEquipmentComponent(
     bool bindDefaultCapabilities, std::shared_ptr<Activity> activity)
 {
     ActivityUse use(*this, std::move(activity));
+    bindEquipmentComponentUnchecked(componentId, device, bindDefaultCapabilities);
+}
+
+void StationSession::bindEquipmentComponentUnchecked(const std::string& componentId,
+    const std::shared_ptr<EquipmentDevice>& device, bool bindDefaultCapabilities)
+{
     if (!configured_) {
         throw std::logic_error("StationSession must be configured before equipment binding");
     }
@@ -289,6 +326,11 @@ void StationSession::retainEquipmentDeviceUnchecked(std::shared_ptr<EquipmentDev
 void StationSession::clearPhysicalEquipment(std::shared_ptr<Activity> activity)
 {
     ActivityUse use(*this, std::move(activity));
+    clearPhysicalEquipmentUnchecked();
+}
+
+void StationSession::clearPhysicalEquipmentUnchecked() noexcept
+{
     equipment_.clearPhysical();
     equipmentDevices_.erase(std::remove_if(equipmentDevices_.begin(), equipmentDevices_.end(),
         [this](const auto& device) {

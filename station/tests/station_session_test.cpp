@@ -129,7 +129,15 @@ int main(int argc, char** argv)
         catch (const std::exception&) { clearSessionRejected = true; }
         require(clearSessionRejected && session.configured(),
                 "session was cleared during another activity");
-        session.clearPhysicalEquipment(activity);
+        bool runDuringPreparationRejected = false;
+        session.prepare(activity, [&](StationSession::Preparation& preparation) {
+            preparation.clearPhysicalEquipment();
+            auto concurrent = std::async(std::launch::async, [&] {
+                return session.runScenario(scenario, "profile", "SN", false, {}, activity);
+            });
+            runDuringPreparationRejected = concurrent.get().verdict == RunVerdict::Incomplete;
+        });
+        require(runDuringPreparationRejected, "scenario started while preparation held the reservation");
         require(session.equipment().hasCapability("test.simulator"),
                 "readiness removed the session service");
         require(session.runScenario(scenario, "profile", "SN", false, {}, activity).verdict

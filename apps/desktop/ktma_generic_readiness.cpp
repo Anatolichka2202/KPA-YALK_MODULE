@@ -76,8 +76,9 @@ void KtmaMainWindow::integrationPrepareEquipmentForScenario(
     auto* registry = integrationEquipmentRegistry();
     if (!registry) throw std::runtime_error("Реестр оборудования не инициализирован");
 
+    session.prepare(activity, [&](orbita::stand::StationSession::Preparation& preparation) {
     const auto required = scenarioCapabilities(scenario);
-    session.clearPhysicalEquipment(activity);
+    preparation.clearPhysicalEquipment();
 
     // Application-level services survive clearPhysicalEquipment(), but these two
     // bindings are intentionally refreshed so a free scenario has the same
@@ -173,7 +174,7 @@ void KtmaMainWindow::integrationPrepareEquipmentForScenario(
 
     const bool ubsiWorkflow = scenario.objectType.rfind("UBSI", 0) == 0;
 
-    auto prepareComponent = [this, &session, &profile, activity](
+    auto prepareComponent = [this, &preparation, &profile](
         const orbita::stand::ComponentProfile& component, bool armUbsiSupply) {
         if (!component.enabled) {
             const auto reason = component.configuration.find("disabled_reason");
@@ -187,7 +188,7 @@ void KtmaMainWindow::integrationPrepareEquipmentForScenario(
 
         std::shared_ptr<orbita::stand::EquipmentDevice> device;
         try {
-            device = session.createEquipmentComponent(component.id, activity);
+            device = preparation.createEquipmentComponent(component.id);
             const auto& capabilities = componentCapabilities(component);
             if (capabilities.empty())
                 throw std::runtime_error("В профиле не указана capability оборудования");
@@ -224,7 +225,7 @@ void KtmaMainWindow::integrationPrepareEquipmentForScenario(
                     throw std::runtime_error("Источник не подтвердил питание УБСИ 27 В");
             }
 
-            session.bindEquipmentComponent(component.id, device, true, activity);
+            preparation.bindEquipmentComponent(component.id, device, true);
             integrationLog(QStringLiteral("%1: готово · %2")
                 .arg(QString::fromStdString(component.id),
                      QString::fromStdString(finalResponse).trimmed()));
@@ -261,9 +262,10 @@ void KtmaMainWindow::integrationPrepareEquipmentForScenario(
             }
         }
     } catch (...) {
-        session.clearPhysicalEquipment(activity);
+        preparation.clearPhysicalEquipment();
         QApplication::restoreOverrideCursor();
         throw;
     }
     QApplication::restoreOverrideCursor();
+    });
 }
