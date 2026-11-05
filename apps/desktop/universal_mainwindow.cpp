@@ -317,6 +317,8 @@ void UniversalMainWindow::runGenericScenario(
         [this, workflowId, path, scenario, profileVersion, serial, activity,
          scenarioConfigSnapshot, description, engineeringOverride]() mutable {
             auto reservation = std::move(activity);
+            auto checkpoints = orbita::stand::makeIntermediateCheckpointSink(
+                QDir(QCoreApplication::applicationDirPath()).filePath("runs/runs.db").toStdString());
             const auto progress = [this](const orbita::stand::RunEvent& event) {
                 QMetaObject::invokeMethod(this, [this, event] {
                     if (genericDialog_) genericDialog_->appendEvent(event);
@@ -335,7 +337,7 @@ void UniversalMainWindow::runGenericScenario(
                 context.attributes["scenario_config_source"] = path.toUtf8().toStdString();
                 auto result = integrationStationSession().runWorkflow(
                     *project, workflowId.toStdString(), profileVersion, serial, false,
-                    std::move(context), &scenario, progress, reservation);
+                    std::move(context), &scenario, progress, reservation, checkpoints);
                 result.contextAttributes["engineering_description"] = description.toUtf8().toStdString();
                 result.contextAttributes["engineering_override_note"] = engineeringOverride.toUtf8().toStdString();
                 result.contextAttributes["scenario_config_sha256"] = QCryptographicHash::hash(
@@ -384,7 +386,7 @@ void UniversalMainWindow::runGenericScenario(
             // Compatibility fallback for development layouts that do not yet
             // deploy project packages next to the executable.
             auto result = integrationStationSession().runScenario(
-                scenario, profileVersion, serial, false, progress, reservation);
+                scenario, profileVersion, serial, false, progress, reservation, checkpoints);
             result.contextAttributes["engineering_description"] = description.toUtf8().toStdString();
             result.contextAttributes["engineering_override_note"] = engineeringOverride.toUtf8().toStdString();
             result.contextAttributes["scenario_config_sha256"] = QCryptographicHash::hash(

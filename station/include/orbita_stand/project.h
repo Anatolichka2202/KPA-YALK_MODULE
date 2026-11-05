@@ -96,7 +96,8 @@ ScenarioRunResult runScenarioWithEvidence(
     std::string objectSerial,
     bool allowPartial,
     std::function<void(const RunEvent&)> progressSink = {},
-    ResourceLeaseManager* resourceLeases = nullptr);
+    ResourceLeaseManager* resourceLeases = nullptr,
+    std::function<void(const ScenarioRunResult&)> checkpointSink = {});
 
 // Execute one workflow through the ordinary ScenarioEngine and attach the
 // project/workflow identity to ScenarioRunResult. A fixed workflow loads its
@@ -113,6 +114,7 @@ ScenarioRunResult runProjectWorkflow(
     ProjectRunContext context = {},
     const ScenarioDefinition* scenarioOverride = nullptr,
     std::function<void(const RunEvent&)> progressSink = {},
-    ResourceLeaseManager* resourceLeases = nullptr);
+    ResourceLeaseManager* resourceLeases = nullptr,
+    std::function<void(const ScenarioRunResult&)> checkpointSink = {});
 
 } // namespace orbita::stand

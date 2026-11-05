@@ -451,22 +451,37 @@ int main(int argc, char** argv)
     simulatedStation.scenarioEngine().registerProcedure("second.procedure", [](const auto&, auto&) {
         return orbita::stand::ProcedureResult{orbita::stand::RunVerdict::Ok, "Готово", {}};
     });
+    const auto simulatedDatabase = QDir(editorFixture.path()).filePath(QStringLiteral("simulated-runs.db"));
+    orbita::stand::RunStore simulatedResults(simulatedDatabase.toStdString());
+    auto checkpoints = orbita::stand::makeIntermediateCheckpointSink(simulatedDatabase.toStdString());
+    std::string activeRunId;
+    bool snapshotBeforeRead = false;
     int simulatedReads = 0;
     simulatedStation.equipment().bind("orbita.parameter_source",
         [&](const std::string&, const std::map<std::string, std::string>&) {
             ++simulatedReads;
+            const auto initial = simulatedResults.load(activeRunId);
+            snapshotBeforeRead = initial && initial->verdict == orbita::stand::RunVerdict::Incomplete
+                && initial->contextAttributes.count("scenario_definition_json") == 1;
             return std::string("status=ready\nframes_processed=10\nphrase_error_percent=1\n"
                                "group_error_percent=2\nchannel_count=4\n");
         });
     const auto editedScenario = orbita::stand::loadScenarioYaml(visualPath.toStdString());
-    const auto simulatedRun = simulatedStation.runScenario(editedScenario, "simulator", "SN", true);
-    require(simulatedReads == 1 && !simulatedRun.steps.empty()
+    const auto simulatedRun = simulatedStation.runScenario(editedScenario, "simulator", "SN", true,
+        {}, {}, [&](const orbita::stand::ScenarioRunResult& snapshot) {
+            checkpoints(snapshot);
+            activeRunId = snapshot.runId;
+        });
+    require(snapshotBeforeRead && simulatedReads == 1 && !simulatedRun.steps.empty()
                 && simulatedRun.steps.front().measurements.size() == 4
                 && simulatedRun.verdict == orbita::stand::RunVerdict::Incomplete,
             "editor scenario must run its diagnostic action on the simulated source");
-    orbita::stand::RunStore simulatedResults(
-        QDir(editorFixture.path()).filePath(QStringLiteral("simulated-runs.db")).toStdString());
-    simulatedResults.save(simulatedRun);
+    const auto intermediate = simulatedResults.load(simulatedRun.runId);
+    require(intermediate && intermediate->finishedAt == std::chrono::system_clock::time_point{}
+                && !intermediate->steps.empty()
+                && intermediate->steps.front().measurements.size() == 4,
+            "simulated measurements must be persisted while the run is unfinished");
+    simulatedResults.saveCheckpoint(simulatedRun);
     const auto restoredRun = simulatedResults.load(simulatedRun.runId);
     require(restoredRun && restoredRun->scenarioId == "visual"
                 && restoredRun->scenarioVersion == "1"

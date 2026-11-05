@@ -263,12 +263,40 @@ RunStore::~RunStore()
 
 void RunStore::save(const ScenarioRunResult& run)
 {
+    saveImpl(run, false);
+}
+
+void RunStore::saveCheckpoint(const ScenarioRunResult& run)
+{
+    saveImpl(run, true);
+}
+
+void RunStore::saveImpl(const ScenarioRunResult& run, bool replaceIncomplete)
+{
     if (!run.artifacts.empty() && run.artifactDirectory.empty()) {
         throw std::runtime_error("Artifact references require an artifact directory");
     }
     if (!impl_->database.transaction()) throw std::runtime_error("Cannot start run log transaction");
     try {
         QSqlQuery query(impl_->database);
+        if (replaceIncomplete) {
+            if (run.runId.empty()) throw std::invalid_argument("Идентификатор запуска не задан");
+            query.prepare(QStringLiteral("SELECT finished_ms FROM test_runs WHERE run_id=?"));
+            query.addBindValue(QString::fromUtf8(run.runId));
+            executePrepared(query);
+            const bool exists = query.next();
+            const bool finished = exists && query.value(0).toLongLong() != 0;
+            query.finish();
+            if (finished) throw std::runtime_error("Завершённый запуск нельзя перезаписать");
+            if (exists) {
+                // Удаление и повторная вставка выполняются в одной транзакции;
+                // сбой на любом шаге восстанавливает предыдущий снимок целиком.
+                query.prepare(QStringLiteral("DELETE FROM test_runs WHERE run_id=?"));
+                query.addBindValue(QString::fromUtf8(run.runId));
+                executePrepared(query);
+                query.finish();
+            }
+        }
         query.prepare(QStringLiteral(
             "INSERT INTO test_runs("
             "run_id,scenario_id,scenario_version,catalog_version,profile_version,object_serial,"
@@ -351,6 +379,38 @@ void RunStore::save(const ScenarioRunResult& run)
         impl_->database.rollback();
         throw;
     }
+}
+
+std::function<void(const ScenarioRunResult&)> makeIntermediateCheckpointSink(std::string sqlitePath)
+{
+    struct State {
+        std::string path;
+        std::unique_ptr<RunStore> store;
+    };
+    auto state = std::make_shared<State>();
+    state->path = std::move(sqlitePath);
+    return [state](const ScenarioRunResult& run) {
+        // Итоговый результат сначала дополняется контекстом и отчётами окна.
+        if (run.finishedAt != std::chrono::system_clock::time_point{}) return;
+        if (!state->store) state->store = std::make_unique<RunStore>(state->path);
+        state->store->saveCheckpoint(run);
+    };
+}
+
+std::vector<ScenarioRunResult> RunStore::unfinishedRuns() const
+{
+    QSqlQuery query(impl_->database);
+    execute(query, QStringLiteral(
+        "SELECT run_id FROM test_runs WHERE finished_ms=0 ORDER BY started_ms DESC,run_id"));
+    std::vector<std::string> ids;
+    while (query.next()) ids.push_back(query.value(0).toString().toUtf8().toStdString());
+    query.finish();
+    std::vector<ScenarioRunResult> results;
+    for (const auto& id : ids) {
+        auto run = load(id);
+        if (run) results.push_back(std::move(*run));
+    }
+    return results;
 }
 
 std::optional<ScenarioRunResult> RunStore::load(const std::string& runId) const

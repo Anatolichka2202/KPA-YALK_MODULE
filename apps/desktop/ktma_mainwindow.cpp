@@ -1035,11 +1035,30 @@ void KtmaMainWindow::runScenario(
         const auto* project = integrationProject();
         const std::string projectId = project ? project->id : std::string();
         const std::string projectVersion = project ? project->version : std::string();
+        const bool persistDuringRun = !integrationTuWorkflowActive();
         watcher->setFuture(QtConcurrent::run(
-            [this, scenario, profileVersion, serial, allowPartial, activity,
+            [this, scenario, profileVersion, serial, allowPartial, activity, persistDuringRun,
              yvpExcluded, overloadExcluded, survivalExcluded,
              selectedWorkflowContext, projectId, projectVersion]() mutable {
                 auto reservation = std::move(activity);
+                std::function<void(const orbita::stand::ScenarioRunResult&)> checkpoints;
+                if (persistDuringRun) {
+                    auto writer = orbita::stand::makeIntermediateCheckpointSink(
+                        QDir(QCoreApplication::applicationDirPath()).filePath("runs/runs.db").toStdString());
+                    checkpoints = [writer, selectedWorkflowContext, projectId, projectVersion](
+                                      const orbita::stand::ScenarioRunResult& snapshot) {
+                        auto enriched = snapshot;
+                        enriched.projectId = projectId;
+                        enriched.projectVersion = projectVersion;
+                        enriched.contextAttributes.insert(selectedWorkflowContext.begin(),
+                                                          selectedWorkflowContext.end());
+                        const auto workflow = selectedWorkflowContext.find("workflow_id");
+                        if (workflow != selectedWorkflowContext.end()) enriched.workflowId = workflow->second;
+                        const auto profile = selectedWorkflowContext.find("environment_profile");
+                        if (profile != selectedWorkflowContext.end()) enriched.environmentProfile = profile->second;
+                        writer(enriched);
+                    };
+                }
                 auto result = integrationStationSession().runScenario(
                     scenario, profileVersion, serial, allowPartial,
                     [this](const orbita::stand::RunEvent& event) {
@@ -1047,7 +1066,7 @@ void KtmaMainWindow::runScenario(
                             if (auto* testPage = integrationTestPage())
                                 testPage->setRunEvent(event);
                         }, Qt::QueuedConnection);
-                    }, reservation);
+                    }, reservation, checkpoints);
                 if (!selectedWorkflowContext.empty()) {
                     result.projectId = projectId;
                     result.projectVersion = projectVersion;

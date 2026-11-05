@@ -195,6 +195,11 @@ struct ScenarioRunResult {
     // RunArtifacts::attachTo(). Empty is valid for a run with no raw capture.
     std::string artifactDirectory;
     std::vector<ArtifactReference> artifacts;
+
+    // Ошибка записи относится к текущему выполнению и не является
+    // подтверждённым состоянием в базе результатов.
+    bool persistenceFailed = false;
+    std::string persistenceError;
 };
 
 struct SafeStopResult {
@@ -265,6 +270,7 @@ struct ProcedureContext {
     std::function<void(const RunEvent&)> eventSink;
     std::string runId;
     std::map<std::string, std::string> state;
+    std::function<void(const StepRunResult&)> stepCompleted;
 };
 
 using ProcedureFunction = std::function<ProcedureResult(
@@ -284,7 +290,8 @@ public:
         std::string objectSerial,
         bool allowPartial,
         std::function<void(const RunEvent&)> progressSink = {},
-        ResourceLeaseManager* resourceLeases = nullptr);
+        ResourceLeaseManager* resourceLeases = nullptr,
+        std::function<void(const ScenarioRunResult&)> checkpointSink = {});
     void requestStop() noexcept;
     void resetStop() noexcept;
     bool running() const noexcept { return running_.load(); }

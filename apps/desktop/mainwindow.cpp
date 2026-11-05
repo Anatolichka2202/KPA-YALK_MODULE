@@ -587,6 +587,48 @@ void MainWindow::setupToolBar()
     toolsMenu_ = menuBar()->addMenu("Инструменты");
     actScenario_ = toolsMenu_->addAction("Редактор сценариев (экспериментальный)");
     connect(actScenario_, &QAction::triggered, this, &MainWindow::onOpenScenario);
+    auto* unfinishedRunsAction = toolsMenu_->addAction(QStringLiteral("Незавершённые проверки"));
+    unfinishedRunsAction->setObjectName(QStringLiteral("unfinishedRunsAction"));
+    connect(unfinishedRunsAction, &QAction::triggered, this, [this] {
+        const auto path = QDir(QCoreApplication::applicationDirPath()).filePath("runs/runs.db");
+        if (!QFileInfo::exists(path)) {
+            QMessageBox::information(this, QStringLiteral("Незавершённые проверки"),
+                                     QStringLiteral("Незавершённых проверок нет."));
+            return;
+        }
+        try {
+            orbita::stand::RunStore reader(path.toUtf8().toStdString());
+            const auto runs = reader.unfinishedRuns();
+            QStringList lines;
+            std::function<void(const orbita::stand::StepRunResult&, int)> appendStep;
+            appendStep = [&](const orbita::stand::StepRunResult& step, int depth) {
+                const QString indent(depth * 2, QLatin1Char(' '));
+                lines << QStringLiteral("%1%2 — %3").arg(indent,
+                    QString::fromStdString(step.title),
+                    QString::fromLatin1(orbita::stand::toString(step.verdict)));
+                for (const auto& measurement : step.measurements)
+                    lines << QStringLiteral("%1  %2: %3 %4")
+                        .arg(indent, QString::fromStdString(measurement.title),
+                             QString::number(measurement.measured, 'g', 12),
+                             QString::fromStdString(measurement.unit));
+                for (const auto& child : step.children) appendStep(child, depth + 1);
+            };
+            for (const auto& run : runs) {
+                lines << QStringLiteral("%1 · версия %2 · %3")
+                    .arg(QString::fromStdString(run.scenarioTitle),
+                         QString::fromStdString(run.scenarioVersion),
+                         QString::fromStdString(run.runId));
+                for (const auto& step : run.steps) appendStep(step, 1);
+                lines << QString();
+            }
+            QMessageBox::information(this, QStringLiteral("Незавершённые проверки"),
+                lines.isEmpty() ? QStringLiteral("Незавершённых проверок нет.")
+                                : lines.join(QLatin1Char('\n')));
+        } catch (const std::exception& error) {
+            QMessageBox::warning(this, QStringLiteral("Незавершённые проверки"),
+                                 QString::fromUtf8(error.what()));
+        }
+    });
     auto* catalogAction = toolsMenu_->addAction("Каталог параметров");
     connect(catalogAction, &QAction::triggered, this, &MainWindow::onOpenCatalog);
     auto* profileAction = toolsMenu_->addAction("Профиль стенда и маршруты");
@@ -825,7 +867,9 @@ void MainWindow::initializeStandRuntime()
             bool resultSaved = false;
             lastResultSaved_ = false;
             try {
-                runStore_->save(result);
+                if (result.persistenceFailed)
+                    throw std::runtime_error(result.persistenceError);
+                runStore_->saveCheckpoint(result);
                 resultSaved = true;
                 lastResultSaved_ = true;
                 if (!dedicatedProductionFinalizer) {
@@ -964,13 +1008,15 @@ void MainWindow::onRunScenario(
              objectSerial.isEmpty() ? QStringLiteral("без заводского номера") : objectSerial));
     scenarioWatcher_->setFuture(QtConcurrent::run([this, scenario, serial, partial, activity]() mutable {
         auto reservation = std::move(activity);
+        auto checkpoints = orbita::stand::makeIntermediateCheckpointSink(
+            QDir(QCoreApplication::applicationDirPath()).filePath("runs/runs.db").toStdString());
         return stationSession_.runScenario(
             scenario, standProfile_.version, serial, partial,
             [this](const orbita::stand::RunEvent& event) {
                 QMetaObject::invokeMethod(this, [this, event]() {
                     testPage_->setRunEvent(event);
                 }, Qt::QueuedConnection);
-            }, reservation);
+            }, reservation, checkpoints);
     }));
 }
 

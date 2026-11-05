@@ -108,7 +108,8 @@ void StationSession::resetScenarioEngine()
 
 ScenarioRunResult StationSession::runScenario(const ScenarioDefinition& scenario,
     std::string profileVersion, std::string objectSerial, bool allowPartial,
-    std::function<void(const RunEvent&)> progressSink, std::shared_ptr<Activity> activity)
+    std::function<void(const RunEvent&)> progressSink, std::shared_ptr<Activity> activity,
+    std::function<void(const ScenarioRunResult&)> checkpointSink)
 {
     if (!activity) activity = beginActivity();
     if (!activity || (activity->owner_ != this || activity->active_ != active_)
@@ -120,13 +121,14 @@ ScenarioRunResult StationSession::runScenario(const ScenarioDefinition& scenario
     } guard{activity->executing_};
     return runScenarioWithEvidence(*scenarioEngine_, equipment_, scenario,
         std::move(profileVersion), std::move(objectSerial), allowPartial,
-        std::move(progressSink), &leases_);
+        std::move(progressSink), &leases_, std::move(checkpointSink));
 }
 
 ScenarioRunResult StationSession::runWorkflow(const ProjectDefinition& project,
     const std::string& workflowId, std::string profileVersion, std::string objectSerial,
     bool allowPartial, ProjectRunContext context, const ScenarioDefinition* scenarioOverride,
-    std::function<void(const RunEvent&)> progressSink, std::shared_ptr<Activity> activity)
+    std::function<void(const RunEvent&)> progressSink, std::shared_ptr<Activity> activity,
+    std::function<void(const ScenarioRunResult&)> checkpointSink)
 {
     if (!activity) activity = beginActivity();
     if (!activity || (activity->owner_ != this || activity->active_ != active_)

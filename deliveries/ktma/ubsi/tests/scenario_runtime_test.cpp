@@ -339,6 +339,17 @@ void engineSemantics()
     abortScenario.steps = {
         {"first", "First", "1.1", "stop", {"a"}, {}, {}},
         {"second", "Second", "1.2", "ok", {"a"}, {}, {}}};
+    auto groupedAbortScenario = smallScenario();
+    ScenarioNode group;
+    group.id = "group";
+    group.title = "Group";
+    group.children = {{"first", "First", "1.1", "stop", {"a"}, {}, {}},
+                      {"second", "Second", "1.2", "ok", {"a"}, {}, {}}};
+    groupedAbortScenario.steps = {group};
+    const auto groupedAbort = abortEngine.run(groupedAbortScenario, equipment, "p1", "", false);
+    require(groupedAbort.verdict == RunVerdict::Aborted,
+            "Stopping inside the final group must not report the run as successful");
+
     const auto abortedRun = abortEngine.run(abortScenario, equipment, "p1", "", false);
     require(abortedRun.verdict == RunVerdict::Aborted, "Operator stop must produce ABORTED");
     require(abortedRun.steps.size() == 2, "Abort must be recorded as the next step");

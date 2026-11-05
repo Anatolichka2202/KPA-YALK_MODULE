@@ -329,6 +329,10 @@ StepRunResult ScenarioEngine::runNode(
             const auto childVerdict = childResult.verdict;
             result.verdict = combineVerdicts(result.verdict, childVerdict);
             result.children.push_back(std::move(childResult));
+            if (context.stopRequested.load()) {
+                result.verdict = combineVerdicts(result.verdict, RunVerdict::Aborted);
+                break;
+            }
             if (shouldStop(childVerdict, allowPartial)) break;
         }
         result.message = result.verdict == RunVerdict::Ok
@@ -396,6 +400,7 @@ StepRunResult ScenarioEngine::runNode(
     context.eventSink({
         std::chrono::system_clock::now(), node.id, "FINISH", result.message,
         result.verdict});
+    if (node.children.empty() && context.stepCompleted) context.stepCompleted(result);
     return result;
 }
 
@@ -406,7 +411,8 @@ ScenarioRunResult ScenarioEngine::run(
     std::string objectSerial,
     bool allowPartial,
     std::function<void(const RunEvent&)> progressSink,
-    ResourceLeaseManager* resourceLeases)
+    ResourceLeaseManager* resourceLeases,
+    std::function<void(const ScenarioRunResult&)> checkpointSink)
 {
     bool expected = false;
     if (!running_.compare_exchange_strong(expected, true)) {
@@ -461,6 +467,32 @@ ScenarioRunResult ScenarioEngine::run(
         return run;
     }
 
+    // До первого воздействия фиксируем незавершённый запуск. При отказе
+    // записи процедура не получает доступ к источнику и оборудованию.
+    const auto checkpoint = [&](const ScenarioRunResult& snapshot) {
+        if (!checkpointSink || run.persistenceFailed) return !run.persistenceFailed;
+        try {
+            checkpointSink(snapshot);
+            return true;
+        } catch (const std::exception& error) {
+            run.persistenceFailed = true;
+            run.persistenceError = error.what();
+        } catch (...) {
+            run.persistenceFailed = true;
+            run.persistenceError = "Неизвестная ошибка записи";
+        }
+        return false;
+    };
+    auto initial = run;
+    initial.verdict = RunVerdict::Incomplete;
+    if (!checkpoint(initial)) {
+        run.verdict = RunVerdict::Error;
+        run.events.push_back({std::chrono::system_clock::now(), {}, "PERSISTENCE_ERROR",
+                              run.persistenceError, RunVerdict::Error});
+        finish();
+        return run;
+    }
+
     // A delivery declares its logical resources in ScenarioNode::requiredResources.
     // Claim the complete set once, before the first physical procedure. Keeping
     // the lease alive through engine.run() also keeps it alive through the
@@ -506,13 +538,24 @@ ScenarioRunResult ScenarioEngine::run(
         }
     }
 
-    ProcedureContext context{
-        equipment,
-        stopRequested_,
-        publish,
-        run.runId,
-        {},
-    };
+    std::vector<StepRunResult> completedSteps;
+    ProcedureContext context{equipment, stopRequested_, publish, run.runId, {}, {}};
+    if (checkpointSink) {
+        context.stepCompleted = [&](const StepRunResult& step) {
+            completedSteps.push_back(step);
+            auto partial = run;
+            // Промежуточные результаты листовых шагов видны по мере готовности;
+            // итоговый снимок содержит полное дерево групп.
+            partial.steps = completedSteps;
+            partial.verdict = RunVerdict::Incomplete;
+            partial.finishedAt = {};
+            if (!checkpoint(partial)) {
+                // Измерение остаётся в памяти результата, но дальнейшие шаги
+                // не запускаются после отказа записи контрольной точки.
+                stopRequested_.store(true);
+            }
+        };
+    }
 
     run.verdict = RunVerdict::Ok;
     std::string operationFailureReason;
@@ -526,7 +569,7 @@ ScenarioRunResult ScenarioEngine::run(
             }
             run.verdict = combineVerdicts(run.verdict, stepVerdict);
             run.steps.push_back(std::move(step));
-            if (shouldStop(stepVerdict, allowPartial)) break;
+            if (run.persistenceFailed || shouldStop(stepVerdict, allowPartial)) break;
         }
     } catch (const std::exception& error) {
         run.verdict = RunVerdict::Error;
@@ -574,6 +617,15 @@ ScenarioRunResult ScenarioEngine::run(
         run.verdict = RunVerdict::Incomplete;
     }
     finish();
+    if (run.persistenceFailed) {
+        run.verdict = RunVerdict::Error;
+        run.events.push_back({std::chrono::system_clock::now(), {}, "PERSISTENCE_ERROR",
+                              run.persistenceError, RunVerdict::Error});
+    } else if (!checkpoint(run)) {
+        run.verdict = RunVerdict::Error;
+        run.events.push_back({std::chrono::system_clock::now(), {}, "PERSISTENCE_ERROR",
+                              run.persistenceError, RunVerdict::Error});
+    }
     return run;
 }
 

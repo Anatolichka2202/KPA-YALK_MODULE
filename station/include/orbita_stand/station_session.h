@@ -86,13 +86,15 @@ public:
     ScenarioRunResult runScenario(const ScenarioDefinition& scenario,
         std::string profileVersion, std::string objectSerial, bool allowPartial,
         std::function<void(const RunEvent&)> progressSink = {},
-        std::shared_ptr<Activity> activity = {});
+        std::shared_ptr<Activity> activity = {},
+        std::function<void(const ScenarioRunResult&)> checkpointSink = {});
     ScenarioRunResult runWorkflow(const ProjectDefinition& project,
         const std::string& workflowId, std::string profileVersion,
         std::string objectSerial, bool allowPartial, ProjectRunContext context = {},
         const ScenarioDefinition* scenarioOverride = nullptr,
         std::function<void(const RunEvent&)> progressSink = {},
-        std::shared_ptr<Activity> activity = {});
+        std::shared_ptr<Activity> activity = {},
+        std::function<void(const ScenarioRunResult&)> checkpointSink = {});
     std::string invokeManual(const std::string& capability, const std::string& operation,
         const std::map<std::string, std::string>& arguments);
 

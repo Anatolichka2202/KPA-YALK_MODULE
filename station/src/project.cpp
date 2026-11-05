@@ -2,6 +2,11 @@
 #include "orbita_stand/config.h"
 #include "orbita_stand/yaml_lite.h"
 
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QString>
+
 #include <algorithm>
 #include <cctype>
 #include <chrono>
@@ -12,6 +17,52 @@
 
 namespace orbita::stand {
 namespace {
+
+QJsonObject nodeSnapshot(const ScenarioNode& node)
+{
+    QJsonObject result;
+    result.insert(QStringLiteral("id"), QString::fromUtf8(node.id));
+    result.insert(QStringLiteral("title"), QString::fromUtf8(node.title));
+    result.insert(QStringLiteral("tu"), QString::fromUtf8(node.tuRequirement));
+    result.insert(QStringLiteral("procedure"), QString::fromUtf8(node.procedure));
+    result.insert(QStringLiteral("technical_retries"), static_cast<int>(node.policy.technicalRetries));
+    QJsonObject arguments;
+    for (const auto& [key, value] : node.arguments)
+        arguments.insert(QString::fromUtf8(key), QString::fromUtf8(value));
+    result.insert(QStringLiteral("arguments"), arguments);
+    QJsonArray capabilities;
+    for (const auto& capability : node.requiredCapabilities)
+        capabilities.append(QString::fromUtf8(capability));
+    result.insert(QStringLiteral("capabilities"), capabilities);
+    QJsonArray resources;
+    for (const auto& resource : node.requiredResources) {
+        QJsonObject entry;
+        entry.insert(QStringLiteral("resource"), QString::fromUtf8(resource.resource));
+        entry.insert(QStringLiteral("capability"), QString::fromUtf8(resource.capability));
+        resources.append(entry);
+    }
+    result.insert(QStringLiteral("resources"), resources);
+    QJsonArray children;
+    for (const auto& child : node.children) children.append(nodeSnapshot(child));
+    result.insert(QStringLiteral("steps"), children);
+    return result;
+}
+
+std::string scenarioSnapshot(const ScenarioDefinition& scenario)
+{
+    QJsonObject result;
+    result.insert(QStringLiteral("id"), QString::fromUtf8(scenario.id));
+    result.insert(QStringLiteral("title"), QString::fromUtf8(scenario.title));
+    result.insert(QStringLiteral("version"), QString::fromUtf8(scenario.version));
+    result.insert(QStringLiteral("catalog_version"), QString::fromUtf8(scenario.catalogVersion));
+    result.insert(QStringLiteral("object_type"), QString::fromUtf8(scenario.objectType));
+    result.insert(QStringLiteral("state"), scenario.publicationState == PublicationState::Published
+        ? QStringLiteral("published") : QStringLiteral("draft"));
+    QJsonArray steps;
+    for (const auto& node : scenario.steps) steps.append(nodeSnapshot(node));
+    result.insert(QStringLiteral("steps"), steps);
+    return QJsonDocument(result).toJson(QJsonDocument::Compact).toStdString();
+}
 
 bool boolean(std::string value, bool fallback, const std::string& field)
 {
@@ -385,15 +436,26 @@ ScenarioRunResult runScenarioWithEvidence(
     std::string objectSerial,
     bool allowPartial,
     std::function<void(const RunEvent&)> progressSink,
-    ResourceLeaseManager* resourceLeases)
+    ResourceLeaseManager* resourceLeases,
+    std::function<void(const ScenarioRunResult&)> checkpointSink)
 {
     std::vector<EvidenceEvent> evidence;
     evidence.reserve(64);
     EvidenceProvider auditedEquipment(equipment, evidence);
+    const auto definitionSnapshot = scenarioSnapshot(scenario);
+    auto checkpointWithEvidence = [&](const ScenarioRunResult& snapshot) {
+        if (!checkpointSink) return;
+        auto enriched = snapshot;
+        enriched.evidence = evidence;
+        enriched.contextAttributes["scenario_definition_json"] = definitionSnapshot;
+        checkpointSink(enriched);
+    };
     auto result = engine.run(
         scenario, auditedEquipment, std::move(profileVersion), std::move(objectSerial),
-        allowPartial, std::move(progressSink), resourceLeases);
+        allowPartial, std::move(progressSink), resourceLeases,
+        checkpointSink ? checkpointWithEvidence : std::function<void(const ScenarioRunResult&)>{});
     result.evidence = std::move(evidence);
+    result.contextAttributes["scenario_definition_json"] = definitionSnapshot;
     return result;
 }
 
@@ -408,7 +470,8 @@ ScenarioRunResult runProjectWorkflow(
     ProjectRunContext context,
     const ScenarioDefinition* scenarioOverride,
     std::function<void(const RunEvent&)> progressSink,
-    ResourceLeaseManager* resourceLeases)
+    ResourceLeaseManager* resourceLeases,
+    std::function<void(const ScenarioRunResult&)> checkpointSink)
 {
     const auto* workflow = findWorkflow(project, workflowId);
     if (!workflow) throw std::invalid_argument("Project workflow not found: " + workflowId);
@@ -446,9 +509,29 @@ ScenarioRunResult runProjectWorkflow(
         scenario = &loadedScenario;
     }
 
+    const auto applyContext = [&](ScenarioRunResult& target) {
+        target.projectId = project.id;
+        target.projectVersion = project.version;
+        target.workflowId = workflow->id;
+        target.dutType = context.dutType;
+        target.dutId = context.dutId;
+        target.operatorName = context.operatorName;
+        target.environmentProfile = workflow->environmentPath;
+        target.contextAttributes.insert(context.attributes.begin(), context.attributes.end());
+        target.contextAttributes["environment_id"] = workflow->environmentId;
+        target.contextAttributes["environment_title"] = workflow->environmentTitle;
+        target.contextAttributes["environment_mode"] = workflow->environmentMode;
+    };
+    auto checkpointWithContext = [&](const ScenarioRunResult& snapshot) {
+        if (!checkpointSink) return;
+        auto enriched = snapshot;
+        applyContext(enriched);
+        checkpointSink(enriched);
+    };
     auto result = runScenarioWithEvidence(
         engine, equipment, *scenario, std::move(profileVersion), std::move(objectSerial),
-        allowPartial, std::move(progressSink), resourceLeases);
+        allowPartial, std::move(progressSink), resourceLeases,
+        checkpointSink ? checkpointWithContext : std::function<void(const ScenarioRunResult&)>{});
     result.projectId = project.id;
     result.projectVersion = project.version;
     result.workflowId = workflow->id;
@@ -456,7 +539,7 @@ ScenarioRunResult runProjectWorkflow(
     result.dutId = std::move(context.dutId);
     result.operatorName = std::move(context.operatorName);
     result.environmentProfile = workflow->environmentPath;
-    result.contextAttributes = std::move(context.attributes);
+    result.contextAttributes.insert(context.attributes.begin(), context.attributes.end());
     result.contextAttributes["environment_id"] = workflow->environmentId;
     result.contextAttributes["environment_title"] = workflow->environmentTitle;
     result.contextAttributes["environment_mode"] = workflow->environmentMode;
