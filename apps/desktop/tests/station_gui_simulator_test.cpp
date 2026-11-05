@@ -19,6 +19,8 @@
 #include <QElapsedTimer>
 #include <QEventLoop>
 #include <QLabel>
+#include <QInputDialog>
+#include <QLineEdit>
 #include <QMessageBox>
 #include <QProcess>
 #include <QPushButton>
@@ -354,6 +356,61 @@ int runChild(const QString& mode)
         require(run->isEnabled(), "published simulator scenario became unavailable");
         require(QFile::remove(draftPath), "cannot remove isolated test draft");
     }
+    QString createdVersion;
+    QString createdDraft;
+    bool invalidRejected = false;
+    bool conflictRejected = false;
+    if (mode == "--new-version") {
+        auto* edit = dialog->findChild<QPushButton*>(QStringLiteral("editGenericScenario"));
+        bool created = false;
+        QTimer::singleShot(0, [&] {
+            auto* editor = qobject_cast<ScenarioVisualEditor*>(QApplication::activeModalWidget());
+            if (!editor) return;
+            auto* copy = editor->findChild<QPushButton*>(QStringLiteral("createScenarioVisualDraft"));
+            auto* title = editor->findChild<QLineEdit*>(QStringLiteral("scenarioStepTitle"));
+            auto* version = editor->findChild<QPushButton*>(QStringLiteral("createRunnableScenarioVersion"));
+            auto* procedure = editor->findChild<QLineEdit*>(QStringLiteral("scenarioStepProcedure"));
+            if (!copy || !title || !version || !procedure) return;
+            copy->click();
+            createdDraft = editor->currentPath();
+            title->setText(QStringLiteral("Изменённый шаг"));
+            // Версия не должна создаваться при неизвестном действии или при
+            // совпадении с существующим номером исходной проверки.
+            auto rejectVersion = [version] (const QString& number) {
+                QTimer::singleShot(0, [number] {
+                    if (auto* input = qobject_cast<QInputDialog*>(QApplication::activeModalWidget())) {
+                        input->setTextValue(number);
+                        QTimer::singleShot(0, [] {
+                            if (auto* box = qobject_cast<QMessageBox*>(QApplication::activeModalWidget())) box->accept();
+                        });
+                        input->accept();
+                    }
+                });
+                version->click();
+            };
+            procedure->setText(QStringLiteral("test.missing"));
+            rejectVersion(QStringLiteral("2"));
+            invalidRejected = editor->currentPath() == createdDraft;
+            procedure->setText(QStringLiteral("test.simulator"));
+            rejectVersion(QStringLiteral("1"));
+            conflictRejected = editor->currentPath() == createdDraft;
+            QTimer::singleShot(0, [] {
+                if (auto* input = qobject_cast<QInputDialog*>(QApplication::activeModalWidget())) {
+                    input->setTextValue(QStringLiteral("2"));
+                    input->accept();
+                }
+            });
+            version->click();
+            createdVersion = editor->currentPath();
+            created = createdVersion != createdDraft && createdVersion.endsWith(QStringLiteral("_v2.yaml"));
+            editor->accept();
+        });
+        require(edit, "scenario edit action unavailable");
+        edit->click();
+        require(invalidRejected && conflictRejected && created && run->isEnabled()
+                    && scenarios->currentData().toString() == createdVersion,
+                "version validation, conflict handling or selection failed");
+    }
     run->click();
     require(!run->isEnabled(), "scenario was not started from the dialog");
     const QString lockConnection = QStringLiteral("gui_stop_lock");
@@ -429,12 +486,18 @@ int runChild(const QString& mode)
             "completed GUI report did not show the simulator measurement");
     orbita::stand::RunStore store(QDir(QCoreApplication::applicationDirPath())
         .filePath("runs/runs.db").toStdString());
-    require(store.unfinishedRuns().empty(), "completed GUI run was not finalized");
+    if (mode != "--new-version")
+        require(store.unfinishedRuns().empty(), "completed GUI run was not finalized");
     const auto persisted = store.load(window.runId());
-    require(persisted && persisted->verdict == orbita::stand::RunVerdict::Ok
+    require(persisted && (mode != "--new-version" || (persisted->scenarioVersion == "2"
+                && persisted->steps.front().title == "Изменённый шаг"))
+                && persisted->verdict == orbita::stand::RunVerdict::Ok
                 && persisted->steps.size() == 2 && persisted->steps.front().measurements.size() == 1
                 && persisted->steps.front().measurements.front().measured == 42,
             "completed GUI run lost its persisted measurement");
+    if (mode == "--new-version") {
+        require(QFile::remove(createdVersion) && QFile::remove(createdDraft), "cannot remove test versions");
+    }
     return 0;
 }
 
@@ -525,7 +588,14 @@ int runParent()
             mode == "--profile-selection" ? "stand_ktma_simulator.yaml" : "absent-profile.yaml");
         child.setProcessEnvironment(env);
         child.start(executable, {mode});
-        require(child.waitForStarted(5000) && child.waitForFinished(15000), "GUI child timed out");
+        require(child.waitForStarted(5000), "GUI child did not start");
+        if (!child.waitForFinished(15000)) {
+            std::cerr << "GUI child timed out: " << mode.toStdString() << "\n"
+                      << child.readAllStandardError().constData();
+            child.kill();
+            child.waitForFinished();
+            throw std::runtime_error("GUI child timed out");
+        }
         if (child.exitCode() != expected) {
             std::cerr << child.readAllStandardError().constData();
             throw std::runtime_error("unexpected GUI child exit code");
@@ -557,6 +627,7 @@ int runParent()
     require(commands.open(QIODevice::ReadOnly)
                 && commands.readAll() == beforeRecovery + "first\nfirst\n",
             "GUI stop did not prevent the next simulator action after recovery");
+    execute("--new-version", 0);
     return 0;
 }
 }

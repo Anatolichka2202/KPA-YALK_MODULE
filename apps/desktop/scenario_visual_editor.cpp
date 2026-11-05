@@ -7,6 +7,8 @@
 #include <QFileInfo>
 #include <QFile>
 #include <QFormLayout>
+#include <QInputDialog>
+#include <QRegularExpression>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
@@ -186,7 +188,10 @@ ScenarioVisualEditor::ScenarioVisualEditor(QString path, QWidget* parent)
     auto* moveDown = new QPushButton(QStringLiteral("Вниз"), this);
     draftButton_ = new QPushButton(QStringLiteral("Создать черновик"), this);
     draftButton_->setObjectName(QStringLiteral("createScenarioVisualDraft"));
-    saveButton_ = new QPushButton(QStringLiteral("Сохранить YAML"), this);
+    saveButton_ = new QPushButton(QStringLiteral("Сохранить черновик"), this);
+    versionButton_ = new QPushButton(QStringLiteral("Создать версию для запуска"), this);
+    versionButton_->setObjectName(QStringLiteral("createRunnableScenarioVersion"));
+    versionButton_->setEnabled(false);
     auto* close = new QPushButton(QStringLiteral("Закрыть"), this);
     addRoot->setObjectName(QStringLiteral("addScenarioRootStep"));
     addChild->setObjectName(QStringLiteral("addScenarioChildStep"));
@@ -202,6 +207,7 @@ ScenarioVisualEditor::ScenarioVisualEditor(QString path, QWidget* parent)
     actions->addWidget(draftButton_);
     actions->addStretch(1);
     actions->addWidget(saveButton_);
+    actions->addWidget(versionButton_);
     actions->addWidget(close);
     layout->addLayout(actions);
 
@@ -233,6 +239,7 @@ ScenarioVisualEditor::ScenarioVisualEditor(QString path, QWidget* parent)
     connect(moveDown, &QPushButton::clicked, this, &ScenarioVisualEditor::moveStepDown);
     connect(saveButton_, &QPushButton::clicked, this, &ScenarioVisualEditor::save);
     connect(draftButton_, &QPushButton::clicked, this, &ScenarioVisualEditor::createDraft);
+    connect(versionButton_, &QPushButton::clicked, this, &ScenarioVisualEditor::createRunnableVersion);
     connect(close, &QPushButton::clicked, this, &QDialog::accept);
     load();
     setDirty(false);
@@ -264,6 +271,13 @@ void ScenarioVisualEditor::done(int result)
         }
     }
     QDialog::done(result);
+}
+
+void ScenarioVisualEditor::setScenarioValidator(
+    std::function<std::vector<std::string>(const orbita::stand::ScenarioDefinition&)> validator)
+{
+    validator_ = std::move(validator);
+    versionButton_->setEnabled(loaded_ && !published_ && static_cast<bool>(validator_));
 }
 
 void ScenarioVisualEditor::setAvailableProcedures(const std::vector<std::string>& procedures)
@@ -347,6 +361,7 @@ void ScenarioVisualEditor::setEditorEnabled(bool enabled)
             button->setEnabled(enabled);
     }
     draftButton_->setVisible(published_);
+    versionButton_->setEnabled(enabled && loaded_ && static_cast<bool>(validator_));
 }
 
 ScenarioVisualEditor::StepPath ScenarioVisualEditor::selectedPath() const
@@ -897,5 +912,81 @@ void ScenarioVisualEditor::createDraft()
     path_ = draftPath;
     published_ = false;
     setEditorEnabled(true);
+    setDirty(false);
+}
+
+void ScenarioVisualEditor::createRunnableVersion()
+{
+    if (!loaded_ || published_ || !validator_ || !commitEditorToSelectedNode()) return;
+    bool accepted = false;
+    const QString version = QInputDialog::getText(this, QStringLiteral("Версия проверки"),
+        QStringLiteral("Номер новой версии:"), QLineEdit::Normal,
+        QString::fromStdString(scenario_.version) + QStringLiteral(".1"), &accepted).trimmed();
+    if (!accepted) return;
+    const QRegularExpression safeVersion(QStringLiteral("^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"));
+    if (!safeVersion.match(version).hasMatch()) {
+        QMessageBox::warning(this, QStringLiteral("Версия проверки"),
+            QStringLiteral("Используйте буквы, цифры, точку, дефис или подчёркивание."));
+        return;
+    }
+    const QDir directory = QFileInfo(path_).dir();
+    for (const auto& file : directory.entryInfoList({QStringLiteral("*.yaml")}, QDir::Files)) {
+        try {
+            const auto other = orbita::stand::loadScenarioYaml(file.absoluteFilePath().toUtf8().toStdString());
+            if (other.id == scenario_.id && other.version == version.toUtf8().toStdString()) {
+                QMessageBox::warning(this, QStringLiteral("Версия проверки"),
+                    QStringLiteral("Проверка с таким номером версии уже существует."));
+                return;
+            }
+        } catch (const std::exception& error) {
+            QMessageBox::warning(this, QStringLiteral("Версия проверки"),
+                QStringLiteral("Невозможно проверить файл %1: %2")
+                    .arg(file.fileName(), QString::fromUtf8(error.what())));
+            return;
+        }
+    }
+    const QString versionPath = directory.filePath(QFileInfo(path_).completeBaseName()
+        + QStringLiteral("_v") + version + QStringLiteral(".yaml"));
+    const auto originalVersion = scenario_.version;
+    scenario_.version = version.toUtf8().toStdString();
+    scenario_.publicationState = orbita::stand::PublicationState::Published;
+    const auto bytes = serialize().toUtf8();
+    scenario_.version = originalVersion;
+    scenario_.publicationState = orbita::stand::PublicationState::Draft;
+
+    // Временный файл проходит тот же загрузчик и валидатор, что и запуск.
+    // В каталог проверок попадает только полностью записанная версия.
+    QTemporaryFile candidate(directory.filePath(QStringLiteral(".scenario-version-XXXXXX")));
+    if (!candidate.open() || candidate.write(bytes) != bytes.size() || !candidate.flush()) {
+        QMessageBox::critical(this, QStringLiteral("Версия проверки"),
+            QStringLiteral("Не удалось записать временный файл версии."));
+        return;
+    }
+    orbita::stand::ScenarioDefinition checked;
+    try {
+        checked = orbita::stand::loadScenarioYaml(candidate.fileName().toUtf8().toStdString());
+        const auto errors = validator_(checked);
+        if (!errors.empty()) {
+            QMessageBox::warning(this, QStringLiteral("Проверка не готова"),
+                QString::fromUtf8(errors.front().c_str()));
+            return;
+        }
+    } catch (const std::exception& error) {
+        QMessageBox::warning(this, QStringLiteral("Проверка не готова"),
+            QString::fromUtf8(error.what()));
+        return;
+    }
+    candidate.close();
+    // QFile::rename не заменяет существующий путь: чужая версия сохраняется.
+    if (!candidate.rename(versionPath)) {
+        QMessageBox::warning(this, QStringLiteral("Версия проверки"),
+            QStringLiteral("Не удалось создать файл новой версии: %1").arg(candidate.errorString()));
+        return;
+    }
+    candidate.setAutoRemove(false);
+    scenario_ = std::move(checked);
+    path_ = versionPath;
+    published_ = true;
+    setEditorEnabled(false);
     setDirty(false);
 }

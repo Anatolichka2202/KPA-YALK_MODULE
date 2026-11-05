@@ -204,8 +204,10 @@ void UniversalMainWindow::editGenericScenario(const QString& path)
     if (genericWatcher_->isRunning() || !QFileInfo::exists(path)) return;
     const QString workflowId = genericDialog_ ? genericDialog_->currentWorkflowId() : QString();
     ScenarioVisualEditor editor(path, this);
-    if (auto* engine = integrationScenarioEngine())
+    if (auto* engine = integrationScenarioEngine()) {
         editor.setAvailableProcedures(engine->registeredProcedures());
+        editor.setScenarioValidator([engine](const auto& scenario) { return engine->validate(scenario); });
+    }
     editor.exec();
     const QString currentPath = editor.currentPath();
     reloadGenericScenarios();

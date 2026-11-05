@@ -14,6 +14,7 @@
 #include <QDialog>
 
 #include <vector>
+#include <functional>
 
 class QLabel;
 class QLineEdit;
@@ -30,6 +31,8 @@ public:
     explicit ScenarioVisualEditor(QString path, QWidget* parent = nullptr);
     void setAvailableProcedures(const std::vector<std::string>& procedures);
     QString currentPath() const { return path_; }
+    void setScenarioValidator(std::function<std::vector<std::string>(
+        const orbita::stand::ScenarioDefinition&)> validator);
 
 public slots:
     void done(int result) override;
@@ -44,6 +47,7 @@ private slots:
     void moveStepDown();
     void save();
     void createDraft();
+    void createRunnableVersion();
     void configureTelemetryHealth();
 
 private:
@@ -96,6 +100,8 @@ private:
     QPlainTextEdit* arguments_ = nullptr;
     QPushButton* applyButton_ = nullptr;
     QPushButton* saveButton_ = nullptr;
+    QPushButton* versionButton_ = nullptr;
+    std::function<std::vector<std::string>(const orbita::stand::ScenarioDefinition&)> validator_;
     QPushButton* draftButton_ = nullptr;
     QPushButton* telemetrySettings_ = nullptr;
 };
