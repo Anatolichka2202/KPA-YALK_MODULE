@@ -1,6 +1,7 @@
 #include <QStandardPaths>
 #include <QUuid>
 #include "mainwindow.h"
+#include <QThread>
 #include "free_workspace_widget.h"
 #include "channel_status.h"
 #include "encoding_utils.h"
@@ -494,6 +495,11 @@ void MainWindow::setupToolBar()
         "Закрыть свободный режим и вернуться на главный экран"));
     freeHomeAction_->setVisible(false);
     connect(freeHomeAction_, &QAction::triggered, this, &MainWindow::leaveFreeWorkspace);
+    freeCheckAction_ = toolbar->addAction(QStringLiteral("Проверка"));
+    freeCheckAction_->setObjectName(QStringLiteral("openCheckFromMonitor"));
+    freeCheckAction_->setToolTip(QStringLiteral("Открыть проверку, продолжая мониторинг"));
+    freeCheckAction_->setVisible(false);
+    connect(freeCheckAction_, &QAction::triggered, this, &MainWindow::freeCheckRequested);
     freeEquipmentAction_ = toolbar->addAction(QStringLiteral("Команды плагинов"));
     freeEquipmentAction_->setObjectName(QStringLiteral("openFreeCommandConsole"));
     freeEquipmentAction_->setToolTip(QStringLiteral(
@@ -980,8 +986,13 @@ std::string MainWindow::invokeOrbitaParameterSource(
     }
     if (operation == "health" || operation == "alive") {
         orbita_->waitForData(std::chrono::milliseconds(1000));
-        const auto snapshot = orbita_->getSnapshot();
-        const bool ready = snapshot.stats.frames_processed > 0;
+        auto snapshot = orbita_->getSnapshot();
+        // Счётчики накопительные; только время обновления параметра доказывает,
+        // что поток продолжает поступать, даже если монитор забрал уведомление.
+        miltech::integration::invalidateStaleValues(
+            snapshot, std::chrono::steady_clock::now(), std::chrono::seconds(5));
+        const bool ready = std::any_of(snapshot.values.begin(), snapshot.values.end(),
+            [](const auto& value) { return value.valid; });
         return "status=" + std::string(ready ? "ready" : "no_data")
             + "\ndiagnostic=" + (ready ? std::string("Поток принимается")
                                          : std::string("Нет актуального кадра"))
@@ -1002,19 +1013,32 @@ std::string MainWindow::invokeOrbitaParameterSource(
         }
         double sum = 0.0;
         unsigned accepted = 0;
+        std::chrono::steady_clock::time_point lastUpdate{};
         for (unsigned index = 0; index < sampleCount; ++index) {
-            orbita_->waitForData(std::chrono::milliseconds(500));
-            const auto snapshot = orbita_->getSnapshot();
-            for (const auto& value : snapshot.values) {
-                if (value.address == address->second && value.valid) {
-                    sum += value.value;
-                    ++accepted;
-                    break;
+            // Уведомление о данных разделяется с монитором; опрашиваем сам
+            // снимок и считаем только разные актуальные обновления адреса.
+            const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
+            bool found = false;
+            do {
+                auto snapshot = orbita_->getSnapshot();
+                miltech::integration::invalidateStaleValues(
+                    snapshot, std::chrono::steady_clock::now(), std::chrono::seconds(5));
+                for (const auto& value : snapshot.values) {
+                    if (value.address == address->second && value.valid && value.updatedAt > lastUpdate) {
+                        lastUpdate = value.updatedAt;
+                        sum += value.value;
+                        ++accepted;
+                        found = true;
+                        break;
+                    }
                 }
-            }
+                if (!found) QThread::msleep(10);
+            } while (!found && std::chrono::steady_clock::now() < deadline);
+            if (!found) break;
         }
-        if (!accepted) {
-            return "status=no_data\ndiagnostic=Параметр не обновлялся\n";
+        if (accepted != sampleCount) {
+            return "status=no_data\ndiagnostic=Недостаточно актуальных отсчётов параметра\n"
+                   "sample_count=" + std::to_string(accepted) + "\n";
         }
         return "status=ready\nvalue=" + std::to_string(sum / accepted)
             + "\nsample_count=" + std::to_string(accepted) + "\n";
@@ -1124,6 +1148,7 @@ void MainWindow::setMode(int mode)
         && mode != ModeHome && mode != ModeAdmin));
     if (freeHomeAction_) freeHomeAction_->setVisible(freeWorkspace);
     if (freeEquipmentAction_) freeEquipmentAction_->setVisible(freeWorkspace);
+    if (freeCheckAction_) freeCheckAction_->setVisible(freeWorkspace);
     if (accessModeCombo_) accessModeCombo_->setVisible(!ubsiEngineering_ && !freeWorkspace);
     for (auto* action : {actTests_, actMain_, actDetail_, actConfig_, actDb_}) {
         if (action && (ubsiEngineering_ || freeWorkspace)) action->setVisible(false);
@@ -1169,8 +1194,23 @@ void MainWindow::openFreeWorkspace()
         "Свободный контур MilTechStation открыт независимо от поставки; выберите источник, адреса и доступные действия плагина"));
 }
 
+void MainWindow::integrationSetMonitorLocked(bool locked)
+{
+    if (monitorLocked_ == locked) return;
+    monitorLocked_ = locked;
+    startBtn_->setEnabled(!locked && !isRunning_ && !currentSpecs_.empty());
+    stopBtn_->setEnabled(!locked && isRunning_);
+    freeHomeAction_->setEnabled(!locked);
+    configCombo_->setEnabled(!locked);
+    invertCheck_->setEnabled(!locked);
+    watchSetDockWidget_->setEnabled(!locked);
+    configDockWidget_->setEnabled(!locked);
+    paramDockWidget_->setEnabled(!locked);
+}
+
 void MainWindow::leaveFreeWorkspace()
 {
+    if (monitorLocked_) return;
     // Сбор чтения прекращается при уходе, чтобы свободный экран не оставлял
     // открытый драйвер E2010 в фоне без видимого оператору состояния.
     if (isRunning_) onStop();
@@ -1286,7 +1326,7 @@ void MainWindow::onStop()
     mtvLabel_->setText(QStringLiteral("МТВ: ---"));
     errPhraseLabel_->setText(QStringLiteral("ошибки фраз: ---"));
     errGroupLabel_->setText(QStringLiteral("групп: ---"));
-    startBtn_->setEnabled(!currentSpecs_.empty());
+    startBtn_->setEnabled(!monitorLocked_ && !currentSpecs_.empty());
     stopBtn_->setEnabled(false);
     recordBtn_->setEnabled(false);
     statusLabel_->setText("● Сбор остановлен");
@@ -1479,7 +1519,7 @@ void MainWindow::updateData()
 // ----------------------------------------------------------------------------
 void MainWindow::applyConfiguration(const QString& fileName)
 {
-    if (fileName.isEmpty()) return;
+    if (monitorLocked_ || fileName.isEmpty()) return;
     QString fullPath = QCoreApplication::applicationDirPath() + "/address/" + fileName;
     std::string content = encoding::readFileToUtf8(fullPath.toStdString());
     if (content.empty()) {
@@ -1542,6 +1582,7 @@ void MainWindow::onRefreshMetadata()
 // ----------------------------------------------------------------------------
 void MainWindow::onWatchSetChanged(const std::vector<orbita::ChannelSpec>& specs)
 {
+    if (monitorLocked_) return;
     try {
         orbita_->setChannels(specs);
         monitorSnapshot_.reset();

@@ -66,6 +66,7 @@ UniversalMainWindow::UniversalMainWindow(QWidget* parent)
     : KtmaMainWindow(parent)
     , genericWatcher_(new QFutureWatcher<orbita::stand::ScenarioRunResult>(this))
 {
+    connect(this, &MainWindow::freeCheckRequested, this, &UniversalMainWindow::openGenericCheck);
     if (auto* home = integrationHomePage()) {
         connect(home, &HomePage::genericCheckRequested,
                 this, &UniversalMainWindow::openGenericCheck);
@@ -161,13 +162,20 @@ void UniversalMainWindow::reloadGenericScenarios()
                 std::function<void(const orbita::stand::ScenarioNode&)> collectRequirements;
                 collectRequirements = [&](const orbita::stand::ScenarioNode& node) {
                     for (const auto& capability : node.requiredCapabilities) {
-                        const bool configured = std::any_of(
-                            integrationStandProfile().components.begin(),
-                            integrationStandProfile().components.end(),
-                            [&](const auto& component) {
-                                return component.enabled && component.kind == "equipment"
-                                    && componentProvides(component, capability);
-                            });
+                        const auto* orbitaSource = capability == "orbita.parameter_source"
+                            ? orbita::stand::findComponentByBinding(integrationStandProfile(),
+                                  "telemetry.orbita.sample_source") : nullptr;
+                        // Встроенный сервис Орбиты использует источник, уже
+                        // принадлежащий сессии, а не отдельный equipment-плагин.
+                        const bool configured = (orbitaSource && orbitaSource->enabled
+                            && integrationHasOrbitaSource() && integrationEquipmentRegistry()
+                            && integrationEquipmentRegistry()->hasCapability(capability))
+                            || std::any_of(integrationStandProfile().components.begin(),
+                                integrationStandProfile().components.end(),
+                                [&](const auto& component) {
+                                    return component.enabled && component.kind == "equipment"
+                                        && componentProvides(component, capability);
+                                });
                         requirements.insert(QString::fromStdString(capability), configured);
                     }
                     for (const auto& resource : node.requiredResources) {
@@ -336,6 +344,20 @@ void UniversalMainWindow::runGenericScenario(
         if (workflow->registration.required || workflow->environmentMode == "manual_or_controlled")
             throw std::runtime_error("Для выбранной проверки требуется регистрация изделия или подтверждение условий");
 
+        // Защищаем общий поток от изменения оператором до окончания проверки,
+        // включая подготовку оборудования с вложенным циклом событий.
+        std::function<bool(const orbita::stand::ScenarioNode&)> usesOrbita;
+        usesOrbita = [&](const orbita::stand::ScenarioNode& node) {
+            if (node.procedure == "telemetry.health"
+                || std::find(node.requiredCapabilities.begin(), node.requiredCapabilities.end(),
+                             "orbita.parameter_source") != node.requiredCapabilities.end()) return true;
+            for (const auto& resource : node.requiredResources)
+                if (resource.capability == "orbita.parameter_source") return true;
+            return std::any_of(node.children.begin(), node.children.end(), usesOrbita);
+        };
+        if (std::any_of(scenario.steps.begin(), scenario.steps.end(), usesOrbita))
+            integrationSetMonitorLocked(true);
+
         // Запись создаётся до подготовки: при аварийном завершении остаётся
         // тот же идентификатор, который затем использует сценарный движок.
         initialRun = orbita::stand::makeInitialRun(scenario, profileVersion, serial);
@@ -394,6 +416,7 @@ void UniversalMainWindow::runGenericScenario(
                 .toUtf8().toStdString());
         }
     } catch (const std::exception& error) {
+        integrationSetMonitorLocked(false);
         integrationStationSession().safeStopAll(activity);
         if (initialRun.persistenceStarted) {
             initialRun.verdict = orbita::stand::RunVerdict::Error;
@@ -513,6 +536,7 @@ void UniversalMainWindow::stopGenericScenario()
 
 void UniversalMainWindow::finishGenericScenario()
 {
+    integrationSetMonitorLocked(false);
     if (!genericDialog_) return;
     const auto result = genericWatcher_->result();
     if (!result.events.empty() && result.events.front().stage == "STATION_BUSY") {

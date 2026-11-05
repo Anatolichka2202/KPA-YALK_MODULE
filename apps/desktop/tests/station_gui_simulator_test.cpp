@@ -36,6 +36,8 @@
 #include <QTimer>
 #include <QTreeWidget>
 
+#include "miltech/orbita_sample_simulator.h"
+
 #include <algorithm>
 #include <atomic>
 #include <cstdlib>
@@ -71,10 +73,39 @@ private:
     ErrorCallback error_;
 };
 
+class PausableSampleSimulator final : public orbita::stand::ISampleSource {
+public:
+    PausableSampleSimulator() : source_(miltech::integration::createOrbitaSampleSimulator()) {}
+    bool open() override { return source_->open(); }
+    void close() noexcept override { source_->close(); }
+    bool isOpen() const noexcept override { return source_->isOpen(); }
+    bool start() override { return source_->start(); }
+    void stop() noexcept override { source_->stop(); }
+    bool isRunning() const noexcept override { return source_->isRunning(); }
+    void setSamplesCallback(SamplesCallback callback) override {
+        source_->setSamplesCallback([this, callback = std::move(callback)](const auto&... args) {
+            if (!paused_.load() && callback) callback(args...);
+        });
+    }
+    void setErrorCallback(ErrorCallback callback) override { source_->setErrorCallback(std::move(callback)); }
+    void pause() { paused_.store(true); }
+private:
+    std::unique_ptr<orbita::stand::ISampleSource> source_;
+    std::atomic_bool paused_{false};
+};
+
 class MonitorWindow final : public UniversalMainWindow {
 public:
     explicit MonitorWindow(bool silent)
     {
+        if (!silent) {
+            integrationStationSession().components().registerKindFactory("sample_source", [this](
+                const orbita::stand::ComponentProfile&) -> std::unique_ptr<orbita::stand::IStationComponent> {
+                auto source = std::make_unique<PausableSampleSimulator>();
+                pausable_ = source.get();
+                return source;
+            });
+        }
         if (silent) {
             integrationStationSession().components().registerKindFactory("sample_source", [this](
                 const orbita::stand::ComponentProfile&) -> std::unique_ptr<orbita::stand::IStationComponent> {
@@ -93,6 +124,33 @@ public:
         integrationEnsureStandRuntime();
         require(integrationStandRuntimeReady() && (!silent || source_), "monitor simulator is unavailable");
     }
+    void enableHealthProject()
+    {
+        orbita::stand::ProjectDefinition project;
+        project.id = "monitor-check";
+        project.version = "1";
+        orbita::stand::WorkflowDefinition workflow;
+        workflow.id = "free";
+        workflow.title = "Свободная проверка";
+        workflow.allowDynamicScenario = true;
+        project.workflows.push_back(workflow);
+        integrationConfigureProject(std::move(project));
+        integrationScenarioEngine()->registerProcedure("test.monitor-lock", [this](
+            const orbita::stand::ScenarioNode&, orbita::stand::ProcedureContext&) {
+            entered_.store(true);
+            QElapsedTimer wait;
+            wait.start();
+            while (!release_.load() && wait.elapsed() < 5000) QThread::msleep(1);
+            if (!release_.load()) throw std::runtime_error("monitor lock test timed out");
+            return orbita::stand::ProcedureResult{orbita::stand::RunVerdict::Ok, "Готово", {}};
+        });
+    }
+    void pauseSamples() { require(pausable_, "pausable simulator unavailable"); pausable_->pause(); }
+    std::string sourceOperation(const std::string& operation, const std::map<std::string, std::string>& args = {}) {
+        return integrationEquipmentRegistry()->invoke("orbita.parameter_source", operation, args);
+    }
+    bool entered() const { return entered_.load(); }
+    void release() { release_.store(true); }
     SilentSampleSimulator* source() const { return source_; }
     void disconnectSource()
     {
@@ -103,6 +161,9 @@ public:
     }
 private:
     SilentSampleSimulator* source_ = nullptr;
+    PausableSampleSimulator* pausable_ = nullptr;
+    std::atomic_bool entered_{false};
+    std::atomic_bool release_{false};
 };
 
 class ProfileWindow final : public UniversalMainWindow {
@@ -185,6 +246,109 @@ int runMonitorChild(bool silent)
                 && status->text().contains(QStringLiteral("отключён"))
                 && table->item(0, 3)->text() == "---",
             "monitor failed to show simulator disconnect without fabricated values");
+    return 0;
+}
+
+int runHealthMonitorChild()
+{
+    const QString path = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("scenarios/health.yaml"));
+    QFile scenario(path);
+    require(scenario.open(QIODevice::WriteOnly | QIODevice::NewOnly), "cannot create health scenario");
+    scenario.write("schema: 1\nid: health-gui\ntitle: Проверка потока\nversion: 1\n"
+                   "catalog_version: 1\nstate: published\nsteps:\n"
+                   "  - id: health\n    title: Приём\n    tu: test.1\n    procedure: telemetry.health\n"
+                   "    requires:\n      - orbita.parameter_source\n"
+                   "    args:\n      max_phrase_error_percent: 100\n      max_group_error_percent: 100\n"
+                   "      diagnostic_only: true\n");
+    scenario.close();
+    const QString slowPath = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("scenarios/slow.yaml"));
+    QFile slowScenario(slowPath);
+    require(slowScenario.open(QIODevice::WriteOnly | QIODevice::NewOnly), "cannot create lock scenario");
+    slowScenario.write("schema: 1\nid: monitor-lock\ntitle: Блокировка потока\nversion: 1\n"
+                       "catalog_version: 1\nstate: published\nsteps:\n"
+                       "  - id: slow\n    title: Ожидание\n    tu: test.2\n    procedure: test.monitor-lock\n"
+                       "    requires:\n      - orbita.parameter_source\n");
+    slowScenario.close();
+    MonitorWindow window(false);
+    window.enableHealthProject();
+    window.show();
+    auto* open = window.findChild<QPushButton*>(QStringLiteral("genericFreeAction"));
+    auto* sets = window.findChild<AddressSetsWidget*>();
+    auto* start = window.findChild<QPushButton*>(QStringLiteral("monitorStart"));
+    auto* stop = window.findChild<QPushButton*>(QStringLiteral("monitorStop"));
+    auto* check = window.findChild<QAction*>(QStringLiteral("openCheckFromMonitor"));
+    require(open && sets && start && stop && check, "monitor check controls unavailable");
+    open->click();
+    sets->setFromSpecs({{"M16P1A11B21T21", "Параметр", "Тест"}});
+    start->click();
+    auto* tableWidget = window.findChild<TableWidget*>();
+    auto* table = tableWidget ? tableWidget->findChild<QTableWidget*>() : nullptr;
+    require(table, "monitor table unavailable");
+    QEventLoop ready;
+    QTimer readyPoll;
+    QTimer readyTimeout;
+    readyTimeout.setSingleShot(true);
+    QObject::connect(&readyPoll, &QTimer::timeout, &ready, [&] {
+        if (table->item(0, 3)->text() == "15") ready.quit();
+    });
+    QObject::connect(&readyTimeout, &QTimer::timeout, &ready, &QEventLoop::quit);
+    readyPoll.start(20); readyTimeout.start(8000); ready.exec();
+    require(table->item(0, 3)->text() == "15" && stop->isEnabled(), "simulated monitor not ready");
+    check->trigger();
+    auto* dialog = window.findChild<GenericCheckDialog*>();
+    auto* choices = dialog ? dialog->findChild<QComboBox*>(QStringLiteral("genericScenario")) : nullptr;
+    auto* run = dialog ? dialog->findChild<QPushButton*>(QStringLiteral("runGeneric")) : nullptr;
+    require(choices && run, "scenario dialog unavailable from monitor");
+    const int index = choices->findData(path);
+    require(index >= 0, "health scenario missing from list");
+    choices->setCurrentIndex(index);
+    require(run->isEnabled(), "session-owned Orbita source was reported unavailable");
+    run->click();
+    QEventLoop finished;
+    QTimer finishPoll;
+    QTimer finishTimeout;
+    finishTimeout.setSingleShot(true);
+    QObject::connect(&finishPoll, &QTimer::timeout, &finished, [&] { if (run->isEnabled()) finished.quit(); });
+    QObject::connect(&finishTimeout, &QTimer::timeout, &finished, &QEventLoop::quit);
+    finishPoll.start(20); finishTimeout.start(8000); finished.exec();
+    auto* report = dialog->findChild<QTextBrowser*>(QStringLiteral("genericReportPreview"));
+    require(run->isEnabled() && report && report->toPlainText().contains(QStringLiteral("Диагностика потока"))
+                && stop->isEnabled(), "health check did not share the live monitor source");
+    const int slowIndex = choices->findData(slowPath);
+    require(slowIndex >= 0, "lock scenario missing from list");
+    choices->setCurrentIndex(slowIndex);
+    require(run->isEnabled(), "lock scenario unavailable");
+    run->click();
+    QEventLoop entered;
+    QTimer enteredPoll;
+    QTimer enteredTimeout;
+    enteredTimeout.setSingleShot(true);
+    QObject::connect(&enteredPoll, &QTimer::timeout, &entered, [&] { if (window.entered()) entered.quit(); });
+    QObject::connect(&enteredTimeout, &QTimer::timeout, &entered, &QEventLoop::quit);
+    enteredPoll.start(10); enteredTimeout.start(3000); entered.exec();
+    auto* home = window.findChild<QAction*>(QStringLiteral("leaveFreeWorkspace"));
+    require(window.entered() && !stop->isEnabled() && home && !home->isEnabled() && !sets->isEnabled(),
+            "operator can change the monitor source during a dependent check");
+    window.release();
+    finishTimeout.start(8000); finished.exec();
+    require(run->isEnabled() && stop->isEnabled() && home->isEnabled() && sets->isEnabled(),
+            "monitor controls were not restored after the check");
+    window.pauseSamples();
+    // После прекращения передачи один и тот же снимок нельзя засчитать дважды.
+    const auto repeated = window.sourceOperation("read", {{"address", "M16P1A11B21T21"}, {"sample_count", "2"}});
+    require(repeated.find("status=no_data") != std::string::npos,
+            "one frozen sample was counted as multiple measurements");
+    QEventLoop stale;
+    QTimer::singleShot(5500, &stale, &QEventLoop::quit);
+    stale.exec();
+    const auto health = window.sourceOperation("health");
+    const auto read = window.sourceOperation("read", {{"address", "M16P1A11B21T21"}});
+    require(health.find("status=no_data") != std::string::npos
+                && read.find("status=no_data") != std::string::npos,
+            "stale samples were reported as live data");
+    stop->click();
+    require(QFile::remove(slowPath), "cannot remove isolated lock scenario");
+    require(QFile::remove(path), "cannot remove isolated health scenario");
     return 0;
 }
 
@@ -287,6 +451,7 @@ int runChild(const QString& mode)
     }
     if (mode == "--monitor-disconnect") return runMonitorChild(true);
     if (mode == "--monitor-live") return runMonitorChild(false);
+    if (mode == "--health-monitor") return runHealthMonitorChild();
     SimulatorWindow window(mode);
     window.show();
     if (mode == "--recover" || mode == "--recover-initial") {
@@ -653,6 +818,7 @@ int runParent()
     execute("--profile-selection", 0);
     execute("--monitor-disconnect", 0);
     execute("--monitor-live", 0);
+    execute("--health-monitor", 0);
     execute("--complete", 0);
     execute("--interrupt-before", 22);
     execute("--recover-initial", 0);

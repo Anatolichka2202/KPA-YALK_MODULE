@@ -53,6 +53,9 @@ public:
     MainWindow(QWidget* parent = nullptr);
     ~MainWindow();
 
+signals:
+    void freeCheckRequested();
+
 protected:
     void closeEvent(QCloseEvent* event) override;
 
@@ -83,6 +86,8 @@ protected:
         return scenarioWatcher_;
     }
     bool integrationStandRuntimeReady() const { return standRuntimeReady_; }
+    bool integrationHasOrbitaSource() const { return telemetrySampleSource_ && orbitaSampleBridge_; }
+    void integrationSetMonitorLocked(bool locked);
 
     // The project package is the product-level composition root. The generic
     // shell stores it, while a delivery decides which package to load. This
@@ -197,6 +202,7 @@ private:
     QTimer* updateTimer_;
     QElapsedTimer elapsedTimer_;
     bool isRunning_ = false;
+    bool monitorLocked_ = false;
     bool isRecording_ = false;
 
     // Центральный стек
@@ -254,6 +260,7 @@ private:
     QAction* actDb_ = nullptr;
     QAction* freeHomeAction_ = nullptr;
     QAction* freeEquipmentAction_ = nullptr;
+    QAction* freeCheckAction_ = nullptr;
 
     // Нижняя строка статуса
     QLabel* m_statusBarLabel = nullptr;
