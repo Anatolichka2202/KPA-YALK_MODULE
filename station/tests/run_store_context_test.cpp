@@ -5,17 +5,21 @@
 
 #include <QCoreApplication>
 #include <QFile>
+#include <QFileInfo>
 #include <QElapsedTimer>
 #include <QProcess>
 #include <QSqlDatabase>
 #include <QSqlQuery>
 #include <QTemporaryDir>
+#include <QThread>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cstdlib>
 #include <iostream>
 #include <stdexcept>
+#include <thread>
 
 using namespace orbita::stand;
 
@@ -201,6 +205,14 @@ int main(int argc, char** argv)
     if (arguments.size() == 4 && arguments.at(1) == QStringLiteral("--interrupt-after-step")) {
         runInterruptedChild(arguments.at(2).toUtf8().toStdString(), arguments.at(3));
     }
+    if (arguments.size() == 3 && arguments.at(1) == QStringLiteral("--interrupt-in-transaction")) {
+        RunStore store(arguments.at(2).toUtf8().toStdString());
+        auto run = store.load("crash-transaction");
+        if (!run) return 26;
+        run->steps.front().measurements.front().measured = 123;
+        store.saveCheckpoint(*run);
+        return 27;
+    }
 
     try {
         QTemporaryDir directory;
@@ -351,6 +363,62 @@ int main(int argc, char** argv)
         require(store.load(lockedRun.runId).has_value(),
                 "locked checkpoint damaged the previously stored run");
 
+        // Дочерний процесс останавливается после появления журнала SQLite,
+        // пока триггер задерживает вставку внутри незавершённой транзакции.
+        const auto crashPath = directory.filePath(QStringLiteral("transaction-crash.db"));
+        {
+            RunStore crashStore(crashPath.toUtf8().toStdString());
+            auto initial = lockedRun;
+            initial.runId = "crash-transaction";
+            crashStore.save(initial);
+        }
+        const QString crashConnection = QStringLiteral("crash_trigger_test");
+        {
+            auto database = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), crashConnection);
+            database.setDatabaseName(crashPath);
+            require(database.open(), "cannot open crash test database");
+            QSqlQuery query(database);
+            require(query.exec(QStringLiteral("PRAGMA journal_mode=DELETE")), "cannot configure rollback journal");
+            query.finish();
+            require(query.exec(QStringLiteral(
+                "CREATE TRIGGER delay_checkpoint BEFORE INSERT ON test_runs "
+                "WHEN NEW.run_id='crash-transaction' BEGIN "
+                "SELECT sum(x) FROM (WITH RECURSIVE counter(x) AS "
+                "(VALUES(1) UNION ALL SELECT x+1 FROM counter WHERE x<100000000) "
+                "SELECT x FROM counter); END")), "cannot create transaction delay trigger");
+            query.finish();
+            database.close();
+        }
+        QSqlDatabase::removeDatabase(crashConnection);
+        QProcess crashing;
+        crashing.start(QCoreApplication::applicationFilePath(),
+                       {QStringLiteral("--interrupt-in-transaction"), crashPath});
+        require(crashing.waitForStarted(5000), "transaction child did not start");
+        QElapsedTimer transactionWait;
+        transactionWait.start();
+        bool journalObserved = false;
+        while (transactionWait.elapsed() < 5000 && crashing.state() == QProcess::Running) {
+            const QFileInfo journal(crashPath + QStringLiteral("-journal"));
+            if (journal.exists() && journal.size() > 0) {
+                journalObserved = true;
+                break;
+            }
+            QThread::msleep(2);
+        }
+        const bool stillExecuting = journalObserved && !crashing.waitForFinished(50);
+        crashing.kill();
+        const bool childStopped = crashing.waitForFinished(5000);
+        require(journalObserved && stillExecuting && childStopped,
+                "did not interrupt an active SQLite transaction");
+        {
+            RunStore recovered(crashPath.toUtf8().toStdString());
+            const auto saved = recovered.load("crash-transaction");
+            require(saved && saved->finishedAt == std::chrono::system_clock::time_point{}
+                        && saved->steps.size() == 1 && saved->steps.front().measurements.size() == 1
+                        && saved->steps.front().measurements.front().measured == 6.2,
+                    "process termination damaged the preceding committed checkpoint");
+        }
+
         ScenarioDefinition liveScenario;
         liveScenario.id = "live-check";
         liveScenario.title = "Проверка с имитатором";
@@ -365,6 +433,80 @@ int main(int argc, char** argv)
         liveScenario.steps.push_back(liveStep);
         liveStep.id = "second";
         liveScenario.steps.push_back(liveStep);
+        // При занятой базе запрос остановки не ждёт завершения записи.
+        {
+            const auto stopPath = directory.filePath(QStringLiteral("stop-locked.db"));
+            StationSession blockedStation;
+            std::atomic_bool procedureEntered{false}, proceed{false}, writing{false}, finished{false};
+            std::atomic_int commands{0}, stops{0};
+            blockedStation.equipment().bind("test.stop", [&](const std::string&,
+                const std::map<std::string, std::string>&) {
+                    ++commands;
+                    return std::string("42");
+                }, [&] { ++stops; });
+            blockedStation.scenarioEngine().registerProcedure("test.live", [&](const ScenarioNode&,
+                ProcedureContext& context) {
+                (void)context.equipment.invoke("test.stop", "measure", {});
+                procedureEntered.store(true);
+                while (!proceed.load()) QThread::msleep(1);
+                MeasurementResult measurement;
+                measurement.title = "Измерение имитатора";
+                measurement.measured = 42;
+                measurement.verdict = RunVerdict::Ok;
+                return ProcedureResult{RunVerdict::Ok, "Измерено", {measurement}};
+            });
+            const QString stopConnection = QStringLiteral("stop_lock_test");
+            auto blocker = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), stopConnection);
+            blocker.setDatabaseName(stopPath);
+            require(blocker.open(), "cannot open stop test database");
+            std::optional<ScenarioRunResult> result;
+            std::exception_ptr workerError;
+            std::thread worker([&] {
+                try {
+                    auto writer = makeIntermediateCheckpointSink(stopPath.toUtf8().toStdString());
+                    result = blockedStation.runScenario(liveScenario, "simulator", "SN", false,
+                        {}, {}, [&](const ScenarioRunResult& snapshot) {
+                            if (!snapshot.steps.empty()) writing.store(true);
+                            writer(snapshot);
+                        });
+                } catch (...) {
+                    workerError = std::current_exception();
+                }
+                finished.store(true);
+            });
+            const auto waitUntil = [](const std::atomic_bool& flag, int timeoutMs) {
+                QElapsedTimer elapsed;
+                elapsed.start();
+                while (!flag.load() && elapsed.elapsed() < timeoutMs) QThread::msleep(1);
+                return flag.load();
+            };
+            const bool entered = waitUntil(procedureEntered, 5000);
+            QSqlQuery lock(blocker);
+            const bool locked = entered && lock.exec(QStringLiteral("BEGIN EXCLUSIVE"));
+            proceed.store(true);
+            const bool enteredWrite = locked && waitUntil(writing, 5000);
+            if (enteredWrite) QThread::msleep(30);
+            const bool writeWasBlocked = enteredWrite && !finished.load();
+            blockedStation.requestStop();
+            const bool finishedWhileLocked = waitUntil(finished, 2000);
+            const bool unlocked = !locked || lock.exec(QStringLiteral("ROLLBACK"));
+            worker.join();
+            lock.finish();
+            lock = QSqlQuery();
+            blocker.close();
+            blocker = {};
+            QSqlDatabase::removeDatabase(stopConnection);
+            require(entered && locked && enteredWrite && writeWasBlocked && unlocked,
+                    "failed to hold a checkpoint write behind the database lock");
+            require(finishedWhileLocked && !workerError && result
+                        && result->persistenceFailed && result->verdict == RunVerdict::Error
+                        && commands == 1 && stops > 0,
+                    "stop or safe shutdown did not complete after persistence failed");
+            RunStore saved(stopPath.toUtf8().toStdString());
+            const auto confirmed = saved.load(result->runId);
+            require(confirmed && confirmed->steps.empty() && result->steps.size() == 1,
+                    "failed checkpoint did not distinguish memory from confirmed data");
+        }
         ScenarioEngine liveEngine;
         int performed = 0;
         liveEngine.registerProcedure("test.live", [&](const ScenarioNode&, ProcedureContext& context) {

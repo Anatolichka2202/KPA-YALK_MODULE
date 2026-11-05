@@ -172,6 +172,7 @@ GenericCheckDialog::GenericCheckDialog(QWidget* parent)
     root->addWidget(splitter, 1);
 
     status_ = new QLabel(QStringLiteral("Готово к настройке проверки"), this);
+    status_->setObjectName(QStringLiteral("genericRunStatus"));
     status_->setTextInteractionFlags(Qt::TextSelectableByMouse);
     status_->setStyleSheet(QStringLiteral("color:#8ea6b7;"));
     root->addWidget(status_);

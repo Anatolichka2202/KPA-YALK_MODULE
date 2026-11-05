@@ -9,15 +9,21 @@
 #include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
+#include <QElapsedTimer>
+#include <QLabel>
 #include <QMessageBox>
 #include <QProcess>
 #include <QPushButton>
+#include <QSqlDatabase>
+#include <QSqlQuery>
 #include <QTemporaryDir>
 #include <QTextBrowser>
 #include <QTextEdit>
+#include <QThread>
 #include <QTimer>
 
 #include <algorithm>
+#include <atomic>
 #include <cstdlib>
 #include <iostream>
 #include <set>
@@ -65,6 +71,13 @@ public:
             commands.close();
             if (mode_ == "--interrupt" && node.id == "second") std::_Exit(23);
             (void)context.equipment.invoke("test.simulator", "measure", {});
+            if (mode_.startsWith("--lockstop") && node.id == "first") {
+                firstEntered_.store(true);
+                QElapsedTimer wait;
+                wait.start();
+                while (!allowMeasurement_.load() && wait.elapsed() < 5000) QThread::msleep(1);
+                if (!allowMeasurement_.load()) throw std::runtime_error("lock setup timed out");
+            }
             orbita::stand::MeasurementResult measurement;
             measurement.parameterKey = "sim.value";
             measurement.title = "Имитируемое значение";
@@ -75,6 +88,9 @@ public:
     }
 
     const std::string& runId() const { return runId_; }
+    bool firstEntered() const { return firstEntered_.load(); }
+    void allowMeasurement() { allowMeasurement_.store(true); }
+    int safeStops() const { return safeStops_.load(); }
 
 protected:
     void integrationPrepareEquipmentForScenario(const orbita::stand::ScenarioDefinition&,
@@ -97,13 +113,16 @@ protected:
         if (mode_ == "--interrupt-before") std::_Exit(22);
         integrationStationSession().prepare(activity, [this](orbita::stand::StationSession::Preparation&) {
             integrationEquipmentRegistry()->bind("test.simulator", [](const std::string&,
-                const std::map<std::string, std::string>&) { return std::string("42"); });
+                const std::map<std::string, std::string>&) { return std::string("42"); },
+                [this] { ++safeStops_; });
         });
     }
 private:
     QString mode_;
     std::set<std::string> previousRunIds_;
     std::string runId_;
+    std::atomic_bool firstEntered_{false}, allowMeasurement_{false};
+    std::atomic_int safeStops_{0};
 };
 
 int runChild(const QString& mode)
@@ -139,10 +158,40 @@ int runChild(const QString& mode)
     require(dialog, "free scenario dialog not found");
     auto* scenarios = dialog->findChild<QComboBox*>(QStringLiteral("genericScenario"));
     auto* run = dialog->findChild<QPushButton*>(QStringLiteral("runGeneric"));
+    auto* stop = dialog->findChild<QPushButton*>(QStringLiteral("stopGeneric"));
+    auto* events = dialog->findChild<QTextBrowser*>(QStringLiteral("genericEventLog"));
     require(scenarios && scenarios->count() == 1 && run && run->isEnabled(),
             "simulated scenario is unavailable in dialog");
     run->click();
     require(!run->isEnabled(), "scenario was not started from the dialog");
+    const QString lockConnection = QStringLiteral("gui_stop_lock");
+    QSqlDatabase blocker;
+    QSqlQuery lock;
+    bool locked = false;
+    bool released = false;
+    bool stopClicked = false;
+    QTimer lockPoll;
+    if (mode.startsWith("--lockstop")) {
+        require(stop && stop->isEnabled() && events, "stop action not available during scenario");
+        blocker = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), lockConnection);
+        blocker.setDatabaseName(QDir(QCoreApplication::applicationDirPath()).filePath("runs/runs.db"));
+        require(blocker.open(), "cannot open GUI lock connection");
+        lock = QSqlQuery(blocker);
+        QObject::connect(&lockPoll, &QTimer::timeout, qApp, [&] {
+            if (!locked && window.firstEntered()) {
+                locked = lock.exec(QStringLiteral("BEGIN EXCLUSIVE"));
+                if (!locked) { window.allowMeasurement(); qApp->exit(4); return; }
+                window.allowMeasurement();
+            } else if (locked && !stopClicked
+                       && events->toPlainText().contains(QStringLiteral("FINISH"))) {
+                stopClicked = stop->isEnabled();
+                stop->click();
+                if (mode == "--lockstop-release")
+                    released = lock.exec(QStringLiteral("ROLLBACK"));
+            }
+        });
+        lockPoll.start(5);
+    }
     QTimer timeout;
     timeout.setSingleShot(true);
     QObject::connect(&timeout, &QTimer::timeout, qApp, [] { qApp->exit(3); });
@@ -153,6 +202,32 @@ int runChild(const QString& mode)
     });
     poll.start(10);
     const int status = qApp->exec();
+    if (mode.startsWith("--lockstop")) {
+        lockPoll.stop();
+        const bool unlocked = released || (locked && lock.exec(QStringLiteral("ROLLBACK")));
+        lock = QSqlQuery();
+        blocker.close();
+        blocker = {};
+        QSqlDatabase::removeDatabase(lockConnection);
+        auto* summary = dialog->findChild<QLabel*>(QStringLiteral("genericRunStatus"));
+        require(status == 0 && unlocked && stopClicked && window.safeStops() > 0 && summary,
+                "GUI stop did not finish or did not report the database failure");
+        orbita::stand::RunStore store(QDir(QCoreApplication::applicationDirPath())
+            .filePath("runs/runs.db").toStdString());
+        const auto saved = store.load(window.runId());
+        if (mode == "--lockstop") {
+            require(summary->text().contains(QStringLiteral("не сохранён"))
+                        && saved && saved->steps.empty()
+                        && saved->verdict == orbita::stand::RunVerdict::Incomplete,
+                    "GUI presented an unconfirmed measurement as persisted");
+        } else {
+            require(!summary->text().contains(QStringLiteral("не сохранён"))
+                        && saved && saved->verdict == orbita::stand::RunVerdict::Aborted
+                        && !saved->steps.empty() && saved->steps.front().measurements.size() == 1,
+                    "GUI stop did not stop the scenario after the database recovered");
+        }
+        return 0;
+    }
     require(status == 0, "free scenario did not finish");
     auto* report = dialog->findChild<QTextBrowser*>(QStringLiteral("genericReportPreview"));
     if (report && !report->toPlainText().contains(QStringLiteral("Имитируемое значение")))
@@ -223,6 +298,16 @@ int runParent()
     execute("--recover", 0);
     require(commands.open(QIODevice::ReadOnly) && commands.readAll() == beforeRecovery,
             "recovery started simulator commands");
+    commands.close();
+    execute("--lockstop", 0);
+    require(commands.open(QIODevice::ReadOnly)
+                && commands.readAll() == beforeRecovery + "first\n",
+            "GUI stop allowed another simulator action");
+    commands.close();
+    execute("--lockstop-release", 0);
+    require(commands.open(QIODevice::ReadOnly)
+                && commands.readAll() == beforeRecovery + "first\nfirst\n",
+            "GUI stop did not prevent the next simulator action after recovery");
     return 0;
 }
 }
