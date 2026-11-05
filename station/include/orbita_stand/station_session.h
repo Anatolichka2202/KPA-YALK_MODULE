@@ -4,7 +4,9 @@
 #include "orbita_stand/config.h"
 #include "orbita_stand/equipment_runtime.h"
 #include "orbita_stand/resource_lease.h"
+#include "orbita_stand/project.h"
 
+#include <atomic>
 #include <memory>
 #include <map>
 #include <set>
@@ -37,6 +39,23 @@ public:
 
     StationSession(const StationSession&) = delete;
     StationSession& operator=(const StationSession&) = delete;
+
+    ScenarioEngine& scenarioEngine() noexcept { return *scenarioEngine_; }
+    void resetScenarioEngine();
+    void requestStop() noexcept { scenarioEngine_->requestStop(); }
+
+    // Все активные вызовы проходят через одну сессию: одновременный запуск
+    // сценариев и ручных команд отклоняется до обращения к оборудованию.
+    ScenarioRunResult runScenario(const ScenarioDefinition& scenario,
+        std::string profileVersion, std::string objectSerial, bool allowPartial,
+        std::function<void(const RunEvent&)> progressSink = {});
+    ScenarioRunResult runWorkflow(const ProjectDefinition& project,
+        const std::string& workflowId, std::string profileVersion,
+        std::string objectSerial, bool allowPartial, ProjectRunContext context = {},
+        const ScenarioDefinition* scenarioOverride = nullptr,
+        std::function<void(const RunEvent&)> progressSink = {});
+    std::string invokeManual(const std::string& capability, const std::string& operation,
+        const std::map<std::string, std::string>& arguments);
 
     ComponentRuntime& components() noexcept { return components_; }
     const ComponentRuntime& components() const noexcept { return components_; }
@@ -114,6 +133,8 @@ public:
     void clear() noexcept;
 
 private:
+    std::atomic_bool active_{false};
+    std::unique_ptr<ScenarioEngine> scenarioEngine_ = std::make_unique<ScenarioEngine>();
     StandProfile profile_;
     EquipmentPluginManager equipmentPlugins_;
     EquipmentRegistry equipment_;

@@ -72,7 +72,7 @@ protected:
     HomePage* integrationHomePage() const { return homePage_; }
     RegistrarPage* integrationRegistrarPage() const { return registrarPage_; }
     QMenu* integrationToolsMenu() const { return toolsMenu_; }
-    orbita::stand::ScenarioEngine* integrationScenarioEngine() const { return scenarioEngine_.get(); }
+    orbita::stand::ScenarioEngine* integrationScenarioEngine() const { return scenarioEngine_; }
     orbita::stand::EquipmentRegistry* integrationEquipmentRegistry() const { return equipmentRegistry_; }
     orbita::stand::StandProfile& integrationStandProfile() { return standProfile_; }
     orbita::stand::StationSession& integrationStationSession() { return stationSession_; }
@@ -278,7 +278,7 @@ private:
     orbita::stand::ISampleSource* telemetrySampleSource_ = nullptr;
     std::unique_ptr<miltech::integration::OrbitaSampleBridge> orbitaSampleBridge_;
 
-    std::unique_ptr<orbita::stand::ScenarioEngine> scenarioEngine_;
+    orbita::stand::ScenarioEngine* scenarioEngine_ = nullptr;
     std::unique_ptr<orbita::stand::RunStore> runStore_;
     QHash<QString, orbita::stand::ScenarioDefinition> scenarios_;
     QHash<QString, QString> scenarioPaths_;

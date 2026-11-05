@@ -81,7 +81,7 @@ UniversalMainWindow::UniversalMainWindow(QWidget* parent)
 UniversalMainWindow::~UniversalMainWindow()
 {
     if (genericWatcher_ && genericWatcher_->isRunning()) {
-        if (auto* engine = integrationScenarioEngine()) engine->requestStop();
+        integrationStationSession().requestStop();
         genericWatcher_->waitForFinished();
     }
 }
@@ -306,9 +306,8 @@ void UniversalMainWindow::runGenericScenario(
     engine->resetStop();
     const std::string profileVersion = integrationStandProfile().version;
     const std::string serial = objectSerial.toStdString();
-    auto* leases = &integrationStationSession().leases();
     genericWatcher_->setFuture(QtConcurrent::run(
-        [this, workflowId, path, scenario, profileVersion, serial, leases,
+        [this, workflowId, path, scenario, profileVersion, serial,
          scenarioConfigSnapshot, description, engineeringOverride] {
             const auto progress = [this](const orbita::stand::RunEvent& event) {
                 QMetaObject::invokeMethod(this, [this, event] {
@@ -326,11 +325,9 @@ void UniversalMainWindow::runGenericScenario(
                 context.attributes["scenario_config_sha256"] = QCryptographicHash::hash(
                     scenarioConfigSnapshot, QCryptographicHash::Sha256).toHex().toStdString();
                 context.attributes["scenario_config_source"] = path.toUtf8().toStdString();
-                auto result = orbita::stand::runProjectWorkflow(
-                    *project, workflowId.toStdString(), *integrationScenarioEngine(),
-                    *integrationEquipmentRegistry(), profileVersion, serial, false,
-                    std::move(context), &scenario, progress,
-                    leases);
+                auto result = integrationStationSession().runWorkflow(
+                    *project, workflowId.toStdString(), profileVersion, serial, false,
+                    std::move(context), &scenario, progress);
                 result.contextAttributes["engineering_description"] = description.toUtf8().toStdString();
                 result.contextAttributes["engineering_override_note"] = engineeringOverride.toUtf8().toStdString();
                 result.contextAttributes["scenario_config_sha256"] = QCryptographicHash::hash(
@@ -378,10 +375,8 @@ void UniversalMainWindow::runGenericScenario(
 
             // Compatibility fallback for development layouts that do not yet
             // deploy project packages next to the executable.
-            auto result = orbita::stand::runScenarioWithEvidence(
-                *integrationScenarioEngine(), *integrationEquipmentRegistry(),
-                scenario, profileVersion, serial, false, progress,
-                leases);
+            auto result = integrationStationSession().runScenario(
+                scenario, profileVersion, serial, false, progress);
             result.contextAttributes["engineering_description"] = description.toUtf8().toStdString();
             result.contextAttributes["engineering_override_note"] = engineeringOverride.toUtf8().toStdString();
             result.contextAttributes["scenario_config_sha256"] = QCryptographicHash::hash(
@@ -393,7 +388,7 @@ void UniversalMainWindow::runGenericScenario(
 void UniversalMainWindow::stopGenericScenario()
 {
     if (!genericWatcher_->isRunning()) return;
-    if (auto* engine = integrationScenarioEngine()) engine->requestStop();
+    integrationStationSession().requestStop();
     if (genericDialog_)
         genericDialog_->setRunning(true, QStringLiteral("Остановка и безопасный сброс оборудования…"));
 }

@@ -7,6 +7,57 @@
 
 namespace orbita::stand {
 
+namespace {
+// Флаг общий для ручных команд и обоих вариантов запуска. Освобождение
+// выполняется и при исключении, чтобы ошибка не блокировала станцию навсегда.
+class ActivityGuard {
+public:
+    explicit ActivityGuard(std::atomic_bool& active) : active_(active)
+    {
+        bool expected = false;
+        if (!active_.compare_exchange_strong(expected, true))
+            throw std::runtime_error("Станция занята: выполняется другая активная операция");
+    }
+    ~ActivityGuard() { active_.store(false); }
+private:
+    std::atomic_bool& active_;
+};
+}
+
+void StationSession::resetScenarioEngine()
+{
+    ActivityGuard guard(active_);
+    scenarioEngine_ = std::make_unique<ScenarioEngine>();
+}
+
+ScenarioRunResult StationSession::runScenario(const ScenarioDefinition& scenario,
+    std::string profileVersion, std::string objectSerial, bool allowPartial,
+    std::function<void(const RunEvent&)> progressSink)
+{
+    ActivityGuard guard(active_);
+    return runScenarioWithEvidence(*scenarioEngine_, equipment_, scenario,
+        std::move(profileVersion), std::move(objectSerial), allowPartial,
+        std::move(progressSink), &leases_);
+}
+
+ScenarioRunResult StationSession::runWorkflow(const ProjectDefinition& project,
+    const std::string& workflowId, std::string profileVersion, std::string objectSerial,
+    bool allowPartial, ProjectRunContext context, const ScenarioDefinition* scenarioOverride,
+    std::function<void(const RunEvent&)> progressSink)
+{
+    ActivityGuard guard(active_);
+    return runProjectWorkflow(project, workflowId, *scenarioEngine_, equipment_,
+        std::move(profileVersion), std::move(objectSerial), allowPartial,
+        std::move(context), scenarioOverride, std::move(progressSink), &leases_);
+}
+
+std::string StationSession::invokeManual(const std::string& capability,
+    const std::string& operation, const std::map<std::string, std::string>& arguments)
+{
+    ActivityGuard guard(active_);
+    return equipment_.invoke(capability, operation, arguments);
+}
+
 void StationSession::configure(
     StandProfile profile,
     const std::string& pluginDirectory,

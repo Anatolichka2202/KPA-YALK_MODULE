@@ -1020,19 +1020,18 @@ void KtmaMainWindow::runScenario(
         const auto* project = integrationProject();
         const std::string projectId = project ? project->id : std::string();
         const std::string projectVersion = project ? project->version : std::string();
-        auto* leases = &integrationStationSession().leases();
         watcher->setFuture(QtConcurrent::run(
-            [this, engine, registry, scenario, profileVersion, serial, allowPartial,
-             yvpExcluded, overloadExcluded, survivalExcluded, leases,
+            [this, scenario, profileVersion, serial, allowPartial,
+             yvpExcluded, overloadExcluded, survivalExcluded,
              selectedWorkflowContext, projectId, projectVersion]() {
-                auto result = orbita::stand::runScenarioWithEvidence(
-                    *engine, *registry, scenario, profileVersion, serial, allowPartial,
+                auto result = integrationStationSession().runScenario(
+                    scenario, profileVersion, serial, allowPartial,
                     [this](const orbita::stand::RunEvent& event) {
                         QMetaObject::invokeMethod(this, [this, event] {
                             if (auto* testPage = integrationTestPage())
                                 testPage->setRunEvent(event);
                         }, Qt::QueuedConnection);
-                    }, leases);
+                    });
                 if (!selectedWorkflowContext.empty()) {
                     result.projectId = projectId;
                     result.projectVersion = projectVersion;

@@ -113,7 +113,7 @@ bool MainWindow::initializeTelemetrySource()
 
 MainWindow::~MainWindow()
 {
-    if (scenarioEngine_) scenarioEngine_->requestStop();
+    if (scenarioEngine_) stationSession_.requestStop();
     if (scenarioWatcher_ && scenarioWatcher_->isRunning()) scenarioWatcher_->waitForFinished();
     // Bridge must die before StationSession because it references the session-owned source.
     orbitaSampleBridge_.reset();
@@ -129,7 +129,7 @@ void MainWindow::closeEvent(QCloseEvent* event)
         // Если разрушить окно сейчас, деструктор дождётся worker-потока, но
         // queued-сигнал finished уже некому будет обработать и отчёт потеряется.
         closeAfterScenario_ = true;
-        if (scenarioEngine_) scenarioEngine_->requestStop();
+        if (scenarioEngine_) stationSession_.requestStop();
         testPage_->setRunInProgress(
             true, QStringLiteral("Остановка и сохранение отчёта перед закрытием…"));
         log(QStringLiteral("Закрытие отложено до безопасной остановки и сохранения отчёта"));
@@ -162,7 +162,7 @@ void MainWindow::setupUi()
             if (!equipmentRegistry_ || !equipmentRegistry_->hasCapability(capability)) {
                 throw std::runtime_error("Оборудование не готово: " + capability);
             }
-            return equipmentRegistry_->invoke(capability, operation, arguments);
+            return stationSession_.invokeManual(capability, operation, arguments);
         });
     centralStack_->addWidget(testPage_);
 
@@ -612,7 +612,7 @@ void MainWindow::setupToolBar()
         auto* control = new EquipmentControlWidget([this](
             const std::string& capability, const std::string& operation,
             const std::map<std::string, std::string>& arguments) {
-                return equipmentRegistry_->invoke(capability, operation, arguments);
+                return stationSession_.invokeManual(capability, operation, arguments);
             }, this);
         control->show();
     });
@@ -785,7 +785,8 @@ void MainWindow::initializeStandRuntime()
                    const std::map<std::string, std::string>& arguments) {
                 return invokeOrbitaParameterSource(operation, arguments);
             });
-        scenarioEngine_ = std::make_unique<orbita::stand::ScenarioEngine>();
+        stationSession_.resetScenarioEngine();
+        scenarioEngine_ = &stationSession_.scenarioEngine();
         orbita::stand::registerTelemetryProcedures(*scenarioEngine_);
         // Product procedure registration and scenario discovery belong to the
         // delivery/application composition. The reusable shell only owns the
@@ -935,21 +936,20 @@ void MainWindow::onRunScenario(
     log(QStringLiteral("Запуск сценария %1, объект %2")
         .arg(QString::fromStdString(scenario.id),
              objectSerial.isEmpty() ? QStringLiteral("без заводского номера") : objectSerial));
-    auto* leases = &stationSession_.leases();
-    scenarioWatcher_->setFuture(QtConcurrent::run([this, scenario, serial, partial, leases]() {
-        return orbita::stand::runScenarioWithEvidence(*scenarioEngine_, *equipmentRegistry_,
+    scenarioWatcher_->setFuture(QtConcurrent::run([this, scenario, serial, partial]() {
+        return stationSession_.runScenario(
             scenario, standProfile_.version, serial, partial,
             [this](const orbita::stand::RunEvent& event) {
                 QMetaObject::invokeMethod(this, [this, event]() {
                     testPage_->setRunEvent(event);
                 }, Qt::QueuedConnection);
-            }, leases);
+            });
     }));
 }
 
 void MainWindow::onStopScenario()
 {
-    if (scenarioEngine_) scenarioEngine_->requestStop();
+    if (scenarioEngine_) stationSession_.requestStop();
     // Worker-поток сам вызывает safeStopAll() в единой точке завершения
     // ScenarioEngine. Параллельный вызов отсюда мог дважды останавливать один
     // UDP transport и зависать до формирования отчёта.
@@ -1090,7 +1090,7 @@ void MainWindow::openFreeCommandConsole()
             if (!equipmentRegistry_ || !equipmentRegistry_->hasCapability(capability)) {
                 throw std::runtime_error("Выбранная capability недоступна в текущем профиле");
             }
-            return equipmentRegistry_->invoke(capability, operation, arguments);
+            return stationSession_.invokeManual(capability, operation, arguments);
         }, {}, this);
     connect(console, &FreeWorkspaceWidget::adapterMonitoringRequested,
             this, [this](const QString& capability) {
