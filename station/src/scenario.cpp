@@ -177,6 +177,7 @@ std::string missingDependencies(const ScenarioNode& node, ICapabilityProvider& e
 void validateNode(
     const ScenarioNode& node,
     const std::map<std::string, ProcedureFunction>& procedures,
+    const std::map<std::string, ProcedureValidator>& validators,
     std::set<std::string>& ids,
     std::vector<std::string>& errors)
 {
@@ -218,13 +219,18 @@ void validateNode(
             errors.emplace_back(
                 "Не зарегистрирована процедура " + node.procedure + " для шага " + node.id);
         }
+        const auto validator = validators.find(node.procedure);
+        if (validator != validators.end()) {
+            for (const auto& error : validator->second(node))
+                errors.emplace_back("Шаг " + node.id + ": " + error);
+        }
         if (node.tuRequirement.empty()) {
             errors.emplace_back("У конечного шага " + node.id + " отсутствует ссылка на пункт ТУ");
         }
     }
 
     for (const auto& child : node.children) {
-        validateNode(child, procedures, ids, errors);
+        validateNode(child, procedures, validators, ids, errors);
     }
 }
 
@@ -259,11 +265,16 @@ RunVerdict combineVerdicts(RunVerdict current, RunVerdict next) noexcept
     return rank(next) > rank(current) ? next : current;
 }
 
-void ScenarioEngine::registerProcedure(std::string id, ProcedureFunction procedure)
+void ScenarioEngine::registerProcedure(std::string id, ProcedureFunction procedure,
+                                       ProcedureValidator validator)
 {
     if (id.empty() || !procedure) {
         throw std::invalid_argument("Procedure id and callback are required");
     }
+    // Перерегистрация заменяет и проверку, чтобы для новой процедуры не
+    // остались ограничения предыдущей реализации с тем же идентификатором.
+    if (validator) validators_[id] = std::move(validator);
+    else validators_.erase(id);
     procedures_[std::move(id)] = std::move(procedure);
 }
 
@@ -286,7 +297,7 @@ std::vector<std::string> ScenarioEngine::validate(const ScenarioDefinition& scen
 
     std::set<std::string> ids;
     for (const auto& node : scenario.steps) {
-        validateNode(node, procedures_, ids, errors);
+        validateNode(node, procedures_, validators_, ids, errors);
     }
     return errors;
 }

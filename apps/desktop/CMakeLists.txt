@@ -221,6 +221,8 @@ if(BUILD_TESTING)
     )
 
     target_link_libraries(test_page_smoke_test PRIVATE
+        orbita_stand_reporting
+        miltech_orbita_integration
         orbita
         ktma_ubsi_procedures
         orbita_stand_runtime

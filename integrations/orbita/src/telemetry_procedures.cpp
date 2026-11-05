@@ -67,6 +67,32 @@ MeasurementResult checked(
     return measurement;
 }
 
+std::vector<std::string> validateTelemetryHealth(const ScenarioNode& node)
+{
+    std::vector<std::string> errors;
+    for (const auto* key : {"max_phrase_error_percent", "max_group_error_percent"}) {
+        const auto item = node.arguments.find(key);
+        if (item == node.arguments.end()) continue;
+        try {
+            std::size_t consumed = 0;
+            const double value = std::stod(item->second, &consumed);
+            if (consumed != item->second.size() || !std::isfinite(value)
+                || value < 0.0 || value > 100.0)
+                throw std::invalid_argument("percentage");
+        } catch (const std::exception&) {
+            errors.emplace_back(std::string("Параметр ") + key
+                + " должен быть числом от 0 до 100 процентов");
+        }
+    }
+    const auto flag = node.arguments.find("diagnostic_only");
+    if (flag != node.arguments.end() && flag->second != "true" && flag->second != "false"
+        && flag->second != "1" && flag->second != "0"
+        && flag->second != "yes" && flag->second != "no") {
+        errors.emplace_back("Параметр diagnostic_only должен задавать да или нет");
+    }
+    return errors;
+}
+
 ProcedureResult telemetryHealth(const ScenarioNode& node, ProcedureContext& context)
 {
     const auto response = values(context.equipment.invoke(
@@ -111,7 +137,7 @@ ProcedureResult telemetryHealth(const ScenarioNode& node, ProcedureContext& cont
 
 void registerTelemetryProcedures(ScenarioEngine& engine)
 {
-    engine.registerProcedure("telemetry.health", telemetryHealth);
+    engine.registerProcedure("telemetry.health", telemetryHealth, validateTelemetryHealth);
 }
 
 } // namespace orbita::stand

@@ -269,10 +269,12 @@ struct ProcedureContext {
 
 using ProcedureFunction = std::function<ProcedureResult(
     const ScenarioNode&, ProcedureContext&)>;
+using ProcedureValidator = std::function<std::vector<std::string>(const ScenarioNode&)>;
 
 class ScenarioEngine final {
 public:
-    void registerProcedure(std::string id, ProcedureFunction procedure);
+    void registerProcedure(std::string id, ProcedureFunction procedure,
+                           ProcedureValidator validator = {});
     std::vector<std::string> registeredProcedures() const;
     std::vector<std::string> validate(const ScenarioDefinition& scenario) const;
     ScenarioRunResult run(
@@ -294,6 +296,7 @@ private:
         bool allowPartial);
 
     std::map<std::string, ProcedureFunction> procedures_;
+    std::map<std::string, ProcedureValidator> validators_;
     std::atomic_bool stopRequested_{false};
     std::atomic_bool running_{false};
 };

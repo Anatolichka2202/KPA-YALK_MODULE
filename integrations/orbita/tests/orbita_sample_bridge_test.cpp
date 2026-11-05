@@ -2,6 +2,8 @@
 
 #include "orbita.h"
 #include "orbita_stand/sample_source.h"
+#include "orbita_stand/station_session.h"
+#include "orbita_stand/telemetry_procedures.h"
 
 #include <cstdint>
 #include <iostream>
@@ -122,6 +124,64 @@ void lifecycleContract()
     require(!source.hasErrorCallback(), "error callback survived bridge stop");
 }
 
+void scenarioParameterValidationContract()
+{
+    using namespace orbita::stand;
+    StationSession session;
+    registerTelemetryProcedures(session.scenarioEngine());
+    int reads = 0;
+    session.equipment().bind("orbita.parameter_source",
+        [&](const std::string&, const std::map<std::string, std::string>&) {
+            ++reads;
+            return std::string("status=ready\nframes_processed=12\nphrase_error_percent=1\n"
+                               "group_error_percent=2\nchannel_count=4\n");
+        });
+    ScenarioDefinition scenario;
+    scenario.id = "simulated_health";
+    scenario.title = "Проверка потока";
+    scenario.version = "1";
+    scenario.catalogVersion = "1";
+    scenario.publicationState = PublicationState::Published;
+    ScenarioNode step;
+    step.id = "health";
+    step.title = "Поток";
+    step.tuRequirement = "test.1";
+    step.procedure = "telemetry.health";
+    step.requiredCapabilities.insert("orbita.parameter_source");
+    step.arguments = {{"max_phrase_error_percent", "2.5"},
+                      {"max_group_error_percent", "3"}, {"diagnostic_only", "false"}};
+    scenario.steps.push_back(step);
+
+    // Некорректные параметры должны отклоняться до первого чтения имитатора,
+    // в том числе при загрузке YAML без использования визуального редактора.
+    for (const auto& value : {"-1", "101", "nan", "2.5xyz"}) {
+        scenario.steps[0].arguments["max_phrase_error_percent"] = value;
+        require(!session.scenarioEngine().validate(scenario).empty(),
+                "invalid percentage was accepted by scenario validation");
+        require(session.runScenario(scenario, "simulator", "SN", false).verdict == RunVerdict::Incomplete,
+                "invalid scenario was executed");
+        require(reads == 0, "invalid scenario accessed the simulated source");
+    }
+    scenario.steps[0].arguments["max_phrase_error_percent"] = "2.5";
+    scenario.steps[0].arguments["diagnostic_only"] = "maybe";
+    require(!session.scenarioEngine().validate(scenario).empty(),
+            "invalid diagnostic mode was accepted");
+    require(session.runScenario(scenario, "simulator", "SN", false).verdict == RunVerdict::Incomplete
+                && reads == 0, "invalid mode accessed the simulated source");
+    scenario.steps[0].arguments["diagnostic_only"] = "false";
+    auto laterStep = scenario.steps[0];
+    laterStep.id = "later";
+    laterStep.arguments["max_group_error_percent"] = "101";
+    scenario.steps.push_back(laterStep);
+    require(session.runScenario(scenario, "simulator", "SN", false).verdict == RunVerdict::Incomplete
+                && reads == 0, "an invalid later step allowed earlier simulator activity");
+    scenario.steps.pop_back();
+    const auto result = session.runScenario(scenario, "simulator", "SN", false);
+    require(result.verdict == RunVerdict::Ok && reads == 1
+                && result.steps.size() == 1 && result.steps[0].measurements.size() == 4,
+            "valid scenario did not evaluate simulated telemetry");
+}
+
 void failedSourceRollbackContract()
 {
     auto decoder = configuredDecoder();
@@ -144,6 +204,7 @@ int main()
     try {
         lifecycleContract();
         failedSourceRollbackContract();
+        scenarioParameterValidationContract();
         std::cout << "Orbita station sample bridge contract OK\n";
         return 0;
     } catch (const std::exception& error) {

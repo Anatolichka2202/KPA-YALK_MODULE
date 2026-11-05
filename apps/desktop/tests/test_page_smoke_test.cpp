@@ -8,7 +8,9 @@
 #include "station_admin_dialog.h"
 
 #include "orbita_stand/project.h"
+#include "orbita_stand/run_store.h"
 #include "orbita_stand/station_session.h"
+#include "orbita_stand/telemetry_procedures.h"
 
 #include <QApplication>
 #include <QComboBox>
@@ -337,16 +339,19 @@ int main(int argc, char** argv)
         "id: visual\n"
         "title: Visual draft\n"
         "version: 1\n"
+        "catalog_version: 1\n"
         "state: draft\n"
         "steps:\n"
         "  - id: root\n"
         "    title: Original step\n"
+        "    tu: test.1\n"
         "    procedure: test.procedure\n"
         "    args:\n"
         "      technical_retries: 3\n"
         "      sample_count: 4\n"
         "  - id: second\n"
         "    title: Second step\n"
+        "    tu: test.2\n"
         "    procedure: second.procedure\n");
     visualFile.close();
     ScenarioVisualEditor visualEditor(visualPath);
@@ -436,6 +441,37 @@ int main(int argc, char** argv)
                 && healthStep.arguments.at("diagnostic_only") == "true"
                 && healthStep.arguments.at("sample_count") == "4",
             "typed health settings must preserve other arguments and survive YAML reload");
+    // Запускаем именно файл, сохранённый визуальным редактором: источник
+    // имитирует поток, а встроенная процедура оценивает его по введённым пределам.
+    orbita::stand::StationSession simulatedStation;
+    orbita::stand::registerTelemetryProcedures(simulatedStation.scenarioEngine());
+    simulatedStation.scenarioEngine().registerProcedure("second.procedure", [](const auto&, auto&) {
+        return orbita::stand::ProcedureResult{orbita::stand::RunVerdict::Ok, "Готово", {}};
+    });
+    int simulatedReads = 0;
+    simulatedStation.equipment().bind("orbita.parameter_source",
+        [&](const std::string&, const std::map<std::string, std::string>&) {
+            ++simulatedReads;
+            return std::string("status=ready\nframes_processed=10\nphrase_error_percent=1\n"
+                               "group_error_percent=2\nchannel_count=4\n");
+        });
+    const auto editedScenario = orbita::stand::loadScenarioYaml(visualPath.toStdString());
+    const auto simulatedRun = simulatedStation.runScenario(editedScenario, "simulator", "SN", true);
+    require(simulatedReads == 1 && !simulatedRun.steps.empty()
+                && simulatedRun.steps.front().measurements.size() == 4
+                && simulatedRun.verdict == orbita::stand::RunVerdict::Incomplete,
+            "editor scenario must run its diagnostic action on the simulated source");
+    orbita::stand::RunStore simulatedResults(
+        QDir(editorFixture.path()).filePath(QStringLiteral("simulated-runs.db")).toStdString());
+    simulatedResults.save(simulatedRun);
+    const auto restoredRun = simulatedResults.load(simulatedRun.runId);
+    require(restoredRun && restoredRun->scenarioId == "visual"
+                && restoredRun->scenarioVersion == "1"
+                && !restoredRun->steps.empty()
+                && restoredRun->steps.front().measurements.size() == 4,
+            "simulated result and scenario version must survive storage and reload");
+
+
     rawArgsBeforeSettings->setPlainText(rawArgsBeforeSettings->toPlainText().replace(
         QStringLiteral("diagnostic_only = true"), QStringLiteral("diagnostic_only = false")));
     QTimer::singleShot(0, [] {
