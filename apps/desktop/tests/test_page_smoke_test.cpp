@@ -407,7 +407,10 @@ int main(int argc, char** argv)
         auto* group = dialog->findChild<QDoubleSpinBox*>(QStringLiteral("telemetryGroupLimit"));
         auto* diagnostic = dialog->findChild<QComboBox*>(QStringLiteral("telemetryDiagnosticMode"));
         if (phrase && group && diagnostic) {
-            modeRequired = diagnostic->currentIndex() == 0;
+            const auto* unsupported = dialog->findChild<QLabel*>(
+                QStringLiteral("telemetryUnsupportedArguments"));
+            modeRequired = diagnostic->currentIndex() == 0 && unsupported
+                && unsupported->text().contains(QStringLiteral("sample_count"));
             phrase->setValue(2.5);
             group->setValue(3.0);
             diagnostic->setCurrentIndex(1);
@@ -416,7 +419,7 @@ int main(int argc, char** argv)
     });
     healthSettings->click();
     require(modeRequired,
-            "a health procedure must require an explicit mode even if an old argument was false");
+            "health settings must require a mode and show arguments that will be removed");
     requiredBeforeSettings->clear();
     QTimer::singleShot(0, [] {
         if (auto* dialog = qobject_cast<QDialog*>(QApplication::activeModalWidget())) dialog->reject();
@@ -439,8 +442,8 @@ int main(int argc, char** argv)
                 && healthStep.arguments.at("max_phrase_error_percent") == "2.5"
                 && healthStep.arguments.at("max_group_error_percent") == "3"
                 && healthStep.arguments.at("diagnostic_only") == "true"
-                && healthStep.arguments.at("sample_count") == "4",
-            "typed health settings must preserve other arguments and survive YAML reload");
+                && healthStep.arguments.count("sample_count") == 0,
+            "typed health settings must remove unsupported arguments and survive YAML reload");
     // Запускаем именно файл, сохранённый визуальным редактором: источник
     // имитирует поток, а встроенная процедура оценивает его по введённым пределам.
     orbita::stand::StationSession simulatedStation;
@@ -455,20 +458,6 @@ int main(int argc, char** argv)
             return std::string("status=ready\nframes_processed=10\nphrase_error_percent=1\n"
                                "group_error_percent=2\nchannel_count=4\n");
         });
-    const auto unsupportedScenario = orbita::stand::loadScenarioYaml(visualPath.toStdString());
-    require(!simulatedStation.scenarioEngine().validate(unsupportedScenario).empty(),
-            "an unsupported preserved argument must be diagnosed before execution");
-    rawArgsBeforeSettings->setPlainText(rawArgsBeforeSettings->toPlainText().replace(
-        QStringLiteral("sample_count = 4"), QString()));
-    QTimer::singleShot(0, [] {
-        auto* dialog = qobject_cast<QDialog*>(QApplication::activeModalWidget());
-        if (!dialog) return;
-        if (auto* mode = dialog->findChild<QComboBox*>(QStringLiteral("telemetryDiagnosticMode")))
-            mode->setCurrentIndex(1);
-        dialog->accept();
-    });
-    healthSettings->click();
-    visualSave->click();
     const auto editedScenario = orbita::stand::loadScenarioYaml(visualPath.toStdString());
     const auto simulatedRun = simulatedStation.runScenario(editedScenario, "simulator", "SN", true);
     require(simulatedReads == 1 && !simulatedRun.steps.empty()

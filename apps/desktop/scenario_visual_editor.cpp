@@ -503,6 +503,21 @@ bool ScenarioVisualEditor::configureTelemetryHealthForNode(const orbita::stand::
         "успешный результат шага будет означать только исправность потока."), &dialog);
     explanation->setWordWrap(true);
     layout->addWidget(explanation);
+    QStringList unsupportedArguments;
+    for (const auto& [key, value] : args) {
+        (void)value;
+        if (key != "max_phrase_error_percent" && key != "max_group_error_percent"
+            && key != "diagnostic_only" && key != "technical_retries")
+            unsupportedArguments << QString::fromStdString(key);
+    }
+    if (!unsupportedArguments.isEmpty()) {
+        auto* unsupported = new QLabel(QStringLiteral(
+            "Эти параметры не используются проверкой потока и будут удалены при подтверждении: %1")
+            .arg(unsupportedArguments.join(QStringLiteral(", "))), &dialog);
+        unsupported->setObjectName(QStringLiteral("telemetryUnsupportedArguments"));
+        unsupported->setWordWrap(true);
+        layout->addWidget(unsupported);
+    }
     auto* form = new QFormLayout;
     auto* phraseLimit = new QDoubleSpinBox(&dialog);
     auto* groupLimit = new QDoubleSpinBox(&dialog);
@@ -545,6 +560,10 @@ bool ScenarioVisualEditor::configureTelemetryHealthForNode(const orbita::stand::
     layout->addWidget(buttons);
     if (dialog.exec() != QDialog::Accepted || diagnostic->currentIndex() == 0) return false;
 
+    // Изменения применяются только после подтверждения формы; отмена оставляет
+    // параметры прежнего действия нетронутыми.
+    for (const auto& key : unsupportedArguments)
+        args.erase(key.toStdString());
     args["max_phrase_error_percent"] = QString::number(phraseLimit->value(), 'g', 15).toStdString();
     args["max_group_error_percent"] = QString::number(groupLimit->value(), 'g', 15).toStdString();
     args["diagnostic_only"] = diagnostic->currentData().toBool() ? "true" : "false";
