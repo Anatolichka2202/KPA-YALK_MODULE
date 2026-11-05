@@ -79,11 +79,10 @@ int main(int argc, char** argv)
         bool rejectedManual = false;
         session.scenarioEngine().registerProcedure("test.measure",
             [&](const ScenarioNode&, ProcedureContext& context) {
-                try {
-                    session.runScenario(scenario, "profile", "nested", false);
-                } catch (const std::exception&) {
-                    rejectedRun = true;
-                }
+                const auto nested = session.runScenario(scenario, "profile", "nested", false);
+                rejectedRun = nested.verdict == RunVerdict::Incomplete
+                    && !nested.events.empty() && nested.events.front().stage == "STATION_BUSY"
+                    && !nested.events.front().message.empty();
                 try {
                     session.invokeManual("test.simulator", "measure", {});
                 } catch (const std::exception&) {
@@ -112,15 +111,22 @@ int main(int argc, char** argv)
         session.scenarioEngine().registerProcedure("test.wait",
             [&](const ScenarioNode&, ProcedureContext& context) {
                 entered.set_value();
-                while (!context.stopRequested.load()) std::this_thread::yield();
-                return ProcedureResult{RunVerdict::Aborted, "Остановлено", {}};
+                const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+                while (!context.stopRequested.load() && std::chrono::steady_clock::now() < deadline)
+                    std::this_thread::yield();
+                return ProcedureResult{context.stopRequested.load() ? RunVerdict::Aborted : RunVerdict::Error,
+                                       "Остановлено", {}};
             });
         auto waitingScenario = scenario;
         waitingScenario.steps.front().procedure = "test.wait";
         auto running = std::async(std::launch::async, [&] {
             return session.runScenario(waitingScenario, "profile", "SN", false);
         });
-        entered.get_future().wait();
+        if (entered.get_future().wait_for(std::chrono::seconds(5)) != std::future_status::ready) {
+            session.requestStop();
+            running.wait();
+            throw std::runtime_error("scenario did not enter the simulated procedure");
+        }
         bool concurrentManualRejected = false;
         try {
             session.invokeManual("test.simulator", "measure", {});
@@ -132,6 +138,16 @@ int main(int argc, char** argv)
         require(concurrentManualRejected, "manual action was not rejected during a run");
         require(stoppedRun.verdict == RunVerdict::Aborted,
                 "stop request did not reach the active scenario");
+
+        // Имитация остановки после постановки запуска в очередь, но до старта
+        // рабочего потока: воздействие не должно начаться после команды Stop.
+        invoked = false;
+        session.requestStop();
+        const auto earlyStop = session.runScenario(scenario, "profile", "SN", false);
+        require(earlyStop.verdict == RunVerdict::Aborted && !invoked,
+                "stop request was lost before the scenario started");
+        require(session.runScenario(scenario, "profile", "SN", false).verdict == RunVerdict::Ok,
+                "stop request leaked into the next scenario");
 
         session.clear();
         require(!session.configured(), "station session remained configured after clear");

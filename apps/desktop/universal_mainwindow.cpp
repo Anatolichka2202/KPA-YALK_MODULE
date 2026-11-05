@@ -397,6 +397,13 @@ void UniversalMainWindow::finishGenericScenario()
 {
     if (!genericDialog_) return;
     const auto result = genericWatcher_->result();
+    if (!result.events.empty() && result.events.front().stage == "STATION_BUSY") {
+        const auto reason = QString::fromUtf8(result.events.front().message.c_str());
+        genericDialog_->setRunning(false, reason);
+        integrationLog(reason);
+        QMessageBox::warning(this, QStringLiteral("Запуск отклонён"), reason);
+        return;
+    }
     const bool saved = integrationPersistRun(result);
     const QString html = renderGenericReport(result);
     const QString summary = QStringLiteral(

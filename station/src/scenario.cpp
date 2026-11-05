@@ -402,13 +402,12 @@ ScenarioRunResult ScenarioEngine::run(
         throw std::runtime_error("ScenarioEngine already has an active run");
     }
     struct RunningGuard final {
-        std::atomic_bool& flag;
-        ~RunningGuard() { flag.store(false); }
-    } runningGuard{running_};
-
-    // A ScenarioEngine represents one sequential station runner. A previous
-    // operator stop must not poison the next run.
-    stopRequested_.store(false);
+        std::atomic_bool& running;
+        std::atomic_bool& stop;
+        // Сбрасываем запрос только после завершения запуска: запрос, пришедший
+        // между постановкой задачи в очередь и входом сюда, должен сохраниться.
+        ~RunningGuard() { stop.store(false); running.store(false); }
+    } runningGuard{running_, stopRequested_};
 
     ScenarioRunResult run;
     run.runId = newRunId();

@@ -15,18 +15,31 @@ public:
     explicit ActivityGuard(std::atomic_bool& active) : active_(active)
     {
         bool expected = false;
-        if (!active_.compare_exchange_strong(expected, true))
-            throw std::runtime_error("Станция занята: выполняется другая активная операция");
+        acquired_ = active_.compare_exchange_strong(expected, true);
     }
-    ~ActivityGuard() { active_.store(false); }
+    ~ActivityGuard() { if (acquired_) active_.store(false); }
+    explicit operator bool() const noexcept { return acquired_; }
 private:
     std::atomic_bool& active_;
+    bool acquired_ = false;
 };
+
+constexpr auto busyReason = "Станция занята: выполняется другая активная операция";
+
+ScenarioRunResult rejectedRun()
+{
+    ScenarioRunResult result;
+    result.verdict = RunVerdict::Incomplete;
+    result.events.push_back({std::chrono::system_clock::now(), {}, "STATION_BUSY",
+                             busyReason, RunVerdict::Incomplete});
+    return result;
+}
 }
 
 void StationSession::resetScenarioEngine()
 {
     ActivityGuard guard(active_);
+    if (!guard) throw std::runtime_error(busyReason);
     scenarioEngine_ = std::make_unique<ScenarioEngine>();
 }
 
@@ -35,6 +48,7 @@ ScenarioRunResult StationSession::runScenario(const ScenarioDefinition& scenario
     std::function<void(const RunEvent&)> progressSink)
 {
     ActivityGuard guard(active_);
+    if (!guard) return rejectedRun();
     return runScenarioWithEvidence(*scenarioEngine_, equipment_, scenario,
         std::move(profileVersion), std::move(objectSerial), allowPartial,
         std::move(progressSink), &leases_);
@@ -46,6 +60,7 @@ ScenarioRunResult StationSession::runWorkflow(const ProjectDefinition& project,
     std::function<void(const RunEvent&)> progressSink)
 {
     ActivityGuard guard(active_);
+    if (!guard) return rejectedRun();
     return runProjectWorkflow(project, workflowId, *scenarioEngine_, equipment_,
         std::move(profileVersion), std::move(objectSerial), allowPartial,
         std::move(context), scenarioOverride, std::move(progressSink), &leases_);
@@ -55,6 +70,7 @@ std::string StationSession::invokeManual(const std::string& capability,
     const std::string& operation, const std::map<std::string, std::string>& arguments)
 {
     ActivityGuard guard(active_);
+    if (!guard) throw std::runtime_error(busyReason);
     return equipment_.invoke(capability, operation, arguments);
 }
 

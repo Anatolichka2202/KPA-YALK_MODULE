@@ -799,6 +799,18 @@ void MainWindow::initializeStandRuntime()
         scenarioWatcher_ = new QFutureWatcher<orbita::stand::ScenarioRunResult>(this);
         connect(scenarioWatcher_, &QFutureWatcherBase::finished, this, [this]() {
             const auto result = scenarioWatcher_->result();
+            if (!result.events.empty() && result.events.front().stage == "STATION_BUSY") {
+                lastResultSaved_ = false;
+                testPage_->setRunInProgress(false);
+                const auto reason = QString::fromUtf8(result.events.front().message.c_str());
+                log(reason);
+                QMessageBox::warning(this, QStringLiteral("Запуск отклонён"), reason);
+                if (closeAfterScenario_) {
+                    closeAfterScenario_ = false;
+                    QTimer::singleShot(0, this, &QWidget::close);
+                }
+                return;
+            }
             const bool dedicatedProductionFinalizer =
                 integrationUsesDedicatedProductionFinalizer();
             QString tuReportPath;
