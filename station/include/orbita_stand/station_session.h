@@ -94,7 +94,8 @@ public:
         const ScenarioDefinition* scenarioOverride = nullptr,
         std::function<void(const RunEvent&)> progressSink = {},
         std::shared_ptr<Activity> activity = {},
-        std::function<void(const ScenarioRunResult&)> checkpointSink = {});
+        std::function<void(const ScenarioRunResult&)> checkpointSink = {},
+        const ScenarioRunResult* initialRun = nullptr);
     std::string invokeManual(const std::string& capability, const std::string& operation,
         const std::map<std::string, std::string>& arguments);
 

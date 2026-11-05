@@ -269,6 +269,8 @@ void RunStore::save(const ScenarioRunResult& run)
 
 void RunStore::saveCheckpoint(const ScenarioRunResult& run)
 {
+    if (run.preserveCheckpoint)
+        throw std::invalid_argument("Неполная копия результата не может заменить сохранённый снимок");
     saveImpl(run, true);
 }
 
@@ -384,7 +386,8 @@ void RunStore::saveImpl(const ScenarioRunResult& run, bool replaceIncomplete)
     }
 }
 
-std::function<void(const ScenarioRunResult&)> makeIntermediateCheckpointSink(std::string sqlitePath)
+std::function<void(const ScenarioRunResult&)> makeIntermediateCheckpointSink(
+    std::string sqlitePath, bool alreadyStarted)
 {
     struct State {
         std::string path;
@@ -393,6 +396,7 @@ std::function<void(const ScenarioRunResult&)> makeIntermediateCheckpointSink(std
     };
     auto state = std::make_shared<State>();
     state->path = std::move(sqlitePath);
+    state->started = alreadyStarted;
     return [state](const ScenarioRunResult& run) {
         // Итоговый результат сначала дополняется контекстом и отчётами окна.
         if (run.finishedAt != std::chrono::system_clock::time_point{}) return;

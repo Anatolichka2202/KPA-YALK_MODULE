@@ -245,7 +245,10 @@ void UniversalMainWindow::runGenericScenario(
     engine->resetStop();
 
     orbita::stand::ScenarioDefinition scenario;
+    orbita::stand::ScenarioRunResult initialRun;
     QByteArray scenarioConfigSnapshot;
+    const std::string profileVersion = integrationStandProfile().version;
+    const std::string serial = objectSerial.toStdString();
     try {
         const auto* project = integrationProject();
         const auto* workflow = project
@@ -262,6 +265,34 @@ void UniversalMainWindow::runGenericScenario(
         scenarioConfigSnapshot = scenarioConfig.readAll();
         const auto errors = engine->validate(scenario);
         if (!errors.empty()) throw std::runtime_error(errors.front());
+        if (scenario.publicationState != orbita::stand::PublicationState::Published)
+            throw std::runtime_error("Черновой сценарий нельзя использовать для приёмочного результата");
+        if (workflow->registration.required || workflow->environmentMode == "manual_or_controlled")
+            throw std::runtime_error("Для выбранной проверки требуется регистрация изделия или подтверждение условий");
+
+        // Запись создаётся до подготовки: при аварийном завершении остаётся
+        // тот же идентификатор, который затем использует сценарный движок.
+        initialRun = orbita::stand::makeInitialRun(scenario, profileVersion, serial);
+        initialRun.projectId = project->id;
+        initialRun.projectVersion = project->version;
+        initialRun.workflowId = workflow->id;
+        initialRun.dutType = scenario.objectType;
+        initialRun.operatorName = qEnvironmentVariable(
+            "USERNAME", qEnvironmentVariable("USER")).toStdString();
+        initialRun.environmentProfile = workflow->environmentPath;
+        initialRun.contextAttributes["environment_id"] = workflow->environmentId;
+        initialRun.contextAttributes["environment_title"] = workflow->environmentTitle;
+        initialRun.contextAttributes["environment_mode"] = workflow->environmentMode;
+        initialRun.contextAttributes["engineering_description"] = description.toUtf8().toStdString();
+        initialRun.contextAttributes["engineering_override_note"] = engineeringOverride.toUtf8().toStdString();
+        initialRun.contextAttributes["scenario_config_sha256"] = QCryptographicHash::hash(
+            scenarioConfigSnapshot, QCryptographicHash::Sha256).toHex().toStdString();
+        initialRun.contextAttributes["scenario_config_source"] = path.toUtf8().toStdString();
+        initialRun.contextAttributes["scenario_definition_json"] =
+            orbita::stand::scenarioDefinitionSnapshot(scenario);
+        if (!integrationPersistRun(initialRun))
+            throw std::runtime_error("Не удалось записать начало проверки; подготовка не выполнена");
+        initialRun.persistenceStarted = true;
 
         // Physical preparation belongs to the selected delivery/profile. For
         // KTMA/UBSI this preserves its confirmed power-up order; for another
@@ -298,6 +329,14 @@ void UniversalMainWindow::runGenericScenario(
         }
     } catch (const std::exception& error) {
         integrationStationSession().safeStopAll(activity);
+        if (initialRun.persistenceStarted) {
+            initialRun.verdict = orbita::stand::RunVerdict::Error;
+            initialRun.finishedAt = std::chrono::system_clock::now();
+            initialRun.events.push_back({initialRun.finishedAt, {}, "PREPARATION_ERROR",
+                error.what(), orbita::stand::RunVerdict::Error});
+            if (!integrationPersistRun(initialRun))
+                integrationLog(QStringLiteral("Ошибка подготовки не записана; начальный снимок остаётся незавершённым"));
+        }
         QMessageBox::warning(this, QStringLiteral("Сценарий / оборудование"),
                              QString::fromUtf8(error.what()));
         return;
@@ -311,87 +350,90 @@ void UniversalMainWindow::runGenericScenario(
     integrationLog(QStringLiteral("Свободная проверка: %1; регистрация результата отключена")
         .arg(QString::fromStdString(scenario.id)));
 
-    const std::string profileVersion = integrationStandProfile().version;
-    const std::string serial = objectSerial.toStdString();
     genericWatcher_->setFuture(QtConcurrent::run(
         [this, workflowId, path, scenario, profileVersion, serial, activity,
-         scenarioConfigSnapshot, description, engineeringOverride]() mutable {
+         initialRun, scenarioConfigSnapshot, description, engineeringOverride]() mutable {
             auto reservation = std::move(activity);
             auto checkpoints = orbita::stand::makeIntermediateCheckpointSink(
-                QDir(QCoreApplication::applicationDirPath()).filePath("runs/runs.db").toStdString());
+                QDir(QCoreApplication::applicationDirPath()).filePath("runs/runs.db").toStdString(), true);
             const auto progress = [this](const orbita::stand::RunEvent& event) {
                 QMetaObject::invokeMethod(this, [this, event] {
                     if (genericDialog_) genericDialog_->appendEvent(event);
                 }, Qt::QueuedConnection);
             };
 
-            if (const auto* project = integrationProject()) {
-                orbita::stand::ProjectRunContext context;
-                context.dutType = scenario.objectType;
-                context.operatorName = qEnvironmentVariable(
-                    "USERNAME", qEnvironmentVariable("USER")).toStdString();
-                context.attributes["engineering_description"] = description.toUtf8().toStdString();
-                context.attributes["engineering_override_note"] = engineeringOverride.toUtf8().toStdString();
-                context.attributes["scenario_config_sha256"] = QCryptographicHash::hash(
-                    scenarioConfigSnapshot, QCryptographicHash::Sha256).toHex().toStdString();
-                context.attributes["scenario_config_source"] = path.toUtf8().toStdString();
-                auto result = integrationStationSession().runWorkflow(
-                    *project, workflowId.toStdString(), profileVersion, serial, false,
-                    std::move(context), &scenario, progress, reservation, checkpoints);
-                result.contextAttributes["engineering_description"] = description.toUtf8().toStdString();
-                result.contextAttributes["engineering_override_note"] = engineeringOverride.toUtf8().toStdString();
-                result.contextAttributes["scenario_config_sha256"] = QCryptographicHash::hash(
-                    scenarioConfigSnapshot, QCryptographicHash::Sha256).toHex().toStdString();
-                result.contextAttributes["scenario_config_source"] = path.toUtf8().toStdString();
-                for (auto& event : result.evidence) ++event.sequence;
-                orbita::stand::EvidenceEvent operatorAction;
-                operatorAction.sequence = 1;
-                operatorAction.timestamp = result.startedAt;
-                operatorAction.monotonicNs = 0;
-                operatorAction.type = "OPERATOR_ACTION";
-                operatorAction.nodeId = "free-run";
-                operatorAction.message = "Инженер подтвердил параметры свободного запуска";
-                operatorAction.data = {
-                    {"workflow_id", workflowId.toUtf8().toStdString()},
-                    {"engineering_override_note", engineeringOverride.toUtf8().toStdString()},
-                    {"scenario_config_sha256", result.contextAttributes["scenario_config_sha256"]}};
-                result.evidence.insert(result.evidence.begin(), std::move(operatorAction));
+            try {
+                if (const auto* project = integrationProject()) {
+                    orbita::stand::ProjectRunContext context;
+                    context.dutType = scenario.objectType;
+                    context.operatorName = qEnvironmentVariable(
+                        "USERNAME", qEnvironmentVariable("USER")).toStdString();
+                    context.attributes["engineering_description"] = description.toUtf8().toStdString();
+                    context.attributes["engineering_override_note"] = engineeringOverride.toUtf8().toStdString();
+                    context.attributes["scenario_config_sha256"] = QCryptographicHash::hash(
+                        scenarioConfigSnapshot, QCryptographicHash::Sha256).toHex().toStdString();
+                    context.attributes["scenario_config_source"] = path.toUtf8().toStdString();
+                    auto result = integrationStationSession().runWorkflow(
+                        *project, workflowId.toStdString(), profileVersion, serial, false,
+                        std::move(context), &scenario, progress, reservation, checkpoints, &initialRun);
+                    result.contextAttributes["engineering_description"] = description.toUtf8().toStdString();
+                    result.contextAttributes["engineering_override_note"] = engineeringOverride.toUtf8().toStdString();
+                    result.contextAttributes["scenario_config_sha256"] = QCryptographicHash::hash(
+                        scenarioConfigSnapshot, QCryptographicHash::Sha256).toHex().toStdString();
+                    result.contextAttributes["scenario_config_source"] = path.toUtf8().toStdString();
+                    for (auto& event : result.evidence) ++event.sequence;
+                    orbita::stand::EvidenceEvent operatorAction;
+                    operatorAction.sequence = 1;
+                    operatorAction.timestamp = result.startedAt;
+                    operatorAction.monotonicNs = 0;
+                    operatorAction.type = "OPERATOR_ACTION";
+                    operatorAction.nodeId = "free-run";
+                    operatorAction.message = "Инженер подтвердил параметры свободного запуска";
+                    operatorAction.data = {
+                        {"workflow_id", workflowId.toUtf8().toStdString()},
+                        {"engineering_override_note", engineeringOverride.toUtf8().toStdString()},
+                        {"scenario_config_sha256", result.contextAttributes["scenario_config_sha256"]}};
+                    result.evidence.insert(result.evidence.begin(), std::move(operatorAction));
 
-                try {
-                    orbita::stand::RunArtifacts artifacts(
-                        QDir(QCoreApplication::applicationDirPath())
-                            .filePath(QStringLiteral("runs")).toUtf8().toStdString(), result.runId);
-                    QSaveFile snapshot(QDir(QString::fromUtf8(artifacts.directory().c_str()))
-                        .filePath(QStringLiteral("scenario-config.yaml")));
-                    if (!snapshot.open(QIODevice::WriteOnly)
-                        || snapshot.write(scenarioConfigSnapshot) != scenarioConfigSnapshot.size()
-                        || !snapshot.commit())
-                        throw std::runtime_error("Не удалось сохранить неизменяемый снимок YAML сценария");
-                    artifacts.attachFileTo(result, "scenario-config", "scenario-config.yaml",
-                                            "application/yaml");
-                } catch (const std::exception& error) {
-                    result.verdict = orbita::stand::RunVerdict::Error;
-                    orbita::stand::EvidenceEvent failure;
-                    failure.sequence = result.evidence.size() + 1;
-                    failure.timestamp = std::chrono::system_clock::now();
-                    failure.type = "ERROR";
-                    failure.nodeId = "free-run";
-                    failure.message = std::string("Не удалось сохранить снимок сценария: ") + error.what();
-                    failure.verdict = orbita::stand::RunVerdict::Error;
-                    result.evidence.push_back(std::move(failure));
+                    try {
+                        orbita::stand::RunArtifacts artifacts(
+                            QDir(QCoreApplication::applicationDirPath())
+                                .filePath(QStringLiteral("runs")).toUtf8().toStdString(), result.runId);
+                        QSaveFile snapshot(QDir(QString::fromUtf8(artifacts.directory().c_str()))
+                            .filePath(QStringLiteral("scenario-config.yaml")));
+                        if (!snapshot.open(QIODevice::WriteOnly)
+                            || snapshot.write(scenarioConfigSnapshot) != scenarioConfigSnapshot.size()
+                            || !snapshot.commit())
+                            throw std::runtime_error("Не удалось сохранить неизменяемый снимок YAML сценария");
+                        artifacts.attachFileTo(result, "scenario-config", "scenario-config.yaml",
+                                                "application/yaml");
+                    } catch (const std::exception& error) {
+                        result.verdict = orbita::stand::RunVerdict::Error;
+                        orbita::stand::EvidenceEvent failure;
+                        failure.sequence = result.evidence.size() + 1;
+                        failure.timestamp = std::chrono::system_clock::now();
+                        failure.type = "ERROR";
+                        failure.nodeId = "free-run";
+                        failure.message = std::string("Не удалось сохранить снимок сценария: ") + error.what();
+                        failure.verdict = orbita::stand::RunVerdict::Error;
+                        result.evidence.push_back(std::move(failure));
+                    }
+                    return result;
                 }
-                return result;
-            }
 
-            // Compatibility fallback for development layouts that do not yet
-            // deploy project packages next to the executable.
-            auto result = integrationStationSession().runScenario(
-                scenario, profileVersion, serial, false, progress, reservation, checkpoints);
-            result.contextAttributes["engineering_description"] = description.toUtf8().toStdString();
-            result.contextAttributes["engineering_override_note"] = engineeringOverride.toUtf8().toStdString();
-            result.contextAttributes["scenario_config_sha256"] = QCryptographicHash::hash(
-                scenarioConfigSnapshot, QCryptographicHash::Sha256).toHex().toStdString();
-            return result;
+                throw std::runtime_error("Проект проверки больше недоступен");
+            } catch (const std::exception& error) {
+                // При исключении копия не содержит все записанные шаги.
+                // Оставляем последний подтверждённый снимок незавершённым.
+                integrationStationSession().safeStopAll(reservation);
+                auto failed = initialRun;
+                failed.verdict = orbita::stand::RunVerdict::Error;
+                failed.preserveCheckpoint = true;
+                failed.finishedAt = std::chrono::system_clock::now();
+                failed.events.push_back({failed.finishedAt, {}, "ENGINE", error.what(),
+                                         orbita::stand::RunVerdict::Error});
+                return failed;
+            }
         }));
 }
 

@@ -405,6 +405,22 @@ StepRunResult ScenarioEngine::runNode(
     return result;
 }
 
+ScenarioRunResult makeInitialRun(const ScenarioDefinition& scenario,
+                                 std::string profileVersion, std::string objectSerial)
+{
+    ScenarioRunResult run;
+    run.runId = newRunId();
+    run.scenarioId = scenario.id;
+    run.scenarioTitle = scenario.title;
+    run.scenarioVersion = scenario.version;
+    run.catalogVersion = scenario.catalogVersion;
+    run.profileVersion = std::move(profileVersion);
+    run.objectSerial = std::move(objectSerial);
+    run.startedAt = std::chrono::system_clock::now();
+    run.verdict = RunVerdict::Incomplete;
+    return run;
+}
+
 ScenarioRunResult ScenarioEngine::run(
     const ScenarioDefinition& scenario,
     ICapabilityProvider& equipment,
@@ -413,7 +429,8 @@ ScenarioRunResult ScenarioEngine::run(
     bool allowPartial,
     std::function<void(const RunEvent&)> progressSink,
     ResourceLeaseManager* resourceLeases,
-    std::function<void(const ScenarioRunResult&)> checkpointSink)
+    std::function<void(const ScenarioRunResult&)> checkpointSink,
+    const ScenarioRunResult* initialRun)
 {
     bool expected = false;
     if (!running_.compare_exchange_strong(expected, true)) {
@@ -427,15 +444,17 @@ ScenarioRunResult ScenarioEngine::run(
         ~RunningGuard() { stop.store(false); running.store(false); }
     } runningGuard{running_, stopRequested_};
 
-    ScenarioRunResult run;
-    run.runId = newRunId();
-    run.scenarioId = scenario.id;
-    run.scenarioTitle = scenario.title;
-    run.scenarioVersion = scenario.version;
-    run.catalogVersion = scenario.catalogVersion;
-    run.profileVersion = std::move(profileVersion);
-    run.objectSerial = std::move(objectSerial);
-    run.startedAt = std::chrono::system_clock::now();
+    if (initialRun && (!checkpointSink || !initialRun->persistenceStarted
+        || initialRun->runId.empty() || initialRun->scenarioId != scenario.id
+        || initialRun->scenarioVersion != scenario.version
+        || initialRun->catalogVersion != scenario.catalogVersion
+        || initialRun->profileVersion != profileVersion
+        || initialRun->objectSerial != objectSerial
+        || initialRun->finishedAt != std::chrono::system_clock::time_point{}
+        || !initialRun->steps.empty()))
+        throw std::invalid_argument("Несовместимый начальный снимок проверки");
+    auto run = initialRun ? *initialRun
+                          : makeInitialRun(scenario, std::move(profileVersion), std::move(objectSerial));
 
     const auto publish = [&run, &progressSink](RunEvent event) {
         run.events.push_back(event);

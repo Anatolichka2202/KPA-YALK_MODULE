@@ -203,12 +203,19 @@ struct ScenarioRunResult {
     bool persistenceStarted = false;
     bool persistenceFailed = false;
     std::string persistenceError;
+    // При исключении вне движка локальная копия может не содержать уже
+    // записанные шаги; её нельзя использовать для замены снимка в базе.
+    bool preserveCheckpoint = false;
 };
 
 struct SafeStopResult {
     bool confirmed = false;
     std::string reason;
 };
+
+// Создаёт идентичность и исходные сведения запуска до подготовки оборудования.
+ScenarioRunResult makeInitialRun(const ScenarioDefinition& scenario,
+                                 std::string profileVersion, std::string objectSerial);
 
 class ICapabilityProvider {
 public:
@@ -294,7 +301,8 @@ public:
         bool allowPartial,
         std::function<void(const RunEvent&)> progressSink = {},
         ResourceLeaseManager* resourceLeases = nullptr,
-        std::function<void(const ScenarioRunResult&)> checkpointSink = {});
+        std::function<void(const ScenarioRunResult&)> checkpointSink = {},
+        const ScenarioRunResult* initialRun = nullptr);
     void requestStop() noexcept;
     void resetStop() noexcept;
     bool running() const noexcept { return running_.load(); }

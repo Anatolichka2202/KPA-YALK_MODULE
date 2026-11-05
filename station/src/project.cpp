@@ -428,6 +428,11 @@ const WorkflowDefinition* findWorkflow(
     return iterator == project.workflows.end() ? nullptr : &*iterator;
 }
 
+std::string scenarioDefinitionSnapshot(const ScenarioDefinition& scenario)
+{
+    return scenarioSnapshot(scenario);
+}
+
 ScenarioRunResult runScenarioWithEvidence(
     ScenarioEngine& engine,
     ICapabilityProvider& equipment,
@@ -437,12 +442,18 @@ ScenarioRunResult runScenarioWithEvidence(
     bool allowPartial,
     std::function<void(const RunEvent&)> progressSink,
     ResourceLeaseManager* resourceLeases,
-    std::function<void(const ScenarioRunResult&)> checkpointSink)
+    std::function<void(const ScenarioRunResult&)> checkpointSink,
+    const ScenarioRunResult* initialRun)
 {
     std::vector<EvidenceEvent> evidence;
     evidence.reserve(64);
     EvidenceProvider auditedEquipment(equipment, evidence);
     const auto definitionSnapshot = scenarioSnapshot(scenario);
+    if (initialRun) {
+        const auto stored = initialRun->contextAttributes.find("scenario_definition_json");
+        if (stored == initialRun->contextAttributes.end() || stored->second != definitionSnapshot)
+            throw std::invalid_argument("Сценарий не соответствует начальному снимку проверки");
+    }
     auto checkpointWithEvidence = [&](const ScenarioRunResult& snapshot) {
         if (!checkpointSink) return;
         auto enriched = snapshot;
@@ -453,7 +464,8 @@ ScenarioRunResult runScenarioWithEvidence(
     auto result = engine.run(
         scenario, auditedEquipment, std::move(profileVersion), std::move(objectSerial),
         allowPartial, std::move(progressSink), resourceLeases,
-        checkpointSink ? checkpointWithEvidence : std::function<void(const ScenarioRunResult&)>{});
+        checkpointSink ? checkpointWithEvidence : std::function<void(const ScenarioRunResult&)>{},
+        initialRun);
     result.evidence = std::move(evidence);
     result.contextAttributes["scenario_definition_json"] = definitionSnapshot;
     return result;
@@ -471,7 +483,8 @@ ScenarioRunResult runProjectWorkflow(
     const ScenarioDefinition* scenarioOverride,
     std::function<void(const RunEvent&)> progressSink,
     ResourceLeaseManager* resourceLeases,
-    std::function<void(const ScenarioRunResult&)> checkpointSink)
+    std::function<void(const ScenarioRunResult&)> checkpointSink,
+    const ScenarioRunResult* initialRun)
 {
     const auto* workflow = findWorkflow(project, workflowId);
     if (!workflow) throw std::invalid_argument("Project workflow not found: " + workflowId);
@@ -531,7 +544,8 @@ ScenarioRunResult runProjectWorkflow(
     auto result = runScenarioWithEvidence(
         engine, equipment, *scenario, std::move(profileVersion), std::move(objectSerial),
         allowPartial, std::move(progressSink), resourceLeases,
-        checkpointSink ? checkpointWithContext : std::function<void(const ScenarioRunResult&)>{});
+        checkpointSink ? checkpointWithContext : std::function<void(const ScenarioRunResult&)>{},
+        initialRun);
     result.projectId = project.id;
     result.projectVersion = project.version;
     result.workflowId = workflow->id;

@@ -458,6 +458,60 @@ int main(int argc, char** argv)
         require(finalized && finalized->verdict == RunVerdict::Ok,
                 "station result was not finalized after the worker completed");
 
+        ProjectDefinition project;
+        project.id = "test-project";
+        project.version = "1";
+        WorkflowDefinition workflow;
+        workflow.id = "free";
+        workflow.allowDynamicScenario = true;
+        project.workflows.push_back(workflow);
+        simulatedCommands = 0;
+        auto initialWorkflow = makeInitialRun(liveScenario, "simulator", "SN");
+        initialWorkflow.projectId = project.id;
+        initialWorkflow.workflowId = workflow.id;
+        initialWorkflow.contextAttributes["scenario_definition_json"] = scenarioDefinitionSnapshot(liveScenario);
+        store.save(initialWorkflow);
+        initialWorkflow.persistenceStarted = true;
+        auto workflowActivity = station.beginActivity();
+        bool prepared = false;
+        station.prepare(workflowActivity, [&](StationSession::Preparation&) {
+            const auto beforePreparation = store.load(initialWorkflow.runId);
+            require(beforePreparation && beforePreparation->steps.empty()
+                        && beforePreparation->contextAttributes.count("scenario_definition_json"),
+                    "initial scenario snapshot was not available before simulator preparation");
+            prepared = true;
+        });
+        auto workflowCheckpoints = makeIntermediateCheckpointSink(path.toUtf8().toStdString(), true);
+        auto changedScenario = liveScenario;
+        changedScenario.steps.front().arguments["changed"] = "after-snapshot";
+        bool mismatchRejected = false;
+        try {
+            (void)station.runWorkflow(project, "free", "simulator", "SN", false,
+                {}, &changedScenario, {}, workflowActivity, workflowCheckpoints, &initialWorkflow);
+        } catch (const std::invalid_argument&) {
+            mismatchRejected = true;
+        }
+        require(mismatchRejected && simulatedCommands == 0,
+                "changed scenario was accepted after the initial snapshot");
+        const auto workflowResult = station.runWorkflow(project, "free", "simulator", "SN", false,
+            {}, &liveScenario, {}, workflowActivity, workflowCheckpoints, &initialWorkflow);
+        const auto persistedWorkflow = store.load(workflowResult.runId);
+        require(prepared && workflowResult.runId == initialWorkflow.runId
+                    && simulatedCommands == 2 && workflowResult.persistenceStarted && persistedWorkflow
+                    && persistedWorkflow->steps.size() == 2 && persistedWorkflow->projectId == project.id,
+                "project workflow did not persist intermediate simulator measurements");
+        auto incompleteCopy = initialWorkflow;
+        incompleteCopy.preserveCheckpoint = true;
+        bool replacementRejected = false;
+        try {
+            store.saveCheckpoint(incompleteCopy);
+        } catch (const std::invalid_argument&) {
+            replacementRejected = true;
+        }
+        const auto retainedWorkflow = store.load(workflowResult.runId);
+        require(replacementRejected && retainedWorkflow && retainedWorkflow->steps.size() == 2,
+                "an incomplete copy replaced the confirmed workflow checkpoint");
+
         int writes = 0;
         performed = 0;
         const int stopsBeforeFailedStart = simulatedEquipment.safeStops;

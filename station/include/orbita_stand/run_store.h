@@ -37,7 +37,8 @@ private:
 // Создаёт соединение SQLite в том потоке, где вызывается callback, и
 // записывает только промежуточные снимки. Итог фиксирует вызывающая сторона
 // после добавления контекста конкретной поставки.
-std::function<void(const ScenarioRunResult&)> makeIntermediateCheckpointSink(std::string sqlitePath);
+std::function<void(const ScenarioRunResult&)> makeIntermediateCheckpointSink(
+    std::string sqlitePath, bool alreadyStarted = false);
 
 class RunArtifacts final {
 public:

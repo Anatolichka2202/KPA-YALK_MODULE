@@ -119,6 +119,10 @@ protected:
     bool integrationPersistRun(const orbita::stand::ScenarioRunResult& result)
     {
         if (!runStore_) return false;
+        if (result.preserveCheckpoint) {
+            log(QStringLiteral("Итог не записан: сохранён последний подтверждённый снимок проверки"));
+            return false;
+        }
         if (result.persistenceFailed) {
             log(QStringLiteral("Ошибка записи во время проверки: %1")
                 .arg(QString::fromUtf8(result.persistenceError.c_str())));

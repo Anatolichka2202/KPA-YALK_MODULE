@@ -84,6 +84,9 @@ std::vector<std::string> validateProjectPackage(const ProjectDefinition& project
 const WorkflowDefinition* findWorkflow(
     const ProjectDefinition& project, const std::string& id) noexcept;
 
+// Полный снимок определения сценария для записи до подготовки станции.
+std::string scenarioDefinitionSnapshot(const ScenarioDefinition& scenario);
+
 // Common audited scenario entry point. It preserves ScenarioEngine semantics
 // while recording command/ack/error/safe-stop evidence at the equipment
 // boundary. Delivery compatibility runners can use this before they are fully
@@ -97,7 +100,8 @@ ScenarioRunResult runScenarioWithEvidence(
     bool allowPartial,
     std::function<void(const RunEvent&)> progressSink = {},
     ResourceLeaseManager* resourceLeases = nullptr,
-    std::function<void(const ScenarioRunResult&)> checkpointSink = {});
+    std::function<void(const ScenarioRunResult&)> checkpointSink = {},
+    const ScenarioRunResult* initialRun = nullptr);
 
 // Execute one workflow through the ordinary ScenarioEngine and attach the
 // project/workflow identity to ScenarioRunResult. A fixed workflow loads its
@@ -115,6 +119,7 @@ ScenarioRunResult runProjectWorkflow(
     const ScenarioDefinition* scenarioOverride = nullptr,
     std::function<void(const RunEvent&)> progressSink = {},
     ResourceLeaseManager* resourceLeases = nullptr,
-    std::function<void(const ScenarioRunResult&)> checkpointSink = {});
+    std::function<void(const ScenarioRunResult&)> checkpointSink = {},
+    const ScenarioRunResult* initialRun = nullptr);
 
 } // namespace orbita::stand
