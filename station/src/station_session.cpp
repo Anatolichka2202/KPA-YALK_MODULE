@@ -38,19 +38,19 @@ ScenarioRunResult rejectedRun()
 
 StationSession::Activity::~Activity()
 {
-    active_->store(false);
+    if (held_) active_->store(false);
 }
 
 std::shared_ptr<StationSession::Activity> StationSession::beginActivity()
 {
+    // Выделяем объект до захвата флага. Если выделение управляющего блока
+    // завершится ошибкой, разрушение незахваченного объекта не снимет чужой
+    // резерв, полученный другим потоком.
+    auto activity = std::shared_ptr<Activity>(new Activity(*this));
     bool expected = false;
     if (!active_->compare_exchange_strong(expected, true)) return {};
-    try {
-        return std::shared_ptr<Activity>(new Activity(*this));
-    } catch (...) {
-        active_->store(false);
-        throw;
-    }
+    activity->held_ = true;
+    return activity;
 }
 
 void StationSession::resetScenarioEngine()

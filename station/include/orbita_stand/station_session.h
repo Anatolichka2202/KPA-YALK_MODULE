@@ -50,6 +50,7 @@ public:
     private:
         StationSession* owner_;
         std::shared_ptr<std::atomic_bool> active_;
+        bool held_ = false;
         std::atomic_bool executing_{false};
     };
 
