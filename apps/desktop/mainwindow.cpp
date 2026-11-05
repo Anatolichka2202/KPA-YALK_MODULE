@@ -876,7 +876,8 @@ void MainWindow::initializeStandRuntime()
             try {
                 if (result.persistenceFailed)
                     throw std::runtime_error(result.persistenceError);
-                runStore_->saveCheckpoint(result);
+                if (result.persistenceStarted) runStore_->saveCheckpoint(result);
+                else runStore_->save(result);
                 resultSaved = true;
                 lastResultSaved_ = true;
                 if (!dedicatedProductionFinalizer) {
@@ -893,10 +894,17 @@ void MainWindow::initializeStandRuntime()
                 }
             } catch (const std::exception& error) {
                 const auto detail = QString::fromUtf8(error.what());
-                log(QStringLiteral("Не удалось сохранить результат: %1").arg(detail));
-                QMessageBox::warning(this, QStringLiteral("Результат не сохранён"),
-                    QStringLiteral("Результат проверки остался в памяти и не записан в базу.\n%1")
-                        .arg(detail));
+                if (resultSaved) {
+                    log(QStringLiteral("Не удалось сформировать отчёт: %1").arg(detail));
+                    QMessageBox::warning(this, QStringLiteral("Ошибка формирования отчёта"),
+                        QStringLiteral("Результат сохранён, но отчёт не сформирован.\n%1")
+                            .arg(detail));
+                } else {
+                    log(QStringLiteral("Не удалось сохранить результат: %1").arg(detail));
+                    QMessageBox::warning(this, QStringLiteral("Результат не сохранён"),
+                        QStringLiteral("Результат проверки остался в памяти и не записан в базу.\n%1")
+                            .arg(detail));
+                }
             }
             if (!dedicatedProductionFinalizer)
                 testPage_->setRunResult(result, tuReportPath, productionReportPath);

@@ -389,13 +389,41 @@ int main(int argc, char** argv)
                 if (snapshot.steps.empty()) store.save(snapshot);
                 else store.saveCheckpoint(snapshot);
             });
-        require(performed == 2 && liveResult.verdict == RunVerdict::Ok,
-                "live scenario did not finish");
+        require(performed == 2 && liveResult.verdict == RunVerdict::Ok
+                    && liveResult.persistenceStarted,
+                "live scenario did not finish with a registered checkpoint");
+        auto invalidScenario = liveScenario;
+        invalidScenario.steps.front().procedure = "unknown";
+        const auto invalidResult = runScenarioWithEvidence(liveEngine, simulatedEquipment, invalidScenario,
+            "simulator", "SN", false, {}, nullptr,
+            [&](const ScenarioRunResult&) { throw std::runtime_error("must not checkpoint invalid run"); });
+        require(!invalidResult.persistenceStarted && !invalidResult.persistenceFailed,
+                "invalid scenario was incorrectly marked as already recorded");
         const auto persistedLive = store.load(liveResult.runId);
         require(persistedLive && persistedLive->verdict == RunVerdict::Ok
                     && persistedLive->steps.size() == 2
                     && persistedLive->steps.front().measurements.size() == 1,
                 "completed live result was not persisted");
+
+        auto groupedScenario = liveScenario;
+        ScenarioNode completedGroup;
+        completedGroup.id = "completed-group";
+        completedGroup.title = "Завершённая группа";
+        completedGroup.children = liveScenario.steps;
+        groupedScenario.steps = {completedGroup};
+        ScenarioEngine groupedEngine;
+        groupedEngine.registerProcedure("test.live", [](const ScenarioNode&, ProcedureContext&) {
+            return ProcedureResult{RunVerdict::Ok, "Измерено", {}};
+        });
+        ScenarioRunResult lastPartial;
+        (void)runScenarioWithEvidence(groupedEngine, simulatedEquipment, groupedScenario,
+            "simulator", "SN", false, {}, nullptr, [&](const ScenarioRunResult& snapshot) {
+                if (snapshot.finishedAt == std::chrono::system_clock::time_point{}
+                    && !snapshot.steps.empty()) lastPartial = snapshot;
+            });
+        require(lastPartial.steps.size() == 1 && lastPartial.steps[0].children.size() == 2
+                    && lastPartial.steps[0].verdict == RunVerdict::Ok,
+                "completed group lost its verdict in a partial checkpoint");
 
         StationSession station;
         int simulatedCommands = 0;

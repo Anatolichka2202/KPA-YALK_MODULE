@@ -497,6 +497,7 @@ ScenarioRunResult ScenarioEngine::run(
         finish();
         return run;
     }
+    run.persistenceStarted = static_cast<bool>(checkpointSink);
 
     // A delivery declares its logical resources in ScenarioNode::requiredResources.
     // Claim the complete set once, before the first physical procedure. Keeping
@@ -562,6 +563,14 @@ ScenarioRunResult ScenarioEngine::run(
             if (partial) group.children.push_back(std::move(*partial));
         }
         if (group.children.empty()) return std::nullopt;
+        if (group.children.size() == node.children.size()) {
+            group.verdict = RunVerdict::Ok;
+            for (const auto& child : group.children)
+                group.verdict = combineVerdicts(group.verdict, child.verdict);
+            group.message = group.verdict == RunVerdict::Ok
+                ? "Все вложенные проверки выполнены"
+                : "Группа содержит проверки без результата или с отклонениями";
+        }
         return group;
     };
     ProcedureContext context{equipment, stopRequested_, publish, run.runId, {}, {}};

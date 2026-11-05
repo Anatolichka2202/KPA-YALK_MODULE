@@ -125,7 +125,8 @@ protected:
             return false;
         }
         try {
-            runStore_->saveCheckpoint(result);
+            if (result.persistenceStarted) runStore_->saveCheckpoint(result);
+            else runStore_->save(result);
             return true;
         } catch (const std::exception& error) {
             log(QStringLiteral("Не удалось сохранить run: %1")
