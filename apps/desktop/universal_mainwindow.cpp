@@ -267,7 +267,7 @@ void UniversalMainWindow::runGenericScenario(
         // KTMA/UBSI this preserves its confirmed power-up order; for another
         // object type only requested devices are probed/bound and no product-
         // specific voltage/current is invented by the universal runner.
-        integrationPrepareEquipmentForScenario(scenario);
+        integrationPrepareEquipmentForScenario(scenario, activity);
 
         QSet<QString> missing;
         std::function<void(const orbita::stand::ScenarioNode&)> collect;
@@ -297,7 +297,7 @@ void UniversalMainWindow::runGenericScenario(
                 .toUtf8().toStdString());
         }
     } catch (const std::exception& error) {
-        integrationStationSession().safeStopAll();
+        integrationStationSession().safeStopAll(activity);
         QMessageBox::warning(this, QStringLiteral("Сценарий / оборудование"),
                              QString::fromUtf8(error.what()));
         return;

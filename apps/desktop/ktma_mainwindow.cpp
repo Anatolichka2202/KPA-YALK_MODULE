@@ -683,7 +683,7 @@ void KtmaMainWindow::checkSelectedEquipment()
 
     // Сбрасываются только физические маршруты. Встроенные сервисы оболочки,
     // включая orbita.parameter_source, сохраняются после этой проверки готовности.
-    session.clearPhysicalEquipment();
+    session.clearPhysicalEquipment(activity);
 
     const std::string catalogDatabase = QDir(QCoreApplication::applicationDirPath())
         .filePath(QStringLiteral("parameters.db")).toUtf8().toStdString();
@@ -791,7 +791,7 @@ void KtmaMainWindow::checkSelectedEquipment()
     QApplication::setOverrideCursor(Qt::WaitCursor);
     try {
         ktma::ubsi::executeEquipmentReadinessPlan(profile, plan, {
-            [this, page, &session, &profile](
+            [this, page, &session, &profile, activity](
                 const orbita::stand::ComponentProfile& component, bool armSupply) {
                 const QStringList codes = equipmentCodes(component);
                 const auto setStatus = [page, &codes](bool ready, const QString& detail) {
@@ -818,7 +818,7 @@ void KtmaMainWindow::checkSelectedEquipment()
 
                 std::shared_ptr<orbita::stand::EquipmentDevice> device;
                 try {
-                    device = session.createEquipmentComponent(component.id);
+                    device = session.createEquipmentComponent(component.id, activity);
                     const auto& capabilities = componentCapabilities(component);
                     if (capabilities.empty())
                         throw std::runtime_error("В профиле не указана возможность устройства");
@@ -865,7 +865,7 @@ void KtmaMainWindow::checkSelectedEquipment()
                                 "АКИП не подтвердил включение питания УБСИ");
                     }
 
-                    session.bindEquipmentComponent(component.id, device, true);
+                    session.bindEquipmentComponent(component.id, device, true, activity);
                     QString detail = QString::fromStdString(finalResponse).trimmed();
                     setStatus(passiveReady, detail);
                     integrationLog(QStringLiteral("%1: %2")
@@ -894,7 +894,7 @@ void KtmaMainWindow::checkSelectedEquipment()
             },
         });
     } catch (const std::exception& error) {
-        session.clearPhysicalEquipment();
+        session.clearPhysicalEquipment(activity);
         integrationLog(QStringLiteral("Подготовка оборудования остановлена: %1")
             .arg(QString::fromUtf8(error.what())));
     }

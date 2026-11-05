@@ -34,7 +34,8 @@ protected:
     // policy without becoming part of the delivery registry.  The ordering is
     // still KTMA/UBSI-owned (power -> independent devices -> boot wait -> ULK).
     void integrationPrepareEquipmentForScenario(
-        const orbita::stand::ScenarioDefinition& scenario);
+        const orbita::stand::ScenarioDefinition& scenario,
+        const std::shared_ptr<orbita::stand::StationSession::Activity>& activity);
 
 private slots:
     void runScenario(const QString& scenarioCode, const QString& objectSerial,

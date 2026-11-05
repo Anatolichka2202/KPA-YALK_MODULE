@@ -53,6 +53,27 @@ std::shared_ptr<StationSession::Activity> StationSession::beginActivity()
     return activity;
 }
 
+std::shared_ptr<StationSession::Activity> StationSession::claimActivity(
+    std::shared_ptr<Activity> activity)
+{
+    if (!activity) activity = beginActivity();
+    if (!activity || activity->owner_ != this || activity->active_ != active_
+        || activity->executing_.exchange(true))
+        throw std::runtime_error(busyReason);
+    return activity;
+}
+
+void StationSession::releaseActivity(const std::shared_ptr<Activity>& activity) noexcept
+{
+    activity->executing_.store(false);
+}
+
+StationSession::ActivityUse::ActivityUse(StationSession& session,
+    std::shared_ptr<Activity> activity)
+    : session_(session), activity_(session.claimActivity(std::move(activity))) {}
+
+StationSession::ActivityUse::~ActivityUse() { session_.releaseActivity(activity_); }
+
 void StationSession::resetScenarioEngine()
 {
     ActivityGuard guard(*active_);
@@ -109,7 +130,8 @@ void StationSession::configure(
     const std::set<std::string>& componentKinds,
     EquipmentInstantiation equipmentInstantiation)
 {
-    clear();
+    ActivityUse activity(*this, {});
+    clearUnchecked();
     try {
         equipmentPlugins_.loadDirectory(pluginDirectory);
         if (equipmentInstantiation == EquipmentInstantiation::Immediate) {
@@ -136,14 +158,15 @@ void StationSession::configure(
         profile_ = std::move(profile);
         configured_ = true;
     } catch (...) {
-        clear();
+        clearUnchecked();
         throw;
     }
 }
 
 std::shared_ptr<EquipmentDevice> StationSession::createEquipmentComponent(
-    const std::string& componentId)
+    const std::string& componentId, std::shared_ptr<Activity> activity)
 {
+    ActivityUse use(*this, std::move(activity));
     if (!configured_) {
         throw std::logic_error("StationSession must be configured before equipment readiness");
     }
@@ -178,7 +201,7 @@ std::shared_ptr<EquipmentDevice> StationSession::createEquipmentComponent(
 
     auto device = equipmentPlugins_.createDevice(
         component->provider, component->id, config);
-    retainEquipmentDevice(device);
+    retainEquipmentDeviceUnchecked(device);
     if (keepForSession) sessionEquipment_.emplace(componentId, device);
     return device;
 }
@@ -186,8 +209,9 @@ std::shared_ptr<EquipmentDevice> StationSession::createEquipmentComponent(
 void StationSession::bindEquipmentComponent(
     const std::string& componentId,
     const std::shared_ptr<EquipmentDevice>& device,
-    bool bindDefaultCapabilities)
+    bool bindDefaultCapabilities, std::shared_ptr<Activity> activity)
 {
+    ActivityUse use(*this, std::move(activity));
     if (!configured_) {
         throw std::logic_error("StationSession must be configured before equipment binding");
     }
@@ -238,7 +262,14 @@ void StationSession::bindEquipmentComponent(
     }
 }
 
-void StationSession::retainEquipmentDevice(std::shared_ptr<EquipmentDevice> device)
+void StationSession::retainEquipmentDevice(std::shared_ptr<EquipmentDevice> device,
+    std::shared_ptr<Activity> activity)
+{
+    ActivityUse use(*this, std::move(activity));
+    retainEquipmentDeviceUnchecked(std::move(device));
+}
+
+void StationSession::retainEquipmentDeviceUnchecked(std::shared_ptr<EquipmentDevice> device)
 {
     if (!device) {
         throw std::invalid_argument("Cannot retain an empty equipment device");
@@ -255,8 +286,9 @@ void StationSession::retainEquipmentDevice(std::shared_ptr<EquipmentDevice> devi
     equipmentDevices_.push_back(std::move(device));
 }
 
-void StationSession::clearPhysicalEquipment() noexcept
+void StationSession::clearPhysicalEquipment(std::shared_ptr<Activity> activity)
 {
+    ActivityUse use(*this, std::move(activity));
     equipment_.clearPhysical();
     equipmentDevices_.erase(std::remove_if(equipmentDevices_.begin(), equipmentDevices_.end(),
         [this](const auto& device) {
@@ -265,23 +297,36 @@ void StationSession::clearPhysicalEquipment() noexcept
         }), equipmentDevices_.end());
 }
 
-void StationSession::clearEquipment() noexcept
+void StationSession::clearEquipment(std::shared_ptr<Activity> activity)
+{
+    ActivityUse use(*this, std::move(activity));
+    clearEquipmentUnchecked();
+}
+
+void StationSession::clearEquipmentUnchecked() noexcept
 {
     equipment_.clear();
     equipmentDevices_.clear();
     sessionEquipment_.clear();
 }
 
-void StationSession::safeStopAll() noexcept
+void StationSession::safeStopAll(std::shared_ptr<Activity> activity)
 {
+    ActivityUse use(*this, std::move(activity));
     components_.safeStopAll();
     equipment_.safeStopAll();
 }
 
-void StationSession::clear() noexcept
+void StationSession::clear()
+{
+    ActivityUse use(*this, {});
+    clearUnchecked();
+}
+
+void StationSession::clearUnchecked() noexcept
 {
     components_.clear();
-    clearEquipment();
+    clearEquipmentUnchecked();
     profile_ = {};
     configured_ = false;
 }

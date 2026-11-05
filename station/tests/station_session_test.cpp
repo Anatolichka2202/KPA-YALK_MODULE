@@ -114,6 +114,24 @@ int main(int argc, char** argv)
         try { session.invokeManual("test.simulator", "measure", {}); }
         catch (const std::exception&) { manualDuringReadinessRejected = true; }
         require(manualDuringReadinessRejected, "manual action bypassed readiness reservation");
+        bool clearRejected = false;
+        try { session.clearPhysicalEquipment(); }
+        catch (const std::exception&) { clearRejected = true; }
+        require(clearRejected && session.equipment().hasCapability("test.simulator"),
+                "equipment routes were cleared during another activity");
+        bool configureRejected = false;
+        try { session.configure(profile, pluginDirectory.path().toStdString(), {}); }
+        catch (const std::exception&) { configureRejected = true; }
+        require(configureRejected && session.configured(),
+                "configuration changed during another activity");
+        bool clearSessionRejected = false;
+        try { session.clear(); }
+        catch (const std::exception&) { clearSessionRejected = true; }
+        require(clearSessionRejected && session.configured(),
+                "session was cleared during another activity");
+        session.clearPhysicalEquipment(activity);
+        require(session.equipment().hasCapability("test.simulator"),
+                "readiness removed the session service");
         require(session.runScenario(scenario, "profile", "SN", false, {}, activity).verdict
                     == RunVerdict::Ok,
                 "reserved scenario did not run after readiness");
@@ -148,8 +166,10 @@ int main(int argc, char** argv)
             });
         auto waitingScenario = scenario;
         waitingScenario.steps.front().procedure = "test.wait";
+        auto runningActivity = session.beginActivity();
+        require(bool(runningActivity), "could not reserve station for running scenario");
         auto running = std::async(std::launch::async, [&] {
-            return session.runScenario(waitingScenario, "profile", "SN", false);
+            return session.runScenario(waitingScenario, "profile", "SN", false, {}, runningActivity);
         });
         if (entered.get_future().wait_for(std::chrono::seconds(5)) != std::future_status::ready) {
             session.requestStop();
@@ -162,8 +182,13 @@ int main(int argc, char** argv)
         } catch (const std::exception&) {
             concurrentManualRejected = true;
         }
+        bool sharedActivityRejected = false;
+        try { session.clearPhysicalEquipment(runningActivity); }
+        catch (const std::exception&) { sharedActivityRejected = true; }
         session.requestStop();
         const auto stoppedRun = running.get();
+        runningActivity.reset();
+        require(sharedActivityRejected, "readiness reused an executing reservation");
         require(concurrentManualRejected, "manual action was not rejected during a run");
         require(stoppedRun.verdict == RunVerdict::Aborted,
                 "stop request did not reach the active scenario");
@@ -253,7 +278,9 @@ int main(int argc, char** argv)
             builtPluginDirectory.toUtf8().toStdString(),
             {},
             EquipmentInstantiation::Deferred);
-        auto device = readiness.createEquipmentComponent("bench-power");
+        auto readinessActivity = readiness.beginActivity();
+        require(bool(readinessActivity), "equipment readiness did not reserve the station");
+        auto device = readiness.createEquipmentComponent("bench-power", readinessActivity);
         require(device && device->instanceId() == "bench-power",
                 "deferred readiness did not create the requested equipment component");
         require(readiness.equipmentDevices().size() == 1,
@@ -261,7 +288,7 @@ int main(int argc, char** argv)
         require(readiness.equipment().resources().empty(),
                 "unprobed deferred equipment was exported prematurely");
 
-        readiness.bindEquipmentComponent("bench-power", device, false);
+        readiness.bindEquipmentComponent("bench-power", device, false, readinessActivity);
         require(readiness.equipment().hasResource("bench-power")
                     && readiness.equipment().hasResource("power.dut"),
                 "deferred readiness did not export component id and delivery role");
@@ -283,7 +310,7 @@ int main(int argc, char** argv)
                 return operation == "probe" ? std::string("status=ready\n")
                                             : std::string("status=unknown\n");
             });
-        readiness.clearPhysicalEquipment();
+        readiness.clearPhysicalEquipment(readinessActivity);
         require(readiness.equipmentDevices().empty()
                     && readiness.equipment().resources().empty(),
                 "physical equipment reset did not clear deferred devices/routes");
@@ -292,7 +319,8 @@ int main(int argc, char** argv)
                         "test.scenario_service", "probe", {}) == "status=ready\n",
                 "physical equipment reset removed an application built-in service");
 
-        readiness.clearEquipment();
+        readiness.clearEquipment(readinessActivity);
+        readinessActivity.reset();
         require(!readiness.equipment().hasCapability("test.scenario_service"),
                 "full equipment reset preserved a built-in service unexpectedly");
 

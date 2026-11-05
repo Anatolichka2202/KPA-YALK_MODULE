@@ -35,7 +35,7 @@ enum class EquipmentInstantiation {
 class StationSession final {
 public:
     StationSession() = default;
-    ~StationSession() { clear(); }
+    ~StationSession() { clearUnchecked(); }
 
     StationSession(const StationSession&) = delete;
     StationSession& operator=(const StationSession&) = delete;
@@ -127,7 +127,7 @@ public:
     // instance is retained by the session but is not exported into routing until
     // bindEquipmentComponent() is called after the delivery has probed it.
     std::shared_ptr<EquipmentDevice> createEquipmentComponent(
-        const std::string& componentId);
+        const std::string& componentId, std::shared_ptr<Activity> activity = {});
 
     // Publish a successfully probed deferred device under its concrete id and
     // canonical delivery role aliases. Default capability routing is optional so
@@ -136,23 +136,42 @@ public:
     void bindEquipmentComponent(
         const std::string& componentId,
         const std::shared_ptr<EquipmentDevice>& device,
-        bool bindDefaultCapabilities = true);
+        bool bindDefaultCapabilities = true, std::shared_ptr<Activity> activity = {});
 
     // Used by deferred readiness flows after they create/probe a device through
     // equipmentPlugins(). The registry owns devices that are bound, while this
     // retention list also keeps successfully created but intentionally unbound
     // devices alive until the next equipment reset/session clear.
-    void retainEquipmentDevice(std::shared_ptr<EquipmentDevice> device);
+    void retainEquipmentDevice(std::shared_ptr<EquipmentDevice> device,
+                               std::shared_ptr<Activity> activity = {});
 
     // Re-run physical readiness without destroying application-level built-in
     // scenario services already installed in EquipmentRegistry.
-    void clearPhysicalEquipment() noexcept;
-    void clearEquipment() noexcept;
+    void clearPhysicalEquipment(std::shared_ptr<Activity> activity = {});
+    void clearEquipment(std::shared_ptr<Activity> activity = {});
 
-    void safeStopAll() noexcept;
-    void clear() noexcept;
+    void safeStopAll(std::shared_ptr<Activity> activity = {});
+    void clear();
 
 private:
+    // Операция удерживает резерв и не допускает одновременное использование
+    // одного и того же резерва подготовкой и выполняющимся сценарием.
+    class ActivityUse {
+    public:
+        ActivityUse(StationSession& session, std::shared_ptr<Activity> activity);
+        ~ActivityUse();
+        ActivityUse(const ActivityUse&) = delete;
+        ActivityUse& operator=(const ActivityUse&) = delete;
+    private:
+        StationSession& session_;
+        std::shared_ptr<Activity> activity_;
+    };
+    std::shared_ptr<Activity> claimActivity(std::shared_ptr<Activity> activity);
+    void releaseActivity(const std::shared_ptr<Activity>& activity) noexcept;
+    void clearEquipmentUnchecked() noexcept;
+    void clearUnchecked() noexcept;
+    void retainEquipmentDeviceUnchecked(std::shared_ptr<EquipmentDevice> device);
+
     std::shared_ptr<std::atomic_bool> active_ = std::make_shared<std::atomic_bool>(false);
     std::unique_ptr<ScenarioEngine> scenarioEngine_ = std::make_unique<ScenarioEngine>();
     StandProfile profile_;

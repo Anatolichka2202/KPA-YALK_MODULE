@@ -64,7 +64,8 @@ bool providesAny(const orbita::stand::ComponentProfile& component,
 } // namespace
 
 void KtmaMainWindow::integrationPrepareEquipmentForScenario(
-    const orbita::stand::ScenarioDefinition& scenario)
+    const orbita::stand::ScenarioDefinition& scenario,
+    const std::shared_ptr<orbita::stand::StationSession::Activity>& activity)
 {
     integrationEnsureStandRuntime();
     if (!integrationStandRuntimeReady())
@@ -76,7 +77,7 @@ void KtmaMainWindow::integrationPrepareEquipmentForScenario(
     if (!registry) throw std::runtime_error("Реестр оборудования не инициализирован");
 
     const auto required = scenarioCapabilities(scenario);
-    session.clearPhysicalEquipment();
+    session.clearPhysicalEquipment(activity);
 
     // Application-level services survive clearPhysicalEquipment(), but these two
     // bindings are intentionally refreshed so a free scenario has the same
@@ -172,7 +173,7 @@ void KtmaMainWindow::integrationPrepareEquipmentForScenario(
 
     const bool ubsiWorkflow = scenario.objectType.rfind("UBSI", 0) == 0;
 
-    auto prepareComponent = [this, &session, &profile](
+    auto prepareComponent = [this, &session, &profile, activity](
         const orbita::stand::ComponentProfile& component, bool armUbsiSupply) {
         if (!component.enabled) {
             const auto reason = component.configuration.find("disabled_reason");
@@ -186,7 +187,7 @@ void KtmaMainWindow::integrationPrepareEquipmentForScenario(
 
         std::shared_ptr<orbita::stand::EquipmentDevice> device;
         try {
-            device = session.createEquipmentComponent(component.id);
+            device = session.createEquipmentComponent(component.id, activity);
             const auto& capabilities = componentCapabilities(component);
             if (capabilities.empty())
                 throw std::runtime_error("В профиле не указана capability оборудования");
@@ -223,7 +224,7 @@ void KtmaMainWindow::integrationPrepareEquipmentForScenario(
                     throw std::runtime_error("Источник не подтвердил питание УБСИ 27 В");
             }
 
-            session.bindEquipmentComponent(component.id, device, true);
+            session.bindEquipmentComponent(component.id, device, true, activity);
             integrationLog(QStringLiteral("%1: готово · %2")
                 .arg(QString::fromStdString(component.id),
                      QString::fromStdString(finalResponse).trimmed()));
@@ -260,7 +261,7 @@ void KtmaMainWindow::integrationPrepareEquipmentForScenario(
             }
         }
     } catch (...) {
-        session.clearPhysicalEquipment();
+        session.clearPhysicalEquipment(activity);
         QApplication::restoreOverrideCursor();
         throw;
     }
