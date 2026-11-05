@@ -5,6 +5,7 @@
 #include "orbita_stand/equipment_runtime.h"
 #include "orbita_stand/resource_lease.h"
 #include "orbita_stand/project.h"
+#include "orbita_stand/parameter_repository.h"
 
 #include <atomic>
 #include <memory>
@@ -98,6 +99,9 @@ public:
         const ScenarioRunResult* initialRun = nullptr);
     std::string invokeManual(const std::string& capability, const std::string& operation,
         const std::map<std::string, std::string>& arguments);
+
+    ParameterRepository& parameters() noexcept { return parameters_; }
+    const ParameterRepository& parameters() const noexcept { return parameters_; }
 
     ComponentRuntime& components() noexcept { return components_; }
     const ComponentRuntime& components() const noexcept { return components_; }
@@ -207,6 +211,7 @@ private:
     std::vector<std::shared_ptr<EquipmentDevice>> equipmentDevices_;
     std::map<std::string, std::shared_ptr<EquipmentDevice>> sessionEquipment_;
     ComponentRuntime components_;
+    ParameterRepository parameters_;
     bool configured_ = false;
 };
 

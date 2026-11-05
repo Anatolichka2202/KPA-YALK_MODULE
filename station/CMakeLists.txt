@@ -41,6 +41,7 @@ add_library(orbita_stand_runtime STATIC
     src/component_runtime.cpp
     src/execution_runtime.cpp
     src/station_session.cpp
+    src/parameter_repository.cpp
 )
 target_include_directories(orbita_stand_runtime PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_compile_features(orbita_stand_runtime PUBLIC cxx_std_17)
@@ -133,6 +134,10 @@ if(BUILD_TESTING)
     target_link_libraries(execution_scenario_test PRIVATE orbita_stand_runtime Qt6::Core)
     add_test(NAME stand.execution_scenario COMMAND execution_scenario_test)
 
+    add_executable(parameter_repository_test tests/parameter_repository_test.cpp)
+    target_link_libraries(parameter_repository_test PRIVATE orbita_stand_runtime Qt6::Core)
+    add_test(NAME stand.parameter_repository COMMAND parameter_repository_test)
+
     add_executable(station_session_test tests/station_session_test.cpp)
     target_link_libraries(station_session_test PRIVATE orbita_stand_runtime Qt6::Core)
     add_test(NAME stand.station_session COMMAND station_session_test)
@@ -151,6 +156,7 @@ if(BUILD_TESTING)
             stand.execution_runtime
             stand.execution_scenario
             stand.station_session
+            stand.parameter_repository
             PROPERTIES ENVIRONMENT_MODIFICATION "${_orbita_qt_test_path}")
     endif()
 endif()

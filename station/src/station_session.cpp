@@ -371,6 +371,7 @@ void StationSession::clear()
 
 void StationSession::clearUnchecked() noexcept
 {
+    parameters_.clear();
     components_.clear();
     clearEquipmentUnchecked();
     profile_ = {};
