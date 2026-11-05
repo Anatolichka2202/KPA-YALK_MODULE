@@ -15,6 +15,7 @@
 
 #include <vector>
 
+class QLabel;
 class QLineEdit;
 class QComboBox;
 class QPlainTextEdit;
@@ -28,6 +29,9 @@ class ScenarioVisualEditor final : public QDialog {
 public:
     explicit ScenarioVisualEditor(QString path, QWidget* parent = nullptr);
     void setAvailableProcedures(const std::vector<std::string>& procedures);
+
+public slots:
+    void done(int result) override;
 
 private slots:
     void selectStep(QTreeWidgetItem* item);
@@ -45,6 +49,7 @@ private:
     using StepPath = std::vector<int>;
 
     void load();
+    void setDirty(bool dirty);
     void rebuildTree();
     void appendNode(QTreeWidgetItem* parent, const orbita::stand::ScenarioNode& node,
                     const StepPath& path);
@@ -70,6 +75,10 @@ private:
     QString path_;
     orbita::stand::ScenarioDefinition scenario_;
     bool published_ = false;
+    bool dirty_ = false;
+    bool loaded_ = false;
+    bool updatingFields_ = false;
+    QLabel* draftStatus_ = nullptr;
     bool healthConfigured_ = false;
     QString healthOriginalArguments_;
     QString healthOriginalRequires_;

@@ -236,6 +236,21 @@ int main(int argc, char** argv)
                 && copiedScenario.readAll().contains("state: draft"),
             "created scenario copy must be a draft");
     copiedScenario.close();
+    // Защита опубликованного сценария включается сразу после сохранения,
+    // не только при повторном открытии окна.
+    const auto publishingPath = QDir(scenarioDirectory).filePath(QStringLiteral("publishing.yaml"));
+    QFile publishingFile(publishingPath);
+    require(publishingFile.open(QIODevice::WriteOnly), "cannot create publishing fixture");
+    publishingFile.write("schema: 1\nid: publishing\nversion: 1\nstate: draft\nsteps: []\n");
+    publishingFile.close();
+    ScenarioYamlEditor publishingEditor(publishingPath);
+    auto* publishingText = publishingEditor.findChild<QTextEdit*>();
+    auto* publishingSave = publishingEditor.findChild<QPushButton*>(QStringLiteral("saveScenarioConfig"));
+    require(publishingText && publishingSave, "publishing editor controls unavailable");
+    publishingText->setPlainText(publishingText->toPlainText().replace(QStringLiteral("state: draft"),
+                                                                     QStringLiteral("state: published")));
+    publishingSave->click();
+    require(!publishingSave->isEnabled(), "published scenario stayed editable after save");
     const auto legacyHealthPath = QDir(scenarioDirectory).filePath(QStringLiteral("legacy_health.yaml"));
     QFile legacyHealthFile(legacyHealthPath);
     require(legacyHealthFile.open(QIODevice::WriteOnly | QIODevice::Text),
@@ -251,9 +266,6 @@ int main(int argc, char** argv)
     require(legacyRequires, "legacy scenario requirements field must be available");
     legacyRequires->setPlainText(QStringLiteral("temporary"));
     legacyRequires->clear();
-    QTimer::singleShot(0, [] {
-        if (auto* message = qobject_cast<QMessageBox*>(QApplication::activeModalWidget())) message->accept();
-    });
     legacyTree->setCurrentItem(legacyTree->topLevelItem(1));
     require(legacyTree->currentItem() == legacyTree->topLevelItem(1),
             "legacy health steps without explicit requirements must remain navigable");
@@ -261,6 +273,18 @@ int main(int argc, char** argv)
     auto* openVisual = yamlEditor.findChild<QPushButton*>(QStringLiteral("openScenarioVisualEditor"));
     bool proceduresForwarded = false;
     require(openVisual, "visual editor action must be available");
+    auto* rawEditor = yamlEditor.findChild<QTextEdit*>();
+    require(rawEditor, "YAML editor text field unavailable");
+    const auto originalText = rawEditor->toPlainText();
+    rawEditor->insertPlainText(QStringLiteral("# несохранённый ввод\n"));
+    QTimer::singleShot(0, [] {
+        if (auto* box = qobject_cast<QMessageBox*>(QApplication::activeModalWidget()))
+            box->button(QMessageBox::Cancel)->click();
+    });
+    openVisual->click();
+    require(rawEditor->toPlainText().contains(QStringLiteral("несохранённый ввод")),
+            "switching editor discarded unsaved text");
+    rawEditor->setPlainText(originalText);
     QTimer::singleShot(0, [&proceduresForwarded] {
         auto* dialog = qobject_cast<ScenarioVisualEditor*>(QApplication::activeModalWidget());
         if (!dialog) return;
@@ -354,6 +378,49 @@ int main(int argc, char** argv)
         "    tu: test.2\n"
         "    procedure: second.procedure\n");
     visualFile.close();
+    // Закрытие редактора не должно молча выбрасывать введённый текст.
+    {
+    ScenarioVisualEditor guardedEditor(visualPath);
+        guardedEditor.show();
+        auto* guardedTitle = guardedEditor.findChild<QLineEdit*>(QStringLiteral("scenarioStepTitle"));
+        auto* status = guardedEditor.findChild<QLabel*>(QStringLiteral("scenarioDraftStatus"));
+        require(guardedTitle && status, "draft status controls unavailable");
+        guardedTitle->setText(QStringLiteral("Черновик оператора"));
+        require(status->text().contains(QStringLiteral("несохранённые")), "unsaved changes not shown");
+        QTimer::singleShot(0, [] {
+            if (auto* box = qobject_cast<QMessageBox*>(QApplication::activeModalWidget()))
+                box->button(QMessageBox::Cancel)->click();
+        });
+        guardedEditor.reject();
+        require(guardedEditor.isVisible() && guardedTitle->text() == QStringLiteral("Черновик оператора"),
+                "cancelling close discarded the draft");
+        QTimer::singleShot(0, [] {
+            if (auto* box = qobject_cast<QMessageBox*>(QApplication::activeModalWidget()))
+                box->button(QMessageBox::Discard)->click();
+        });
+        guardedEditor.reject();
+        require(!guardedEditor.isVisible(), "discard did not close the editor");
+        require(orbita::stand::loadScenarioYaml(visualPath.toStdString()).steps[0].title != "Черновик оператора",
+                "discard unexpectedly saved changes");
+    }
+    // Недопустимый документ нельзя записывать поверх исходной проверки.
+    {
+        QFile beforeFile(visualPath);
+        require(beforeFile.open(QIODevice::ReadOnly), "cannot read original scenario");
+        const auto before = beforeFile.readAll();
+        beforeFile.close();
+    ScenarioVisualEditor invalidEditor(visualPath);
+        auto* args = invalidEditor.findChild<QPlainTextEdit*>(QStringLiteral("scenarioStepArguments"));
+        auto* save = invalidEditor.findChild<QPushButton*>(QStringLiteral("saveScenarioVisual"));
+        require(args && save, "scenario validation controls unavailable");
+        args->appendPlainText(QStringLiteral("technical_retries = 4"));
+        QTimer::singleShot(0, [] {
+            if (auto* box = qobject_cast<QMessageBox*>(QApplication::activeModalWidget())) box->accept();
+        });
+        save->click();
+        require(beforeFile.open(QIODevice::ReadOnly) && beforeFile.readAll() == before,
+                "invalid scenario replaced original file");
+    }
     ScenarioVisualEditor visualEditor(visualPath);
     orbita::stand::ScenarioEngine procedureEngine;
     procedureEngine.registerProcedure("telemetry.health", [](const auto&, auto&) {

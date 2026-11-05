@@ -15,7 +15,9 @@
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSaveFile>
+#include <QTemporaryFile>
 #include <QSignalBlocker>
+#include <QScopedValueRollback>
 #include <QSplitter>
 #include <QTreeWidget>
 #include <QVBoxLayout>
@@ -55,13 +57,15 @@ ScenarioVisualEditor::ScenarioVisualEditor(QString path, QWidget* parent)
 
     auto* layout = new QVBoxLayout(this);
     auto* explanation = new QLabel(QStringLiteral(
-        "Форма изменяет schema: 1 YAML текущего сценария. Процедура, ресурсы и аргументы "
-        "сохраняются в том же формате, который читает сценарный движок. Порядок этапов "
-        "можно менять кнопками вверх/вниз. При сохранении визуальный редактор "
-        "нормализует разметку YAML; комментарии исходного файла не сохраняются."), this);
+        "Выберите этап слева, настройте его и сохраните проверку. "
+        "Порядок этапов можно изменить кнопками внизу. "
+        "При сохранении комментарии исходного файла не сохраняются."), this);
     explanation->setWordWrap(true);
     explanation->setObjectName(QStringLiteral("scenarioVisualEditorExplanation"));
     layout->addWidget(explanation);
+    draftStatus_ = new QLabel(this);
+    draftStatus_->setObjectName(QStringLiteral("scenarioDraftStatus"));
+    layout->addWidget(draftStatus_);
 
     auto* splitter = new QSplitter(Qt::Horizontal, this);
     tree_ = new QTreeWidget(splitter);
@@ -192,6 +196,35 @@ ScenarioVisualEditor::ScenarioVisualEditor(QString path, QWidget* parent)
     connect(draftButton_, &QPushButton::clicked, this, &ScenarioVisualEditor::createDraft);
     connect(close, &QPushButton::clicked, this, &QDialog::accept);
     load();
+    setDirty(false);
+    const auto changed = [this] { if (!updatingFields_ && !published_) setDirty(true); };
+    for (auto* edit : {id_, title_, tu_, procedure_})
+        connect(edit, &QLineEdit::textChanged, this, changed);
+    for (auto* edit : {requires_, resources_, arguments_})
+        connect(edit, &QPlainTextEdit::textChanged, this, changed);
+}
+
+void ScenarioVisualEditor::setDirty(bool dirty)
+{
+    dirty_ = dirty;
+    draftStatus_->setText(!loaded_ ? QStringLiteral("Не удалось загрузить проверку") : published_ ? QStringLiteral("Исходная проверка · только чтение")
+        : dirty ? QStringLiteral("Есть несохранённые изменения")
+                : QStringLiteral("Все изменения сохранены"));
+}
+
+void ScenarioVisualEditor::done(int result)
+{
+    if (dirty_) {
+        const auto choice = QMessageBox::question(this, QStringLiteral("Несохранённая проверка"),
+            QStringLiteral("Сохранить изменения перед закрытием?"),
+            QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel, QMessageBox::Save);
+        if (choice != QMessageBox::Save && choice != QMessageBox::Discard) return;
+        if (choice == QMessageBox::Save) {
+            save();
+            if (dirty_) return;
+        }
+    }
+    QDialog::done(result);
 }
 
 void ScenarioVisualEditor::setAvailableProcedures(const std::vector<std::string>& procedures)
@@ -211,7 +244,8 @@ void ScenarioVisualEditor::setAvailableProcedures(const std::vector<std::string>
 void ScenarioVisualEditor::load()
 {
     try {
-        scenario_ = orbita::stand::loadScenarioYaml(path_.toStdString());
+        scenario_ = orbita::stand::loadScenarioYaml(path_.toUtf8().toStdString());
+        loaded_ = true;
         published_ = scenario_.publicationState == orbita::stand::PublicationState::Published;
         setEditorEnabled(!published_);
         rebuildTree();
@@ -326,6 +360,7 @@ void ScenarioVisualEditor::selectStep(QTreeWidgetItem* item)
 
 void ScenarioVisualEditor::showNode(const orbita::stand::ScenarioNode& node)
 {
+    const QScopedValueRollback<bool> guard(updatingFields_, true);
     healthConfigured_ = false;
     id_->setText(QString::fromStdString(node.id));
     title_->setText(QString::fromStdString(node.title));
@@ -355,6 +390,7 @@ void ScenarioVisualEditor::showNode(const orbita::stand::ScenarioNode& node)
 
 void ScenarioVisualEditor::clearNodeEditor()
 {
+    const QScopedValueRollback<bool> guard(updatingFields_, true);
     for (auto* edit : {id_, title_, tu_, procedure_}) edit->clear();
     for (auto* edit : {requires_, resources_, arguments_}) edit->clear();
 }
@@ -585,6 +621,7 @@ void ScenarioVisualEditor::addRootStep()
 {
     if (!commitEditorToSelectedNode()) return;
     const int next = static_cast<int>(scenario_.steps.size()) + 1;
+    setDirty(true);
     scenario_.steps.push_back({"step_" + std::to_string(next), "Новый этап", "", "", {}, {}, {}});
     rebuildTree();
     tree_->setCurrentItem(tree_->topLevelItem(tree_->topLevelItemCount() - 1));
@@ -599,6 +636,7 @@ void ScenarioVisualEditor::addChildStep()
         return;
     }
     const int next = static_cast<int>(node->children.size()) + 1;
+    setDirty(true);
     node->children.push_back({"child_" + std::to_string(next), "Новый подэтап", "", "", {}, {}, {}});
     rebuildTree();
 }
@@ -611,6 +649,7 @@ void ScenarioVisualEditor::removeStep()
     if (!siblings) return;
     const int index = path.back();
     if (index < 0 || index >= static_cast<int>(siblings->size())) return;
+    setDirty(true);
     siblings->erase(siblings->begin() + index);
     rebuildTree();
 }
@@ -623,6 +662,7 @@ void ScenarioVisualEditor::moveStepUp()
     if (!siblings || path.empty()) return;
     const int index = path.back();
     if (index <= 0 || index >= static_cast<int>(siblings->size())) return;
+    setDirty(true);
     std::swap((*siblings)[static_cast<std::size_t>(index)],
               (*siblings)[static_cast<std::size_t>(index - 1)]);
     rebuildTree();
@@ -639,6 +679,7 @@ void ScenarioVisualEditor::moveStepDown()
     if (!siblings || path.empty()) return;
     const int index = path.back();
     if (index < 0 || index + 1 >= static_cast<int>(siblings->size())) return;
+    setDirty(true);
     std::swap((*siblings)[static_cast<std::size_t>(index)],
               (*siblings)[static_cast<std::size_t>(index + 1)]);
     rebuildTree();
@@ -757,18 +798,27 @@ bool ScenarioVisualEditor::write(const QString& path, const QString& content)
 
 void ScenarioVisualEditor::save()
 {
-    if (published_ || !commitEditorToSelectedNode()) return;
-    if (!write(path_, serialize())) {
-        QMessageBox::critical(this, QStringLiteral("Сохранение"), QStringLiteral("Не удалось сохранить YAML."));
+    if (!loaded_ || published_ || !commitEditorToSelectedNode()) return;
+    const auto content = serialize();
+    // Полностью проверяем временный файл прежде, чем атомарно заменить исходный.
+    QTemporaryFile candidate(QFileInfo(path_).dir().filePath(QStringLiteral(".scenario-check-XXXXXX")));
+    if (!candidate.open() || candidate.write(content.toUtf8()) != content.toUtf8().size()
+        || !candidate.flush()) {
+        QMessageBox::critical(this, QStringLiteral("Сохранение"), QStringLiteral("Не удалось проверить файл перед сохранением."));
         return;
     }
     try {
-        (void)orbita::stand::loadScenarioYaml(path_.toStdString());
+        (void)orbita::stand::loadScenarioYaml(candidate.fileName().toUtf8().toStdString());
     } catch (const std::exception& error) {
-        QMessageBox::critical(this, QStringLiteral("YAML"),
-            QStringLiteral("Сохранённый YAML не прошёл загрузку: %1").arg(QString::fromUtf8(error.what())));
+        QMessageBox::critical(this, QStringLiteral("Проверка"),
+            QStringLiteral("Проверка не сохранена: %1").arg(QString::fromUtf8(error.what())));
         return;
     }
+    if (!write(path_, content)) {
+        QMessageBox::critical(this, QStringLiteral("Сохранение"), QStringLiteral("Не удалось сохранить проверку."));
+        return;
+    }
+    setDirty(false);
 }
 
 void ScenarioVisualEditor::createDraft()
@@ -798,4 +848,5 @@ void ScenarioVisualEditor::createDraft()
     path_ = draftPath;
     published_ = false;
     setEditorEnabled(true);
+    setDirty(false);
 }

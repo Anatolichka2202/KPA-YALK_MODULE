@@ -14,6 +14,7 @@
 #include <QRegularExpression>
 #include <QSaveFile>
 #include <QTextEdit>
+#include <QTextDocument>
 #include <QVBoxLayout>
 
 #include <utility>
@@ -61,6 +62,7 @@ ScenarioYamlEditor::ScenarioYamlEditor(QString path, QWidget* parent)
     layout->addLayout(actions);
     connect(validateButton, &QPushButton::clicked, this, &ScenarioYamlEditor::validate);
     connect(visualButton, &QPushButton::clicked, this, [this]() {
+        if (!confirmChanges()) return;
         ScenarioVisualEditor visual(path_, this);
         visual.setAvailableProcedures(availableProcedures_);
         visual.exec();
@@ -70,6 +72,26 @@ ScenarioYamlEditor::ScenarioYamlEditor(QString path, QWidget* parent)
     connect(draftButton_, &QPushButton::clicked, this, &ScenarioYamlEditor::createDraft);
     connect(closeButton, &QPushButton::clicked, this, &QDialog::accept);
     load();
+}
+
+bool ScenarioYamlEditor::confirmChanges()
+{
+    if (!editor_->document()->isModified()) return true;
+    const auto buttons = published_ ? QMessageBox::Discard | QMessageBox::Cancel
+                                    : QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel;
+    const auto choice = QMessageBox::question(this, QStringLiteral("Несохранённые изменения"),
+        QStringLiteral("Сохранить изменения перед продолжением?"), buttons, QMessageBox::Cancel);
+    if (choice == QMessageBox::Cancel) return false;
+    if (choice == QMessageBox::Save) {
+        save();
+        return !editor_->document()->isModified();
+    }
+    return choice == QMessageBox::Discard;
+}
+
+void ScenarioYamlEditor::done(int result)
+{
+    if (confirmChanges()) QDialog::done(result);
 }
 
 void ScenarioYamlEditor::setAvailableProcedures(std::vector<std::string> procedures)
@@ -144,7 +166,17 @@ void ScenarioYamlEditor::save()
         QMessageBox::critical(this, QStringLiteral("Сохранение"), QStringLiteral("Не удалось сохранить сценарий"));
         return;
     }
-    status_->setText(QStringLiteral("Сохранено: %1").arg(path_));
+    editor_->document()->setModified(false);
+    // После сохранения опубликованной версии дальнейшие изменения требуют
+    // отдельного черновика, в том числе в уже открытом окне редактора.
+    if (scenario_) {
+        const auto root = orbita::stand::yaml::parse(editor_->toPlainText().toStdString());
+        published_ = root.value("state") == "published";
+        saveButton_->setEnabled(!published_);
+        draftButton_->setVisible(published_);
+    }
+    status_->setText(published_ ? QStringLiteral("Исходный сценарий защищён: создайте черновик")
+                               : QStringLiteral("Сохранено: %1").arg(path_));
 }
 
 void ScenarioYamlEditor::createDraft()
@@ -176,6 +208,7 @@ void ScenarioYamlEditor::createDraft()
     path_ = draftPath;
     published_ = false;
     editor_->setPlainText(content);
+    editor_->document()->setModified(false);
     saveButton_->setEnabled(true);
     draftButton_->setVisible(false);
     status_->setText(QStringLiteral("Создан черновик: %1").arg(path_));

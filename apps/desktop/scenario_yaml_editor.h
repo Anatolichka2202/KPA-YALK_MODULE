@@ -16,7 +16,11 @@ public:
     explicit ScenarioYamlEditor(QString path, QWidget* parent = nullptr);
     void setAvailableProcedures(std::vector<std::string> procedures);
 
+public slots:
+    void done(int result) override;
+
 private:
+    bool confirmChanges();
     void load();
     bool validate();
     void save();
