@@ -107,8 +107,9 @@ int main(int argc, char** argv)
 
         // Подготовка и запуск используют одно резервирование: второй вход и
         // ручная команда не могут изменить прибор между этими действиями.
+        require(!session.busy(), "idle station was reported as busy");
         auto activity = session.beginActivity();
-        require(bool(activity), "could not reserve station for readiness");
+        require(bool(activity) && session.busy(), "could not reserve station for readiness");
         require(!session.beginActivity(), "readiness reservation allowed a competing action");
         bool manualDuringReadinessRejected = false;
         try { session.invokeManual("test.simulator", "measure", {}); }
@@ -145,6 +146,7 @@ int main(int argc, char** argv)
                 "reserved scenario did not run after readiness");
         require(!session.beginActivity(), "reservation was released before its owner finished");
         activity.reset();
+        require(!session.busy(), "completed readiness was still reported as busy");
         require(bool(session.beginActivity()), "station stayed reserved after readiness finished");
         try {
             auto failedReadiness = session.beginActivity();

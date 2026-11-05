@@ -136,6 +136,13 @@ void MainWindow::closeEvent(QCloseEvent* event)
         event->ignore();
         return;
     }
+    if (stationSession_.busy()) {
+        // При подготовке вложенный цикл Qt может доставить событие закрытия.
+        // Окно и его callbacks должны оставаться живыми до выхода из подготовки.
+        log(QStringLiteral("Закрытие недоступно: дождитесь окончания активной операции станции"));
+        event->ignore();
+        return;
+    }
     QMainWindow::closeEvent(event);
 }
 
