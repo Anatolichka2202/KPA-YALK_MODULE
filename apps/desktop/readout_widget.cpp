@@ -28,11 +28,13 @@ ReadoutWidget::ReadoutWidget(QWidget *parent) : QWidget(parent)
 
     // Значение
     m_valueLabel = new QLabel("---");
+    m_valueLabel->setObjectName(QStringLiteral("monitorReadoutValue"));
     m_valueLabel->setStyleSheet("font-family: 'IBM Plex Mono'; font-size: 40px; font-weight: 600;");
     mainLayout->addWidget(m_valueLabel);
 
     // Статус
     m_statusLabel = new QLabel;
+    m_statusLabel->setObjectName(QStringLiteral("monitorReadoutStatus"));
     m_statusLabel->setStyleSheet("padding: 4px 10px; border-radius: 6px;");
     mainLayout->addWidget(m_statusLabel);
 
@@ -66,6 +68,7 @@ void ReadoutWidget::setToleranceResolver(ToleranceResolver* r)
 
 void ReadoutWidget::setChannel(const orbita::ChannelSpec& spec)
 {
+    if (m_spec.address != spec.address) m_hasValue = false;
     m_spec = spec;
     m_numLabel->setText(QString("КАН %1").arg(/* номер? можно по индексу, но его нет в spec */ "?"));
     m_nameLabel->setText(QString::fromStdString(spec.name.empty() ? spec.address : spec.name));
@@ -84,12 +87,28 @@ void ReadoutWidget::setChannel(const orbita::ChannelSpec& spec)
 void ReadoutWidget::updateValue(double value)
 {
     m_currentValue = value;
+    m_hasValue = true;
+    updateUI();
+}
+
+void ReadoutWidget::clearValue()
+{
+    m_hasValue = false;
     updateUI();
 }
 
 void ReadoutWidget::updateUI()
 {
     if (m_spec.address.empty()) return;
+
+    if (!m_hasValue) {
+        m_valueLabel->setText(QStringLiteral("---"));
+        m_statusLabel->setText(QStringLiteral("нет данных"));
+        m_toleranceBar->setVisible(false);
+        m_rangeLabel->clear();
+        return;
+    }
+    m_toleranceBar->setVisible(true);
 
     m_valueLabel->setText(QString::number(m_currentValue, 'f', 0));
     m_toleranceBar->setValue((int)m_currentValue);

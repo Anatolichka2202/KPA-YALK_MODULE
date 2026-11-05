@@ -35,6 +35,7 @@
 
 #include "orbita_stand/report_writer.h"
 #include "orbita_stand/telemetry_procedures.h"
+#include "miltech/orbita_sample_simulator.h"
 #include "orbita_stand/catalog.h"
 #include "scenario_yaml_editor.h"
 #include "adapter_monitor_widget.h"
@@ -515,6 +516,8 @@ void MainWindow::setupToolBar()
     // --- Кнопки Старт/Стоп ---
     startBtn_ = new QPushButton(QIcon(":/icons/play.svg"), " Старт");
     stopBtn_  = new QPushButton(QIcon(":/icons/stop.svg"),  " Стоп");
+    startBtn_->setObjectName(QStringLiteral("monitorStart"));
+    stopBtn_->setObjectName(QStringLiteral("monitorStop"));
     startBtn_->setEnabled(false);
     stopBtn_->setEnabled(false);
     startBtn_->setFixedWidth(80);
@@ -551,6 +554,7 @@ void MainWindow::setupToolBar()
     toolbar->addWidget(mtvLabel_);
 
     statusLabel_ = new QLabel("● Сбор остановлен");
+    statusLabel_->setObjectName(QStringLiteral("monitorSourceStatus"));
     statusLabel_->setStyleSheet("color: #d99a4a; font-weight: 500;");
     toolbar->addWidget(statusLabel_);
 
@@ -778,6 +782,12 @@ void MainWindow::initializeStandRuntime()
         if (standProfile_.id.empty())
             throw std::runtime_error(
                 "Профиль станции не настроен application composition");
+        const auto* sampleDefinition = orbita::stand::findComponentByBinding(
+            standProfile_, "telemetry.orbita.sample_source");
+        const bool isSimulator = sampleDefinition && sampleDefinition->enabled
+            && sampleDefinition->provider == "miltech.orbita.simulator";
+        if (mainPage_) mainPage_->setSimulatorMode(isSimulator);
+        if (detailView_) detailView_->setSimulatorMode(isSimulator);
 
         // Общий station-level runtime создаёт только те составные части,
         // которые уже переведены на component model. Equipment пока остаётся
@@ -786,8 +796,14 @@ void MainWindow::initializeStandRuntime()
         // its sample-source instance. Kind factories survive ComponentRuntime::clear().
         orbitaSampleBridge_.reset();
         telemetrySampleSource_ = nullptr;
-        if (!componentRuntime_->hasKindFactory("sample_source"))
-            orbita::stand::registerSampleSourceComponents(*componentRuntime_);
+        if (!componentRuntime_->hasKindFactory("sample_source")) {
+            componentRuntime_->registerKindFactory("sample_source", [](const auto& definition)
+                -> std::unique_ptr<orbita::stand::IStationComponent> {
+                if (definition.provider == "miltech.orbita.simulator")
+                    return miltech::integration::createOrbitaSampleSimulator();
+                return orbita::stand::createSampleSource(definition.provider, definition.configuration);
+            });
+        }
         try {
             stationSession_.configure(
                 standProfile_, root.filePath("plugins").toStdString(), {"sample_source"},
@@ -803,6 +819,12 @@ void MainWindow::initializeStandRuntime()
                         QMetaObject::invokeMethod(this, [this, message] {
                             log(QStringLiteral("Источник телеметрии: %1")
                                 .arg(QString::fromStdString(message)));
+                            if (isRunning_) {
+                                if (mainPage_) mainPage_->updateData({});
+                                if (detailView_) detailView_->clearValue();
+                                statusLabel_->setText(QStringLiteral("● Нет данных источника"));
+                                statusLabel_->setStyleSheet("color: #e6b878; font-weight: 500;");
+                            }
                         }, Qt::QueuedConnection);
                     });
             } else {
@@ -1207,6 +1229,11 @@ void MainWindow::openFreeCommandConsole()
 void MainWindow::onStart()
 {
     try {
+        // Новый сеанс не должен показывать подтверждённые значения,
+        // оставшиеся в декодере после предыдущего запуска.
+        orbita_->setChannels(currentSpecs_);
+        if (mainPage_) mainPage_->updateData({});
+        if (detailView_) detailView_->clearValue();
         if (!initializeTelemetrySource()) {
             throw std::runtime_error("Источник отсчётов Орбиты недоступен");
         }
@@ -1219,12 +1246,15 @@ void MainWindow::onStart()
                 ? "Не удалось запустить sample_source → liborbita" : detail);
         }
         elapsedTimer_.restart();
+        monitorSnapshot_.reset();
+        detailLastUpdate_ = {};
+        monitorLastUpdate_ = std::chrono::steady_clock::now();
         isRunning_ = true;
         startBtn_->setEnabled(false);
         stopBtn_->setEnabled(true);
         recordBtn_->setEnabled(true);
-        statusLabel_->setText("● Сбор идёт");
-        statusLabel_->setStyleSheet("color: #7fc79a; font-weight: 500;");
+        statusLabel_->setText(QStringLiteral("● Ожидание данных"));
+        statusLabel_->setStyleSheet("color: #e6b878; font-weight: 500;");
         log("Старт сбора данных Орбиты через station integration bridge");
     } catch (const std::exception& e) {
         if (orbitaSampleBridge_) orbitaSampleBridge_->stop();
@@ -1243,6 +1273,14 @@ void MainWindow::onStop()
         if (orbita_ && orbita_->isRunning()) orbita_->stop();
     }
     isRunning_ = false;
+    monitorSnapshot_.reset();
+    detailLastUpdate_ = {};
+    monitorLastUpdate_ = {};
+    if (mainPage_) mainPage_->updateData({});
+    if (detailView_) detailView_->clearValue();
+    mtvLabel_->setText(QStringLiteral("МТВ: ---"));
+    errPhraseLabel_->setText(QStringLiteral("ошибки фраз: ---"));
+    errGroupLabel_->setText(QStringLiteral("групп: ---"));
     startBtn_->setEnabled(!currentSpecs_.empty());
     stopBtn_->setEnabled(false);
     recordBtn_->setEnabled(false);
@@ -1298,9 +1336,12 @@ void MainWindow::updateStatusBar(const orbita::Snapshot& snap)
 
     // Подсчёт аномалий
     int anomalyCount = 0;
+    int availableCount = 0;
     int firstAnomalyIdx = -1;
     for (int i = 0; i < (int)snap.values.size(); ++i) {
         const auto& v = snap.values[i];
+        if (!v.valid) continue;
+        ++availableCount;
         auto tol = chstatus::forAddress(dbProvider_.get(), v.address);
         auto lvl = chstatus::evaluate(v.value, tol);
         if (chstatus::isAnomaly(lvl)) {
@@ -1310,6 +1351,8 @@ void MainWindow::updateStatusBar(const orbita::Snapshot& snap)
     }
 
     QString toleranceStr = QString("контроль допусков: %1 вне нормы").arg(anomalyCount);
+    toleranceStr += QStringLiteral(" · данные: %1 из %2")
+        .arg(availableCount).arg(snap.values.size());
     if (anomalyCount > 0 && firstAnomalyIdx >= 0) {
         QString name;
         if (firstAnomalyIdx < (int)currentSpecs_.size()) {
@@ -1341,43 +1384,71 @@ void MainWindow::updateData()
         return;
     }
 
-    if (orbita_->waitForData(std::chrono::milliseconds(0))) {
-        orbita::Snapshot snap = orbita_->getSnapshot();
+    if (!orbitaSampleBridge_ || !orbitaSampleBridge_->isRunning()) {
+        onStop();
+        statusLabel_->setText(QStringLiteral("● Источник отключён"));
+        statusLabel_->setStyleSheet("color: #e6b878; font-weight: 500;");
+        log(QStringLiteral("Источник телеметрии отключён; показания сброшены"));
+        return;
+    }
 
-        // МТВ
-        uint32_t sec = snap.mtv_seconds;
-        mtvLabel_->setText(QString("%1:%2:%3")
-                               .arg(sec / 3600, 2, 10, QChar('0'))
-                               .arg((sec % 3600) / 60, 2, 10, QChar('0'))
-                               .arg(sec % 60, 2, 10, QChar('0')));
+    const auto now = std::chrono::steady_clock::now();
+    const bool received = orbita_->waitForData(std::chrono::milliseconds(0));
+    if (received)
+        monitorSnapshot_ = orbita_->getSnapshot();
 
-        // Ошибки
-        errPhraseLabel_->setText(QString("ошибки фраз: %1%").arg(snap.stats.phrase_error_percent));
-        errGroupLabel_->setText(QString("групп: %1%").arg(snap.stats.group_error_percent));
+    if (monitorSnapshot_) {
+        // Отсчитываем свежесть от фактического обновления параметра, а не от
+        // получения очередной группы, которая может к нему не относиться.
+        for (const auto& value : monitorSnapshot_->values) {
+            if (value.valid && value.updatedAt <= now && value.updatedAt > monitorLastUpdate_)
+                monitorLastUpdate_ = value.updatedAt;
+        }
+        auto snap = *monitorSnapshot_;
+        miltech::integration::invalidateStaleValues(snap, now, std::chrono::seconds(5));
+        const bool haveValidValue = std::any_of(snap.values.begin(), snap.values.end(),
+            [](const auto& value) { return value.valid; });
 
-        // Нижняя строка статуса
+        if (received) {
+            const uint32_t sec = snap.mtv_seconds;
+            mtvLabel_->setText(QString("%1:%2:%3")
+                .arg(sec / 3600, 2, 10, QChar('0'))
+                .arg((sec % 3600) / 60, 2, 10, QChar('0'))
+                .arg(sec % 60, 2, 10, QChar('0')));
+            errPhraseLabel_->setText(QString("ошибки фраз: %1%").arg(snap.stats.phrase_error_percent));
+            errGroupLabel_->setText(QString("групп: %1%").arg(snap.stats.group_error_percent));
+        }
         updateStatusBar(snap);
+        if (mainPage_) mainPage_->updateData(snap);
 
-        // Обновляем MainPage
-        if (mainPage_)
-            mainPage_->updateData(snap);
-
-        // Если в режиме детального просмотра – обновляем DetailView
         if (centralStack_->currentIndex() == ModeDetail && selectedChannelIndex_ >= 0) {
             const auto& specs = orbita_->getChannels();
-            if (selectedChannelIndex_ < (int)specs.size()) {
-                const auto& spec = specs[selectedChannelIndex_];
-                double val = 0.0;
-                for (const auto& v : snap.values) {
-                    if (v.address == spec.address) {
-                        val = v.value;
-                        break;
-                    }
+            if (selectedChannelIndex_ < static_cast<int>(specs.size())) {
+                const auto& address = specs[selectedChannelIndex_].address;
+                const auto it = std::find_if(snap.values.begin(), snap.values.end(),
+                    [&address](const auto& value) { return value.address == address && value.valid; });
+                if (it == snap.values.end()) detailView_->clearValue();
+                else if (it->updatedAt > detailLastUpdate_) {
+                    detailView_->updateValue(it->value);
+                    detailLastUpdate_ = it->updatedAt;
                 }
-                detailView_->updateValue(val);
             }
         }
+        const bool timedOut = now - monitorLastUpdate_ >= std::chrono::seconds(5);
+        statusLabel_->setText(haveValidValue ? QStringLiteral("● Сбор идёт")
+            : timedOut ? QStringLiteral("● Нет обновлений более 5 с")
+                       : QStringLiteral("● Ожидание данных"));
+        statusLabel_->setStyleSheet(haveValidValue ? "color: #7fc79a; font-weight: 500;"
+                                                   : "color: #e6b878; font-weight: 500;");
+    } else if (now - monitorLastUpdate_ >= std::chrono::seconds(5)) {
+        // Отсутствие обновлений не означает отключение источника: передача
+        // может возобновиться без действий оператора.
+        if (mainPage_) mainPage_->updateData({});
+        if (detailView_) detailView_->clearValue();
+        statusLabel_->setText(QStringLiteral("● Нет обновлений более 5 с"));
+        statusLabel_->setStyleSheet("color: #e6b878; font-weight: 500;");
     }
+
 }
 
 // ----------------------------------------------------------------------------
@@ -1450,6 +1521,9 @@ void MainWindow::onWatchSetChanged(const std::vector<orbita::ChannelSpec>& specs
 {
     try {
         orbita_->setChannels(specs);
+        monitorSnapshot_.reset();
+        detailLastUpdate_ = {};
+        if (isRunning_) monitorLastUpdate_ = std::chrono::steady_clock::now();
     } catch (const std::exception& e) {
         log("Ошибка набора: " + QString::fromLocal8Bit(e.what()));
         return;
@@ -1479,6 +1553,7 @@ void MainWindow::onWatchSetChanged(const std::vector<orbita::ChannelSpec>& specs
 void MainWindow::onChannelSelected(int index)
 {
     selectedChannelIndex_ = index;
+    detailLastUpdate_ = {};
     if (mainPage_)
         mainPage_->setSelectedChannel(index);
 

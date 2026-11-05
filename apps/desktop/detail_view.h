@@ -24,6 +24,8 @@ public:
     void setToleranceResolver(ToleranceResolver* r);
     void setChannel(const orbita::ChannelSpec& spec, int index = -1);
     void updateValue(double value);
+    void clearValue();
+    void setSimulatorMode(bool enabled);
     void setHistorySize(int size = 60);
     void setSelected(bool selected = true); // для выделения
     const orbita::ChannelSpec& currentSpec() const { return m_spec; }
@@ -63,6 +65,7 @@ private:
     QProgressBar* m_toleranceBar;
     QLabel* m_rangeLabel;
     QLabel* m_statsLabel;
+    QLabel* m_simulatorLabel = nullptr;
     QCustomPlot* m_plot;
     QCPGraph* m_graph;
     QCPGraph* m_lowLine;

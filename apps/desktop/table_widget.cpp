@@ -77,10 +77,12 @@ void TableWidget::updateValueCells()
     }
     for (int i = 0; i < n; ++i) {
         const auto& spec = m_specs[i];
-        double val = m_values.value(QString::fromStdString(spec.address), 0.0);
+        const auto found = m_values.constFind(QString::fromStdString(spec.address));
+        const bool hasValue = found != m_values.cend();
+        const double val = hasValue ? *found : 0.0;
 
         if (auto* it = m_table->item(i, 3))
-            it->setText(QString::number(val, 'f', 0));
+            it->setText(hasValue ? QString::number(val, 'f', 0) : QStringLiteral("---"));
 
         chstatus::Tolerance tol = (m_resolver ? m_resolver->resolve(QString::fromStdString(spec.address))
                                               : chstatus::forAddress(m_db, spec.address));
@@ -90,6 +92,7 @@ void TableWidget::updateValueCells()
             it->setText(tol.set ? QString("%1–%2–%3").arg(tol.lo).arg(tol.nominal).arg(tol.hi) : QStringLiteral("—"));
 
         if (auto* bar = qobject_cast<QProgressBar*>(m_table->cellWidget(i, 5))) {
+            bar->setVisible(hasValue);
             bar->setValue((int)val);
             bar->setStyleSheet(QString("QProgressBar { background-color: #1c222a; border-radius: 3px; height: 6px; } "
                                        "QProgressBar::chunk { background-color: %1; border-radius: 3px; }")
@@ -97,7 +100,7 @@ void TableWidget::updateValueCells()
         }
 
         if (auto* lbl = qobject_cast<QLabel*>(m_table->cellWidget(i, 6))) {
-            lbl->setText(chstatus::text(lvl));
+            lbl->setText(hasValue ? chstatus::text(lvl) : QStringLiteral("нет данных"));
             lbl->setStyleSheet(QString("color: %1;").arg(chstatus::textColor(lvl).name()));
         }
     }
@@ -109,7 +112,6 @@ void TableWidget::updateTable()
     m_table->setRowCount(n);
     for (int i = 0; i < n; ++i) {
         const auto& spec = m_specs[i];
-        double val = m_values.value(QString::fromStdString(spec.address), 0.0);
         QString name = QString::fromStdString(spec.name.empty() ? spec.address : spec.name);
         QString cat;
         if (m_db) {
@@ -129,10 +131,9 @@ void TableWidget::updateTable()
         m_table->setItem(i, 2, new QTableWidgetItem(cat));
 
         // Код
-        m_table->setItem(i, 3, new QTableWidgetItem(QString::number(val, 'f', 0)));
+        m_table->setItem(i, 3, new QTableWidgetItem(QStringLiteral("---")));
 
         chstatus::Tolerance tol = (m_resolver ? m_resolver->resolve(QString::fromStdString(spec.address)) : chstatus::forAddress(m_db, spec.address));
-        chstatus::Level lvl = chstatus::evaluate(val, tol);
 
         // Допуск
         m_table->setItem(i, 4, new QTableWidgetItem(
@@ -142,17 +143,14 @@ void TableWidget::updateTable()
         // Уровень (QProgressBar)
         QProgressBar* bar = new QProgressBar;
         bar->setRange(0, 1023);
-        bar->setValue((int)val);
+        bar->setVisible(false);
         bar->setTextVisible(false);
-        bar->setStyleSheet(QString("QProgressBar { background-color: #1c222a; border-radius: 3px; height: 6px; } "
-                                   "QProgressBar::chunk { background-color: %1; border-radius: 3px; }")
-                               .arg(chstatus::barColor(lvl).name()));
         m_table->setCellWidget(i, 5, bar);
 
         // Статус
-        QLabel* statusLabel = new QLabel(chstatus::text(lvl));
-        statusLabel->setStyleSheet(QString("color: %1;").arg(chstatus::textColor(lvl).name()));
+        QLabel* statusLabel = new QLabel(QStringLiteral("нет данных"));
         m_table->setCellWidget(i, 6, statusLabel);
     }
     m_table->resizeColumnsToContents();
+    updateValueCells();
 }

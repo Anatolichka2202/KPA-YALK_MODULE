@@ -52,7 +52,10 @@ bool isValidChannelAddress(const std::string& address) noexcept;
 struct ChannelValue {
     std::string address;    ///< тот же ключ, что во входном ChannelSpec
     double      value = 0.0;///< декодированное значение (сырой код канала)
-    bool        valid = false; ///< было ли значение обновлено в последнем цикле
+    bool        valid = false; ///< получен ли отсчёт после начала текущего сеанса
+    // Монотонное время последнего фактического обновления этого параметра.
+    // Пустое значение означает, что подтверждённого отсчёта ещё не было.
+    std::chrono::steady_clock::time_point updatedAt{};
 };
 
 /// Статистика декодирования.

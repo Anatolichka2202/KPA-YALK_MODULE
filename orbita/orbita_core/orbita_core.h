@@ -72,6 +72,7 @@ private:
     mutable std::mutex   values_mutex_;
     std::vector<double>  values_;
     std::vector<uint8_t> valid_;
+    std::vector<std::chrono::steady_clock::time_point> updatedAt_;
 
     // Параметры
     bool invert_signal_  = false;

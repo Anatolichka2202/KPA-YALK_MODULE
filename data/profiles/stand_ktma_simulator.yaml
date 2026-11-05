@@ -4,6 +4,13 @@ version: 2026.09.11-1
 title: Локальный протокольный имитатор КТМА
 active_outputs_confirmed: true
 
+components:
+  - id: orbita-simulated-samples
+    kind: sample_source
+    provider: miltech.orbita.simulator
+    bind:
+      - telemetry.orbita.sample_source
+
 connections:
   adapter_rs485: UDP-имитатор Адаптера на 127.0.0.2:1113
   isd_to_yalk: HTTP-имитатор ИСД на 127.0.0.1:18080

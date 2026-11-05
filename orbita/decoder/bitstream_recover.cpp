@@ -106,7 +106,10 @@ void BitstreamRecoverer::processSamples(const int16_t* samples, size_t count) {
 void BitstreamRecoverer::reset() {
     numUp_ = 0;
     numDown_ = 0;
-    // порог не сбрасываем
+    // Порог относится к предыдущему входному потоку и должен быть заново
+    // определён по первым отсчётам следующего сеанса.
+    threshold_ = 0;
+    threshold_computed_ = false;
 }
 
 void BitstreamRecoverer::flush() {

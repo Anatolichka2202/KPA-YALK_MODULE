@@ -28,6 +28,7 @@ CategoryCardWidget::CategoryCardWidget(QWidget *parent) : QWidget(parent)
     m_avgLabel = new QLabel;
     m_avgLabel->setStyleSheet("color: #aeb8c4; font-size: 14px; font-weight: 500;");
     m_anomalyLabel = new QLabel;
+    m_anomalyLabel->setObjectName(QStringLiteral("monitorCategoryStatus"));
     m_anomalyLabel->setStyleSheet("font-size: 11px;");
     footer->addWidget(m_avgLabel);
     footer->addStretch();
@@ -74,22 +75,28 @@ void CategoryCardWidget::updateValues(const QMap<QString, double>& values)
     int count = 0;
     for (int idx : m_indices) {
         const auto& spec = m_specs[idx];
-        double v = values.value(QString::fromStdString(spec.address), 0.0);
-        sum += v;
+        const auto value = values.constFind(QString::fromStdString(spec.address));
+        if (value == values.cend()) continue;
+        sum += *value;
         count++;
     }
-    double avg = count ? sum / count : 0;
-    m_avgLabel->setText(QString("средний %1").arg(avg, 0, 'f', 0));
+    m_avgLabel->setText(count ? QString("средний %1").arg(sum / count, 0, 'f', 0)
+                              : QStringLiteral("нет данных"));
 
     // Подсчёт аномалий (нет допуска → не аномалия)
     int anom = 0;
     for (int idx : m_indices) {
         const auto& spec = m_specs[idx];
-        double v = values.value(QString::fromStdString(spec.address), 0.0);
+        const auto value = values.constFind(QString::fromStdString(spec.address));
+        if (value == values.cend()) continue;
+        const double v = *value;
         chstatus::Tolerance tol = (m_resolver ? m_resolver->resolve(QString::fromStdString(spec.address)) : chstatus::forAddress(m_db, spec.address));
         if (chstatus::isAnomaly(chstatus::evaluate(v, tol))) anom++;
     }
-    m_anomalyLabel->setText(anom ? QString("%1 вне нормы").arg(anom) : "все в норме");
+    m_anomalyLabel->setText(count < static_cast<int>(m_indices.size())
+        ? QStringLiteral("данные: %1 из %2%3").arg(count).arg(m_indices.size())
+              .arg(anom ? QStringLiteral(" · %1 вне нормы").arg(anom) : QString())
+        : anom ? QString("%1 вне нормы").arg(anom) : QStringLiteral("все в норме"));
     m_anomalyLabel->setStyleSheet(anom ? "color: #e6b878;" : "color: #7fc79a;");
 }
 

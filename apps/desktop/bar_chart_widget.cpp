@@ -151,6 +151,7 @@ void BarChartWidget::updatePlot()
     // Распределяем бары по цветовым сериям в зависимости от допуска
     QVector<double> kNorm, vNorm, kWarn, vWarn, kErr, vErr;
     for (int i = 0; i < n; ++i) {
+        if (!m_values.contains(QString::fromStdString(m_specs[i].address))) continue;
         double val = m_valuesPlot[i];
         chstatus::Tolerance tol = (m_resolver
             ? m_resolver->resolve(QString::fromStdString(m_specs[i].address))
@@ -183,7 +184,8 @@ void BarChartWidget::updatePlot()
 
     // Выделенный столбец — белая рамка, значение сверху
     if (m_selBars && m_valueText) {
-        if (m_selectedIndex >= 0 && m_selectedIndex < m_valuesPlot.size()) {
+        if (m_selectedIndex >= 0 && m_selectedIndex < m_valuesPlot.size()
+            && m_values.contains(QString::fromStdString(m_specs[m_selectedIndex].address))) {
             double selKey = static_cast<double>(m_selectedIndex);
             double selVal = m_valuesPlot[m_selectedIndex];
             m_selBars->setData(QVector<double>{selKey}, QVector<double>{selVal});
@@ -225,9 +227,11 @@ void BarChartWidget::mouseMoveEvent(QMouseEvent* event)
         }
         const auto& spec = m_specs[index];
         QString name = QString::fromStdString(spec.name.empty() ? spec.address : spec.name);
-        double val = m_values.value(QString::fromStdString(spec.address), 0.0);
+        const auto value = m_values.constFind(QString::fromStdString(spec.address));
         QToolTip::showText(event->globalPos(),
-            QString("КАН %1\n%2\nЗначение: %3").arg(index + 1).arg(name).arg(val, 0, 'f', 0),
+            QString("КАН %1\n%2\nЗначение: %3").arg(index + 1).arg(name)
+                .arg(value == m_values.cend() ? QStringLiteral("нет данных")
+                                             : QString::number(*value, 'f', 0)),
             this);
     } else {
         if (m_hoveredIndex != -1) setHoveredBar(-1);

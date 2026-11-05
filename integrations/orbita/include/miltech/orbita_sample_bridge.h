@@ -1,18 +1,24 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
 #include <functional>
 #include <mutex>
 #include <string>
 
 namespace orbita {
 class Orbita;
+struct Snapshot;
 namespace stand {
 class ISampleSource;
 }
 } // namespace orbita
 
 namespace miltech::integration {
+
+// Отметить устаревшие значения в копии снимка, не меняя состояние декодера.
+void invalidateStaleValues(orbita::Snapshot& snapshot,
+    std::chrono::steady_clock::time_point now, std::chrono::milliseconds maxAge);
 
 // Narrow integration boundary between a station-owned raw sample source and
 // the Orbita protocol decoder. Neither side needs to know the concrete type of

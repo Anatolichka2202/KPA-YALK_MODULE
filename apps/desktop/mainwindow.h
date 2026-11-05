@@ -224,6 +224,9 @@ private:
     // Элементы панели инструментов
     QLabel* mtvLabel_ = nullptr;
     QLabel* statusLabel_ = nullptr;
+    std::optional<orbita::Snapshot> monitorSnapshot_;
+    std::chrono::steady_clock::time_point monitorLastUpdate_{};
+    std::chrono::steady_clock::time_point detailLastUpdate_{};
     QPushButton* startBtn_ = nullptr;
     QPushButton* stopBtn_ = nullptr;
     QPushButton* recordBtn_ = nullptr;

@@ -101,8 +101,9 @@ void ChannelListWidget::updateItems()
 {
     for (auto it = m_itemMap.begin(); it != m_itemMap.end(); ++it) {
         int idx = it.key();
-        double val = m_values.value(QString::fromStdString(m_specs[idx].address), 0.0);
-        it.value()->setText(2, QString::number(val, 'f', 0));
+        const auto value = m_values.constFind(QString::fromStdString(m_specs[idx].address));
+        it.value()->setText(2, value == m_values.cend()
+            ? QStringLiteral("---") : QString::number(*value, 'f', 0));
     }
     // Обновить выделение
     setSelectedChannel(m_selectedIndex);

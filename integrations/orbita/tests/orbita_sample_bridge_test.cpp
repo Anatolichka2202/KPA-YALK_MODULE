@@ -4,8 +4,10 @@
 #include "orbita_stand/sample_source.h"
 #include "orbita_stand/station_session.h"
 #include "orbita_stand/telemetry_procedures.h"
+#include "miltech/orbita_sample_simulator.h"
 
 #include <cstdint>
+#include <chrono>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -203,6 +205,53 @@ void failedSourceRollbackContract()
     require(!bridge.lastError().empty(), "failed start did not preserve diagnostic");
 }
 
+void syntheticStreamContract()
+{
+    auto decoder = configuredDecoder();
+    auto source = miltech::integration::createOrbitaSampleSimulator();
+    require(source->open(), "synthetic source did not open");
+    miltech::integration::OrbitaSampleBridge bridge(*source, decoder);
+    require(bridge.start(), "synthetic source did not start");
+    bool valid = false;
+    double measured = -1;
+    const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(8);
+    while (std::chrono::steady_clock::now() < until && !valid) {
+        decoder.waitForData(std::chrono::milliseconds(100));
+        for (const auto& value : decoder.getSnapshot().values) {
+            if (value.valid) { valid = true; measured = value.value; }
+        }
+    }
+    bridge.stop();
+    require(valid && measured == 15,
+            "synthetic M16 samples did not decode to the expected simulator value");
+    require(!source->isRunning(), "synthetic source did not stop");
+    FakeSampleSource silent;
+    miltech::integration::OrbitaSampleBridge restarted(silent, decoder);
+    require(restarted.start(), "silent source did not start after simulator");
+    for (const auto& value : decoder.getSnapshot().values)
+        require(!value.valid, "previous session value survived decoder restart");
+    require(!decoder.waitForData(std::chrono::milliseconds(300)),
+            "old samples were delivered after decoder restart");
+    restarted.stop();
+    require(bridge.start(), "synthetic source did not restart");
+    bridge.stop();
+    source->close();
+}
+
+void freshnessContract()
+{
+    const auto now = std::chrono::steady_clock::now();
+    orbita::Snapshot snapshot;
+    snapshot.values = {{"fresh", 12, true, now - std::chrono::seconds(1)},
+                       {"stale", 42, true, now - std::chrono::seconds(6)},
+                       {"unknown", 7, true, {}},
+                       {"invalid", 5, false, now}};
+    miltech::integration::invalidateStaleValues(snapshot, now, std::chrono::seconds(5));
+    require(snapshot.values[0].valid && !snapshot.values[1].valid
+                && !snapshot.values[2].valid && !snapshot.values[3].valid,
+            "freshness must be evaluated independently for every channel");
+}
+
 } // namespace
 
 int main()
@@ -210,6 +259,8 @@ int main()
     try {
         lifecycleContract();
         failedSourceRollbackContract();
+        syntheticStreamContract();
+        freshnessContract();
         scenarioParameterValidationContract();
         std::cout << "Orbita station sample bridge contract OK\n";
         return 0;

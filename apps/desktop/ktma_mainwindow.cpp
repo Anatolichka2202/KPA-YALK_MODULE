@@ -165,13 +165,14 @@ KtmaMainWindow::KtmaMainWindow(QWidget* parent)
 
     try {
         QString profilePath;
-        if (const auto* project = integrationProject(); project
+        const QString profileName = qEnvironmentVariable("MILTECH_STAND_PROFILE");
+        if (!profileName.isEmpty()) {
+            profilePath = root.filePath(QStringLiteral("profiles/") + profileName);
+        } else if (const auto* project = integrationProject(); project
             && !project->equipmentProfilePath.empty()) {
             profilePath = QString::fromStdString(project->equipmentProfilePath);
         } else {
-            const QString profileName = qEnvironmentVariable(
-                "MILTECH_STAND_PROFILE", QStringLiteral("stand_ktma.yaml"));
-            profilePath = root.filePath(QStringLiteral("profiles/") + profileName);
+            profilePath = root.filePath(QStringLiteral("profiles/stand_ktma.yaml"));
         }
         integrationConfigureStandProfile(
             orbita::stand::loadStandProfile(profilePath.toUtf8().toStdString()),

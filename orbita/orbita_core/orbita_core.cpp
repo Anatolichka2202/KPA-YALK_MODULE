@@ -108,6 +108,7 @@ void Context::setChannels(const std::vector<ChannelSpec>& specs) {
         std::lock_guard<std::mutex> lock(values_mutex_);
         values_.assign(snap->entries.size(), 0.0);
         valid_.assign(snap->entries.size(), 0);
+        updatedAt_.assign(snap->entries.size(), {});
     }
     LOG_INFO("setChannels: %zu channels active", snap->entries.size());
 }
@@ -131,6 +132,24 @@ void Context::start() {
         throw orbita_error("No channels configured. Call setChannels() first.");
 
     ensureDecoder();
+    // Новый сеанс не должен декодировать очередь, незавершённый кадр или
+    // последнее значение от предыдущего источника.
+    {
+        std::lock_guard<std::mutex> lock(queue_mutex_);
+        std::queue<std::vector<int16_t>> empty;
+        sample_queue_.swap(empty);
+    }
+    bitFifo_.reset();
+    recoverer_.reset();
+    decoder_->reset();
+    {
+        std::lock_guard<std::mutex> lock(values_mutex_);
+        std::fill(values_.begin(), values_.end(), 0.0);
+        std::fill(valid_.begin(), valid_.end(), 0);
+        std::fill(updatedAt_.begin(), updatedAt_.end(), std::chrono::steady_clock::time_point{});
+    }
+    data_updated_.store(false);
+    current_mtv_.store(0);
     stop_worker_ = false;
     paused_ = false;
     samples_processed_ = 0;
@@ -283,6 +302,7 @@ void Context::onDecoderGroup(const std::vector<uint16_t>& group12,
 
                 values_[e] = v;
                 valid_[e]  = 1;
+                updatedAt_[e] = std::chrono::steady_clock::now();
             }
             fillValuesLocked(*cfg, pushSnap);
             haveValues = true;
@@ -324,6 +344,7 @@ void Context::fillValuesLocked(const ChannelRegistry::Snapshot& cfg, Snapshot& o
         out.values[i].address = cfg.entries[i].address;
         out.values[i].value   = values_[i];
         out.values[i].valid   = valid_[i] != 0;
+        out.values[i].updatedAt = updatedAt_[i];
     }
 }
 

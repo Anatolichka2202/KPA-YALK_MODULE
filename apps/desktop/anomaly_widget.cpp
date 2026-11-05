@@ -81,7 +81,9 @@ void AnomalyWidget::updateAnomalies()
 
     for (int i = 0; i < m_specs.size(); ++i) {
         const auto& spec = m_specs[i];
-        double val = m_values.value(QString::fromStdString(spec.address), 0.0);
+        const auto found = m_values.constFind(QString::fromStdString(spec.address));
+        if (found == m_values.cend()) continue;
+        const double val = *found;
         chstatus::Tolerance tol = (m_resolver ? m_resolver->resolve(QString::fromStdString(spec.address)) : chstatus::forAddress(m_db, spec.address));
         chstatus::Level lvl = chstatus::evaluate(val, tol);
         if (chstatus::isAnomaly(lvl)) {

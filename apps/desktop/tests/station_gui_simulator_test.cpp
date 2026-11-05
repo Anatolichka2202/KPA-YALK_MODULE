@@ -1,6 +1,12 @@
 #include "universal_mainwindow.h"
 #include "generic_check_dialog.h"
+#include "main_page.h"
+#include "metadata_service.h"
+#include "address_sets_widget.h"
+#include "table_widget.h"
+#include "detail_view.h"
 #include "orbita_stand/run_store.h"
+#include "orbita_stand/sample_source.h"
 
 #include <QAction>
 #include <QApplication>
@@ -10,6 +16,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QElapsedTimer>
+#include <QEventLoop>
 #include <QLabel>
 #include <QMessageBox>
 #include <QProcess>
@@ -17,10 +24,12 @@
 #include <QSqlDatabase>
 #include <QSqlQuery>
 #include <QTemporaryDir>
+#include <QTableWidget>
 #include <QTextBrowser>
 #include <QTextEdit>
 #include <QThread>
 #include <QTimer>
+#include <QTreeWidget>
 
 #include <algorithm>
 #include <atomic>
@@ -33,6 +42,145 @@ namespace {
 void require(bool condition, const char* message)
 {
     if (!condition) throw std::runtime_error(message);
+}
+
+class SilentSampleSimulator final : public orbita::stand::ISampleSource {
+public:
+    bool open() override { open_ = true; return true; }
+    void close() noexcept override { stop(); open_ = false; }
+    bool isOpen() const noexcept override { return open_; }
+    bool start() override { running_ = open_; return running_; }
+    void stop() noexcept override { running_ = false; }
+    bool isRunning() const noexcept override { return running_; }
+    void setSamplesCallback(SamplesCallback callback) override { samples_ = std::move(callback); }
+    void setErrorCallback(ErrorCallback callback) override { error_ = std::move(callback); }
+    void disconnect()
+    {
+        running_ = false;
+        if (error_) error_("simulated disconnect");
+    }
+private:
+    bool open_ = false;
+    bool running_ = false;
+    SamplesCallback samples_;
+    ErrorCallback error_;
+};
+
+class MonitorWindow final : public UniversalMainWindow {
+public:
+    explicit MonitorWindow(bool silent)
+    {
+        if (silent) {
+            integrationStationSession().components().registerKindFactory("sample_source", [this](
+                const orbita::stand::ComponentProfile&) -> std::unique_ptr<orbita::stand::IStationComponent> {
+                auto source = std::make_unique<SilentSampleSimulator>();
+                source_ = source.get();
+                return source;
+            });
+        }
+        orbita::stand::StandProfile profile;
+        profile.id = "monitor-simulator";
+        profile.version = "1";
+        profile.components.push_back({"fake-source", "sample_source",
+                                      silent ? "test.silent" : "miltech.orbita.simulator", true,
+                                      {"telemetry.orbita.sample_source"}, {}});
+        integrationConfigureStandProfile(profile, {});
+        integrationEnsureStandRuntime();
+        require(integrationStandRuntimeReady() && (!silent || source_), "monitor simulator is unavailable");
+    }
+    SilentSampleSimulator* source() const { return source_; }
+    void disconnectSource()
+    {
+        auto* source = integrationStationSession().components()
+            .findAs<orbita::stand::ISampleSource>("telemetry.orbita.sample_source");
+        require(source, "sample source disappeared");
+        source->close();
+    }
+private:
+    SilentSampleSimulator* source_ = nullptr;
+};
+
+class ProfileWindow final : public UniversalMainWindow {
+public:
+    bool simulatorSelected()
+    {
+        const auto* source = orbita::stand::findComponentByBinding(
+            integrationStandProfile(), "telemetry.orbita.sample_source");
+        return integrationProject() && integrationProject()->id == "gui-project"
+            && integrationStandRuntimeReady() && source
+            && source->provider == "miltech.orbita.simulator";
+    }
+};
+
+int runMonitorChild(bool silent)
+{
+    MonitorWindow window(silent);
+    window.show();
+    auto* open = window.findChild<QPushButton*>(QStringLiteral("genericFreeAction"));
+    auto* sets = window.findChild<AddressSetsWidget*>();
+    auto* start = window.findChild<QPushButton*>(QStringLiteral("monitorStart"));
+    auto* stop = window.findChild<QPushButton*>(QStringLiteral("monitorStop"));
+    auto* status = window.findChild<QLabel*>(QStringLiteral("monitorSourceStatus"));
+    auto* tableWidget = window.findChild<TableWidget*>();
+    require(open && sets && start && stop && status && tableWidget, "monitor UI unavailable");
+    open->click();
+    sets->setFromSpecs({{"M16P1A11B21T21", "Имитируемый параметр", "Тест"}});
+    require(start->isEnabled(), "configured monitoring could not be started");
+    auto* table = tableWidget->findChild<QTableWidget*>();
+    require(table && table->rowCount() == 1 && table->item(0, 3)->text() == "---",
+            "monitor showed a value before receiving samples");
+    start->click();
+    require(stop->isEnabled() && status->text().contains(QStringLiteral("Ожидание данных")),
+            "monitor did not report waiting for the simulator");
+    if (!silent) {
+        auto* simulatorLabel = window.findChild<QLabel*>(QStringLiteral("monitorSimulatorLabel"));
+        require(simulatorLabel && simulatorLabel->isVisible(), "simulator is not labelled in the UI");
+        auto waitForValue = [&] {
+            QEventLoop events;
+            QTimer poll;
+            QTimer timeout;
+            timeout.setSingleShot(true);
+            QObject::connect(&poll, &QTimer::timeout, &events, [&] {
+                if (table->item(0, 3)->text() == "15") events.quit();
+            });
+            QObject::connect(&timeout, &QTimer::timeout, &events, &QEventLoop::quit);
+            poll.start(20);
+            timeout.start(8000);
+            events.exec();
+            return table->item(0, 3)->text() == "15";
+        };
+        require(waitForValue(), "raw simulator samples did not appear in the monitor");
+        require(QMetaObject::invokeMethod(&window, "onChannelDoubleClicked", Qt::DirectConnection,
+                                          Q_ARG(int, 0)), "cannot open parameter details");
+        auto* detail = window.findChild<DetailView*>();
+        auto* detailLabel = window.findChild<QLabel*>(QStringLiteral("detailSimulatorLabel"));
+        require(detail && detailLabel && detailLabel->isVisible(),
+                "simulator label disappeared in parameter details");
+        require(QMetaObject::invokeMethod(detail, "backToMain", Qt::DirectConnection),
+                "cannot return from parameter details");
+        stop->click();
+        require(table->item(0, 3)->text() == "---", "old value remained after stop");
+        start->click();
+        require(table->item(0, 3)->text() == "---", "old value reappeared on restart");
+        require(waitForValue(), "simulator did not resume decoded data after restart");
+        window.disconnectSource();
+    } else {
+        QEventLoop idle;
+        QTimer::singleShot(5300, &idle, &QEventLoop::quit);
+        idle.exec();
+        require(status->text().contains(QStringLiteral("Нет обновлений"))
+                    && table->item(0, 3)->text() == "---",
+                "silent source did not report missing updates");
+        window.source()->disconnect();
+    }
+    QEventLoop events;
+    QTimer::singleShot(400, &events, &QEventLoop::quit);
+    events.exec();
+    require(start->isEnabled() && !stop->isEnabled()
+                && status->text().contains(QStringLiteral("отключён"))
+                && table->item(0, 3)->text() == "---",
+            "monitor failed to show simulator disconnect without fabricated values");
+    return 0;
 }
 
 class SimulatorWindow final : public UniversalMainWindow {
@@ -127,6 +275,13 @@ private:
 
 int runChild(const QString& mode)
 {
+    if (mode == "--profile-selection") {
+        ProfileWindow window;
+        require(window.simulatorSelected(), "simulator profile did not override project profile");
+        return 0;
+    }
+    if (mode == "--monitor-disconnect") return runMonitorChild(true);
+    if (mode == "--monitor-live") return runMonitorChild(false);
     SimulatorWindow window(mode);
     window.show();
     if (mode == "--recover" || mode == "--recover-initial") {
@@ -248,10 +403,48 @@ int runChild(const QString& mode)
 
 int runParent()
 {
+    // Виджеты не должны принимать исходное нулевое значение за измерение.
+    {
+        MainPage page;
+        MetadataService metadata;
+        page.setMetadataService(&metadata);
+        const std::vector<orbita::ChannelSpec> channels{{"M16P1A70", "Параметр", "Тест"}};
+        page.setChannels(channels);
+        page.setSelectedChannel(0);
+        auto* table = page.findChild<QTableWidget*>();
+        auto* tree = page.findChild<QTreeWidget*>();
+        auto* readout = page.findChild<QLabel*>(QStringLiteral("monitorReadoutValue"));
+        auto* readoutStatus = page.findChild<QLabel*>(QStringLiteral("monitorReadoutStatus"));
+        auto* categoryStatus = page.findChild<QLabel*>(QStringLiteral("monitorCategoryStatus"));
+        require(table && table->rowCount() == 1 && tree && tree->topLevelItemCount() == 1,
+                "monitoring parameter widgets are missing");
+        orbita::Snapshot snapshot;
+        snapshot.values.push_back({channels.front().address, 42, false});
+        page.updateData(snapshot);
+        require(table->item(0, 3)->text() == QStringLiteral("---")
+                    && tree->topLevelItem(0)->child(0)->text(2) == QStringLiteral("---")
+                    && readout && readout->text() == QStringLiteral("---")
+                    && readoutStatus && readoutStatus->text() == QStringLiteral("нет данных")
+                    && categoryStatus && !categoryStatus->text().contains(QStringLiteral("все в норме")),
+                "invalid telemetry appeared as a measurement");
+        snapshot.values.front().valid = true;
+        page.updateData(snapshot);
+        require(table->item(0, 3)->text() == QStringLiteral("42")
+                    && tree->topLevelItem(0)->child(0)->text(2) == QStringLiteral("42")
+                    && readout->text() == QStringLiteral("42"),
+                "valid telemetry did not reach the monitoring widgets");
+        snapshot.values.front().valid = false;
+        page.updateData(snapshot);
+        require(table->item(0, 3)->text() == QStringLiteral("---")
+                    && tree->topLevelItem(0)->child(0)->text(2) == QStringLiteral("---")
+                    && readout->text() == QStringLiteral("---"),
+                "stale telemetry remained visible after source data became invalid");
+    }
     QTemporaryDir directory;
     require(directory.isValid(), "cannot create isolated GUI directory");
     const QDir root(directory.path());
-    require(root.mkpath("catalog") && root.mkpath("scenarios"), "cannot create GUI fixtures");
+    require(root.mkpath("catalog") && root.mkpath("scenarios") && root.mkpath("profiles"),
+            "cannot create GUI fixtures");
     const QDir source(QStringLiteral(STATION_GUI_TEST_SOURCE_DIR));
     const QDir sourceCatalog(source.filePath("data/catalog"));
     QDirIterator files(sourceCatalog.path(), QDir::Files, QDirIterator::Subdirectories);
@@ -263,6 +456,19 @@ int runParent()
     }
     require(QFile::copy(source.filePath("orbita/config/address/parameters.db"), root.filePath("parameters.db")),
             "cannot copy test parameters database");
+    require(QFile::copy(source.filePath("data/profiles/stand_ktma.yaml"), root.filePath("profiles/stand_ktma.yaml"))
+                && QFile::copy(source.filePath("data/profiles/stand_ktma_simulator.yaml"),
+                               root.filePath("profiles/stand_ktma_simulator.yaml")),
+            "cannot copy test station profiles");
+    QFile project(root.filePath("project.yaml"));
+    require(project.open(QIODevice::WriteOnly), "cannot create test project");
+    project.write("schema: 1\nid: gui-project\ntitle: GUI project\nversion: 1\n"
+                  "equipment_profile: profiles/stand_ktma.yaml\nworkflows:\n  - workflow.yaml\n");
+    project.close();
+    QFile workflow(root.filePath("workflow.yaml"));
+    require(workflow.open(QIODevice::WriteOnly), "cannot create test workflow");
+    workflow.write("schema: 1\nid: free\ntitle: Free\nkind: free\nallow_dynamic_scenario: true\n");
+    workflow.close();
     const auto executable = root.filePath("station_gui_test.exe");
     require(QFile::copy(QCoreApplication::applicationFilePath(), executable), "cannot isolate GUI executable");
     QFile scenario(root.filePath("scenarios/simulator.yaml"));
@@ -276,7 +482,10 @@ int runParent()
         QProcess child;
         auto env = QProcessEnvironment::systemEnvironment();
         env.insert("QT_QPA_PLATFORM", "offscreen");
-        env.insert("MILTECH_PROJECT", root.filePath("absent-project.yaml"));
+        env.insert("MILTECH_PROJECT", root.filePath(
+            mode == "--profile-selection" ? "project.yaml" : "absent-project.yaml"));
+        env.insert("MILTECH_STAND_PROFILE",
+            mode == "--profile-selection" ? "stand_ktma_simulator.yaml" : "absent-profile.yaml");
         child.setProcessEnvironment(env);
         child.start(executable, {mode});
         require(child.waitForStarted(5000) && child.waitForFinished(15000), "GUI child timed out");
@@ -285,6 +494,9 @@ int runParent()
             throw std::runtime_error("unexpected GUI child exit code");
         }
     };
+    execute("--profile-selection", 0);
+    execute("--monitor-disconnect", 0);
+    execute("--monitor-live", 0);
     execute("--complete", 0);
     execute("--interrupt-before", 22);
     execute("--recover-initial", 0);

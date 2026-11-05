@@ -8,6 +8,16 @@
 
 namespace miltech::integration {
 
+void invalidateStaleValues(orbita::Snapshot& snapshot,
+    std::chrono::steady_clock::time_point now, std::chrono::milliseconds maxAge)
+{
+    for (auto& value : snapshot.values) {
+        if (value.valid && (value.updatedAt == std::chrono::steady_clock::time_point{}
+            || value.updatedAt > now || now - value.updatedAt >= maxAge))
+            value.valid = false;
+    }
+}
+
 OrbitaSampleBridge::OrbitaSampleBridge(
     orbita::stand::ISampleSource& source,
     orbita::Orbita& decoder)

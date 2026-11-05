@@ -18,6 +18,7 @@ public:
     void setToleranceResolver(ToleranceResolver* r);
     void setChannel(const orbita::ChannelSpec& spec);
     void updateValue(double value);
+    void clearValue();
 
 private:
     void updateUI();
@@ -26,6 +27,7 @@ private:
     ToleranceResolver* m_resolver = nullptr;
     orbita::ChannelSpec m_spec;
     double m_currentValue = 0.0;
+    bool m_hasValue = false;
 
     QLabel* m_numLabel;
     QLabel* m_nameLabel;

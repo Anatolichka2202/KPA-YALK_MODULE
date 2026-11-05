@@ -22,6 +22,11 @@ MainPage::MainPage(QWidget *parent) : QWidget(parent)
     heading->setStyleSheet(QStringLiteral("color:#9ac7ff;font-weight:700;font-size:16px;"));
     heading->setAccessibleName(QStringLiteral("Свободный инженерный контур MilTechStation"));
     headerLayout->addWidget(heading);
+    m_simulatorLabel = new QLabel(QStringLiteral("ИМИТАТОР ОРБИТЫ"), m_freeWorkspaceHeader);
+    m_simulatorLabel->setObjectName(QStringLiteral("monitorSimulatorLabel"));
+    m_simulatorLabel->setStyleSheet(QStringLiteral("color:#e6b878;font-weight:700;"));
+    m_simulatorLabel->hide();
+    headerLayout->addWidget(m_simulatorLabel);
     headerLayout->addStretch(1);
     m_freeWorkspaceSummary = new QLabel(m_freeWorkspaceHeader);
     m_freeWorkspaceSummary->setObjectName(QStringLiteral("freeWorkspaceSummary"));
@@ -176,6 +181,8 @@ void MainPage::setToleranceResolver(ToleranceResolver* r)
 
 void MainPage::setChannels(const std::vector<orbita::ChannelSpec>& specs)
 {
+    // Новый набор до первого отсчёта не наследует значения прежнего набора.
+    updateData({});
     m_specs = specs;
     m_channelList->setChannels(specs);
     m_anomaly->setChannels(specs);
@@ -194,7 +201,7 @@ void MainPage::updateData(const orbita::Snapshot& snap)
     // Преобразуем snap.values в QMap<QString, double>
     QMap<QString, double> values;
     for (const auto& v : snap.values)
-        values[QString::fromStdString(v.address)] = v.value;
+        if (v.valid) values[QString::fromStdString(v.address)] = v.value;
 
     m_channelList->updateValues(values);
     m_anomaly->updateValues(values);
@@ -207,9 +214,10 @@ void MainPage::updateData(const orbita::Snapshot& snap)
     // Обновляем readout, если выбранный канал есть
     if (m_selectedIndex >= 0 && m_selectedIndex < (int)m_specs.size()) {
         const auto& spec = m_specs[m_selectedIndex];
-        double val = values.value(QString::fromStdString(spec.address), 0.0);
         m_readout->setChannel(spec);
-        m_readout->updateValue(val);
+        const auto found = values.constFind(QString::fromStdString(spec.address));
+        if (found != values.cend()) m_readout->updateValue(*found);
+        else m_readout->clearValue();
     }
 
     // Синхронизируем выделение
@@ -245,6 +253,11 @@ void MainPage::setFreeWorkspace(bool enabled)
             ? QStringLiteral("Набор параметров не выбран")
             : QStringLiteral("Параметров в наборе: %1").arg(m_specs.size()));
     }
+}
+
+void MainPage::setSimulatorMode(bool enabled)
+{
+    m_simulatorLabel->setVisible(enabled);
 }
 
 void MainPage::setAddressSets(const std::vector<AddressSetDefinition>& sets)

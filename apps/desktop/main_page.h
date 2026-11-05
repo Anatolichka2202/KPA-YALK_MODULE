@@ -32,6 +32,7 @@ public:
     // Переключает заголовок самостоятельного инженерного контура. Метод не
     // ограничивает возможности плагинов и не изменяет набор адресов.
     void setFreeWorkspace(bool enabled);
+    void setSimulatorMode(bool enabled);
     void setAddressSets(const std::vector<AddressSetDefinition>& sets);
 
 signals:
@@ -76,6 +77,7 @@ private:
     QPushButton* m_btnC;
     QWidget* m_freeWorkspaceHeader = nullptr;
     QLabel* m_freeWorkspaceSummary = nullptr;
+    QLabel* m_simulatorLabel = nullptr;
     AddressSetsOverview* m_addressSetsOverview = nullptr;
     bool m_freeWorkspaceActive = false;
 };

@@ -1,5 +1,6 @@
 add_library(miltech_orbita_integration STATIC
     src/orbita_sample_bridge.cpp
+    src/orbita_sample_simulator.cpp
     src/telemetry_procedures.cpp
 )
 

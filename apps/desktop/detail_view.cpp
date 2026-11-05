@@ -20,7 +20,6 @@ DetailView::DetailView(QWidget *parent)
 {
     setupUI();
     setupPlot();
-    m_history.assign(m_historySize, 0.0);
 
     connect(m_backBtn, &QPushButton::clicked, this, &DetailView::onBackClicked);
     connect(m_prevBtn, &QPushButton::clicked, this, &DetailView::onPrevClicked);
@@ -57,6 +56,11 @@ void DetailView::setupUI()
     m_nameLabel = new QLabel("Нет канала");
     m_nameLabel->setStyleSheet("font-weight: 600; font-size: 16px;");
     topLayout->addWidget(m_nameLabel);
+    m_simulatorLabel = new QLabel(QStringLiteral("ИМИТАТОР ОРБИТЫ"));
+    m_simulatorLabel->setObjectName(QStringLiteral("detailSimulatorLabel"));
+    m_simulatorLabel->setStyleSheet(QStringLiteral("color:#e6b878;font-weight:700;"));
+    m_simulatorLabel->hide();
+    topLayout->addWidget(m_simulatorLabel);
 
     topLayout->addStretch();
     mainLayout->addLayout(topLayout);
@@ -170,24 +174,36 @@ void DetailView::setChannel(const orbita::ChannelSpec& spec, int index)
     }
 
     // Сбрасываем историю
-    m_history.assign(m_historySize, 0.0);
-    m_currentValue = 0.0;
-    m_isValid = false;
-    updateUI();
+    clearValue();
 }
 
 void DetailView::updateValue(double value)
 {
-    if (!m_isValid) {
-        // Первое значение – заполняем всю историю им
-        m_history.assign(m_historySize, value);
-        m_isValid = true;
-    } else {
-        m_history.pop_front();
-        m_history.push_back(value);
-    }
+    if (m_history.size() >= static_cast<std::size_t>(m_historySize)) m_history.pop_front();
+    m_history.push_back(value);
+    m_isValid = true;
     m_currentValue = value;
     updateUI();
+}
+
+void DetailView::clearValue()
+{
+    m_isValid = false;
+    m_history.clear();
+    m_valueLabel->setText(QStringLiteral("---"));
+    m_statusLabel->setText(QStringLiteral("нет данных"));
+    m_toleranceBar->setVisible(false);
+    m_statsLabel->clear();
+    if (m_graph) m_graph->data()->clear();
+    if (m_lowLine) m_lowLine->data()->clear();
+    if (m_highLine) m_highLine->data()->clear();
+    if (m_nomLine) m_nomLine->data()->clear();
+    if (m_plot) m_plot->replot(QCustomPlot::rpQueuedReplot);
+}
+
+void DetailView::setSimulatorMode(bool enabled)
+{
+    m_simulatorLabel->setVisible(enabled);
 }
 
 void DetailView::setHistorySize(int size)
@@ -196,8 +212,6 @@ void DetailView::setHistorySize(int size)
     m_historySize = size;
     while ((int)m_history.size() > size)
         m_history.pop_front();
-    while ((int)m_history.size() < size)
-        m_history.push_front(0.0);
     if (m_plot) {
         m_plot->xAxis->setRange(0, size);
         m_plot->replot();
@@ -207,6 +221,7 @@ void DetailView::setHistorySize(int size)
 void DetailView::updateUI()
 {
     if (m_spec.address.empty() || !m_isValid) return;
+    m_toleranceBar->setVisible(true);
 
     // Значение
     m_valueLabel->setText(QString::number(m_currentValue, 'f', 0));

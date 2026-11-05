@@ -64,6 +64,7 @@ void AddressSetsOverview::rebuild()
         title->setStyleSheet(QStringLiteral("color:#e4f1ff;font-weight:700;font-size:16px;"));
         layout->addWidget(title);
         auto* status = new QLabel(frame);
+        status->setText(QStringLiteral("НЕТ ДАННЫХ · параметров: %1").arg(set.specs.size()));
         status->setStyleSheet(QStringLiteral("color:#b6c8d8;"));
         layout->addWidget(status);
         auto* chart = new BarChartWidget(frame);
@@ -81,7 +82,8 @@ void AddressSetsOverview::rebuild()
 void AddressSetsOverview::updateData(const orbita::Snapshot& snapshot)
 {
     QMap<QString, double> values;
-    for (const auto& value : snapshot.values) values[QString::fromStdString(value.address)] = value.value;
+    for (const auto& value : snapshot.values)
+        if (value.valid) values[QString::fromStdString(value.address)] = value.value;
     for (auto& card : cards_) {
         int received = 0;
         for (const auto& spec : card.specs)
