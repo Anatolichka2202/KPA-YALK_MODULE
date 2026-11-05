@@ -663,6 +663,12 @@ void KtmaMainWindow::checkSelectedEquipment()
     if (!page || !registry) return;
     integrationEnsureStandRuntime();
     if (!integrationStandRuntimeReady()) return;
+    auto activity = integrationStationSession().beginActivity();
+    if (!activity) {
+        QMessageBox::warning(this, QStringLiteral("Проверка оборудования"),
+            QStringLiteral("Станция занята: выполняется другая активная операция"));
+        return;
+    }
 
     const QString scenarioCode = page->currentScenarioCode();
     const auto scenario = integrationScenarios().constFind(scenarioCode);
@@ -908,6 +914,14 @@ void KtmaMainWindow::runScenario(
         return;
     }
 
+    auto activity = integrationStationSession().beginActivity();
+    if (!activity) {
+        QMessageBox::warning(this, QStringLiteral("Запуск отклонён"),
+            QStringLiteral("Станция занята: выполняется другая активная операция"));
+        return;
+    }
+    engine->resetStop();
+
     QString effectiveCode = requestedCode;
     std::string serial = objectSerial.trimmed().toUtf8().toStdString();
     std::optional<ktma::ubsi::ProductionRunContext> productionContext;
@@ -1010,7 +1024,6 @@ void KtmaMainWindow::runScenario(
             pendingProductionRunId_ = productionLedger_->begin(*productionContext);
         }
 
-        engine->resetStop();
         page->setRunInProgress(true, QStringLiteral("Выполняется: %1")
             .arg(QString::fromStdString(scenario.title)));
         integrationLog(QStringLiteral("Запуск %1 · объект %2")
@@ -1021,9 +1034,10 @@ void KtmaMainWindow::runScenario(
         const std::string projectId = project ? project->id : std::string();
         const std::string projectVersion = project ? project->version : std::string();
         watcher->setFuture(QtConcurrent::run(
-            [this, scenario, profileVersion, serial, allowPartial,
+            [this, scenario, profileVersion, serial, allowPartial, activity,
              yvpExcluded, overloadExcluded, survivalExcluded,
-             selectedWorkflowContext, projectId, projectVersion]() {
+             selectedWorkflowContext, projectId, projectVersion]() mutable {
+                auto reservation = std::move(activity);
                 auto result = integrationStationSession().runScenario(
                     scenario, profileVersion, serial, allowPartial,
                     [this](const orbita::stand::RunEvent& event) {
@@ -1031,7 +1045,7 @@ void KtmaMainWindow::runScenario(
                             if (auto* testPage = integrationTestPage())
                                 testPage->setRunEvent(event);
                         }, Qt::QueuedConnection);
-                    });
+                    }, reservation);
                 if (!selectedWorkflowContext.empty()) {
                     result.projectId = projectId;
                     result.projectVersion = projectVersion;

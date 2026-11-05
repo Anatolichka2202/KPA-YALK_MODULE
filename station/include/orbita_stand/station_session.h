@@ -40,6 +40,23 @@ public:
     StationSession(const StationSession&) = delete;
     StationSession& operator=(const StationSession&) = delete;
 
+    class Activity final {
+        friend class StationSession;
+        explicit Activity(StationSession& owner) : owner_(&owner), active_(owner.active_) {}
+    public:
+        ~Activity();
+        Activity(const Activity&) = delete;
+        Activity& operator=(const Activity&) = delete;
+    private:
+        StationSession* owner_;
+        std::shared_ptr<std::atomic_bool> active_;
+        std::atomic_bool executing_{false};
+    };
+
+    // Резервирование переносится в рабочий поток вместе с запуском и живёт
+    // до завершения подготовки, выполнения и безопасной остановки приборов.
+    std::shared_ptr<Activity> beginActivity();
+
     ScenarioEngine& scenarioEngine() noexcept { return *scenarioEngine_; }
     void resetScenarioEngine();
     void requestStop() noexcept { scenarioEngine_->requestStop(); }
@@ -48,12 +65,14 @@ public:
     // сценариев и ручных команд отклоняется до обращения к оборудованию.
     ScenarioRunResult runScenario(const ScenarioDefinition& scenario,
         std::string profileVersion, std::string objectSerial, bool allowPartial,
-        std::function<void(const RunEvent&)> progressSink = {});
+        std::function<void(const RunEvent&)> progressSink = {},
+        std::shared_ptr<Activity> activity = {});
     ScenarioRunResult runWorkflow(const ProjectDefinition& project,
         const std::string& workflowId, std::string profileVersion,
         std::string objectSerial, bool allowPartial, ProjectRunContext context = {},
         const ScenarioDefinition* scenarioOverride = nullptr,
-        std::function<void(const RunEvent&)> progressSink = {});
+        std::function<void(const RunEvent&)> progressSink = {},
+        std::shared_ptr<Activity> activity = {});
     std::string invokeManual(const std::string& capability, const std::string& operation,
         const std::map<std::string, std::string>& arguments);
 
@@ -133,7 +152,7 @@ public:
     void clear() noexcept;
 
 private:
-    std::atomic_bool active_{false};
+    std::shared_ptr<std::atomic_bool> active_ = std::make_shared<std::atomic_bool>(false);
     std::unique_ptr<ScenarioEngine> scenarioEngine_ = std::make_unique<ScenarioEngine>();
     StandProfile profile_;
     EquipmentPluginManager equipmentPlugins_;

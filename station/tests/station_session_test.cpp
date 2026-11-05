@@ -105,6 +105,35 @@ int main(int argc, char** argv)
         require(session.invokeManual("test.simulator", "measure", {}) == "42",
                 "manual action must be available again after the run");
 
+        // Подготовка и запуск используют одно резервирование: второй вход и
+        // ручная команда не могут изменить прибор между этими действиями.
+        auto activity = session.beginActivity();
+        require(bool(activity), "could not reserve station for readiness");
+        require(!session.beginActivity(), "readiness reservation allowed a competing action");
+        bool manualDuringReadinessRejected = false;
+        try { session.invokeManual("test.simulator", "measure", {}); }
+        catch (const std::exception&) { manualDuringReadinessRejected = true; }
+        require(manualDuringReadinessRejected, "manual action bypassed readiness reservation");
+        require(session.runScenario(scenario, "profile", "SN", false, {}, activity).verdict
+                    == RunVerdict::Ok,
+                "reserved scenario did not run after readiness");
+        require(!session.beginActivity(), "reservation was released before its owner finished");
+        activity.reset();
+        require(bool(session.beginActivity()), "station stayed reserved after readiness finished");
+        try {
+            auto failedReadiness = session.beginActivity();
+            if (!failedReadiness) throw std::logic_error("reservation unavailable");
+            throw std::runtime_error("simulated readiness failure");
+        } catch (const std::logic_error&) { throw; }
+          catch (const std::runtime_error&) {}
+        require(bool(session.beginActivity()), "failed readiness retained the station");
+        StationSession otherSession;
+        auto foreignActivity = otherSession.beginActivity();
+        require(session.runScenario(scenario, "profile", "SN", false, {}, foreignActivity).verdict
+                    == RunVerdict::Incomplete,
+                "a reservation from another station was accepted");
+        foreignActivity.reset();
+
         // Остановка вызывается из другого потока, пока процедура ожидает её;
         // ручная команда в этот момент не должна доходить до имитатора.
         std::promise<void> entered;

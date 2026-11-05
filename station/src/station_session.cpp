@@ -36,19 +36,42 @@ ScenarioRunResult rejectedRun()
 }
 }
 
+StationSession::Activity::~Activity()
+{
+    active_->store(false);
+}
+
+std::shared_ptr<StationSession::Activity> StationSession::beginActivity()
+{
+    bool expected = false;
+    if (!active_->compare_exchange_strong(expected, true)) return {};
+    try {
+        return std::shared_ptr<Activity>(new Activity(*this));
+    } catch (...) {
+        active_->store(false);
+        throw;
+    }
+}
+
 void StationSession::resetScenarioEngine()
 {
-    ActivityGuard guard(active_);
+    ActivityGuard guard(*active_);
     if (!guard) throw std::runtime_error(busyReason);
     scenarioEngine_ = std::make_unique<ScenarioEngine>();
 }
 
 ScenarioRunResult StationSession::runScenario(const ScenarioDefinition& scenario,
     std::string profileVersion, std::string objectSerial, bool allowPartial,
-    std::function<void(const RunEvent&)> progressSink)
+    std::function<void(const RunEvent&)> progressSink, std::shared_ptr<Activity> activity)
 {
-    ActivityGuard guard(active_);
-    if (!guard) return rejectedRun();
+    if (!activity) activity = beginActivity();
+    if (!activity || (activity->owner_ != this || activity->active_ != active_)
+        || activity->executing_.exchange(true))
+        return rejectedRun();
+    struct ExecutionGuard {
+        std::atomic_bool& executing;
+        ~ExecutionGuard() { executing.store(false); }
+    } guard{activity->executing_};
     return runScenarioWithEvidence(*scenarioEngine_, equipment_, scenario,
         std::move(profileVersion), std::move(objectSerial), allowPartial,
         std::move(progressSink), &leases_);
@@ -57,10 +80,16 @@ ScenarioRunResult StationSession::runScenario(const ScenarioDefinition& scenario
 ScenarioRunResult StationSession::runWorkflow(const ProjectDefinition& project,
     const std::string& workflowId, std::string profileVersion, std::string objectSerial,
     bool allowPartial, ProjectRunContext context, const ScenarioDefinition* scenarioOverride,
-    std::function<void(const RunEvent&)> progressSink)
+    std::function<void(const RunEvent&)> progressSink, std::shared_ptr<Activity> activity)
 {
-    ActivityGuard guard(active_);
-    if (!guard) return rejectedRun();
+    if (!activity) activity = beginActivity();
+    if (!activity || (activity->owner_ != this || activity->active_ != active_)
+        || activity->executing_.exchange(true))
+        return rejectedRun();
+    struct ExecutionGuard {
+        std::atomic_bool& executing;
+        ~ExecutionGuard() { executing.store(false); }
+    } guard{activity->executing_};
     return runProjectWorkflow(project, workflowId, *scenarioEngine_, equipment_,
         std::move(profileVersion), std::move(objectSerial), allowPartial,
         std::move(context), scenarioOverride, std::move(progressSink), &leases_);
@@ -69,7 +98,7 @@ ScenarioRunResult StationSession::runWorkflow(const ProjectDefinition& project,
 std::string StationSession::invokeManual(const std::string& capability,
     const std::string& operation, const std::map<std::string, std::string>& arguments)
 {
-    ActivityGuard guard(active_);
+    ActivityGuard guard(*active_);
     if (!guard) throw std::runtime_error(busyReason);
     return equipment_.invoke(capability, operation, arguments);
 }

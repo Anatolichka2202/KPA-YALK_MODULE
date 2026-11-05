@@ -236,6 +236,14 @@ void UniversalMainWindow::runGenericScenario(
         return;
     }
 
+    auto activity = integrationStationSession().beginActivity();
+    if (!activity) {
+        QMessageBox::warning(this, QStringLiteral("Запуск отклонён"),
+            QStringLiteral("Станция занята: выполняется другая активная операция"));
+        return;
+    }
+    engine->resetStop();
+
     orbita::stand::ScenarioDefinition scenario;
     QByteArray scenarioConfigSnapshot;
     try {
@@ -303,12 +311,12 @@ void UniversalMainWindow::runGenericScenario(
     integrationLog(QStringLiteral("Свободная проверка: %1; регистрация результата отключена")
         .arg(QString::fromStdString(scenario.id)));
 
-    engine->resetStop();
     const std::string profileVersion = integrationStandProfile().version;
     const std::string serial = objectSerial.toStdString();
     genericWatcher_->setFuture(QtConcurrent::run(
-        [this, workflowId, path, scenario, profileVersion, serial,
-         scenarioConfigSnapshot, description, engineeringOverride] {
+        [this, workflowId, path, scenario, profileVersion, serial, activity,
+         scenarioConfigSnapshot, description, engineeringOverride]() mutable {
+            auto reservation = std::move(activity);
             const auto progress = [this](const orbita::stand::RunEvent& event) {
                 QMetaObject::invokeMethod(this, [this, event] {
                     if (genericDialog_) genericDialog_->appendEvent(event);
@@ -327,7 +335,7 @@ void UniversalMainWindow::runGenericScenario(
                 context.attributes["scenario_config_source"] = path.toUtf8().toStdString();
                 auto result = integrationStationSession().runWorkflow(
                     *project, workflowId.toStdString(), profileVersion, serial, false,
-                    std::move(context), &scenario, progress);
+                    std::move(context), &scenario, progress, reservation);
                 result.contextAttributes["engineering_description"] = description.toUtf8().toStdString();
                 result.contextAttributes["engineering_override_note"] = engineeringOverride.toUtf8().toStdString();
                 result.contextAttributes["scenario_config_sha256"] = QCryptographicHash::hash(
@@ -376,7 +384,7 @@ void UniversalMainWindow::runGenericScenario(
             // Compatibility fallback for development layouts that do not yet
             // deploy project packages next to the executable.
             auto result = integrationStationSession().runScenario(
-                scenario, profileVersion, serial, false, progress);
+                scenario, profileVersion, serial, false, progress, reservation);
             result.contextAttributes["engineering_description"] = description.toUtf8().toStdString();
             result.contextAttributes["engineering_override_note"] = engineeringOverride.toUtf8().toStdString();
             result.contextAttributes["scenario_config_sha256"] = QCryptographicHash::hash(

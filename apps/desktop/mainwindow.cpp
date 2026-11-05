@@ -934,13 +934,20 @@ void MainWindow::onRunScenario(
         return;
     }
 
+    auto activity = stationSession_.beginActivity();
+    if (!activity) {
+        testPage_->setRunInProgress(false);
+        QMessageBox::warning(this, QStringLiteral("Запуск отклонён"),
+            QStringLiteral("Станция занята: выполняется другая активная операция"));
+        return;
+    }
+    scenarioEngine_->resetStop();
     const auto scenario = iterator.value();
     if (equipmentRegistry_->hasCapability("orbita.parameter_source")
         && !orbita_->isRunning()) {
         onStart();
     }
 
-    scenarioEngine_->resetStop();
     const std::string serial = objectSerial.trimmed().toUtf8().toStdString();
     const bool partial = allowPartial;
     testPage_->setRunInProgress(true, QStringLiteral("Выполняется: %1")
@@ -948,14 +955,15 @@ void MainWindow::onRunScenario(
     log(QStringLiteral("Запуск сценария %1, объект %2")
         .arg(QString::fromStdString(scenario.id),
              objectSerial.isEmpty() ? QStringLiteral("без заводского номера") : objectSerial));
-    scenarioWatcher_->setFuture(QtConcurrent::run([this, scenario, serial, partial]() {
+    scenarioWatcher_->setFuture(QtConcurrent::run([this, scenario, serial, partial, activity]() mutable {
+        auto reservation = std::move(activity);
         return stationSession_.runScenario(
             scenario, standProfile_.version, serial, partial,
             [this](const orbita::stand::RunEvent& event) {
                 QMetaObject::invokeMethod(this, [this, event]() {
                     testPage_->setRunEvent(event);
                 }, Qt::QueuedConnection);
-            });
+            }, reservation);
     }));
 }
 
