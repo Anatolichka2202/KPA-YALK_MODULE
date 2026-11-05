@@ -169,6 +169,12 @@ void scenarioParameterValidationContract()
     require(session.runScenario(scenario, "simulator", "SN", false).verdict == RunVerdict::Incomplete
                 && reads == 0, "invalid mode accessed the simulated source");
     scenario.steps[0].arguments["diagnostic_only"] = "false";
+    scenario.steps[0].arguments["max_phrase_error_percentage"] = "4";
+    require(!session.scenarioEngine().validate(scenario).empty(),
+            "unknown parameter was accepted");
+    require(session.runScenario(scenario, "simulator", "SN", false).verdict == RunVerdict::Incomplete
+                && reads == 0, "unknown parameter accessed the simulated source");
+    scenario.steps[0].arguments.erase("max_phrase_error_percentage");
     auto laterStep = scenario.steps[0];
     laterStep.id = "later";
     laterStep.arguments["max_group_error_percent"] = "101";

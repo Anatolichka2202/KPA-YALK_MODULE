@@ -455,6 +455,20 @@ int main(int argc, char** argv)
             return std::string("status=ready\nframes_processed=10\nphrase_error_percent=1\n"
                                "group_error_percent=2\nchannel_count=4\n");
         });
+    const auto unsupportedScenario = orbita::stand::loadScenarioYaml(visualPath.toStdString());
+    require(!simulatedStation.scenarioEngine().validate(unsupportedScenario).empty(),
+            "an unsupported preserved argument must be diagnosed before execution");
+    rawArgsBeforeSettings->setPlainText(rawArgsBeforeSettings->toPlainText().replace(
+        QStringLiteral("sample_count = 4"), QString()));
+    QTimer::singleShot(0, [] {
+        auto* dialog = qobject_cast<QDialog*>(QApplication::activeModalWidget());
+        if (!dialog) return;
+        if (auto* mode = dialog->findChild<QComboBox*>(QStringLiteral("telemetryDiagnosticMode")))
+            mode->setCurrentIndex(1);
+        dialog->accept();
+    });
+    healthSettings->click();
+    visualSave->click();
     const auto editedScenario = orbita::stand::loadScenarioYaml(visualPath.toStdString());
     const auto simulatedRun = simulatedStation.runScenario(editedScenario, "simulator", "SN", true);
     require(simulatedReads == 1 && !simulatedRun.steps.empty()
@@ -481,6 +495,7 @@ int main(int argc, char** argv)
     require(orbita::stand::loadScenarioYaml(visualPath.toStdString()).steps[0].arguments.at("diagnostic_only") == "true",
             "changing the raw diagnostic mode must require explicit confirmation");
     visualProcedure->setText(QStringLiteral("test.procedure"));
+    rawArgsBeforeSettings->appendPlainText(QStringLiteral("sample_count = 4"));
     visualTitle->setText(QStringLiteral("Изменённый этап"));
     auto* visualArguments = visualEditor.findChild<QPlainTextEdit*>(QStringLiteral("scenarioStepArguments"));
     require(visualArguments, "visual editor arguments must be available");

@@ -70,6 +70,14 @@ MeasurementResult checked(
 std::vector<std::string> validateTelemetryHealth(const ScenarioNode& node)
 {
     std::vector<std::string> errors;
+    // Принимаем только параметры, которые действительно влияют на действие;
+    // опечатка не должна превращаться в незаметно применённый предел по умолчанию.
+    for (const auto& [key, value] : node.arguments) {
+        (void)value;
+        if (key != "max_phrase_error_percent" && key != "max_group_error_percent"
+            && key != "diagnostic_only" && key != "technical_retries")
+            errors.emplace_back("Неизвестный параметр проверки потока: " + key);
+    }
     for (const auto* key : {"max_phrase_error_percent", "max_group_error_percent"}) {
         const auto item = node.arguments.find(key);
         if (item == node.arguments.end()) continue;
