@@ -901,9 +901,11 @@ void MainWindow::initializeStandRuntime()
                             .arg(detail));
                 } else {
                     log(QStringLiteral("Не удалось сохранить результат: %1").arg(detail));
+                    const auto explanation = result.persistenceStarted
+                        ? QStringLiteral("Итог проверки не сохранён. Ранее записанные шаги доступны в незавершённой проверке.\n%1")
+                        : QStringLiteral("Результат проверки остался в памяти и не записан в базу.\n%1");
                     QMessageBox::warning(this, QStringLiteral("Результат не сохранён"),
-                        QStringLiteral("Результат проверки остался в памяти и не записан в базу.\n%1")
-                            .arg(detail));
+                        explanation.arg(detail));
                 }
             }
             if (!dedicatedProductionFinalizer)
