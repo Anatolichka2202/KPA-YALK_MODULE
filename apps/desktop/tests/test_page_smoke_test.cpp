@@ -468,6 +468,42 @@ int main(int argc, char** argv)
                 "invalid scenario replaced original file");
     }
     {
+        const auto delayPath = QDir(scenarioDirectory).filePath(QStringLiteral("delay_draft.yaml"));
+        QFile file(delayPath);
+        require(file.open(QIODevice::WriteOnly), "cannot write delay draft");
+        file.write("schema: 1\nid: delay-draft\ntitle: Выдержка\nversion: 1\ncatalog_version: 1\nstate: draft\nsteps:\n"
+                   "  - id: step\n    title: Ожидание\n    tu: test\n    procedure: old.action\n"
+                   "    requires:\n      - orbita.parameter_source\n"
+                   "    resources:\n      - resource: old.source\n        capability: orbita.parameter_source\n");
+        file.close();
+        ScenarioVisualEditor editor(delayPath);
+        editor.setAvailableProcedures({"station.delay"});
+        auto* choice = editor.findChild<QComboBox*>(QStringLiteral("availableScenarioProcedures"));
+        auto* settings = editor.findChild<QPushButton*>(QStringLiteral("configureScenarioDelay"));
+        auto* save = editor.findChild<QPushButton*>(QStringLiteral("saveScenarioVisual"));
+        require(choice && settings && save, "delay editor controls unavailable");
+        QMetaObject::invokeMethod(choice, "activated", Q_ARG(int, 1));
+        QTimer::singleShot(0, [] {
+            auto* confirmation = qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
+            if (!confirmation) return;
+            QTimer::singleShot(0, [] {
+            auto* dialog = qobject_cast<QDialog*>(QApplication::activeModalWidget());
+            if (!dialog) return;
+            auto* duration = dialog->findChild<QSpinBox*>(QStringLiteral("scenarioDelayMilliseconds"));
+            auto* buttons = dialog->findChild<QDialogButtonBox*>();
+            if (duration && buttons) { duration->setValue(250); buttons->button(QDialogButtonBox::Ok)->click(); }
+            });
+            confirmation->button(QMessageBox::Yes)->click();
+        });
+        settings->click();
+        save->click();
+        const auto saved = orbita::stand::loadScenarioYaml(delayPath.toStdString());
+        require(saved.steps.size() == 1 && saved.steps[0].procedure == "station.delay"
+                    && saved.steps[0].arguments.at("duration_ms") == "250"
+                    && saved.steps[0].requiredCapabilities.empty() && saved.steps[0].requiredResources.empty(),
+                "delay settings did not survive saving and reload");
+    }
+    {
         const auto measurePath = QDir(scenarioDirectory).filePath(QStringLiteral("measure_draft.yaml"));
         QFile file(measurePath);
         require(file.open(QIODevice::WriteOnly), "cannot write measurement draft");

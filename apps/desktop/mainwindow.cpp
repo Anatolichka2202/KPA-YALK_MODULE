@@ -942,6 +942,7 @@ void MainWindow::initializeStandRuntime()
         scenarioEngine_ = &stationSession_.scenarioEngine();
         orbita::stand::registerTelemetryProcedures(*scenarioEngine_);
         orbita::stand::registerParameterProcedures(*scenarioEngine_, stationSession_.parameters());
+        orbita::stand::registerTimingProcedures(*scenarioEngine_);
         // Product procedure registration and scenario discovery belong to the
         // delivery/application composition. The reusable shell only owns the
         // generic engine and persistent run store.

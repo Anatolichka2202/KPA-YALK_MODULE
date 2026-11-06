@@ -319,6 +319,9 @@ private:
     std::atomic_bool running_{false};
 };
 
+// Общая выдержка времени не зависит от используемого оборудования.
+void registerTimingProcedures(ScenarioEngine& engine);
+
 const char* toString(RunVerdict verdict) noexcept;
 RunVerdict combineVerdicts(RunVerdict current, RunVerdict next) noexcept;
 

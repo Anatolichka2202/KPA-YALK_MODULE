@@ -28,6 +28,7 @@
 #include <QPushButton>
 #include <QSqlDatabase>
 #include <QStandardPaths>
+#include <QSpinBox>
 #include <QUuid>
 #include <QSqlQuery>
 #include <QTemporaryDir>
@@ -795,6 +796,20 @@ int runChild(const QString& mode)
                 if (actionIndex < 0) return;
                 actions->setCurrentIndex(actionIndex);
                 QMetaObject::invokeMethod(actions, "activated", Q_ARG(int, actionIndex));
+                add->click();
+                tu->setText(QStringLiteral("test.delay"));
+                const int delayIndex = actions->findData(QStringLiteral("station.delay"));
+                auto* delaySettings = editor->findChild<QPushButton*>(QStringLiteral("configureScenarioDelay"));
+                if (delayIndex < 0 || !delaySettings) return;
+                QMetaObject::invokeMethod(actions, "activated", Q_ARG(int, delayIndex));
+                QTimer::singleShot(0, [] {
+                    auto* config = qobject_cast<QDialog*>(QApplication::activeModalWidget());
+                    if (!config) return;
+                    auto* duration = config->findChild<QSpinBox*>(QStringLiteral("scenarioDelayMilliseconds"));
+                    auto* buttons = config->findChild<QDialogButtonBox*>();
+                    if (duration && buttons) { duration->setValue(50); buttons->button(QDialogButtonBox::Ok)->click(); }
+                });
+                delaySettings->click();
                 QTimer::singleShot(0, [] {
                     if (auto* versionInput = qobject_cast<QInputDialog*>(QApplication::activeModalWidget())) {
                         versionInput->setTextValue(QStringLiteral("2"));
@@ -895,11 +910,12 @@ int runChild(const QString& mode)
         require(store.unfinishedRuns().empty(), "completed GUI run was not finalized");
     const auto persisted = store.load(window.runId());
     require(persisted && persisted->verdict == orbita::stand::RunVerdict::Ok
-                && persisted->steps.size() == (mode == "--create-new" ? 1u : 2u)
+                && persisted->steps.size() == 2u
                 && (mode != "--new-version" || (persisted->scenarioVersion == "2"
                     && persisted->steps.front().title == "Изменённый шаг"))
                 && (mode != "--create-new" || (persisted->scenarioVersion == "2"
-                    && persisted->scenarioTitle == "Новая проверка имитатора"))
+                    && persisted->scenarioTitle == "Новая проверка имитатора"
+                    && persisted->steps.back().verdict == orbita::stand::RunVerdict::Ok))
                 && persisted->steps.front().measurements.size() == 1
                 && persisted->steps.front().measurements.front().measured == 42,
             "completed GUI run lost its persisted measurement");

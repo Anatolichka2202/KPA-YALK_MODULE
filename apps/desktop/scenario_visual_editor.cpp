@@ -102,6 +102,7 @@ ScenarioVisualEditor::ScenarioVisualEditor(QString path, QWidget* parent)
         currentProcedure->setText(id.isEmpty() ? QStringLiteral("Действие не выбрано")
             : id == QStringLiteral("telemetry.health") ? QStringLiteral("Проверка состояния потока «Орбита»")
             : id == QStringLiteral("parameter.measure") ? QStringLiteral("Измерить параметр")
+            : id == QStringLiteral("station.delay") ? QStringLiteral("Выдержка времени")
             : QStringLiteral("Действие: %1").arg(id));
     };
     connect(procedure_, &QLineEdit::textChanged, this, updateCurrentProcedure);
@@ -124,11 +125,17 @@ ScenarioVisualEditor::ScenarioVisualEditor(QString path, QWidget* parent)
     measurementSettings_->setObjectName(QStringLiteral("configureParameterMeasurement"));
     form->addRow(QString(), measurementSettings_);
     connect(measurementSettings_, &QPushButton::clicked, this, &ScenarioVisualEditor::configureParameterMeasurement);
+    delaySettings_ = new QPushButton(QStringLiteral("Настроить выдержку…"), formHost);
+    delaySettings_->setObjectName(QStringLiteral("configureScenarioDelay"));
+    form->addRow(QString(), delaySettings_);
+    connect(delaySettings_, &QPushButton::clicked, this, &ScenarioVisualEditor::configureDelay);
     connect(procedure_, &QLineEdit::textChanged, this, [this](const QString& procedure) {
         healthConfigured_ = false;
         measurementConfigured_ = false;
+        delayConfigured_ = false;
         telemetrySettings_->setEnabled(!published_ && procedure == QStringLiteral("telemetry.health"));
         measurementSettings_->setEnabled(!published_ && procedure == QStringLiteral("parameter.measure"));
+        delaySettings_->setEnabled(!published_ && procedure == QStringLiteral("station.delay"));
     });
     formLayout->addLayout(form);
     auto* technicalToggle = new QPushButton(QStringLiteral("Технические настройки ▸"), formHost);
@@ -304,7 +311,8 @@ void ScenarioVisualEditor::setAvailableProcedures(const std::vector<std::string>
         const auto id = QString::fromStdString(procedure);
         const auto title = id == QStringLiteral("telemetry.health")
             ? QStringLiteral("Проверить состояние потока «Орбита»")
-            : id == QStringLiteral("parameter.measure") ? QStringLiteral("Измерить параметр") : id;
+            : id == QStringLiteral("parameter.measure") ? QStringLiteral("Измерить параметр")
+            : id == QStringLiteral("station.delay") ? QStringLiteral("Выдержать время") : id;
         procedureChoice_->addItem(title, id);
     }
     procedureChoice_->setCurrentIndex(0);
@@ -367,6 +375,7 @@ void ScenarioVisualEditor::setEditorEnabled(bool enabled)
     procedureChoice_->setEnabled(enabled);
     telemetrySettings_->setEnabled(enabled && procedure_->text() == QStringLiteral("telemetry.health"));
     measurementSettings_->setEnabled(enabled && procedure_->text() == QStringLiteral("parameter.measure"));
+    delaySettings_->setEnabled(enabled && procedure_->text() == QStringLiteral("station.delay"));
     requires_->setEnabled(enabled);
     resources_->setEnabled(enabled);
     arguments_->setEnabled(enabled);
@@ -433,6 +442,7 @@ void ScenarioVisualEditor::showNode(const orbita::stand::ScenarioNode& node)
 {
     const QScopedValueRollback<bool> guard(updatingFields_, true);
     healthConfigured_ = false;
+    delayConfigured_ = false;
     id_->setText(QString::fromStdString(node.id));
     title_->setText(QString::fromStdString(node.title));
     tu_->setText(QString::fromStdString(node.tuRequirement));
@@ -498,6 +508,8 @@ bool ScenarioVisualEditor::commitEditorToNode(const StepPath& path)
     }
     if (node->procedure != "parameter.measure" && procedure_->text() == QStringLiteral("parameter.measure")
         && !measurementConfigured_ && !configureParameterMeasurementForNode(node)) return false;
+    if (node->procedure != "station.delay" && procedure_->text() == QStringLiteral("station.delay")
+        && !delayConfigured_ && !configureDelayForNode(node)) return false;
     const bool healthArgumentsChanged = arguments_->toPlainText() != healthOriginalArguments_;
     const bool healthRequirementsChanged = requires_->toPlainText() != healthOriginalRequires_
         || resources_->toPlainText() != healthOriginalResources_;
@@ -569,6 +581,7 @@ bool ScenarioVisualEditor::commitEditorToNode(const StepPath& path)
     healthOriginalResources_ = resources_->toPlainText();
     healthConfigured_ = false;
     measurementConfigured_ = false;
+    delayConfigured_ = false;
     return true;
 }
 
@@ -698,6 +711,53 @@ bool ScenarioVisualEditor::configureTelemetryHealthForNode(const orbita::stand::
         requires_->setPlainText(text + QStringLiteral("orbita.parameter_source"));
     }
     healthConfigured_ = true;
+    return true;
+}
+
+void ScenarioVisualEditor::configureDelay()
+{
+    configureDelayForNode(findNode(selectedPath()));
+}
+
+bool ScenarioVisualEditor::configureDelayForNode(const orbita::stand::ScenarioNode* node)
+{
+    if (published_ || !node || procedure_->text() != QStringLiteral("station.delay")) return false;
+    const auto text = arguments_->toPlainText().trimmed();
+    const bool replacing = node->procedure != "station.delay" && !delayConfigured_;
+    int duration = 1000;
+    if (node->procedure == "station.delay" || delayConfigured_) {
+        const auto match = QRegularExpression(QStringLiteral("^duration_ms\\s*=\\s*([0-9]+)\\s*$")).match(text);
+        bool valid = false;
+        if (match.hasMatch()) duration = match.captured(1).toInt(&valid);
+        if (!valid || duration < 1 || duration > 3600000) {
+            QMessageBox::warning(this, QStringLiteral("Выдержка"),
+                QStringLiteral("Сохранённые параметры выдержки не поддерживаются формой. Они не изменены."));
+            return false;
+        }
+    } else if ((!text.isEmpty() || !requires_->toPlainText().trimmed().isEmpty()
+                || !resources_->toPlainText().trimmed().isEmpty())
+        && QMessageBox::question(this, QStringLiteral("Смена действия"),
+        QStringLiteral("Заменить параметры и зависимости предыдущего действия настройкой выдержки?"),
+        QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes) return false;
+    QDialog dialog(this);
+    dialog.setWindowTitle(QStringLiteral("Выдержка времени"));
+    auto* layout = new QVBoxLayout(&dialog);
+    auto* form = new QFormLayout;
+    auto* value = new QSpinBox(&dialog);
+    value->setObjectName(QStringLiteral("scenarioDelayMilliseconds"));
+    value->setRange(1, 3600000);
+    value->setSuffix(QStringLiteral(" мс"));
+    value->setValue(duration);
+    form->addRow(QStringLiteral("Длительность:"), value);
+    layout->addLayout(form);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    layout->addWidget(buttons);
+    if (dialog.exec() != QDialog::Accepted) return false;
+    if (replacing) { requires_->clear(); resources_->clear(); }
+    arguments_->setPlainText(QStringLiteral("duration_ms = %1").arg(value->value()));
+    delayConfigured_ = true;
     return true;
 }
 

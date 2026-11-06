@@ -8,6 +8,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <utility>
+#include <thread>
 
 namespace orbita::stand {
 namespace {
@@ -419,6 +420,42 @@ ScenarioRunResult makeInitialRun(const ScenarioDefinition& scenario,
     run.startedAt = std::chrono::system_clock::now();
     run.verdict = RunVerdict::Incomplete;
     return run;
+}
+
+void registerTimingProcedures(ScenarioEngine& engine)
+{
+    const auto validate = [](const ScenarioNode& node) {
+        std::vector<std::string> errors;
+        for (const auto& [key, value] : node.arguments) {
+            (void)value;
+            if (key != "duration_ms") errors.push_back("Неизвестный параметр выдержки: " + key);
+        }
+        const auto it = node.arguments.find("duration_ms");
+        if (it == node.arguments.end() || it->second.empty()
+            || !std::all_of(it->second.begin(), it->second.end(),
+                [](unsigned char c) { return c >= '0' && c <= '9'; })) {
+            errors.push_back("Длительность выдержки должна быть целым числом миллисекунд");
+        } else {
+            try {
+                const auto duration = std::stoull(it->second);
+                if (duration < 1 || duration > 3600000) throw std::out_of_range("duration");
+            } catch (const std::exception&) {
+                errors.push_back("Длительность выдержки должна быть от 1 до 3600000 мс");
+            }
+        }
+        return errors;
+    };
+    engine.registerProcedure("station.delay", [](const ScenarioNode& node, ProcedureContext& context) {
+        const auto deadline = std::chrono::steady_clock::now()
+            + std::chrono::milliseconds(std::stoll(node.arguments.at("duration_ms")));
+        while (std::chrono::steady_clock::now() < deadline) {
+            if (context.stopRequested.load()) return ProcedureResult{RunVerdict::Aborted, "Выдержка остановлена", {}};
+            std::this_thread::sleep_for(std::min(std::chrono::milliseconds(20),
+                std::chrono::duration_cast<std::chrono::milliseconds>(deadline - std::chrono::steady_clock::now())));
+        }
+        if (context.stopRequested.load()) return ProcedureResult{RunVerdict::Aborted, "Выдержка остановлена", {}};
+        return ProcedureResult{RunVerdict::Ok, "Выдержка завершена", {}};
+    }, validate);
 }
 
 ScenarioRunResult ScenarioEngine::run(

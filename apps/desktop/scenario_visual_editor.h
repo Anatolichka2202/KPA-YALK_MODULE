@@ -62,6 +62,7 @@ private slots:
     void createRunnableVersion();
     void configureTelemetryHealth();
     void configureParameterMeasurement();
+    void configureDelay();
 
 private:
     using StepPath = std::vector<int>;
@@ -82,6 +83,7 @@ private:
     bool commitEditorToNode(const StepPath& path);
     bool configureTelemetryHealthForNode(const orbita::stand::ScenarioNode* node);
     bool configureParameterMeasurementForNode(const orbita::stand::ScenarioNode* node);
+    bool configureDelayForNode(const orbita::stand::ScenarioNode* node);
     QString serialize() const;
     static QString quote(const std::string& value);
     static std::vector<std::string> lines(const QString& text);
@@ -103,6 +105,7 @@ private:
     QLabel* draftStatus_ = nullptr;
     bool healthConfigured_ = false;
     bool measurementConfigured_ = false;
+    bool delayConfigured_ = false;
     std::vector<ScenarioParameterOption> parameterOptions_;
     QString healthOriginalArguments_;
     QString healthOriginalRequires_;
@@ -124,4 +127,5 @@ private:
     QPushButton* draftButton_ = nullptr;
     QPushButton* telemetrySettings_ = nullptr;
     QPushButton* measurementSettings_ = nullptr;
+    QPushButton* delaySettings_ = nullptr;
 };

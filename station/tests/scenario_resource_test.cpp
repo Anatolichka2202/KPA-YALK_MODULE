@@ -11,6 +11,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <thread>
 
 using namespace orbita::stand;
 
@@ -352,6 +353,50 @@ int main(int argc, char** argv)
 
         verifyLeaseContract();
         verifyScenarioEngineRejectsNestedRun();
+
+        ScenarioEngine timing;
+        registerTimingProcedures(timing);
+        auto timedScenario = scenario;
+        timedScenario.steps.clear();
+        ScenarioNode delay;
+        delay.id = "delay";
+        delay.title = "Выдержка";
+        delay.tuRequirement = "test.delay";
+        delay.procedure = "station.delay";
+        delay.arguments["duration_ms"] = "40";
+        timedScenario.steps.push_back(delay);
+        const auto started = std::chrono::steady_clock::now();
+        const auto timed = timing.run(timedScenario, equipment, "profile", "SN", false);
+        require(timed.verdict == RunVerdict::Ok
+                    && std::chrono::steady_clock::now() - started >= std::chrono::milliseconds(40),
+                "delay finished before its configured duration");
+        timedScenario.steps[0].arguments["duration_ms"] = "1000";
+        bool nextExecuted = false;
+        timing.registerProcedure("test.after-delay", [&nextExecuted](const ScenarioNode&, ProcedureContext&) {
+            nextExecuted = true;
+            return ProcedureResult{RunVerdict::Ok, "Готово", {}};
+        });
+        ScenarioNode next;
+        next.id = "next"; next.title = "Следующий шаг"; next.tuRequirement = "test.next";
+        next.procedure = "test.after-delay";
+        timedScenario.steps.push_back(next);
+        require(timing.validate(timedScenario).empty(), "valid delay scenario was rejected");
+        std::atomic_bool entered{false};
+        ScenarioRunResult interrupted;
+        std::thread worker([&] {
+            interrupted = timing.run(timedScenario, equipment, "profile", "SN", false,
+                [&entered](const RunEvent& event) { if (event.stage == "START") entered.store(true); });
+        });
+        while (!entered.load()) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        timing.requestStop();
+        worker.join();
+        require(interrupted.verdict == RunVerdict::Aborted && !nextExecuted,
+                "stopping active delay did not abort before the next step");
+        for (const auto* invalid : {"0", "-1", "3600001", "1x", "999999999999999999999999"}) {
+            timedScenario.steps[0].arguments["duration_ms"] = invalid;
+            require(!timing.validate(timedScenario).empty(), "invalid delay was accepted");
+        }
 
         std::cout << "scenario resource routing contract OK\n";
         return 0;
