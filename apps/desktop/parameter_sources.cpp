@@ -8,8 +8,9 @@
 namespace {
 class OrbitaParameters final : public orbita::stand::IParameterSource {
 public:
-    OrbitaParameters(orbita::Orbita& decoder, orbita::stand::ISampleSource& source)
-        : decoder_(decoder), source_(source), monotonicOrigin_(std::chrono::steady_clock::now()),
+    OrbitaParameters(orbita::Orbita& decoder, orbita::stand::ISampleSource& source,
+                     std::shared_mutex& channelsMutex)
+        : decoder_(decoder), source_(source), channelsMutex_(channelsMutex), monotonicOrigin_(std::chrono::steady_clock::now()),
           wallOrigin_(std::chrono::system_clock::now()) {}
     std::string sourceId() const override { return "orbita"; }
     std::string probe() override { return source_.isRunning() ? "ready" : "disconnected"; }
@@ -21,6 +22,7 @@ public:
             sample.diagnostic = "Сбор Орбиты не запущен";
             return sample;
         }
+        std::shared_lock<std::shared_mutex> lock(channelsMutex_);
         const auto snapshot = decoder_.getSnapshot();
         const auto found = std::find_if(snapshot.values.begin(), snapshot.values.end(),
             [&](const auto& value) { return value.address == key; });
@@ -40,6 +42,7 @@ public:
 private:
     orbita::Orbita& decoder_;
     orbita::stand::ISampleSource& source_;
+    std::shared_mutex& channelsMutex_;
     std::chrono::steady_clock::time_point monotonicOrigin_;
     std::chrono::system_clock::time_point wallOrigin_;
 };
@@ -72,9 +75,9 @@ private:
 }
 
 std::unique_ptr<orbita::stand::IParameterSource> makeOrbitaParameters(
-    orbita::Orbita& decoder, orbita::stand::ISampleSource& source)
+    orbita::Orbita& decoder, orbita::stand::ISampleSource& source, std::shared_mutex& channelsMutex)
 {
-    return std::make_unique<OrbitaParameters>(decoder, source);
+    return std::make_unique<OrbitaParameters>(decoder, source, channelsMutex);
 }
 std::unique_ptr<orbita::stand::IParameterSource> makeParameterSimulator(
     std::string id, std::string key, double value, std::string unit)

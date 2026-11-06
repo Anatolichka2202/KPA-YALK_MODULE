@@ -270,6 +270,11 @@ void UniversalMainWindow::editGenericScenario(const QString& path)
     if (genericWatcher_->isRunning() || !QFileInfo::exists(path)) return;
     const QString workflowId = genericDialog_ ? genericDialog_->currentWorkflowId() : QString();
     ScenarioVisualEditor editor(path, this);
+    std::vector<ScenarioParameterOption> parameters;
+    for (const auto& binding : integrationParameterBindings())
+        if (!binding.parameterKey.isEmpty()) parameters.push_back({binding.sourceId, binding.parameterKey,
+            binding.sourceTitle + QStringLiteral(" · ") + binding.parameterTitle, binding.unit});
+    editor.setAvailableParameters(std::move(parameters));
     const QString userRoot = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
     const QString userScenarios = userRoot.isEmpty() ? QString()
         : QDir(userRoot).filePath(QStringLiteral("scenarios"));
@@ -349,6 +354,8 @@ void UniversalMainWindow::runGenericScenario(
         std::function<bool(const orbita::stand::ScenarioNode&)> usesOrbita;
         usesOrbita = [&](const orbita::stand::ScenarioNode& node) {
             if (node.procedure == "telemetry.health"
+                || (node.procedure == "parameter.measure" && node.arguments.count("source")
+                    && node.arguments.at("source") == "orbita")
                 || std::find(node.requiredCapabilities.begin(), node.requiredCapabilities.end(),
                              "orbita.parameter_source") != node.requiredCapabilities.end()) return true;
             for (const auto& resource : node.requiredResources)
@@ -357,6 +364,19 @@ void UniversalMainWindow::runGenericScenario(
         };
         if (std::any_of(scenario.steps.begin(), scenario.steps.end(), usesOrbita))
             integrationSetMonitorLocked(true);
+        QMap<QString, QStringList> parameterSubscriptions;
+        std::function<void(const orbita::stand::ScenarioNode&)> collectParameters;
+        collectParameters = [&](const orbita::stand::ScenarioNode& node) {
+            if (node.procedure == "parameter.measure" && node.arguments.count("source")
+                && node.arguments.count("parameter")) {
+                const auto source = QString::fromStdString(node.arguments.at("source"));
+                const auto key = QString::fromStdString(node.arguments.at("parameter"));
+                if (!parameterSubscriptions[source].contains(key)) parameterSubscriptions[source].push_back(key);
+            }
+            for (const auto& child : node.children) collectParameters(child);
+        };
+        for (const auto& node : scenario.steps) collectParameters(node);
+        integrationSetScenarioParameterSubscriptions(std::move(parameterSubscriptions));
 
         // Запись создаётся до подготовки: при аварийном завершении остаётся
         // тот же идентификатор, который затем использует сценарный движок.
@@ -416,6 +436,7 @@ void UniversalMainWindow::runGenericScenario(
                 .toUtf8().toStdString());
         }
     } catch (const std::exception& error) {
+        integrationSetScenarioParameterSubscriptions({});
         integrationSetMonitorLocked(false);
         integrationStationSession().safeStopAll(activity);
         if (initialRun.persistenceStarted) {
@@ -536,6 +557,7 @@ void UniversalMainWindow::stopGenericScenario()
 
 void UniversalMainWindow::finishGenericScenario()
 {
+    integrationSetScenarioParameterSubscriptions({});
     integrationSetMonitorLocked(false);
     if (!genericDialog_) return;
     const auto result = genericWatcher_->result();

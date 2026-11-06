@@ -316,6 +316,15 @@ int runHealthMonitorChild()
                        "  - id: slow\n    title: Ожидание\n    tu: test.2\n    procedure: test.monitor-lock\n"
                        "    requires:\n      - orbita.parameter_source\n");
     slowScenario.close();
+    const QString measurePath = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("scenarios/measure.yaml"));
+    QFile measureScenario(measurePath);
+    require(measureScenario.open(QIODevice::WriteOnly | QIODevice::NewOnly), "cannot create measurement scenario");
+    measureScenario.write("schema: 1\nid: measure-gui\ntitle: Измерение источника\nversion: 1\n"
+                          "catalog_version: 1\nstate: published\nsteps:\n"
+                          "  - id: measurement\n    title: Напряжение\n    tu: test.3\n    procedure: parameter.measure\n"
+                          "    args:\n      source: second-simulator\n      parameter: voltage\n"
+                          "      lower: 12\n      upper: 13\n      unit: В\n      timeout_ms: 2000\n");
+    measureScenario.close();
     MonitorWindow window(false);
     window.enableHealthProject();
     window.show();
@@ -380,7 +389,23 @@ int runHealthMonitorChild()
     finishTimeout.start(8000); finished.exec();
     require(run->isEnabled() && stop->isEnabled() && home->isEnabled() && sets->isEnabled(),
             "monitor controls were not restored after the check");
+    const int measureIndex = choices->findData(measurePath);
+    require(measureIndex >= 0, "measurement scenario missing from list");
+    choices->setCurrentIndex(measureIndex);
+    require(run->isEnabled(), "measurement scenario unavailable");
+    run->click();
+    finishTimeout.start(8000); finished.exec();
+    auto* runStatus = dialog->findChild<QLabel*>(QStringLiteral("genericRunStatus"));
+    require(run->isEnabled() && runStatus && runStatus->text().contains(QStringLiteral("Run сохранён"))
+                && report->toPlainText().contains(QStringLiteral("12.5"))
+                && report->toPlainText().contains(QStringLiteral("В пределах допуска")),
+            "scenario did not use a shared simulator parameter");
     window.pauseSamples();
+    // Декодер может ещё обрабатывать ранее переданную порцию; ожидаем её
+    // завершения, прежде чем проверять неподвижный снимок источника.
+    QEventLoop drain;
+    QTimer::singleShot(800, &drain, &QEventLoop::quit);
+    drain.exec();
     // После прекращения передачи один и тот же снимок нельзя засчитать дважды.
     const auto repeated = window.sourceOperation("read", {{"address", "M16P1A11B21T21"}, {"sample_count", "2"}});
     require(repeated.find("status=no_data") != std::string::npos,
@@ -400,6 +425,7 @@ int runHealthMonitorChild()
                 && read.find("status=no_data") != std::string::npos,
             "stale samples were reported as live data");
     stop->click();
+    require(QFile::remove(measurePath), "cannot remove isolated measurement scenario");
     require(QFile::remove(slowPath), "cannot remove isolated lock scenario");
     require(QFile::remove(path), "cannot remove isolated health scenario");
     return 0;

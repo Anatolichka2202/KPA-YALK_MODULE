@@ -6,6 +6,7 @@
 #include <QElapsedTimer>
 #include <memory>
 #include <optional>
+#include <shared_mutex>
 #include <QLabel>
 #include <QPushButton>
 #include <QCheckBox>
@@ -33,6 +34,7 @@
 #include "metadata_service.h"
 #include "tolerance_resolver.h"
 #include "main_page.h"
+#include "parameter_acquisition.h"
 #include "detail_view.h"
 #include "parameter_browser.h"
 #include "config_manager_widget.h"
@@ -86,8 +88,12 @@ protected:
         return scenarioWatcher_;
     }
     bool integrationStandRuntimeReady() const { return standRuntimeReady_; }
+    const std::vector<MonitoredBinding>& integrationParameterBindings() const
+    { return mainPage_->sourceMonitor()->bindings(); }
     bool integrationHasOrbitaSource() const { return telemetrySampleSource_ && orbitaSampleBridge_; }
     void integrationSetMonitorLocked(bool locked);
+    void integrationSetScenarioParameterSubscriptions(QMap<QString, QStringList> subscriptions)
+    { parameterAcquisition_->setScenarioSubscriptions(std::move(subscriptions)); }
 
     // The project package is the product-level composition root. The generic
     // shell stores it, while a delivery decides which package to load. This
@@ -196,6 +202,7 @@ private:
     // Декодер протокола и БД. Физический источник отсчётов принадлежит
     // StationSession/ComponentRuntime станции, а не liborbita.
     std::unique_ptr<orbita::Orbita> orbita_;
+    mutable std::shared_mutex orbitaChannelsMutex_;
     std::unique_ptr<MetadataService> dbProvider_;
     ToleranceResolver toleranceResolver_;
 
@@ -213,6 +220,7 @@ private:
     HomePage* homePage_ = nullptr;
     RegistrarPage* registrarPage_ = nullptr;
     MainPage* mainPage_ = nullptr;
+    ParameterAcquisition* parameterAcquisition_ = nullptr;
     TestPage* testPage_ = nullptr;
     DetailView* detailView_ = nullptr;
     ConfigManagerWidget* configPage_ = nullptr;

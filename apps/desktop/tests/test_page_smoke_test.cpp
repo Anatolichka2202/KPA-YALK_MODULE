@@ -15,6 +15,8 @@
 #include <QApplication>
 #include <QComboBox>
 #include <QDoubleSpinBox>
+#include <QSpinBox>
+#include <QDialogButtonBox>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
@@ -464,6 +466,78 @@ int main(int argc, char** argv)
         save->click();
         require(beforeFile.open(QIODevice::ReadOnly) && beforeFile.readAll() == before,
                 "invalid scenario replaced original file");
+    }
+    {
+        const auto measurePath = QDir(scenarioDirectory).filePath(QStringLiteral("measure_draft.yaml"));
+        QFile file(measurePath);
+        require(file.open(QIODevice::WriteOnly), "cannot write measurement draft");
+        file.write("schema: 1\nid: measure-draft\ntitle: Измерение\nversion: 1\ncatalog_version: 1\nstate: draft\nsteps:\n"
+                   "  - id: step\n    title: Напряжение\n    tu: test\n    procedure: old.action\n");
+        file.close();
+        ScenarioVisualEditor editor(measurePath);
+        editor.setAvailableProcedures({"parameter.measure"});
+        editor.setAvailableParameters({{QStringLiteral("sim"), QStringLiteral("voltage"), QStringLiteral("Имитатор · Напряжение"), QStringLiteral("В")}});
+        auto* choice = editor.findChild<QComboBox*>(QStringLiteral("availableScenarioProcedures"));
+        auto* settings = editor.findChild<QPushButton*>(QStringLiteral("configureParameterMeasurement"));
+        auto* save = editor.findChild<QPushButton*>(QStringLiteral("saveScenarioVisual"));
+        require(choice && settings && save, "measurement editor controls unavailable");
+        QMetaObject::invokeMethod(choice, "activated", Q_ARG(int, 1));
+        QTimer::singleShot(0, [] {
+            auto* dialog = qobject_cast<QDialog*>(QApplication::activeModalWidget());
+            if (!dialog) return;
+            auto* parameter = dialog->findChild<QComboBox*>(QStringLiteral("measurementParameter"));
+            auto* lower = dialog->findChild<QLineEdit*>(QStringLiteral("measurementLower"));
+            auto* upper = dialog->findChild<QLineEdit*>(QStringLiteral("measurementUpper"));
+            auto* timeout = dialog->findChild<QSpinBox*>(QStringLiteral("measurementTimeout"));
+            auto* buttons = dialog->findChild<QDialogButtonBox*>();
+            if (parameter && lower && upper && timeout && buttons) {
+                parameter->setCurrentIndex(1);
+                lower->setText(QStringLiteral("12"));
+                upper->setText(QStringLiteral("13"));
+                timeout->setValue(1500);
+                buttons->button(QDialogButtonBox::Ok)->click();
+            }
+        });
+        settings->click();
+        save->click();
+        const auto saved = orbita::stand::loadScenarioYaml(measurePath.toStdString());
+        require(saved.steps.size() == 1 && saved.steps[0].procedure == "parameter.measure"
+                    && saved.steps[0].arguments.at("source") == "sim"
+                    && saved.steps[0].arguments.at("parameter") == "voltage"
+                    && saved.steps[0].arguments.at("lower") == "12"
+                    && saved.steps[0].arguments.at("upper") == "13"
+                    && saved.steps[0].arguments.at("unit") == "В"
+                    && saved.steps[0].arguments.at("timeout_ms") == "1500",
+                "measurement settings did not survive saving and reload");
+        ScenarioVisualEditor changedUnit(measurePath);
+        changedUnit.setAvailableProcedures({"parameter.measure"});
+        changedUnit.setAvailableParameters({{QStringLiteral("sim"), QStringLiteral("voltage"),
+            QStringLiteral("Имитатор · Напряжение"), QStringLiteral("мВ")}});
+        auto* editMeasurement = changedUnit.findChild<QPushButton*>(QStringLiteral("configureParameterMeasurement"));
+        bool clearedLimits = false;
+        QTimer::singleShot(0, [&] {
+            auto* dialog = qobject_cast<QDialog*>(QApplication::activeModalWidget());
+            if (!dialog) return;
+            auto* low = dialog->findChild<QLineEdit*>(QStringLiteral("measurementLower"));
+            auto* high = dialog->findChild<QLineEdit*>(QStringLiteral("measurementUpper"));
+            auto* warning = dialog->findChild<QLabel*>(QStringLiteral("measurementUnitWarning"));
+            clearedLimits = low && high && low->text().isEmpty() && high->text().isEmpty()
+                && warning && warning->text().contains(QStringLiteral("отличается"));
+            dialog->reject();
+        });
+        require(editMeasurement && editMeasurement->isEnabled(), "saved measurement settings unavailable");
+        editMeasurement->click();
+        require(clearedLimits && orbita::stand::loadScenarioYaml(measurePath.toStdString()).steps[0].arguments.at("unit") == "В",
+                "changed unit reused old limits or altered saved configuration");
+        auto* raw = changedUnit.findChild<QPlainTextEdit*>(QStringLiteral("scenarioStepArguments"));
+        require(raw, "measurement arguments unavailable");
+        raw->appendPlainText(QStringLiteral("unfinished"));
+        const auto malformed = raw->toPlainText();
+        QTimer::singleShot(0, [] {
+            if (auto* box = qobject_cast<QMessageBox*>(QApplication::activeModalWidget())) box->accept();
+        });
+        editMeasurement->click();
+        require(raw->toPlainText() == malformed, "measurement settings discarded unfinished arguments");
     }
     ScenarioVisualEditor visualEditor(visualPath);
     orbita::stand::ScenarioEngine procedureEngine;

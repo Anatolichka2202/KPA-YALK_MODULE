@@ -60,6 +60,7 @@ add_executable(MilTechStation
     main_page.h main_page.cpp
     multi_source_monitor.h multi_source_monitor.cpp
     parameter_sources.h parameter_sources.cpp
+    parameter_acquisition.h parameter_acquisition.cpp
     resources/resources.qrc
     channel_list_widget.h channel_list_widget.cpp
     readout_widget.h readout_widget.cpp

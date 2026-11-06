@@ -5,9 +5,7 @@
 #include <QTableWidget>
 #include <QTimer>
 #include <QVBoxLayout>
-#include <QtConcurrentRun>
 #include <chrono>
-#include <map>
 
 MultiSourceMonitor::MultiSourceMonitor(QWidget* parent) : QWidget(parent)
 {
@@ -31,16 +29,16 @@ MultiSourceMonitor::MultiSourceMonitor(QWidget* parent) : QWidget(parent)
     layout->addWidget(table_);
     timer_ = new QTimer(this);
     timer_->setInterval(250);
-    connect(timer_, &QTimer::timeout, this, &MultiSourceMonitor::poll);
+    connect(timer_, &QTimer::timeout, this, &MultiSourceMonitor::display);
 }
 
-MultiSourceMonitor::~MultiSourceMonitor() { shutdown(); }
+MultiSourceMonitor::~MultiSourceMonitor() = default;
 
 void MultiSourceMonitor::setRepository(orbita::stand::ParameterRepository* repository)
 {
-    shutdown();
     repository_ = repository;
-    if (repository_) timer_->start();
+    if (repository_) timer_->start(); else timer_->stop();
+    display();
 }
 
 void MultiSourceMonitor::setBindings(std::vector<MonitoredBinding> bindings)
@@ -53,45 +51,6 @@ void MultiSourceMonitor::setBindings(std::vector<MonitoredBinding> bindings)
         table_->item(row, 0)->setText(bindings_[row].sourceTitle);
         table_->item(row, 1)->setText(bindings_[row].parameterTitle);
         table_->item(row, 1)->setToolTip(bindings_[row].parameterKey);
-    }
-    display();
-}
-
-void MultiSourceMonitor::shutdown()
-{
-    timer_->stop();
-    for (auto* worker : workers_) worker->waitForFinished();
-    qDeleteAll(workers_);
-    workers_.clear();
-    repository_ = nullptr;
-}
-
-void MultiSourceMonitor::poll()
-{
-    if (!repository_) return;
-    // У каждого источника свой worker: медленный или отключённый прибор не
-    // задерживает обновление остальных и не блокирует поток интерфейса.
-    QMap<QString, QStringList> keys;
-    for (const auto& binding : bindings_)
-        if (binding.unavailableReason.isEmpty() && !binding.parameterKey.isEmpty()
-            && !keys[binding.sourceId].contains(binding.parameterKey))
-            keys[binding.sourceId].push_back(binding.parameterKey);
-    for (auto it = keys.cbegin(); it != keys.cend(); ++it) {
-        auto*& watcher = workers_[it.key()];
-        if (!watcher) {
-            watcher = new QFutureWatcher<void>(this);
-            connect(watcher, &QFutureWatcherBase::finished, this, &MultiSourceMonitor::display);
-        }
-        if (watcher->isRunning()) continue;
-        auto* repository = repository_;
-        const auto source = it.key().toStdString();
-        const auto parameterKeys = it.value();
-        watcher->setFuture(QtConcurrent::run([repository, source, parameterKeys] {
-            for (const auto& key : parameterKeys) {
-                try { repository->refresh(source, key.toStdString()); }
-                catch (const std::exception&) { /* Состояние показывается по снимку. */ }
-            }
-        }));
     }
     display();
 }

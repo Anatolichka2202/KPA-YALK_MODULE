@@ -2,8 +2,10 @@
 #include <QUuid>
 #include "mainwindow.h"
 #include "parameter_sources.h"
+#include "orbita_stand/parameter_procedures.h"
 #include <QThread>
 #include <cmath>
+#include <mutex>
 #include "free_workspace_widget.h"
 #include "channel_status.h"
 #include "encoding_utils.h"
@@ -121,7 +123,8 @@ MainWindow::~MainWindow()
 {
     if (scenarioEngine_) stationSession_.requestStop();
     if (scenarioWatcher_ && scenarioWatcher_->isRunning()) scenarioWatcher_->waitForFinished();
-    if (mainPage_) mainPage_->sourceMonitor()->shutdown();
+    if (parameterAcquisition_) parameterAcquisition_->shutdown();
+    if (mainPage_) mainPage_->sourceMonitor()->setRepository(nullptr);
     // Bridge must die before StationSession because it references the session-owned source.
     orbitaSampleBridge_.reset();
     telemetrySampleSource_ = nullptr;
@@ -185,6 +188,7 @@ void MainWindow::setupUi()
 
     // Страница "Сбор"
     mainPage_ = new MainPage;
+    parameterAcquisition_ = new ParameterAcquisition(this);
     centralStack_->addWidget(mainPage_);
 
     // Страница "Детальный просмотр"
@@ -812,7 +816,8 @@ void MainWindow::initializeStandRuntime()
         // на существующем EquipmentRegistry до отдельного этапа миграции.
         // A reinitialization must release the bridge before StationSession replaces
         // its sample-source instance. Kind factories survive ComponentRuntime::clear().
-        if (mainPage_) mainPage_->sourceMonitor()->shutdown();
+        if (parameterAcquisition_) parameterAcquisition_->shutdown();
+        if (mainPage_) mainPage_->sourceMonitor()->setRepository(nullptr);
         additionalMonitorBindings_.clear();
         orbitaSampleBridge_.reset();
         telemetrySampleSource_ = nullptr;
@@ -864,7 +869,7 @@ void MainWindow::initializeStandRuntime()
                             }
                         }, Qt::QueuedConnection);
                     });
-                stationSession_.parameters().add(makeOrbitaParameters(*orbita_, *telemetrySampleSource_));
+                stationSession_.parameters().add(makeOrbitaParameters(*orbita_, *telemetrySampleSource_, orbitaChannelsMutex_));
             } else {
                 log(QStringLiteral(
                     "Поставка не объявляет binding telemetry.orbita.sample_source"));
@@ -888,7 +893,8 @@ void MainWindow::initializeStandRuntime()
                     additionalMonitorBindings_.push_back({QString::fromStdString(component.id),
                         QStringLiteral("Имитатор · ") + QString::fromStdString(component.id),
                         QString::fromStdString(key), title == component.configuration.end()
-                            ? QString::fromStdString(key) : QString::fromStdString(title->second)});
+                            ? QString::fromStdString(key) : QString::fromStdString(title->second), {},
+                        unit == component.configuration.end() ? QString() : QString::fromStdString(unit->second)});
                 } catch (const std::exception& error) {
                     log(QStringLiteral("Имитатор %1 недоступен: %2")
                         .arg(QString::fromStdString(component.id), QString::fromUtf8(error.what())));
@@ -896,6 +902,7 @@ void MainWindow::initializeStandRuntime()
             }
             if (mainPage_) {
                 mainPage_->sourceMonitor()->setRepository(&stationSession_.parameters());
+                parameterAcquisition_->setRepository(&stationSession_.parameters());
                 updateSourceMonitorBindings();
                 startBtn_->setEnabled(telemetrySampleSource_ && !isRunning_ && !currentSpecs_.empty());
             }
@@ -934,6 +941,7 @@ void MainWindow::initializeStandRuntime()
         stationSession_.resetScenarioEngine();
         scenarioEngine_ = &stationSession_.scenarioEngine();
         orbita::stand::registerTelemetryProcedures(*scenarioEngine_);
+        orbita::stand::registerParameterProcedures(*scenarioEngine_, stationSession_.parameters());
         // Product procedure registration and scenario discovery belong to the
         // delivery/application composition. The reusable shell only owns the
         // generic engine and persistent run store.
@@ -1024,7 +1032,10 @@ std::string MainWindow::invokeOrbitaParameterSource(
     if (!telemetrySampleSource_ || !telemetrySampleSource_->isOpen()) {
         return "status=disconnected\ndiagnostic=Источник отсчётов Орбиты не открыт\n";
     }
-    const auto channels = orbita_->getChannels();
+    const auto channels = [this] {
+        std::shared_lock<std::shared_mutex> lock(orbitaChannelsMutex_);
+        return orbita_->getChannels();
+    }();
     if (operation == "probe") {
         return "status=" + std::string(channels.empty() ? "not_configured" : "ready")
             + "\nrunning=" + (orbita_->isRunning() && telemetrySampleSource_->isRunning()
@@ -1043,7 +1054,10 @@ std::string MainWindow::invokeOrbitaParameterSource(
     }
     if (operation == "health" || operation == "alive") {
         orbita_->waitForData(std::chrono::milliseconds(1000));
-        auto snapshot = orbita_->getSnapshot();
+        auto snapshot = [this] {
+            std::shared_lock<std::shared_mutex> lock(orbitaChannelsMutex_);
+            return orbita_->getSnapshot();
+        }();
         // Счётчики накопительные; только время обновления параметра доказывает,
         // что поток продолжает поступать, даже если монитор забрал уведомление.
         miltech::integration::invalidateStaleValues(
@@ -1077,7 +1091,10 @@ std::string MainWindow::invokeOrbitaParameterSource(
             const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
             bool found = false;
             do {
-                auto snapshot = orbita_->getSnapshot();
+                auto snapshot = [this] {
+                    std::shared_lock<std::shared_mutex> lock(orbitaChannelsMutex_);
+                    return orbita_->getSnapshot();
+                }();
                 miltech::integration::invalidateStaleValues(
                     snapshot, std::chrono::steady_clock::now(), std::chrono::seconds(5));
                 for (const auto& value : snapshot.values) {
@@ -1333,7 +1350,10 @@ void MainWindow::onStart()
     try {
         // Новый сеанс не должен показывать подтверждённые значения,
         // оставшиеся в декодере после предыдущего запуска.
-        orbita_->setChannels(currentSpecs_);
+        {
+            std::unique_lock<std::shared_mutex> lock(orbitaChannelsMutex_);
+            orbita_->setChannels(currentSpecs_);
+        }
         if (mainPage_) mainPage_->updateData({});
         if (detailView_) detailView_->clearValue();
         if (!initializeTelemetrySource()) {
@@ -1646,13 +1666,19 @@ void MainWindow::updateSourceMonitorBindings()
             ? QStringLiteral("Орбита · имитатор") : QStringLiteral("Орбита");
         if (currentSpecs_.empty() && !orbitaMonitorError_.isEmpty())
             bindings.push_back({QStringLiteral("orbita"), title, {},
-                QStringLiteral("Источник не создан"), orbitaMonitorError_});
+                QStringLiteral("Источник не создан"), orbitaMonitorError_, QStringLiteral("код")});
         for (const auto& spec : currentSpecs_)
             bindings.push_back({QStringLiteral("orbita"), title,
                 QString::fromStdString(spec.address),
                 QString::fromStdString(spec.name.empty() ? spec.address : spec.name),
-                orbitaMonitorError_});
+                orbitaMonitorError_, QStringLiteral("код")});
     }
+    QMap<QString, QStringList> subscriptions;
+    for (const auto& binding : bindings)
+        if (binding.unavailableReason.isEmpty() && !binding.parameterKey.isEmpty()
+            && !subscriptions[binding.sourceId].contains(binding.parameterKey))
+            subscriptions[binding.sourceId].push_back(binding.parameterKey);
+    parameterAcquisition_->setSubscriptions(std::move(subscriptions));
     mainPage_->sourceMonitor()->setBindings(std::move(bindings));
 }
 
@@ -1660,6 +1686,8 @@ void MainWindow::onWatchSetChanged(const std::vector<orbita::ChannelSpec>& specs
 {
     if (monitorLocked_) return;
     try {
+        // Не сопоставляем старый срез новому набору адресов при фоновом чтении.
+        std::unique_lock<std::shared_mutex> lock(orbitaChannelsMutex_);
         orbita_->setChannels(specs);
         monitorSnapshot_.reset();
         detailLastUpdate_ = {};

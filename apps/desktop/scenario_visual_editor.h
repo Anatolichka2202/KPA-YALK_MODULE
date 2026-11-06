@@ -15,6 +15,7 @@
 #include <QStringList>
 
 #include <vector>
+#include <utility>
 #include <functional>
 
 class QLabel;
@@ -25,12 +26,21 @@ class QPushButton;
 class QTreeWidget;
 class QTreeWidgetItem;
 
+struct ScenarioParameterOption {
+    QString source;
+    QString key;
+    QString title;
+    QString unit;
+};
+
 class ScenarioVisualEditor final : public QDialog {
     Q_OBJECT
 
 public:
     explicit ScenarioVisualEditor(QString path, QWidget* parent = nullptr);
     void setAvailableProcedures(const std::vector<std::string>& procedures);
+    void setAvailableParameters(std::vector<ScenarioParameterOption> parameters)
+    { parameterOptions_ = std::move(parameters); }
     QString currentPath() const { return path_; }
     void setScenarioStorage(QString writableDirectory, QStringList versionDirectories);
     void setScenarioValidator(std::function<std::vector<std::string>(
@@ -51,6 +61,7 @@ private slots:
     void createDraft();
     void createRunnableVersion();
     void configureTelemetryHealth();
+    void configureParameterMeasurement();
 
 private:
     using StepPath = std::vector<int>;
@@ -70,6 +81,7 @@ private:
     bool commitEditorToSelectedNode();
     bool commitEditorToNode(const StepPath& path);
     bool configureTelemetryHealthForNode(const orbita::stand::ScenarioNode* node);
+    bool configureParameterMeasurementForNode(const orbita::stand::ScenarioNode* node);
     QString serialize() const;
     static QString quote(const std::string& value);
     static std::vector<std::string> lines(const QString& text);
@@ -90,6 +102,8 @@ private:
     bool updatingFields_ = false;
     QLabel* draftStatus_ = nullptr;
     bool healthConfigured_ = false;
+    bool measurementConfigured_ = false;
+    std::vector<ScenarioParameterOption> parameterOptions_;
     QString healthOriginalArguments_;
     QString healthOriginalRequires_;
     QString healthOriginalResources_;
@@ -109,4 +123,5 @@ private:
     std::function<std::vector<std::string>(const orbita::stand::ScenarioDefinition&)> validator_;
     QPushButton* draftButton_ = nullptr;
     QPushButton* telemetrySettings_ = nullptr;
+    QPushButton* measurementSettings_ = nullptr;
 };

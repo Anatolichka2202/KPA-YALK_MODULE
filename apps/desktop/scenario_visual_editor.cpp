@@ -3,6 +3,7 @@
 #include <QDialogButtonBox>
 #include <QComboBox>
 #include <QDoubleSpinBox>
+#include <QSpinBox>
 #include <QDir>
 #include <QFileInfo>
 #include <QFile>
@@ -100,6 +101,7 @@ ScenarioVisualEditor::ScenarioVisualEditor(QString path, QWidget* parent)
     const auto updateCurrentProcedure = [currentProcedure](const QString& id) {
         currentProcedure->setText(id.isEmpty() ? QStringLiteral("Действие не выбрано")
             : id == QStringLiteral("telemetry.health") ? QStringLiteral("Проверка состояния потока «Орбита»")
+            : id == QStringLiteral("parameter.measure") ? QStringLiteral("Измерить параметр")
             : QStringLiteral("Действие: %1").arg(id));
     };
     connect(procedure_, &QLineEdit::textChanged, this, updateCurrentProcedure);
@@ -118,9 +120,15 @@ ScenarioVisualEditor::ScenarioVisualEditor(QString path, QWidget* parent)
     telemetrySettings_->setObjectName(QStringLiteral("configureTelemetryHealth"));
     form->addRow(QString(), telemetrySettings_);
     connect(telemetrySettings_, &QPushButton::clicked, this, &ScenarioVisualEditor::configureTelemetryHealth);
+    measurementSettings_ = new QPushButton(QStringLiteral("Настроить измерение…"), formHost);
+    measurementSettings_->setObjectName(QStringLiteral("configureParameterMeasurement"));
+    form->addRow(QString(), measurementSettings_);
+    connect(measurementSettings_, &QPushButton::clicked, this, &ScenarioVisualEditor::configureParameterMeasurement);
     connect(procedure_, &QLineEdit::textChanged, this, [this](const QString& procedure) {
         healthConfigured_ = false;
+        measurementConfigured_ = false;
         telemetrySettings_->setEnabled(!published_ && procedure == QStringLiteral("telemetry.health"));
+        measurementSettings_->setEnabled(!published_ && procedure == QStringLiteral("parameter.measure"));
     });
     formLayout->addLayout(form);
     auto* technicalToggle = new QPushButton(QStringLiteral("Технические настройки ▸"), formHost);
@@ -295,7 +303,8 @@ void ScenarioVisualEditor::setAvailableProcedures(const std::vector<std::string>
     for (const auto& procedure : procedures) {
         const auto id = QString::fromStdString(procedure);
         const auto title = id == QStringLiteral("telemetry.health")
-            ? QStringLiteral("Проверить состояние потока «Орбита»") : id;
+            ? QStringLiteral("Проверить состояние потока «Орбита»")
+            : id == QStringLiteral("parameter.measure") ? QStringLiteral("Измерить параметр") : id;
         procedureChoice_->addItem(title, id);
     }
     procedureChoice_->setCurrentIndex(0);
@@ -357,6 +366,7 @@ void ScenarioVisualEditor::setEditorEnabled(bool enabled)
     procedure_->setEnabled(enabled);
     procedureChoice_->setEnabled(enabled);
     telemetrySettings_->setEnabled(enabled && procedure_->text() == QStringLiteral("telemetry.health"));
+    measurementSettings_->setEnabled(enabled && procedure_->text() == QStringLiteral("parameter.measure"));
     requires_->setEnabled(enabled);
     resources_->setEnabled(enabled);
     arguments_->setEnabled(enabled);
@@ -486,6 +496,8 @@ bool ScenarioVisualEditor::commitEditorToNode(const StepPath& path)
         showTechnicalField(id_);
         return false;
     }
+    if (node->procedure != "parameter.measure" && procedure_->text() == QStringLiteral("parameter.measure")
+        && !measurementConfigured_ && !configureParameterMeasurementForNode(node)) return false;
     const bool healthArgumentsChanged = arguments_->toPlainText() != healthOriginalArguments_;
     const bool healthRequirementsChanged = requires_->toPlainText() != healthOriginalRequires_
         || resources_->toPlainText() != healthOriginalResources_;
@@ -556,6 +568,7 @@ bool ScenarioVisualEditor::commitEditorToNode(const StepPath& path)
     healthOriginalRequires_ = requires_->toPlainText();
     healthOriginalResources_ = resources_->toPlainText();
     healthConfigured_ = false;
+    measurementConfigured_ = false;
     return true;
 }
 
@@ -685,6 +698,154 @@ bool ScenarioVisualEditor::configureTelemetryHealthForNode(const orbita::stand::
         requires_->setPlainText(text + QStringLiteral("orbita.parameter_source"));
     }
     healthConfigured_ = true;
+    return true;
+}
+
+void ScenarioVisualEditor::configureParameterMeasurement()
+{
+    configureParameterMeasurementForNode(findNode(selectedPath()));
+}
+
+bool ScenarioVisualEditor::configureParameterMeasurementForNode(const orbita::stand::ScenarioNode* node)
+{
+    if (published_ || procedure_->text() != QStringLiteral("parameter.measure") || !node) return false;
+    if (node->procedure == "parameter.measure") {
+        std::set<std::string> names;
+        for (const auto& line : arguments_->toPlainText().split(QLatin1Char('\n'))) {
+            if (line.trimmed().isEmpty()) continue;
+            const int separator = line.indexOf(QLatin1Char('='));
+            const auto key = trimmedUtf8(line.left(separator));
+            if (separator < 1 || key.empty() || !names.insert(key).second) {
+                QMessageBox::warning(this, QStringLiteral("Измерение"),
+                    QStringLiteral("Исправьте незаконченные или повторяющиеся аргументы шага."));
+                return false;
+            }
+        }
+    }
+    auto args = node->procedure == "parameter.measure"
+        ? arguments(arguments_->toPlainText()) : std::map<std::string, std::string>{};
+    if (args.count("timeout_ms")) {
+        bool ok = false;
+        const auto timeout = QString::fromStdString(args.at("timeout_ms")).toInt(&ok);
+        if (!ok || timeout < 500 || timeout > 600000) {
+            QMessageBox::warning(this, QStringLiteral("Измерение"),
+                QStringLiteral("Исправьте время ожидания в технических настройках: от 500 до 600000 мс."));
+            return false;
+        }
+    }
+    QDialog dialog(this);
+    dialog.setWindowTitle(QStringLiteral("Настройка измерения"));
+    auto* layout = new QVBoxLayout(&dialog);
+    auto* help = new QLabel(QStringLiteral(
+        "Выберите параметр и укажите допустимые пределы. Значение и единица берутся из источника."), &dialog);
+    help->setWordWrap(true);
+    layout->addWidget(help);
+    if (node->procedure != "parameter.measure" && !node->procedure.empty()) {
+        auto* replaced = new QLabel(QStringLiteral("Настройки предыдущего действия будут заменены."), &dialog);
+        replaced->setWordWrap(true);
+        layout->addWidget(replaced);
+    }
+    auto* form = new QFormLayout;
+    auto* parameter = new QComboBox(&dialog);
+    parameter->setObjectName(QStringLiteral("measurementParameter"));
+    parameter->addItem(QStringLiteral("Выберите параметр…"));
+    for (const auto& option : parameterOptions_) {
+        parameter->addItem(option.title, QStringList{option.source, option.key, option.unit});
+        if (args.count("source") && args.count("parameter")
+            && option.source.toStdString() == args.at("source") && option.key.toStdString() == args.at("parameter"))
+            parameter->setCurrentIndex(parameter->count() - 1);
+    }
+    if (parameter->currentIndex() == 0 && args.count("source") && args.count("parameter")) {
+        const auto source = QString::fromStdString(args.at("source"));
+        const auto key = QString::fromStdString(args.at("parameter"));
+        parameter->addItem(source + QStringLiteral(" · ") + key + QStringLiteral(" (недоступен)"),
+            QStringList{source, key, args.count("unit") ? QString::fromStdString(args.at("unit")) : QString()});
+        parameter->setCurrentIndex(parameter->count() - 1);
+    }
+    auto* lower = new QLineEdit(&dialog);
+    auto* upper = new QLineEdit(&dialog);
+    lower->setObjectName(QStringLiteral("measurementLower"));
+    upper->setObjectName(QStringLiteral("measurementUpper"));
+    const auto currentChoice = parameter->currentData().toStringList();
+    const auto savedUnit = args.count("unit") ? QString::fromStdString(args.at("unit")) : QString();
+    const bool unitChanged = args.count("unit") && currentChoice.size() == 3
+        && savedUnit != currentChoice[2];
+    if (!unitChanged && args.count("lower")) lower->setText(QString::fromStdString(args.at("lower")));
+    if (!unitChanged && args.count("upper")) upper->setText(QString::fromStdString(args.at("upper")));
+    auto* unitWarning = new QLabel(&dialog);
+    unitWarning->setObjectName(QStringLiteral("measurementUnitWarning"));
+    unitWarning->setWordWrap(true);
+    if (unitChanged) unitWarning->setText(QStringLiteral(
+        "Сохранённая единица «%1» отличается от текущей. Задайте пределы заново.").arg(savedUnit));
+    layout->addWidget(unitWarning);
+    auto* unit = new QLabel(&dialog);
+    unit->setObjectName(QStringLiteral("measurementUnit"));
+    const auto updateUnit = [parameter, unit] {
+        const auto selected = parameter->currentData().toStringList();
+        unit->setText(selected.size() > 2 && !selected[2].isEmpty()
+            ? selected[2] : QStringLiteral("Неизвестна"));
+    };
+    connect(parameter, QOverload<int>::of(&QComboBox::currentIndexChanged), &dialog,
+        [updateUnit, lower, upper, unitWarning](int) {
+            lower->clear();
+            upper->clear();
+            unitWarning->setText(QStringLiteral("Параметр изменён: задайте пределы заново."));
+            updateUnit();
+        });
+    updateUnit();
+    form->addRow(QStringLiteral("Параметр"), parameter);
+    form->addRow(QStringLiteral("Единица"), unit);
+    form->addRow(QStringLiteral("Нижний предел"), lower);
+    form->addRow(QStringLiteral("Верхний предел"), upper);
+    auto* timeout = new QSpinBox(&dialog);
+    timeout->setObjectName(QStringLiteral("measurementTimeout"));
+    timeout->setRange(500, 600000);
+    timeout->setSuffix(QStringLiteral(" мс"));
+    timeout->setValue(args.count("timeout_ms") ? QString::fromStdString(args.at("timeout_ms")).toInt() : 2000);
+    form->addRow(QStringLiteral("Ожидание нового отсчёта"), timeout);
+    layout->addLayout(form);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    layout->addWidget(buttons);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    double acceptedLow = 0.0, acceptedHigh = 0.0;
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, [&] {
+        bool lowerOk = false, upperOk = false;
+        double low = QLocale().toDouble(lower->text(), &lowerOk);
+        double high = QLocale().toDouble(upper->text(), &upperOk);
+        if (!lowerOk) low = QLocale::c().toDouble(lower->text(), &lowerOk);
+        if (!upperOk) high = QLocale::c().toDouble(upper->text(), &upperOk);
+        const auto selected = parameter->currentData().toStringList();
+        if (parameter->currentIndex() == 0 || selected.size() != 3 || selected[2].isEmpty()
+            || !lowerOk || !upperOk || !std::isfinite(low)
+            || !std::isfinite(high) || low > high) {
+            QMessageBox::warning(&dialog, QStringLiteral("Измерение"),
+                QStringLiteral("Выберите параметр с известной единицей и задайте числовые пределы: нижний не больше верхнего."));
+            return;
+        }
+        acceptedLow = low;
+        acceptedHigh = high;
+        dialog.accept();
+    });
+    if (dialog.exec() != QDialog::Accepted) return false;
+    const auto choice = parameter->currentData().toStringList();
+    args["source"] = choice.at(0).toUtf8().toStdString();
+    args["parameter"] = choice.at(1).toUtf8().toStdString();
+    args["lower"] = QString::number(acceptedLow, 'g', 17).toStdString();
+    args["upper"] = QString::number(acceptedHigh, 'g', 17).toStdString();
+    args["unit"] = choice.at(2).toUtf8().toStdString();
+    args["timeout_ms"] = std::to_string(timeout->value());
+    QStringList argumentLines;
+    for (const auto& [key, value] : args)
+        argumentLines << QStringLiteral("%1 = %2").arg(QString::fromStdString(key), QString::fromStdString(value));
+    arguments_->setPlainText(argumentLines.join(QLatin1Char('\n')));
+    if (node->procedure == "telemetry.health") {
+        auto required = lines(requires_->toPlainText());
+        required.erase(std::remove(required.begin(), required.end(), "orbita.parameter_source"), required.end());
+        QStringList text;
+        for (const auto& capability : required) text.push_back(QString::fromStdString(capability));
+        requires_->setPlainText(text.join(QLatin1Char('\n')));
+    }
+    measurementConfigured_ = true;
     return true;
 }
 
