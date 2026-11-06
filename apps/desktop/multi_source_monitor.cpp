@@ -14,6 +14,22 @@
 #include <QTimer>
 #include <QVBoxLayout>
 #include <chrono>
+#include <QComboBox>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QDir>
+#include <QFile>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QLineEdit>
+#include <QMessageBox>
+#include <QPushButton>
+#include <QSaveFile>
+#include <QStandardPaths>
+#include <QUuid>
+#include <QCryptographicHash>
+#include <algorithm>
 
 MultiSourceMonitor::MultiSourceMonitor(QWidget* parent) : QWidget(parent)
 {
@@ -25,6 +41,18 @@ MultiSourceMonitor::MultiSourceMonitor(QWidget* parent) : QWidget(parent)
         "Значения отображаются по источникам. Для Орбиты выберите каналы и запустите сбор."), this);
     explanation->setWordWrap(true);
     layout->addWidget(explanation);
+    auto* pageControls = new QHBoxLayout;
+    pageControls->addWidget(new QLabel(QStringLiteral("Страница"), this));
+    pages_ = new QComboBox(this);
+    pages_->setObjectName(QStringLiteral("monitorPages"));
+    pageControls->addWidget(pages_, 1);
+    auto* createPage = new QPushButton(QStringLiteral("Создать страницу"), this);
+    createPage->setObjectName(QStringLiteral("createMonitorPage"));
+    auto* editPageButton = new QPushButton(QStringLiteral("Изменить"), this);
+    editPageButton->setObjectName(QStringLiteral("editMonitorPage"));
+    pageControls->addWidget(createPage);
+    pageControls->addWidget(editPageButton);
+    layout->addLayout(pageControls);
     table_ = new QTableWidget(this);
     table_->setObjectName(QStringLiteral("multiSourceValues"));
     table_->setColumnCount(5);
@@ -35,8 +63,10 @@ MultiSourceMonitor::MultiSourceMonitor(QWidget* parent) : QWidget(parent)
     table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
     table_->setSelectionBehavior(QAbstractItemView::SelectRows);
     auto* splitter = new QSplitter(Qt::Vertical, this);
+    splitter_ = splitter;
     splitter->addWidget(table_);
     auto* graphPanel = new QWidget(splitter);
+    graphPanel_ = graphPanel;
     auto* graphLayout = new QVBoxLayout(graphPanel);
     graphLayout->setContentsMargins(0, 0, 0, 0);
     auto* controls = new QHBoxLayout;
@@ -76,6 +106,10 @@ MultiSourceMonitor::MultiSourceMonitor(QWidget* parent) : QWidget(parent)
     connect(table_, &QTableWidget::itemChanged, this, [this](QTableWidgetItem* item) {
         if (item->column() == 0) updateVisibility();
     });
+    connect(pages_, qOverload<int>(&QComboBox::currentIndexChanged), this, [this] { applyPage(true); });
+    connect(createPage, &QPushButton::clicked, this, [this] { editPage(true); });
+    connect(editPageButton, &QPushButton::clicked, this, [this] { editPage(false); });
+    refreshPages();
     timer_ = new QTimer(this);
     timer_->setInterval(250);
     connect(timer_, &QTimer::timeout, this, &MultiSourceMonitor::display);
@@ -104,6 +138,12 @@ void MultiSourceMonitor::setRepository(orbita::stand::ParameterRepository* repos
 }
 
 void MultiSourceMonitor::setBindings(std::vector<MonitoredBinding> bindings)
+{
+    availableBindings_ = std::move(bindings);
+    applyPage(false);
+}
+
+void MultiSourceMonitor::rebuildBindings(std::vector<MonitoredBinding> bindings)
 {
     const QSignalBlocker block(table_);
     struct SavedSeries {
@@ -274,4 +314,291 @@ void MultiSourceMonitor::updateVisibility()
     plot_->axisRect()->setRangeDragAxes({plot_->xAxis}, vertical);
     plot_->axisRect()->setRangeZoomAxes({plot_->xAxis}, vertical);
     plot_->replot(QCustomPlot::rpQueuedReplot);
+}
+
+namespace {
+QString pageDirectory(const QString& scope)
+{
+    const auto root = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
+    if (root.isEmpty() || scope.isEmpty()) return {};
+    const auto key = QCryptographicHash::hash(scope.toUtf8(), QCryptographicHash::Sha256).toHex();
+    return QDir(root).filePath(QStringLiteral("monitor-pages/") + QString::fromLatin1(key));
+}
+
+QJsonObject readPage(const QString& scope, const QString& id, QString* error)
+{
+    if (pageDirectory(scope).isEmpty()) { *error = QStringLiteral("Не задана поставка или каталог данных"); return {}; }
+    if (QUuid(id).isNull()) { *error = QStringLiteral("Некорректный идентификатор страницы"); return {}; }
+    QFile file(QDir(pageDirectory(scope)).filePath(id + QStringLiteral(".json")));
+    if (!file.open(QIODevice::ReadOnly)) { *error = file.errorString(); return {}; }
+    QJsonParseError parseError;
+    const auto document = QJsonDocument::fromJson(file.readAll(), &parseError);
+    if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
+        *error = QStringLiteral("Не удалось прочитать страницу: %1").arg(parseError.errorString());
+        return {};
+    }
+    const auto result = document.object();
+    if (result.value("version").toInt() != 1 || !result.value("title").isString()
+        || !result.value("parameters").isArray()) {
+        *error = QStringLiteral("Неподдерживаемый формат страницы"); return {};
+    }
+    for (const auto& value : result.value("parameters").toArray()) {
+        const auto entry = value.toObject();
+        if (!value.isObject() || entry.value("source").toString().isEmpty()
+            || entry.value("key").toString().isEmpty() || !entry.value("label").isString()) {
+            *error = QStringLiteral("Некорректный параметр страницы"); return {};
+        }
+    }
+    return result;
+}
+
+class PageDialog final : public QDialog {
+public:
+    using QDialog::QDialog;
+    bool changed = false;
+    void reject() override
+    {
+        if (changed && QMessageBox::question(this, QStringLiteral("Несохранённые изменения"),
+            QStringLiteral("Закрыть редактор и потерять изменения?"),
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes) return;
+        QDialog::reject();
+    }
+};
+}
+
+void MultiSourceMonitor::setPageScope(const QString& scope)
+{
+    if (pageScope_ == scope) return;
+    pageScope_ = scope;
+    refreshPages();
+    applyPage(true);
+}
+
+void MultiSourceMonitor::refreshPages(const QString& selectedId)
+{
+    const QSignalBlocker blocker(pages_);
+    pages_->clear();
+    pages_->addItem(QStringLiteral("Все параметры"), QString());
+    if (pageDirectory(pageScope_).isEmpty()) return;
+    const QDir dir(pageDirectory(pageScope_));
+    for (const auto& filename : dir.entryList({QStringLiteral("*.json")}, QDir::Files, QDir::Name)) {
+        const QString id = filename.left(filename.size() - 5);
+        QString error;
+        const auto page = readPage(pageScope_, id, &error);
+        pages_->addItem(error.isEmpty() ? page.value("title").toString()
+                                      : QStringLiteral("Ошибка страницы: %1").arg(filename), id);
+    }
+    const int index = pages_->findData(selectedId);
+    pages_->setCurrentIndex(index < 0 ? 0 : index);
+}
+
+void MultiSourceMonitor::applyPage(bool resetSelection)
+{
+    const auto id = pages_->currentData().toString();
+    if (id.isEmpty()) {
+        table_->show(); graphPanel_->show();
+        splitter_->insertWidget(0, table_);
+        rebuildBindings(availableBindings_);
+        if (resetSelection) {
+            for (int row = 0; row < table_->rowCount(); ++row)
+                table_->item(row, 0)->setCheckState(Qt::Unchecked);
+        }
+        return;
+    }
+    QString error;
+    const auto page = readPage(pageScope_, id, &error);
+    if (!error.isEmpty()) {
+        rebuildBindings({});
+        QMessageBox::warning(this, QStringLiteral("Страница мониторинга"), error);
+        return;
+    }
+    table_->setVisible(page.value("table").toBool(true));
+    graphPanel_->setVisible(page.value("graph").toBool(true));
+    splitter_->insertWidget(0, page.value("graphFirst").toBool() ? graphPanel_ : table_);
+    std::vector<MonitoredBinding> visible;
+    const auto parameters = page.value("parameters").toArray();
+    for (const auto& value : parameters) {
+        const auto item = value.toObject();
+        const auto source = item.value("source").toString();
+        const auto key = item.value("key").toString();
+        auto it = std::find_if(availableBindings_.cbegin(), availableBindings_.cend(),
+            [&](const MonitoredBinding& binding) { return binding.sourceId == source && binding.parameterKey == key; });
+        MonitoredBinding binding = it == availableBindings_.cend()
+            ? MonitoredBinding{source, item.value("sourceTitle").toString(source), key,
+                item.value("label").toString(), QStringLiteral("Параметр отсутствует в текущем профиле"),
+                item.value("unit").toString()}
+            : *it;
+        binding.parameterTitle = item.value("label").toString();
+        if (it != availableBindings_.cend() && item.value("unit").toString() != binding.unit)
+            binding.unavailableReason = QStringLiteral("Единица параметра изменилась; проверьте страницу");
+        visible.push_back(std::move(binding));
+    }
+    rebuildBindings(std::move(visible));
+    if (resetSelection) {
+        for (int row = 0; row < parameters.size(); ++row)
+            table_->item(row, 0)->setCheckState(parameters[row].toObject().value("plot").toBool()
+                                                ? Qt::Checked : Qt::Unchecked);
+    }
+}
+
+void MultiSourceMonitor::editPage(bool create)
+{
+    if (pageDirectory(pageScope_).isEmpty()) { QMessageBox::warning(this, QStringLiteral("Страница"),
+        QStringLiteral("Для страниц нужны загруженная поставка, профиль оборудования и каталог данных.")); return; }
+    QString id = create ? QUuid::createUuid().toString(QUuid::WithoutBraces) : pages_->currentData().toString();
+    if (id.isEmpty()) { QMessageBox::information(this, QStringLiteral("Страница"),
+        QStringLiteral("Создайте страницу, чтобы настроить её.")); return; }
+    QString error;
+    const auto old = create ? QJsonObject{} : readPage(pageScope_, id, &error);
+    if (!error.isEmpty()) { QMessageBox::warning(this, QStringLiteral("Страница"), error); return; }
+    PageDialog dialog(this);
+    dialog.setWindowTitle(create ? QStringLiteral("Новая страница мониторинга") : QStringLiteral("Редактор страницы"));
+    dialog.resize(800, 500);
+    auto* layout = new QVBoxLayout(&dialog);
+    auto* title = new QLineEdit(old.value("title").toString(), &dialog);
+    title->setObjectName(QStringLiteral("pageTitle"));
+    title->setPlaceholderText(QStringLiteral("Название страницы"));
+    layout->addWidget(title);
+    auto* list = new QTableWidget(&dialog);
+    list->setObjectName(QStringLiteral("pageParameters"));
+    list->setColumnCount(4);
+    list->setHorizontalHeaderLabels({QStringLiteral("Показывать"), QStringLiteral("Источник"),
+                                     QStringLiteral("Подпись параметра"), QStringLiteral("График")});
+    list->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+    list->verticalHeader()->hide();
+    list->setSelectionBehavior(QAbstractItemView::SelectRows);
+    layout->addWidget(list, 1);
+    auto add = [&](const MonitoredBinding& binding, bool selected, bool plotted) {
+        const int row = list->rowCount(); list->insertRow(row);
+        auto* include = new QTableWidgetItem;
+        include->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable | Qt::ItemIsUserCheckable);
+        include->setCheckState(selected ? Qt::Checked : Qt::Unchecked);
+        include->setData(Qt::UserRole, binding.sourceId);
+        include->setData(Qt::UserRole + 1, binding.parameterKey);
+        include->setData(Qt::UserRole + 2, binding.unit);
+        include->setToolTip(QStringLiteral("Сохранённая единица: %1").arg(binding.unit));
+        list->setItem(row, 0, include);
+        auto* source = new QTableWidgetItem(binding.sourceTitle);
+        source->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable);
+        source->setToolTip(binding.unavailableReason);
+        list->setItem(row, 1, source);
+        list->setItem(row, 2, new QTableWidgetItem(binding.parameterTitle));
+        auto* graph = new QTableWidgetItem;
+        graph->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable | Qt::ItemIsUserCheckable);
+        graph->setCheckState(plotted ? Qt::Checked : Qt::Unchecked);
+        list->setItem(row, 3, graph);
+    };
+    const auto entries = old.value("parameters").toArray();
+    for (const auto& value : entries) {
+        const auto item = value.toObject();
+        const auto source = item.value("source").toString(), key = item.value("key").toString();
+        auto it = std::find_if(availableBindings_.cbegin(), availableBindings_.cend(),
+            [&](const MonitoredBinding& binding) { return binding.sourceId == source && binding.parameterKey == key; });
+        MonitoredBinding b = it == availableBindings_.cend()
+            ? MonitoredBinding{source, item.value("sourceTitle").toString(source), key, {},
+                QStringLiteral("Параметр отсутствует в текущем профиле"), item.value("unit").toString()}
+            : *it;
+        b.parameterTitle = item.value("label").toString();
+        // Сохранённая единица не меняется автоматически при смене профиля.
+        b.unit = item.value("unit").toString();
+        add(b, true, item.value("plot").toBool());
+    }
+    for (const auto& b : availableBindings_) {
+        bool exists = false;
+        for (const auto& value : entries) {
+            const auto item = value.toObject();
+            if (item.value("source").toString() == b.sourceId && item.value("key").toString() == b.parameterKey)
+                { exists = true; break; }
+        }
+        if (!exists) add(b, false, false);
+    }
+    auto* order = new QHBoxLayout;
+    auto* up = new QPushButton(QStringLiteral("Выше"), &dialog);
+    auto* down = new QPushButton(QStringLiteral("Ниже"), &dialog);
+    auto* acceptUnit = new QPushButton(QStringLiteral("Принять текущую единицу"), &dialog);
+    order->addWidget(up); order->addWidget(down); order->addWidget(acceptUnit); order->addStretch();
+    layout->addLayout(order);
+    auto move = [list, &dialog](int delta) {
+        const int from = list->currentRow(), to = from + delta;
+        if (from < 0 || to < 0 || to >= list->rowCount()) return;
+        for (int col = 0; col < list->columnCount(); ++col) {
+            auto* first = list->takeItem(from, col); auto* second = list->takeItem(to, col);
+            list->setItem(from, col, second); list->setItem(to, col, first);
+        }
+        list->selectRow(to); dialog.changed = true;
+    };
+    QObject::connect(up, &QPushButton::clicked, &dialog, [move] { move(-1); });
+    QObject::connect(down, &QPushButton::clicked, &dialog, [move] { move(1); });
+    QObject::connect(acceptUnit, &QPushButton::clicked, &dialog, [this, list, &dialog] {
+        const int row = list->currentRow();
+        if (row < 0) return;
+        auto* item = list->item(row, 0);
+        const auto it = std::find_if(availableBindings_.cbegin(), availableBindings_.cend(),
+            [item](const MonitoredBinding& binding) {
+                return binding.sourceId == item->data(Qt::UserRole).toString()
+                    && binding.parameterKey == item->data(Qt::UserRole + 1).toString();
+            });
+        if (it == availableBindings_.cend()) {
+            QMessageBox::information(&dialog, QStringLiteral("Единица"), QStringLiteral("Параметр недоступен в профиле."));
+            return;
+        }
+        const auto previous = item->data(Qt::UserRole + 2).toString();
+        if (previous == it->unit) return;
+        if (QMessageBox::question(&dialog, QStringLiteral("Изменение единицы"),
+            QStringLiteral("Заменить единицу «%1» на «%2»? Проверьте настройки графика.")
+                .arg(previous, it->unit), QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes) return;
+        item->setData(Qt::UserRole + 2, it->unit);
+        item->setToolTip(QStringLiteral("Сохранённая единица: %1").arg(it->unit));
+        dialog.changed = true;
+    });
+    auto* blocks = new QHBoxLayout;
+    auto* showTable = new QCheckBox(QStringLiteral("Таблица"), &dialog);
+    auto* showGraph = new QCheckBox(QStringLiteral("График"), &dialog);
+    showTable->setChecked(old.value("table").toBool(true));
+    showGraph->setChecked(old.value("graph").toBool(true));
+    auto* blockOrder = new QComboBox(&dialog);
+    blockOrder->addItems({QStringLiteral("Таблица сверху"), QStringLiteral("График сверху")});
+    blockOrder->setCurrentIndex(old.value("graphFirst").toBool() ? 1 : 0);
+    blocks->addWidget(showTable); blocks->addWidget(showGraph); blocks->addWidget(blockOrder);
+    layout->addLayout(blocks);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Cancel, &dialog);
+    layout->addWidget(buttons);
+    QObject::connect(title, &QLineEdit::textChanged, &dialog, [&dialog] { dialog.changed = true; });
+    QObject::connect(list, &QTableWidget::itemChanged, &dialog, [&dialog] { dialog.changed = true; });
+    QObject::connect(showTable, &QCheckBox::toggled, &dialog, [&dialog] { dialog.changed = true; });
+    QObject::connect(showGraph, &QCheckBox::toggled, &dialog, [&dialog] { dialog.changed = true; });
+    QObject::connect(blockOrder, qOverload<int>(&QComboBox::currentIndexChanged), &dialog, [&dialog] { dialog.changed = true; });
+    QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, [&] {
+        QJsonArray parameters;
+        for (int row = 0; row < list->rowCount(); ++row) {
+            auto* include = list->item(row, 0);
+            if (include->checkState() != Qt::Checked) continue;
+            const auto label = list->item(row, 2)->text().trimmed();
+            if (label.isEmpty()) { QMessageBox::warning(&dialog, QStringLiteral("Страница"),
+                QStringLiteral("Укажите подпись каждого выбранного параметра.")); return; }
+            parameters.append(QJsonObject{{"source", include->data(Qt::UserRole).toString()},
+                {"key", include->data(Qt::UserRole + 1).toString()},
+                {"unit", include->data(Qt::UserRole + 2).toString()},
+                {"sourceTitle", list->item(row, 1)->text()}, {"label", label},
+                {"plot", list->item(row, 3)->checkState() == Qt::Checked}});
+        }
+        if (title->text().trimmed().isEmpty() || parameters.isEmpty() || (!showTable->isChecked() && !showGraph->isChecked())) {
+            QMessageBox::warning(&dialog, QStringLiteral("Страница"),
+                QStringLiteral("Укажите название, выберите параметры и хотя бы один компонент.")); return;
+        }
+        if (!QDir().mkpath(pageDirectory(pageScope_))) { QMessageBox::warning(&dialog, QStringLiteral("Страница"),
+            QStringLiteral("Не удалось создать каталог страниц.")); return; }
+        QSaveFile file(QDir(pageDirectory(pageScope_)).filePath(id + QStringLiteral(".json")));
+        const QJsonObject page{{"version", 1}, {"title", title->text().trimmed()}, {"parameters", parameters},
+            {"table", showTable->isChecked()}, {"graph", showGraph->isChecked()},
+            {"graphFirst", blockOrder->currentIndex() == 1}};
+        const auto data = QJsonDocument(page).toJson();
+        if (!file.open(QIODevice::WriteOnly) || file.write(data) != data.size() || !file.commit()) {
+            QMessageBox::warning(&dialog, QStringLiteral("Страница"),
+                                 QStringLiteral("Не удалось сохранить страницу: %1").arg(file.errorString())); return;
+        }
+        dialog.accept();
+    });
+    if (dialog.exec() == QDialog::Accepted) { refreshPages(id); applyPage(true); }
 }

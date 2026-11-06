@@ -15,6 +15,7 @@
 #include <QComboBox>
 #include <QDir>
 #include <QDirIterator>
+#include <QDialogButtonBox>
 #include <QFile>
 #include <QFileInfo>
 #include <QElapsedTimer>
@@ -561,6 +562,55 @@ private:
 
 int runChild(const QString& mode)
 {
+    if (mode == "--monitor-page") {
+        const std::vector<MonitoredBinding> bindings{
+            {QStringLiteral("one"), QStringLiteral("Первый"), QStringLiteral("a"), QStringLiteral("A"), {}, QStringLiteral("V")},
+            {QStringLiteral("two"), QStringLiteral("Второй"), QStringLiteral("b"), QStringLiteral("B"), {}, QStringLiteral("A")}};
+        MultiSourceMonitor monitor;
+        monitor.setPageScope(QStringLiteral("test-delivery\x1ftest-profile"));
+        monitor.setBindings(bindings);
+        monitor.show();
+        auto* create = monitor.findChild<QPushButton*>(QStringLiteral("createMonitorPage"));
+        auto* table = monitor.findChild<QTableWidget*>(QStringLiteral("multiSourceValues"));
+        bool edited = false;
+        QTimer::singleShot(0, [&] {
+            auto* dialog = qobject_cast<QDialog*>(QApplication::activeModalWidget());
+            if (!dialog) return;
+            auto* title = dialog->findChild<QLineEdit*>(QStringLiteral("pageTitle"));
+            auto* parameters = dialog->findChild<QTableWidget*>(QStringLiteral("pageParameters"));
+            auto* buttons = dialog->findChild<QDialogButtonBox*>();
+            if (!title || !parameters || !buttons || parameters->rowCount() != 2) { dialog->accept(); return; }
+            title->setText(QStringLiteral("Рабочая страница"));
+            parameters->item(1, 0)->setCheckState(Qt::Checked);
+            parameters->item(1, 2)->setText(QStringLiteral("Ток"));
+            parameters->item(1, 3)->setCheckState(Qt::Checked);
+            edited = true;
+            buttons->button(QDialogButtonBox::Save)->click();
+        });
+        require(create && table, "monitor page controls unavailable");
+        create->click();
+        require(edited && table->rowCount() == 1 && table->item(0, 1)->text() == QStringLiteral("Ток")
+                    && table->item(0, 0)->checkState() == Qt::Checked,
+                "configured monitoring page was not applied");
+        require(monitor.bindings().size() == 2, "page filtering removed available scenario bindings");
+        table->item(0, 0)->setCheckState(Qt::Unchecked);
+        MultiSourceMonitor reopened;
+        reopened.setPageScope(QStringLiteral("test-delivery\x1ftest-profile"));
+        reopened.setBindings({bindings.front()});
+        auto* pages = reopened.findChild<QComboBox*>(QStringLiteral("monitorPages"));
+        auto* reopenedTable = reopened.findChild<QTableWidget*>(QStringLiteral("multiSourceValues"));
+        require(pages && pages->count() >= 2, "saved monitoring page missing after reopening");
+        pages->setCurrentIndex(pages->findText(QStringLiteral("Рабочая страница")));
+        require(reopenedTable->rowCount() == 1 && reopenedTable->item(0, 1)->text() == QStringLiteral("Ток")
+                    && reopenedTable->item(0, 4)->text() == QStringLiteral("Недоступен")
+                    && reopenedTable->item(0, 0)->checkState() == Qt::Checked,
+                "saved page did not retain its settings or missing parameter");
+        reopened.setPageScope(QStringLiteral("other-delivery\x1ftest-profile"));
+        require(pages->count() == 1 && reopenedTable->rowCount() == 1
+                    && reopenedTable->item(0, 1)->text() == QStringLiteral("A"),
+                "pages from another delivery were exposed");
+        return 0;
+    }
     if (mode == "--profile-selection") {
         ProfileWindow window;
         require(window.simulatorSelected(), "simulator profile did not override project profile");
@@ -989,6 +1039,7 @@ int runParent()
         }
     };
     execute("--profile-selection", 0);
+    execute("--monitor-page", 0);
     execute("--monitor-disconnect", 0);
     execute("--monitor-live", 0);
     execute("--monitor-broken", 0);

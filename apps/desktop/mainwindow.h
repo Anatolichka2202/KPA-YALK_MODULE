@@ -105,6 +105,7 @@ protected:
     void integrationConfigureProject(orbita::stand::ProjectDefinition project)
     {
         project_ = std::move(project);
+        updateSourceMonitorBindings();
     }
 
     void integrationConfigureStandProfile(
@@ -113,6 +114,7 @@ protected:
         standProfile_ = profile;
         standProfilePath_ = sourcePath;
         standRuntimeReady_ = false;
+        updateSourceMonitorBindings();
     }
     void integrationEnsureStandRuntime()
     {

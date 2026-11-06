@@ -1659,7 +1659,7 @@ void MainWindow::onRefreshMetadata()
 // ----------------------------------------------------------------------------
 void MainWindow::updateSourceMonitorBindings()
 {
-    if (!mainPage_) return;
+    if (!mainPage_ || !parameterAcquisition_) return;
     auto bindings = additionalMonitorBindings_;
     if (orbitaMonitorDeclared_) {
         const auto title = orbitaMonitorSimulator_
@@ -1679,6 +1679,9 @@ void MainWindow::updateSourceMonitorBindings()
             && !subscriptions[binding.sourceId].contains(binding.parameterKey))
             subscriptions[binding.sourceId].push_back(binding.parameterKey);
     parameterAcquisition_->setSubscriptions(std::move(subscriptions));
+    mainPage_->sourceMonitor()->setPageScope(project_ && !project_->id.empty() && !standProfile_.id.empty()
+        ? QString::fromStdString(project_->id) + QChar(0x1f) + QString::fromStdString(standProfile_.id)
+        : QString());
     mainPage_->sourceMonitor()->setBindings(std::move(bindings));
 }
 
