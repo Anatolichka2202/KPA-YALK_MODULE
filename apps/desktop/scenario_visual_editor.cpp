@@ -103,6 +103,7 @@ ScenarioVisualEditor::ScenarioVisualEditor(QString path, QWidget* parent)
             : id == QStringLiteral("telemetry.health") ? QStringLiteral("Проверка состояния потока «Орбита»")
             : id == QStringLiteral("parameter.measure") ? QStringLiteral("Измерить параметр")
             : id == QStringLiteral("station.delay") ? QStringLiteral("Выдержка времени")
+            : id == QStringLiteral("switch.set") ? QStringLiteral("Коммутация ИСД")
             : QStringLiteral("Действие: %1").arg(id));
     };
     connect(procedure_, &QLineEdit::textChanged, this, updateCurrentProcedure);
@@ -129,13 +130,19 @@ ScenarioVisualEditor::ScenarioVisualEditor(QString path, QWidget* parent)
     delaySettings_->setObjectName(QStringLiteral("configureScenarioDelay"));
     form->addRow(QString(), delaySettings_);
     connect(delaySettings_, &QPushButton::clicked, this, &ScenarioVisualEditor::configureDelay);
+    switchSettings_ = new QPushButton(QStringLiteral("Настроить коммутацию ИСД…"), formHost);
+    switchSettings_->setObjectName(QStringLiteral("configureScenarioSwitch"));
+    form->addRow(QString(), switchSettings_);
+    connect(switchSettings_, &QPushButton::clicked, this, &ScenarioVisualEditor::configureSwitch);
     connect(procedure_, &QLineEdit::textChanged, this, [this](const QString& procedure) {
         healthConfigured_ = false;
         measurementConfigured_ = false;
         delayConfigured_ = false;
+        switchConfigured_ = false;
         telemetrySettings_->setEnabled(!published_ && procedure == QStringLiteral("telemetry.health"));
         measurementSettings_->setEnabled(!published_ && procedure == QStringLiteral("parameter.measure"));
         delaySettings_->setEnabled(!published_ && procedure == QStringLiteral("station.delay"));
+        switchSettings_->setEnabled(!published_ && procedure == QStringLiteral("switch.set"));
     });
     formLayout->addLayout(form);
     auto* technicalToggle = new QPushButton(QStringLiteral("Технические настройки ▸"), formHost);
@@ -312,7 +319,8 @@ void ScenarioVisualEditor::setAvailableProcedures(const std::vector<std::string>
         const auto title = id == QStringLiteral("telemetry.health")
             ? QStringLiteral("Проверить состояние потока «Орбита»")
             : id == QStringLiteral("parameter.measure") ? QStringLiteral("Измерить параметр")
-            : id == QStringLiteral("station.delay") ? QStringLiteral("Выдержать время") : id;
+            : id == QStringLiteral("station.delay") ? QStringLiteral("Выдержать время")
+            : id == QStringLiteral("switch.set") ? QStringLiteral("Коммутация ИСД") : id;
         procedureChoice_->addItem(title, id);
     }
     procedureChoice_->setCurrentIndex(0);
@@ -376,6 +384,7 @@ void ScenarioVisualEditor::setEditorEnabled(bool enabled)
     telemetrySettings_->setEnabled(enabled && procedure_->text() == QStringLiteral("telemetry.health"));
     measurementSettings_->setEnabled(enabled && procedure_->text() == QStringLiteral("parameter.measure"));
     delaySettings_->setEnabled(enabled && procedure_->text() == QStringLiteral("station.delay"));
+    switchSettings_->setEnabled(enabled && procedure_->text() == QStringLiteral("switch.set"));
     requires_->setEnabled(enabled);
     resources_->setEnabled(enabled);
     arguments_->setEnabled(enabled);
@@ -443,6 +452,7 @@ void ScenarioVisualEditor::showNode(const orbita::stand::ScenarioNode& node)
     const QScopedValueRollback<bool> guard(updatingFields_, true);
     healthConfigured_ = false;
     delayConfigured_ = false;
+    switchConfigured_ = false;
     id_->setText(QString::fromStdString(node.id));
     title_->setText(QString::fromStdString(node.title));
     tu_->setText(QString::fromStdString(node.tuRequirement));
@@ -510,6 +520,8 @@ bool ScenarioVisualEditor::commitEditorToNode(const StepPath& path)
         && !measurementConfigured_ && !configureParameterMeasurementForNode(node)) return false;
     if (node->procedure != "station.delay" && procedure_->text() == QStringLiteral("station.delay")
         && !delayConfigured_ && !configureDelayForNode(node)) return false;
+    if (node->procedure != "switch.set" && procedure_->text() == QStringLiteral("switch.set")
+        && !switchConfigured_ && !configureSwitchForNode(node)) return false;
     const bool healthArgumentsChanged = arguments_->toPlainText() != healthOriginalArguments_;
     const bool healthRequirementsChanged = requires_->toPlainText() != healthOriginalRequires_
         || resources_->toPlainText() != healthOriginalResources_;
@@ -582,6 +594,7 @@ bool ScenarioVisualEditor::commitEditorToNode(const StepPath& path)
     healthConfigured_ = false;
     measurementConfigured_ = false;
     delayConfigured_ = false;
+    switchConfigured_ = false;
     return true;
 }
 
@@ -711,6 +724,115 @@ bool ScenarioVisualEditor::configureTelemetryHealthForNode(const orbita::stand::
         requires_->setPlainText(text + QStringLiteral("orbita.parameter_source"));
     }
     healthConfigured_ = true;
+    return true;
+}
+
+void ScenarioVisualEditor::configureSwitch()
+{
+    configureSwitchForNode(findNode(selectedPath()));
+}
+
+bool ScenarioVisualEditor::configureSwitchForNode(const orbita::stand::ScenarioNode* node)
+{
+    if (published_ || !node || procedure_->text() != QStringLiteral("switch.set")) return false;
+    const bool replacing = node->procedure != "switch.set" && !switchConfigured_;
+    const auto raw = arguments_->toPlainText().trimmed();
+    const auto resourceText = resources_->toPlainText().trimmed();
+    const auto requiredText = requires_->toPlainText().trimmed();
+    std::map<std::string, std::string> args;
+    QString existingResource;
+    if (!replacing) {
+        std::set<std::string> keys;
+        for (const auto& line : raw.split(QLatin1Char('\n'), Qt::SkipEmptyParts)) {
+            const int separator = line.indexOf(QLatin1Char('='));
+            const auto key = trimmedUtf8(line.left(separator));
+            if (separator < 1 || !keys.insert(key).second
+                || (key != "type" && key != "channel" && key != "enabled")) {
+                QMessageBox::warning(this, QStringLiteral("Коммутация ИСД"),
+                    QStringLiteral("Форма не поддерживает сохранённые параметры; они не изменены.")); return false;
+            }
+        }
+        args = arguments(raw);
+        for (const auto& line : resourceText.split(QLatin1Char('\n'), Qt::SkipEmptyParts)) {
+            const int separator = line.indexOf(QLatin1Char('|'));
+            if (separator < 1 || line.left(separator).trimmed().isEmpty()
+                || line.mid(separator + 1).trimmed().isEmpty()) {
+                QMessageBox::warning(this, QStringLiteral("Коммутация ИСД"),
+                    QStringLiteral("Исправьте незаконченные строки ресурсов; они не изменены.")); return false;
+            }
+        }
+        const auto bound = resources(resourceText);
+        if (!requiredText.isEmpty() || bound.size() != 1 || bound[0].capability != "stand.switch_matrix") {
+            QMessageBox::warning(this, QStringLiteral("Коммутация ИСД"),
+                QStringLiteral("Форма не поддерживает сохранённые зависимости; они не изменены.")); return false;
+        }
+        existingResource = QString::fromStdString(bound[0].resource);
+    } else if ((!raw.isEmpty() || !resourceText.isEmpty() || !requiredText.isEmpty())
+        && QMessageBox::question(this, QStringLiteral("Смена действия"),
+            QStringLiteral("Заменить параметры и зависимости предыдущего действия настройкой коммутации?"),
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes) return false;
+    QDialog dialog(this);
+    dialog.setWindowTitle(QStringLiteral("Коммутация ИСД"));
+    auto* layout = new QVBoxLayout(&dialog);
+    auto* note = new QLabel(QStringLiteral("Укажите тип и канал согласно подтверждённой схеме подключения."), &dialog);
+    note->setWordWrap(true);
+    layout->addWidget(note);
+    auto* form = new QFormLayout;
+    auto* resource = new QComboBox(&dialog);
+    resource->setObjectName(QStringLiteral("switchResource"));
+    resource->addItem(QStringLiteral("Выберите ИСД…"), QString());
+    for (const auto& item : switchResources_) resource->addItem(item, item);
+    const int resourceIndex = resource->findData(existingResource);
+    if (!existingResource.isEmpty() && resourceIndex < 0)
+        resource->addItem(existingResource + QStringLiteral(" (недоступен)"), existingResource);
+    if (!existingResource.isEmpty()) resource->setCurrentIndex(resource->findData(existingResource));
+    auto* type = new QComboBox(&dialog);
+    type->setObjectName(QStringLiteral("switchType"));
+    type->addItem(QStringLiteral("Выберите тип…"), QString());
+    type->addItem(QStringLiteral("Тип 2"), QStringLiteral("2"));
+    type->addItem(QStringLiteral("Тип 3"), QStringLiteral("3"));
+    if (args.count("type")) type->setCurrentIndex(type->findData(QString::fromStdString(args["type"])));
+    auto* channel = new QSpinBox(&dialog);
+    channel->setObjectName(QStringLiteral("switchChannel"));
+    channel->setRange(0, 4096);
+    channel->setSpecialValueText(QStringLiteral("Выберите канал…"));
+    if (args.count("channel")) {
+        bool ok = false; const int value = QString::fromStdString(args["channel"]).toInt(&ok);
+        if (!ok || value < 1 || value > 4096) {
+            QMessageBox::warning(this, QStringLiteral("Коммутация ИСД"),
+                QStringLiteral("Сохранённый канал не поддерживается формой.")); return false;
+        }
+        channel->setValue(value);
+    }
+    auto* enabled = new QComboBox(&dialog);
+    enabled->setObjectName(QStringLiteral("switchEnabled"));
+    enabled->addItem(QStringLiteral("Выберите состояние…"), QString());
+    enabled->addItem(QStringLiteral("Включить"), QStringLiteral("1"));
+    enabled->addItem(QStringLiteral("Выключить"), QStringLiteral("0"));
+    if (args.count("enabled")) enabled->setCurrentIndex(enabled->findData(QString::fromStdString(args["enabled"])));
+    form->addRow(QStringLiteral("Ресурс:"), resource);
+    form->addRow(QStringLiteral("Тип коммутации:"), type);
+    form->addRow(QStringLiteral("Канал:"), channel);
+    form->addRow(QStringLiteral("Состояние:"), enabled);
+    layout->addLayout(form);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, [&] {
+        if (!switchResources_.contains(resource->currentData().toString())
+            || type->currentData().toString().isEmpty() || channel->value() == 0
+            || enabled->currentData().toString().isEmpty()) {
+            QMessageBox::warning(&dialog, QStringLiteral("Коммутация ИСД"),
+                QStringLiteral("Выберите доступный ресурс, тип, канал и состояние.")); return;
+        }
+        dialog.accept();
+    });
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    layout->addWidget(buttons);
+    if (dialog.exec() != QDialog::Accepted) return false;
+    arguments_->setPlainText(QStringLiteral("type = %1\nchannel = %2\nenabled = %3")
+        .arg(type->currentData().toString()).arg(channel->value()).arg(enabled->currentData().toString()));
+    requires_->clear();
+    resources_->setPlainText(resource->currentData().toString() + QStringLiteral(" | stand.switch_matrix"));
+    switchConfigured_ = true;
     return true;
 }
 

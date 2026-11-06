@@ -179,7 +179,9 @@ void UniversalMainWindow::reloadGenericScenarios()
                         requirements.insert(QString::fromStdString(capability), configured);
                     }
                     for (const auto& resource : node.requiredResources) {
-                        const auto* component = orbita::stand::findComponentByBinding(
+                        const auto* component = orbita::stand::findComponentById(
+                            integrationStandProfile(), resource.resource);
+                        if (!component) component = orbita::stand::findComponentByBinding(
                             integrationStandProfile(), resource.resource);
                         const bool configured = component && component->enabled
                             && component->kind == "equipment"
@@ -275,6 +277,19 @@ void UniversalMainWindow::editGenericScenario(const QString& path)
         if (!binding.parameterKey.isEmpty()) parameters.push_back({binding.sourceId, binding.parameterKey,
             binding.sourceTitle + QStringLiteral(" · ") + binding.parameterTitle, binding.unit});
     editor.setAvailableParameters(std::move(parameters));
+    QStringList switchResources;
+    for (const auto& component : integrationStandProfile().components) {
+        if (!component.enabled || component.kind != "equipment"
+            || !componentProvides(component, "stand.switch_matrix")) continue;
+        // Идентификатор компонента всегда регистрируется как ресурс. В старом
+        // формате bind содержит возможности, а не пользовательские роли.
+        switchResources.push_back(QString::fromStdString(component.id));
+        if (!component.capabilities.empty())
+            for (const auto& binding : component.bindings)
+                switchResources.push_back(QString::fromStdString(binding));
+    }
+    switchResources.removeDuplicates();
+    editor.setSwitchResources(switchResources);
     const QString userRoot = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
     const QString userScenarios = userRoot.isEmpty() ? QString()
         : QDir(userRoot).filePath(QStringLiteral("scenarios"));

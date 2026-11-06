@@ -488,6 +488,9 @@ public:
         orbita::stand::StandProfile profile;
         profile.id = "simulator";
         profile.version = "1";
+        if (mode_ == "--create-new")
+            profile.components.push_back({"fake-isd", "equipment", "test.isd", true,
+                {"stand.switch_matrix"}, {}});
         integrationConfigureStandProfile(profile, {});
         integrationEnsureStandRuntime();
         if (!integrationStandRuntimeReady()) {
@@ -527,6 +530,7 @@ public:
     bool firstEntered() const { return firstEntered_.load(); }
     void allowMeasurement() { allowMeasurement_.store(true); }
     int safeStops() const { return safeStops_.load(); }
+    bool switchExercised() const { return switchCommands_.load() == 1; }
 
 protected:
     void integrationPrepareEquipmentForScenario(const orbita::stand::ScenarioDefinition&,
@@ -551,6 +555,19 @@ protected:
             integrationEquipmentRegistry()->bind("test.simulator", [](const std::string&,
                 const std::map<std::string, std::string>&) { return std::string("42"); },
                 [this] { ++safeStops_; });
+            if (mode_ == "--create-new")
+                integrationEquipmentRegistry()->bindResource("fake-isd", {"stand.switch_matrix"},
+                    [this](const std::string& capability, const std::string& operation,
+                           const std::map<std::string, std::string>& arguments) {
+                        if (capability != "stand.switch_matrix" || operation != "set_switch"
+                            || arguments.at("type") != "2" || arguments.at("channel") != "17"
+                            || arguments.at("enabled") != "1" || arguments.at("owner").empty())
+                            throw std::runtime_error("unexpected simulated ISD command");
+                        switchActive_.store(true); ++switchCommands_;
+                        return std::string("status=ok\n");
+                    }, [this] { switchActive_.store(false); }, [this] {
+                        return orbita::stand::SafeStopResult{!switchActive_.load(), "Состояние имитатора"};
+                    });
         });
     }
 private:
@@ -558,6 +575,8 @@ private:
     std::set<std::string> previousRunIds_;
     std::string runId_;
     std::atomic_bool firstEntered_{false}, allowMeasurement_{false};
+    std::atomic_bool switchActive_{false};
+    std::atomic_int switchCommands_{0};
     std::atomic_int safeStops_{0};
 };
 
@@ -810,6 +829,29 @@ int runChild(const QString& mode)
                     if (duration && buttons) { duration->setValue(50); buttons->button(QDialogButtonBox::Ok)->click(); }
                 });
                 delaySettings->click();
+                add->click();
+                tu->setText(QStringLiteral("test.switch"));
+                const int switchIndex = actions->findData(QStringLiteral("switch.set"));
+                auto* switchSettings = editor->findChild<QPushButton*>(QStringLiteral("configureScenarioSwitch"));
+                if (switchIndex < 0 || !switchSettings) return;
+                QMetaObject::invokeMethod(actions, "activated", Q_ARG(int, switchIndex));
+                QTimer::singleShot(0, [] {
+                    auto* config = qobject_cast<QDialog*>(QApplication::activeModalWidget());
+                    if (!config) return;
+                    auto* resource = config->findChild<QComboBox*>(QStringLiteral("switchResource"));
+                    auto* type = config->findChild<QComboBox*>(QStringLiteral("switchType"));
+                    auto* channel = config->findChild<QSpinBox*>(QStringLiteral("switchChannel"));
+                    auto* enabled = config->findChild<QComboBox*>(QStringLiteral("switchEnabled"));
+                    auto* buttons = config->findChild<QDialogButtonBox*>();
+                    if (resource && type && channel && enabled && buttons) {
+                        resource->setCurrentIndex(resource->findData(QStringLiteral("fake-isd")));
+                        type->setCurrentIndex(type->findData(QStringLiteral("2")));
+                        channel->setValue(17);
+                        enabled->setCurrentIndex(enabled->findData(QStringLiteral("1")));
+                        buttons->button(QDialogButtonBox::Ok)->click();
+                    }
+                });
+                switchSettings->click();
                 QTimer::singleShot(0, [] {
                     if (auto* versionInput = qobject_cast<QInputDialog*>(QApplication::activeModalWidget())) {
                         versionInput->setTextValue(QStringLiteral("2"));
@@ -910,12 +952,18 @@ int runChild(const QString& mode)
         require(store.unfinishedRuns().empty(), "completed GUI run was not finalized");
     const auto persisted = store.load(window.runId());
     require(persisted && persisted->verdict == orbita::stand::RunVerdict::Ok
-                && persisted->steps.size() == 2u
+                && persisted->steps.size() == (mode == "--create-new" ? 3u : 2u)
                 && (mode != "--new-version" || (persisted->scenarioVersion == "2"
                     && persisted->steps.front().title == "Изменённый шаг"))
                 && (mode != "--create-new" || (persisted->scenarioVersion == "2"
                     && persisted->scenarioTitle == "Новая проверка имитатора"
-                    && persisted->steps.back().verdict == orbita::stand::RunVerdict::Ok))
+                    && persisted->steps.back().verdict == orbita::stand::RunVerdict::Ok
+                    && window.switchExercised()
+                    && std::any_of(persisted->evidence.begin(), persisted->evidence.end(), [](const auto& event) {
+                        const auto confirmed = event.data.find("confirmed");
+                        return event.operation == "safe_stop_resource" && confirmed != event.data.end()
+                            && confirmed->second == "true";
+                    })))
                 && persisted->steps.front().measurements.size() == 1
                 && persisted->steps.front().measurements.front().measured == 42,
             "completed GUI run lost its persisted measurement");

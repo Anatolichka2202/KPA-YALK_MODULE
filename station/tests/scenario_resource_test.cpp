@@ -1,6 +1,7 @@
 #include "orbita_stand/config.h"
 #include "orbita_stand/resource_lease.h"
 #include "orbita_stand/scenario.h"
+#include "orbita_stand/equipment_runtime.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -397,6 +398,50 @@ int main(int argc, char** argv)
             timedScenario.steps[0].arguments["duration_ms"] = invalid;
             require(!timing.validate(timedScenario).empty(), "invalid delay was accepted");
         }
+
+        ScenarioEngine switching;
+        registerSwitchProcedures(switching);
+        auto switchScenario = scenario;
+        switchScenario.steps.clear();
+        ScenarioNode switchNode;
+        switchNode.id = "switch"; switchNode.title = "Коммутация"; switchNode.tuRequirement = "test.switch";
+        switchNode.procedure = "switch.set";
+        switchNode.requiredResources.push_back({"switch.test", "stand.switch_matrix"});
+        switchNode.arguments = {{"type", "2"}, {"channel", "17"}, {"enabled", "1"}};
+        switchScenario.steps.push_back(switchNode);
+        EquipmentRegistry switchEquipment;
+        bool active = false, badReply = false;
+        int commands = 0;
+        switchEquipment.bindResource("switch.test", {"stand.switch_matrix"},
+            [&](const auto&, const auto& operation, const auto& args) {
+                require(operation == "set_switch" && args.at("type") == "2"
+                    && args.at("channel") == "17" && args.at("enabled") == "1"
+                    && !args.at("owner").empty(), "switch command lost configured arguments");
+                ++commands; active = true;
+                return badReply ? std::string("status=error\n") : std::string("status=ok\n");
+            }, [&] { active = false; }, [&] { return SafeStopResult{!active, "Состояние имитатора"}; });
+        ResourceLeaseManager switchLeases;
+        const auto switched = switching.run(switchScenario, switchEquipment, "profile", "SN", false, {}, &switchLeases);
+        require(switched.verdict == RunVerdict::Ok && commands == 1 && !active,
+                "switch simulator did not execute and confirm cleanup");
+        switchScenario.steps[0].arguments["channel"] = "0";
+        const auto invalidSwitch = switching.run(switchScenario, switchEquipment, "profile", "SN", false, {}, &switchLeases);
+        require(invalidSwitch.verdict == RunVerdict::Incomplete && commands == 1,
+                "invalid switch reached the simulated equipment");
+        switchScenario.steps[0].arguments["channel"] = "17";
+        badReply = true;
+        const auto rejectedSwitch = switching.run(switchScenario, switchEquipment, "profile", "SN", false, {}, &switchLeases);
+        require(rejectedSwitch.verdict == RunVerdict::Error && commands == 2 && !active,
+                "unconfirmed switch command was accepted or left active");
+        EquipmentRegistry unconfirmedEquipment;
+        unconfirmedEquipment.bindResource("switch.test", {"stand.switch_matrix"},
+            [](const auto&, const auto&, const auto&) { return std::string("status=ok\n"); }, [] {});
+        ResourceLeaseManager unconfirmedLeases;
+        const auto unconfirmed = switching.run(switchScenario, unconfirmedEquipment,
+            "profile", "SN", false, {}, &unconfirmedLeases);
+        require(unconfirmed.verdict == RunVerdict::Error
+                    && unconfirmedLeases.stateOf("switch.test")->state == ResourceState::Indeterminate,
+                "missing safe-stop confirmation was incorrectly reported as success");
 
         std::cout << "scenario resource routing contract OK\n";
         return 0;

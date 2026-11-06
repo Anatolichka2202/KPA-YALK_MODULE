@@ -264,6 +264,28 @@ public:
         }
     }
 
+    std::map<std::string, SafeStopResult> safeStopResources(
+        const std::set<std::string>& resources) noexcept override
+    {
+        // Не теряем результат подтверждения при прохождении через обёртку
+        // регистрации событий: только сам поставщик знает состояние ресурса.
+        auto results = upstream_.safeStopResources(resources);
+        try {
+            for (const auto& [resource, result] : results) {
+                EvidenceEvent event;
+                stamp(event, "SAFETY");
+                event.operation = "safe_stop_resource";
+                event.message = result.reason;
+                event.data["resource"] = resource;
+                event.data["confirmed"] = result.confirmed ? "true" : "false";
+                evidence_.push_back(std::move(event));
+            }
+        } catch (...) {
+            // Ошибка журнала не должна влиять на результат остановки.
+        }
+        return results;
+    }
+
 private:
     void stamp(EvidenceEvent& event, const std::string& type)
     {

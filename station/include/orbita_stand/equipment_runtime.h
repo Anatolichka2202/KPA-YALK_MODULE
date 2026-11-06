@@ -76,6 +76,7 @@ public:
         const std::string& operation,
         const std::map<std::string, std::string>& arguments)>;
     using SafeStopFunction = std::function<void()>;
+    using SafeStopConfirmation = std::function<SafeStopResult()>;
 
     // Compatibility routing while old procedures still address a capability
     // without a delivery role. New physical scenarios must use resources.
@@ -93,7 +94,8 @@ public:
         std::string resourceId,
         std::set<std::string> capabilities,
         ResourceInvokeFunction invoke,
-        SafeStopFunction safeStop = {});
+        SafeStopFunction safeStop = {},
+        SafeStopConfirmation confirmSafeStop = {});
     bool hasResource(const std::string& resourceId) const;
     bool resourceHasCapability(
         const std::string& resourceId,
@@ -115,6 +117,8 @@ public:
         const std::string& operation,
         const std::map<std::string, std::string>& arguments) override;
     void safeStopAll() noexcept override;
+    std::map<std::string, SafeStopResult> safeStopResources(
+        const std::set<std::string>& resources) noexcept override;
     std::vector<std::string> capabilities() const;
 
 private:
@@ -128,6 +132,7 @@ private:
         std::shared_ptr<EquipmentDevice> device;
         ResourceInvokeFunction invoke;
         SafeStopFunction safeStop;
+        SafeStopConfirmation confirmSafeStop;
     };
 
     std::map<std::string, DefaultBinding> defaults_;
@@ -136,5 +141,9 @@ private:
 
 std::string encodePluginArguments(const std::map<std::string, std::string>& arguments);
 std::map<std::string, std::string> decodePluginArguments(const std::string& value);
+
+// Сценарное действие использует объявленный ресурс коммутации и не выбирает
+// физический маршрут самостоятельно.
+void registerSwitchProcedures(ScenarioEngine& engine);
 
 } // namespace orbita::stand

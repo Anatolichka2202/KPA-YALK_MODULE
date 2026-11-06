@@ -330,14 +330,15 @@ void EquipmentRegistry::bindResource(
         }
     }
     resources_.emplace(std::move(resourceId), ResourceBinding{
-        std::move(capabilities), std::move(device), {}, {}});
+        std::move(capabilities), std::move(device), {}, {}, {}});
 }
 
 void EquipmentRegistry::bindResource(
     std::string resourceId,
     std::set<std::string> capabilities,
     ResourceInvokeFunction invoke,
-    SafeStopFunction safeStop)
+    SafeStopFunction safeStop,
+    SafeStopConfirmation confirmSafeStop)
 {
     if (resourceId.empty() || capabilities.empty() || !invoke) {
         throw std::invalid_argument(
@@ -347,7 +348,7 @@ void EquipmentRegistry::bindResource(
         throw std::invalid_argument("Equipment resource is already bound: " + resourceId);
     }
     resources_.emplace(std::move(resourceId), ResourceBinding{
-        std::move(capabilities), nullptr, std::move(invoke), std::move(safeStop)});
+        std::move(capabilities), nullptr, std::move(invoke), std::move(safeStop), std::move(confirmSafeStop)});
 }
 
 bool EquipmentRegistry::hasResource(const std::string& resourceId) const
@@ -467,6 +468,68 @@ std::vector<std::string> EquipmentRegistry::capabilities() const
         result.push_back(capability);
     }
     return result;
+}
+
+std::map<std::string, SafeStopResult> EquipmentRegistry::safeStopResources(
+    const std::set<std::string>& resources) noexcept
+{
+    safeStopAll();
+    std::map<std::string, SafeStopResult> results;
+    for (const auto& resource : resources) {
+        const auto binding = resources_.find(resource);
+        if (binding == resources_.end() || !binding->second.confirmSafeStop) {
+            results.emplace(resource, SafeStopResult{false, "Подтверждение безопасного состояния недоступно"});
+            continue;
+        }
+        try { results.emplace(resource, binding->second.confirmSafeStop()); }
+        catch (...) { results.emplace(resource, SafeStopResult{false, "Ошибка проверки безопасного состояния"}); }
+    }
+    return results;
+}
+
+void registerSwitchProcedures(ScenarioEngine& engine)
+{
+    const auto validate = [](const ScenarioNode& node) {
+        std::vector<std::string> errors;
+        for (const auto& [key, value] : node.arguments) {
+            (void)value;
+            if (key != "type" && key != "channel" && key != "enabled")
+                errors.push_back("Неизвестный параметр коммутации: " + key);
+        }
+        const auto type = node.arguments.find("type");
+        if (type == node.arguments.end() || (type->second != "2" && type->second != "3"))
+            errors.push_back("Выберите тип коммутации 2 или 3");
+        const auto channel = node.arguments.find("channel");
+        if (channel == node.arguments.end() || channel->second.empty()
+            || !std::all_of(channel->second.begin(), channel->second.end(),
+                [](unsigned char c) { return c >= '0' && c <= '9'; })) {
+            errors.push_back("Укажите номер канала ИСД");
+        } else {
+            try {
+                const auto value = std::stoull(channel->second);
+                if (value < 1 || value > 4096) throw std::out_of_range("channel");
+            } catch (const std::exception&) { errors.push_back("Канал ИСД должен быть от 1 до 4096"); }
+        }
+        const auto enabled = node.arguments.find("enabled");
+        if (enabled == node.arguments.end() || (enabled->second != "0" && enabled->second != "1"))
+            errors.push_back("Выберите состояние контакта");
+        const auto count = std::count_if(node.requiredResources.begin(), node.requiredResources.end(),
+            [](const ResourceRequirement& resource) { return resource.capability == "stand.switch_matrix"; });
+        if (count != 1) errors.push_back("Необходимо выбрать ровно один ресурс ИСД");
+        return errors;
+    };
+    engine.registerProcedure("switch.set", [](const ScenarioNode& node, ProcedureContext& context) {
+        if (context.stopRequested.load()) return ProcedureResult{RunVerdict::Aborted, "Коммутация остановлена", {}};
+        const auto reply = context.equipment.invoke("stand.switch_matrix", "set_switch", {
+            {"type", node.arguments.at("type")}, {"channel", node.arguments.at("channel")},
+            {"enabled", node.arguments.at("enabled")}, {"owner", context.runId}});
+        const auto response = decodePluginArguments(reply);
+        const auto status = response.find("status");
+        if (status == response.end() || status->second != "ok")
+            return ProcedureResult{RunVerdict::Error, "ИСД не подтвердил команду коммутации", {}};
+        return ProcedureResult{RunVerdict::Ok,
+            "Команда ИСД подтверждена; физическое состояние контакта не считано", {}};
+    }, validate);
 }
 
 } // namespace orbita::stand

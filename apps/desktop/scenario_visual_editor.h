@@ -41,6 +41,7 @@ public:
     void setAvailableProcedures(const std::vector<std::string>& procedures);
     void setAvailableParameters(std::vector<ScenarioParameterOption> parameters)
     { parameterOptions_ = std::move(parameters); }
+    void setSwitchResources(QStringList resources) { switchResources_ = std::move(resources); }
     QString currentPath() const { return path_; }
     void setScenarioStorage(QString writableDirectory, QStringList versionDirectories);
     void setScenarioValidator(std::function<std::vector<std::string>(
@@ -63,6 +64,7 @@ private slots:
     void configureTelemetryHealth();
     void configureParameterMeasurement();
     void configureDelay();
+    void configureSwitch();
 
 private:
     using StepPath = std::vector<int>;
@@ -84,6 +86,7 @@ private:
     bool configureTelemetryHealthForNode(const orbita::stand::ScenarioNode* node);
     bool configureParameterMeasurementForNode(const orbita::stand::ScenarioNode* node);
     bool configureDelayForNode(const orbita::stand::ScenarioNode* node);
+    bool configureSwitchForNode(const orbita::stand::ScenarioNode* node);
     QString serialize() const;
     static QString quote(const std::string& value);
     static std::vector<std::string> lines(const QString& text);
@@ -106,6 +109,8 @@ private:
     bool healthConfigured_ = false;
     bool measurementConfigured_ = false;
     bool delayConfigured_ = false;
+    bool switchConfigured_ = false;
+    QStringList switchResources_;
     std::vector<ScenarioParameterOption> parameterOptions_;
     QString healthOriginalArguments_;
     QString healthOriginalRequires_;
@@ -128,4 +133,5 @@ private:
     QPushButton* telemetrySettings_ = nullptr;
     QPushButton* measurementSettings_ = nullptr;
     QPushButton* delaySettings_ = nullptr;
+    QPushButton* switchSettings_ = nullptr;
 };
