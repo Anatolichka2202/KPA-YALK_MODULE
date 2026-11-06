@@ -1,7 +1,9 @@
 #include <QStandardPaths>
 #include <QUuid>
 #include "mainwindow.h"
+#include "parameter_sources.h"
 #include <QThread>
+#include <cmath>
 #include "free_workspace_widget.h"
 #include "channel_status.h"
 #include "encoding_utils.h"
@@ -119,6 +121,7 @@ MainWindow::~MainWindow()
 {
     if (scenarioEngine_) stationSession_.requestStop();
     if (scenarioWatcher_ && scenarioWatcher_->isRunning()) scenarioWatcher_->waitForFinished();
+    if (mainPage_) mainPage_->sourceMonitor()->shutdown();
     // Bridge must die before StationSession because it references the session-owned source.
     orbitaSampleBridge_.reset();
     telemetrySampleSource_ = nullptr;
@@ -797,6 +800,10 @@ void MainWindow::initializeStandRuntime()
             standProfile_, "telemetry.orbita.sample_source");
         const bool isSimulator = sampleDefinition && sampleDefinition->enabled
             && sampleDefinition->provider == "miltech.orbita.simulator";
+        orbitaMonitorDeclared_ = sampleDefinition != nullptr;
+        orbitaMonitorSimulator_ = isSimulator;
+        orbitaMonitorError_.clear();
+        const auto orbitaComponentId = sampleDefinition ? sampleDefinition->id : std::string();
         if (mainPage_) mainPage_->setSimulatorMode(isSimulator);
         if (detailView_) detailView_->setSimulatorMode(isSimulator);
 
@@ -805,6 +812,8 @@ void MainWindow::initializeStandRuntime()
         // на существующем EquipmentRegistry до отдельного этапа миграции.
         // A reinitialization must release the bridge before StationSession replaces
         // its sample-source instance. Kind factories survive ComponentRuntime::clear().
+        if (mainPage_) mainPage_->sourceMonitor()->shutdown();
+        additionalMonitorBindings_.clear();
         orbitaSampleBridge_.reset();
         telemetrySampleSource_ = nullptr;
         if (!componentRuntime_->hasKindFactory("sample_source")) {
@@ -816,9 +825,26 @@ void MainWindow::initializeStandRuntime()
             });
         }
         try {
-            stationSession_.configure(
-                standProfile_, root.filePath("plugins").toStdString(), {"sample_source"},
-                orbita::stand::EquipmentInstantiation::Deferred);
+            auto runtimeProfile = standProfile_;
+            for (;;) {
+                try {
+                    stationSession_.configure(runtimeProfile, root.filePath("plugins").toStdString(),
+                        {"sample_source"}, orbita::stand::EquipmentInstantiation::Deferred);
+                    break;
+                } catch (const orbita::stand::ComponentInstantiationError& error) {
+                    const auto failed = std::find_if(runtimeProfile.components.begin(),
+                        runtimeProfile.components.end(), [&](const auto& component) {
+                            return component.id == error.componentId() && component.enabled
+                                && component.kind == "sample_source";
+                        });
+                    if (failed == runtimeProfile.components.end()) throw;
+                    log(QStringLiteral("Источник %1 недоступен: %2")
+                        .arg(QString::fromStdString(failed->id), QString::fromUtf8(error.what())));
+                    if (!orbitaComponentId.empty() && failed->id == orbitaComponentId)
+                        orbitaMonitorError_ = QString::fromUtf8(error.what());
+                    failed->enabled = false;
+                }
+            }
             telemetrySampleSource_ = componentRuntime_->findAs<orbita::stand::ISampleSource>(
                 "telemetry.orbita.sample_source");
             if (telemetrySampleSource_) {
@@ -838,9 +864,40 @@ void MainWindow::initializeStandRuntime()
                             }
                         }, Qt::QueuedConnection);
                     });
+                stationSession_.parameters().add(makeOrbitaParameters(*orbita_, *telemetrySampleSource_));
             } else {
                 log(QStringLiteral(
                     "Поставка не объявляет binding telemetry.orbita.sample_source"));
+            }
+            // Имитатор включается только явной записью профиля. Название и
+            // значение не выдаются за параметры подключённого прибора.
+            for (const auto& component : standProfile_.components) {
+                if (!component.enabled || component.kind != "parameter_source"
+                    || component.provider != "miltech.parameter.simulator") continue;
+                try {
+                    const auto& key = component.configuration.at("parameter");
+                    const auto& text = component.configuration.at("value");
+                    std::size_t parsed = 0;
+                    const auto value = std::stod(text, &parsed);
+                    if (key.empty() || parsed != text.size() || !std::isfinite(value))
+                        throw std::invalid_argument("Неверный параметр имитатора");
+                    const auto title = component.configuration.find("title");
+                    const auto unit = component.configuration.find("unit");
+                    stationSession_.parameters().add(makeParameterSimulator(component.id, key, value,
+                        unit == component.configuration.end() ? std::string() : unit->second));
+                    additionalMonitorBindings_.push_back({QString::fromStdString(component.id),
+                        QStringLiteral("Имитатор · ") + QString::fromStdString(component.id),
+                        QString::fromStdString(key), title == component.configuration.end()
+                            ? QString::fromStdString(key) : QString::fromStdString(title->second)});
+                } catch (const std::exception& error) {
+                    log(QStringLiteral("Имитатор %1 недоступен: %2")
+                        .arg(QString::fromStdString(component.id), QString::fromUtf8(error.what())));
+                }
+            }
+            if (mainPage_) {
+                mainPage_->sourceMonitor()->setRepository(&stationSession_.parameters());
+                updateSourceMonitorBindings();
+                startBtn_->setEnabled(telemetrySampleSource_ && !isRunning_ && !currentSpecs_.empty());
             }
         } catch (const std::exception& error) {
             telemetrySampleSource_ = nullptr;
@@ -1198,7 +1255,7 @@ void MainWindow::integrationSetMonitorLocked(bool locked)
 {
     if (monitorLocked_ == locked) return;
     monitorLocked_ = locked;
-    startBtn_->setEnabled(!locked && !isRunning_ && !currentSpecs_.empty());
+    startBtn_->setEnabled(!locked && telemetrySampleSource_ && !isRunning_ && !currentSpecs_.empty());
     stopBtn_->setEnabled(!locked && isRunning_);
     freeHomeAction_->setEnabled(!locked);
     configCombo_->setEnabled(!locked);
@@ -1326,7 +1383,7 @@ void MainWindow::onStop()
     mtvLabel_->setText(QStringLiteral("МТВ: ---"));
     errPhraseLabel_->setText(QStringLiteral("ошибки фраз: ---"));
     errGroupLabel_->setText(QStringLiteral("групп: ---"));
-    startBtn_->setEnabled(!monitorLocked_ && !currentSpecs_.empty());
+    startBtn_->setEnabled(!monitorLocked_ && telemetrySampleSource_ && !currentSpecs_.empty());
     stopBtn_->setEnabled(false);
     recordBtn_->setEnabled(false);
     statusLabel_->setText("● Сбор остановлен");
@@ -1580,6 +1637,25 @@ void MainWindow::onRefreshMetadata()
 // ----------------------------------------------------------------------------
 //  Активный набор
 // ----------------------------------------------------------------------------
+void MainWindow::updateSourceMonitorBindings()
+{
+    if (!mainPage_) return;
+    auto bindings = additionalMonitorBindings_;
+    if (orbitaMonitorDeclared_) {
+        const auto title = orbitaMonitorSimulator_
+            ? QStringLiteral("Орбита · имитатор") : QStringLiteral("Орбита");
+        if (currentSpecs_.empty() && !orbitaMonitorError_.isEmpty())
+            bindings.push_back({QStringLiteral("orbita"), title, {},
+                QStringLiteral("Источник не создан"), orbitaMonitorError_});
+        for (const auto& spec : currentSpecs_)
+            bindings.push_back({QStringLiteral("orbita"), title,
+                QString::fromStdString(spec.address),
+                QString::fromStdString(spec.name.empty() ? spec.address : spec.name),
+                orbitaMonitorError_});
+    }
+    mainPage_->sourceMonitor()->setBindings(std::move(bindings));
+}
+
 void MainWindow::onWatchSetChanged(const std::vector<orbita::ChannelSpec>& specs)
 {
     if (monitorLocked_) return;
@@ -1594,10 +1670,11 @@ void MainWindow::onWatchSetChanged(const std::vector<orbita::ChannelSpec>& specs
     }
 
     currentSpecs_ = specs;
+    updateSourceMonitorBindings();
     if (mainPage_)
         mainPage_->setChannels(specs);
 
-    startBtn_->setEnabled(!specs.empty() && !isRunning_);
+    startBtn_->setEnabled(telemetrySampleSource_ && !specs.empty() && !isRunning_);
     stopBtn_->setEnabled(isRunning_);
     recordBtn_->setEnabled(isRunning_);
 

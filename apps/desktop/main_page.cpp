@@ -46,12 +46,15 @@ MainPage::MainPage(QWidget *parent) : QWidget(parent)
     m_btnA = new QPushButton(QStringLiteral("Сводка"));
     m_btnB = new QPushButton(QStringLiteral("Таблица"));
     m_btnC = new QPushButton(QStringLiteral("Группы"));
+    m_btnSources = new QPushButton(QStringLiteral("Источники"));
+    m_btnSources->setObjectName(QStringLiteral("multiSourceView"));
     m_btnA->setAccessibleName(QStringLiteral("Сводный вид live-данных"));
     m_btnB->setAccessibleName(QStringLiteral("Табличный вид live-данных"));
     m_btnC->setAccessibleName(QStringLiteral("Групповой вид live-данных"));
     m_btnA->setCheckable(true);
     m_btnB->setCheckable(true);
     m_btnC->setCheckable(true);
+    m_btnSources->setCheckable(true);
     m_btnA->setChecked(true);
     connect(m_btnA, &QPushButton::clicked, [this]() { onLayoutButtonClicked(0); });
     connect(m_btnB, &QPushButton::clicked, [this]() { onLayoutButtonClicked(1); });
@@ -59,6 +62,8 @@ MainPage::MainPage(QWidget *parent) : QWidget(parent)
     m_layoutButtonsLayout->addWidget(m_btnA);
     m_layoutButtonsLayout->addWidget(m_btnB);
     m_layoutButtonsLayout->addWidget(m_btnC);
+    m_layoutButtonsLayout->addWidget(m_btnSources);
+    connect(m_btnSources, &QPushButton::clicked, [this]() { onLayoutButtonClicked(3); });
     m_layoutButtonsLayout->addStretch();
     mainLayout->addLayout(m_layoutButtonsLayout);
 
@@ -70,6 +75,8 @@ MainPage::MainPage(QWidget *parent) : QWidget(parent)
     setupLayoutA();
     setupLayoutB();
     setupLayoutC();
+    m_sourceMonitor = new MultiSourceMonitor(this);
+    m_layoutStack->addWidget(m_sourceMonitor);
 
     // По умолчанию A
     m_layoutStack->setCurrentIndex(0);
@@ -152,6 +159,7 @@ void MainPage::onLayoutButtonClicked(int layout)
     m_btnA->setChecked(layout == 0);
     m_btnB->setChecked(layout == 1);
     m_btnC->setChecked(layout == 2);
+    m_btnSources->setChecked(layout == 3);
 }
 
 void MainPage::setMetadataService(MetadataService* db)

@@ -184,6 +184,7 @@ private:
     void updateStatusBar(const orbita::Snapshot& snap);
     void initializeStandRuntime();
     bool initializeTelemetrySource();
+    void updateSourceMonitorBindings();
     void setEngineerMode(bool enabled);
     std::string invokeOrbitaParameterSource(
         const std::string& operation,
@@ -247,6 +248,10 @@ private:
     // Выбранный канал
     int selectedChannelIndex_ = -1;
     std::vector<orbita::ChannelSpec> currentSpecs_;
+    std::vector<MonitoredBinding> additionalMonitorBindings_;
+    bool orbitaMonitorDeclared_ = false;
+    bool orbitaMonitorSimulator_ = false;
+    QString orbitaMonitorError_;
 
     // Режимы
     enum Mode { ModeHome = 0, ModeTests = 1, ModeMain = 2, ModeDetail = 3, ModeConfig = 4, ModeDb = 5, ModeAdmin = 6 };

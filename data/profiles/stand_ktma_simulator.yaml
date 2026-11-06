@@ -11,6 +11,15 @@ components:
     bind:
       - telemetry.orbita.sample_source
 
+  - id: simulated-voltmeter
+    kind: parameter_source
+    provider: miltech.parameter.simulator
+    config:
+      parameter: voltage
+      title: Напряжение имитатора
+      value: "12.5"
+      unit: В
+
 connections:
   adapter_rs485: UDP-имитатор Адаптера на 127.0.0.2:1113
   isd_to_yalk: HTTP-имитатор ИСД на 127.0.0.1:18080

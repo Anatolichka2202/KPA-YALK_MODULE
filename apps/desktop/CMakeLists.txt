@@ -58,6 +58,8 @@ add_executable(MilTechStation
     category_grid_widget.h category_grid_widget.cpp
     detail_view.h detail_view.cpp
     main_page.h main_page.cpp
+    multi_source_monitor.h multi_source_monitor.cpp
+    parameter_sources.h parameter_sources.cpp
     resources/resources.qrc
     channel_list_widget.h channel_list_widget.cpp
     readout_widget.h readout_widget.cpp
@@ -211,7 +213,7 @@ if(BUILD_TESTING)
     add_test(NAME desktop.station_gui_simulator COMMAND station_gui_simulator_test -platform offscreen)
     set_tests_properties(desktop.station_gui_simulator PROPERTIES TIMEOUT 90)
 
-    add_executable(test_page_smoke_test
+    qt_add_executable(test_page_smoke_test
         tests/test_page_smoke_test.cpp
         generic_check_dialog.cpp
         generic_check_dialog.h

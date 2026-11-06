@@ -56,7 +56,7 @@ public:
     bool open() override { open_ = true; return true; }
     void close() noexcept override { stop(); open_ = false; }
     bool isOpen() const noexcept override { return open_; }
-    bool start() override { running_ = open_; return running_; }
+    bool start() override { running_ = open_.load(); return running_.load(); }
     void stop() noexcept override { running_ = false; }
     bool isRunning() const noexcept override { return running_; }
     void setSamplesCallback(SamplesCallback callback) override { samples_ = std::move(callback); }
@@ -67,8 +67,8 @@ public:
         if (error_) error_("simulated disconnect");
     }
 private:
-    bool open_ = false;
-    bool running_ = false;
+    std::atomic_bool open_{false};
+    std::atomic_bool running_{false};
     SamplesCallback samples_;
     ErrorCallback error_;
 };
@@ -90,15 +90,22 @@ public:
     void setErrorCallback(ErrorCallback callback) override { source_->setErrorCallback(std::move(callback)); }
     void pause() { paused_.store(true); }
 private:
-    std::unique_ptr<orbita::stand::ISampleSource> source_;
     std::atomic_bool paused_{false};
+    std::unique_ptr<orbita::stand::ISampleSource> source_;
 };
 
 class MonitorWindow final : public UniversalMainWindow {
 public:
-    explicit MonitorWindow(bool silent)
+    explicit MonitorWindow(bool silent, bool broken = false)
     {
-        if (!silent) {
+        if (broken) {
+            integrationStationSession().components().registerKindFactory("sample_source", [](const auto& definition)
+                -> std::unique_ptr<orbita::stand::IStationComponent> {
+                if (definition.id == "fake-source") throw std::runtime_error("simulated source creation failure");
+                return std::make_unique<SilentSampleSimulator>();
+            });
+        }
+        if (!silent && !broken) {
             integrationStationSession().components().registerKindFactory("sample_source", [this](
                 const orbita::stand::ComponentProfile&) -> std::unique_ptr<orbita::stand::IStationComponent> {
                 auto source = std::make_unique<PausableSampleSimulator>();
@@ -106,7 +113,7 @@ public:
                 return source;
             });
         }
-        if (silent) {
+        if (silent && !broken) {
             integrationStationSession().components().registerKindFactory("sample_source", [this](
                 const orbita::stand::ComponentProfile&) -> std::unique_ptr<orbita::stand::IStationComponent> {
                 auto source = std::make_unique<SilentSampleSimulator>();
@@ -120,9 +127,13 @@ public:
         profile.components.push_back({"fake-source", "sample_source",
                                       silent ? "test.silent" : "miltech.orbita.simulator", true,
                                       {"telemetry.orbita.sample_source"}, {}});
+        if (broken) profile.components.push_back({"other-stream", "sample_source", "test.silent", true,
+                                                   {"telemetry.other.sample_source"}, {}});
+        profile.components.push_back({"second-simulator", "parameter_source", "miltech.parameter.simulator", true,
+            {}, {{"parameter", "voltage"}, {"title", "Напряжение"}, {"value", "12.5"}, {"unit", "В"}}});
         integrationConfigureStandProfile(profile, {});
         integrationEnsureStandRuntime();
-        require(integrationStandRuntimeReady() && (!silent || source_), "monitor simulator is unavailable");
+        require(integrationStandRuntimeReady() && (!silent || broken || source_), "monitor simulator is unavailable");
     }
     void enableHealthProject()
     {
@@ -144,6 +155,9 @@ public:
             if (!release_.load()) throw std::runtime_error("monitor lock test timed out");
             return orbita::stand::ProcedureResult{orbita::stand::RunVerdict::Ok, "Готово", {}};
         });
+    }
+    bool otherSourcePresent() {
+        return integrationStationSession().components().findById("other-stream") != nullptr;
     }
     void pauseSamples() { require(pausable_, "pausable simulator unavailable"); pausable_->pause(); }
     std::string sourceOperation(const std::string& operation, const std::map<std::string, std::string>& args = {}) {
@@ -216,6 +230,25 @@ int runMonitorChild(bool silent)
             return table->item(0, 3)->text() == "15";
         };
         require(waitForValue(), "raw simulator samples did not appear in the monitor");
+        auto* sourcesButton = window.findChild<QPushButton*>(QStringLiteral("multiSourceView"));
+        auto* sourcesTable = window.findChild<QTableWidget*>(QStringLiteral("multiSourceValues"));
+        require(sourcesButton && sourcesTable, "multi-source monitor unavailable");
+        sourcesButton->click();
+        QEventLoop sourceValues;
+        QTimer sourcePoll;
+        QTimer sourceTimeout;
+        sourceTimeout.setSingleShot(true);
+        QObject::connect(&sourcePoll, &QTimer::timeout, &sourceValues, [&] {
+            if (sourcesTable->rowCount() == 2 && sourcesTable->item(0, 2)->text() == "12.5"
+                && sourcesTable->item(1, 2)->text() == "15") sourceValues.quit();
+        });
+        QObject::connect(&sourceTimeout, &QTimer::timeout, &sourceValues, &QEventLoop::quit);
+        sourcePoll.start(20); sourceTimeout.start(5000); sourceValues.exec();
+        require(sourcesTable->rowCount() == 2 && sourcesTable->item(0, 2)->text() == "12.5"
+                    && sourcesTable->item(1, 2)->text() == "15"
+                    && sourcesTable->item(0, 0)->text().contains(QStringLiteral("Имитатор"))
+                    && sourcesTable->item(1, 0)->text().contains(QStringLiteral("имитатор")),
+                "values from two independent simulators were not shown together");
         require(QMetaObject::invokeMethod(&window, "onChannelDoubleClicked", Qt::DirectConnection,
                                           Q_ARG(int, 0)), "cannot open parameter details");
         auto* detail = window.findChild<DetailView*>();
@@ -230,6 +263,20 @@ int runMonitorChild(bool silent)
         require(table->item(0, 3)->text() == "---", "old value reappeared on restart");
         require(waitForValue(), "simulator did not resume decoded data after restart");
         window.disconnectSource();
+        QEventLoop disconnected;
+        QTimer disconnectedPoll;
+        QTimer disconnectedTimeout;
+        disconnectedTimeout.setSingleShot(true);
+        QObject::connect(&disconnectedPoll, &QTimer::timeout, &disconnected, [&] {
+            if (sourcesTable->item(1, 4)->text() == QStringLiteral("Отключён")) disconnected.quit();
+        });
+        QObject::connect(&disconnectedTimeout, &QTimer::timeout, &disconnected, &QEventLoop::quit);
+        disconnectedPoll.start(20); disconnectedTimeout.start(3000); disconnected.exec();
+        require(sourcesTable->item(1, 4)->text() == QStringLiteral("Отключён")
+                    && sourcesTable->item(1, 2)->text() == QStringLiteral("—")
+                    && sourcesTable->item(0, 2)->text() == "12.5"
+                    && sourcesTable->item(0, 4)->text() == QStringLiteral("Актуально"),
+                "one simulator disconnect affected another source");
     } else {
         QEventLoop idle;
         QTimer::singleShot(5300, &idle, &QEventLoop::quit);
@@ -341,6 +388,12 @@ int runHealthMonitorChild()
     QEventLoop stale;
     QTimer::singleShot(5500, &stale, &QEventLoop::quit);
     stale.exec();
+    auto* sourcesTable = window.findChild<QTableWidget*>(QStringLiteral("multiSourceValues"));
+    require(sourcesTable && sourcesTable->rowCount() == 2
+                && sourcesTable->item(1, 4)->text() == QStringLiteral("Устарело")
+                && sourcesTable->item(1, 2)->text() == QStringLiteral("—")
+                && sourcesTable->item(0, 2)->text() == "12.5",
+            "stale sample was not distinguished from the live second source");
     const auto health = window.sourceOperation("health");
     const auto read = window.sourceOperation("read", {{"address", "M16P1A11B21T21"}});
     require(health.find("status=no_data") != std::string::npos
@@ -447,6 +500,33 @@ int runChild(const QString& mode)
     if (mode == "--profile-selection") {
         ProfileWindow window;
         require(window.simulatorSelected(), "simulator profile did not override project profile");
+        return 0;
+    }
+    if (mode == "--monitor-broken") {
+        MonitorWindow window(false, true);
+        window.show();
+        auto* open = window.findChild<QPushButton*>(QStringLiteral("genericFreeAction"));
+        auto* table = window.findChild<QTableWidget*>(QStringLiteral("multiSourceValues"));
+        require(open && table, "monitor unavailable after source creation failure");
+        open->click();
+        auto* sets = window.findChild<AddressSetsWidget*>();
+        auto* start = window.findChild<QPushButton*>(QStringLiteral("monitorStart"));
+        require(sets && start, "monitor controls unavailable after source creation failure");
+        sets->setFromSpecs({{"M16P1A11B21T21", "Параметр", "Тест"}});
+        require(!start->isEnabled(), "failed source can be started");
+        QEventLoop wait;
+        QTimer poll, timeout;
+        timeout.setSingleShot(true);
+        QObject::connect(&poll, &QTimer::timeout, &wait, [&] {
+            if (table->rowCount() == 2 && table->item(0, 2)->text() == "12.5") wait.quit();
+        });
+        QObject::connect(&timeout, &QTimer::timeout, &wait, &QEventLoop::quit);
+        poll.start(20); timeout.start(3000); wait.exec();
+        require(table->rowCount() == 2 && table->item(0, 2)->text() == "12.5"
+                    && table->item(1, 4)->text() == QStringLiteral("Недоступен")
+                    && table->item(1, 4)->toolTip().contains(QStringLiteral("simulated source creation failure"))
+                    && window.otherSourcePresent(),
+                "working source was lost or failure was hidden after initialization error");
         return 0;
     }
     if (mode == "--monitor-disconnect") return runMonitorChild(true);
@@ -725,7 +805,8 @@ int runParent()
         const std::vector<orbita::ChannelSpec> channels{{"M16P1A70", "Параметр", "Тест"}};
         page.setChannels(channels);
         page.setSelectedChannel(0);
-        auto* table = page.findChild<QTableWidget*>();
+        auto* tablePanel = page.findChild<TableWidget*>();
+        auto* table = tablePanel ? tablePanel->findChild<QTableWidget*>() : nullptr;
         auto* tree = page.findChild<QTreeWidget*>();
         auto* readout = page.findChild<QLabel*>(QStringLiteral("monitorReadoutValue"));
         auto* readoutStatus = page.findChild<QLabel*>(QStringLiteral("monitorReadoutStatus"));
@@ -818,6 +899,7 @@ int runParent()
     execute("--profile-selection", 0);
     execute("--monitor-disconnect", 0);
     execute("--monitor-live", 0);
+    execute("--monitor-broken", 0);
     execute("--health-monitor", 0);
     execute("--complete", 0);
     execute("--interrupt-before", 22);

@@ -41,7 +41,12 @@ void ComponentRuntime::instantiate(
                 throw std::runtime_error("Duplicate station component id: " + definition.id);
             }
 
-            auto component = factory->second(definition);
+            std::unique_ptr<IStationComponent> component;
+            try {
+                component = factory->second(definition);
+            } catch (const std::exception& error) {
+                throw ComponentInstantiationError(definition.id, error.what());
+            }
             if (!component) {
                 throw std::runtime_error("Component factory returned null: " + definition.id);
             }

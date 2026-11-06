@@ -4,14 +4,27 @@
 #include <map>
 #include <memory>
 #include <set>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <vector>
+#include <utility>
 
 namespace orbita::stand {
 
 struct ComponentProfile;
 struct StandProfile;
+
+// Позволяет сборщику станции изолировать отказ конкретного компонента,
+// не принимая ошибки профиля или менеджера плагинов за отказ источника.
+class ComponentInstantiationError : public std::runtime_error {
+public:
+    ComponentInstantiationError(std::string id, const std::string& detail)
+        : std::runtime_error("Component " + id + ": " + detail), id_(std::move(id)) {}
+    const std::string& componentId() const noexcept { return id_; }
+private:
+    std::string id_;
+};
 
 // Общая минимальная граница любой составной части станции. Конкретные виды
 // компонентов (equipment, sample_source, execution_runtime, transport, ...)

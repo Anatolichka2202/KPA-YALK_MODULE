@@ -11,6 +11,7 @@
 #include "table_widget.h"
 #include "category_grid_widget.h"
 #include "address_set_model.h"
+#include "multi_source_monitor.h"
 
 class ToleranceResolver;
 class QLabel;
@@ -33,6 +34,7 @@ public:
     // ограничивает возможности плагинов и не изменяет набор адресов.
     void setFreeWorkspace(bool enabled);
     void setSimulatorMode(bool enabled);
+    MultiSourceMonitor* sourceMonitor() const { return m_sourceMonitor; }
     void setAddressSets(const std::vector<AddressSetDefinition>& sets);
 
 signals:
@@ -75,6 +77,8 @@ private:
     QPushButton* m_btnA;
     QPushButton* m_btnB;
     QPushButton* m_btnC;
+    QPushButton* m_btnSources;
+    MultiSourceMonitor* m_sourceMonitor = nullptr;
     QWidget* m_freeWorkspaceHeader = nullptr;
     QLabel* m_freeWorkspaceSummary = nullptr;
     QLabel* m_simulatorLabel = nullptr;
