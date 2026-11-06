@@ -323,7 +323,8 @@ int runHealthMonitorChild()
                           "catalog_version: 1\nstate: published\nsteps:\n"
                           "  - id: measurement\n    title: Напряжение\n    tu: test.3\n    procedure: parameter.measure\n"
                           "    args:\n      source: second-simulator\n      parameter: voltage\n"
-                          "      lower: 12\n      upper: 13\n      unit: В\n      timeout_ms: 2000\n");
+                          "      lower: 12000\n      upper: 12010\n      unit: В\n      timeout_ms: 2000\n"
+                          "      conversion: linear\n      scale: 1000\n      offset: -495\n      output_unit: мВ\n");
     measureScenario.close();
     MonitorWindow window(false);
     window.enableHealthProject();
@@ -397,7 +398,8 @@ int runHealthMonitorChild()
     finishTimeout.start(8000); finished.exec();
     auto* runStatus = dialog->findChild<QLabel*>(QStringLiteral("genericRunStatus"));
     require(run->isEnabled() && runStatus && runStatus->text().contains(QStringLiteral("Run сохранён"))
-                && report->toPlainText().contains(QStringLiteral("12.5"))
+                && report->toPlainText().contains(QStringLiteral("12005"))
+                && report->toPlainText().contains(QStringLiteral("мВ"))
                 && report->toPlainText().contains(QStringLiteral("В пределах допуска")),
             "scenario did not use a shared simulator parameter");
     window.pauseSamples();

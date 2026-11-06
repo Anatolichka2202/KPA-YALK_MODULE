@@ -16,7 +16,8 @@ std::vector<std::string> validateMeasurement(const ScenarioNode& node)
     for (const auto& [key, value] : node.arguments) {
         (void)value;
         if (key != "source" && key != "parameter" && key != "lower"
-            && key != "upper" && key != "unit" && key != "timeout_ms")
+            && key != "upper" && key != "unit" && key != "timeout_ms"
+            && key != "conversion" && key != "scale" && key != "offset" && key != "output_unit")
             errors.push_back("Неизвестный параметр измерения: " + key);
     }
     for (const auto* key : {"source", "parameter", "unit"}) {
@@ -47,6 +48,26 @@ std::vector<std::string> validateMeasurement(const ScenarioNode& node)
             throw std::invalid_argument("timeout");
     } catch (const std::exception&) {
         errors.push_back("Время ожидания должно быть от 500 до 600000 мс");
+    }
+    const auto conversion = node.arguments.find("conversion");
+    const auto mode = conversion == node.arguments.end() ? std::string("identity") : conversion->second;
+    if (mode != "identity" && mode != "linear") errors.push_back("Неизвестное преобразование параметра");
+    if (mode == "linear") {
+        for (const auto* key : {"scale", "offset"}) {
+            try {
+                const auto& text = node.arguments.at(key);
+                std::size_t parsed = 0;
+                const double value = std::stod(text, &parsed);
+                if (parsed != text.size() || !std::isfinite(value)) throw std::invalid_argument("coefficient");
+            } catch (const std::exception&) {
+                errors.push_back(std::string("Неверный коэффициент преобразования: ") + key);
+            }
+        }
+        const auto output = node.arguments.find("output_unit");
+        if (output == node.arguments.end() || output->second.empty())
+            errors.push_back("Не указана выходная единица преобразования");
+    } else if (node.arguments.count("scale") || node.arguments.count("offset") || node.arguments.count("output_unit")) {
+        errors.push_back("Коэффициенты заданы без линейного преобразования");
     }
     if (validBounds && bounds[0] > bounds[1]) errors.push_back("Нижний предел больше верхнего");
     return errors;
@@ -87,15 +108,30 @@ ProcedureResult measure(const ScenarioNode& node, ProcedureContext& context, Par
     measurement.title = node.title.empty() ? parameter : node.title;
     measurement.lowerLimit = std::stod(node.arguments.at("lower"));
     measurement.upperLimit = std::stod(node.arguments.at("upper"));
-    measurement.measured = sample->physicalValue;
-    measurement.unit = sample->unit;
-    measurement.verdict = sample->physicalValue >= measurement.lowerLimit
-        && sample->physicalValue <= measurement.upperLimit ? RunVerdict::Ok : RunVerdict::Fail;
+    const auto conversion = node.arguments.find("conversion");
+    const bool linear = conversion != node.arguments.end() && conversion->second == "linear";
+    measurement.measured = linear
+        ? sample->physicalValue * std::stod(node.arguments.at("scale")) + std::stod(node.arguments.at("offset"))
+        : sample->physicalValue;
+    if (!std::isfinite(measurement.measured))
+        return {RunVerdict::Error, "Результат преобразования не является конечным числом", {}};
+    measurement.unit = linear ? node.arguments.at("output_unit") : sample->unit;
+    measurement.verdict = measurement.measured >= measurement.lowerLimit
+        && measurement.measured <= measurement.upperLimit ? RunVerdict::Ok : RunVerdict::Fail;
     measurement.message = measurement.verdict == RunVerdict::Ok ? "В пределах допуска" : "Значение вне допуска";
     // Логическая роль оборудования не известна: не подменяем её именем
     // источника. Подтверждённые происхождение и качество сохраняем отдельно.
     measurement.attributes["source_id"] = source;
     measurement.attributes["sample_quality"] = "GOOD";
+    std::ostringstream input;
+    input << std::setprecision(17) << sample->physicalValue;
+    measurement.attributes["input_value"] = input.str();
+    measurement.attributes["input_unit"] = sample->unit;
+    measurement.attributes["conversion"] = linear ? "linear" : "identity";
+    if (linear) {
+        measurement.attributes["scale"] = node.arguments.at("scale");
+        measurement.attributes["offset"] = node.arguments.at("offset");
+    }
     measurement.attributes["sample_sequence"] = std::to_string(sample->sequence);
     measurement.attributes["sample_time_ms"] = std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(
         sample->timestamp.time_since_epoch()).count());

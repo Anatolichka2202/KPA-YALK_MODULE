@@ -489,9 +489,17 @@ int main(int argc, char** argv)
             auto* lower = dialog->findChild<QLineEdit*>(QStringLiteral("measurementLower"));
             auto* upper = dialog->findChild<QLineEdit*>(QStringLiteral("measurementUpper"));
             auto* timeout = dialog->findChild<QSpinBox*>(QStringLiteral("measurementTimeout"));
+            auto* conversion = dialog->findChild<QComboBox*>(QStringLiteral("measurementConversion"));
+            auto* scale = dialog->findChild<QLineEdit*>(QStringLiteral("measurementScale"));
+            auto* offset = dialog->findChild<QLineEdit*>(QStringLiteral("measurementOffset"));
+            auto* outputUnit = dialog->findChild<QLineEdit*>(QStringLiteral("measurementOutputUnit"));
             auto* buttons = dialog->findChild<QDialogButtonBox*>();
-            if (parameter && lower && upper && timeout && buttons) {
+            if (parameter && lower && upper && timeout && conversion && scale && offset && outputUnit && buttons) {
                 parameter->setCurrentIndex(1);
+                conversion->setCurrentIndex(1);
+                scale->setText(QStringLiteral("1000"));
+                offset->setText(QStringLiteral("5"));
+                outputUnit->setText(QStringLiteral("мВ"));
                 lower->setText(QStringLiteral("12"));
                 upper->setText(QStringLiteral("13"));
                 timeout->setValue(1500);
@@ -507,7 +515,11 @@ int main(int argc, char** argv)
                     && saved.steps[0].arguments.at("lower") == "12"
                     && saved.steps[0].arguments.at("upper") == "13"
                     && saved.steps[0].arguments.at("unit") == "В"
-                    && saved.steps[0].arguments.at("timeout_ms") == "1500",
+                    && saved.steps[0].arguments.at("timeout_ms") == "1500"
+                    && saved.steps[0].arguments.at("conversion") == "linear"
+                    && saved.steps[0].arguments.at("scale") == "1000"
+                    && saved.steps[0].arguments.at("offset") == "5"
+                    && saved.steps[0].arguments.at("output_unit") == "мВ",
                 "measurement settings did not survive saving and reload");
         ScenarioVisualEditor changedUnit(measurePath);
         changedUnit.setAvailableProcedures({"parameter.measure"});

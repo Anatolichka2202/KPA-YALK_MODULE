@@ -733,11 +733,21 @@ bool ScenarioVisualEditor::configureParameterMeasurementForNode(const orbita::st
             return false;
         }
     }
+    if (args.count("conversion") && args.at("conversion") != "identity" && args.at("conversion") != "linear") {
+        QMessageBox::warning(this, QStringLiteral("Измерение"), QStringLiteral("Неизвестное преобразование в настройках шага."));
+        return false;
+    }
+    const bool existingLinear = args.count("conversion") && args.at("conversion") == "linear";
+    if (!existingLinear && (args.count("scale") || args.count("offset") || args.count("output_unit"))) {
+        QMessageBox::warning(this, QStringLiteral("Измерение"),
+            QStringLiteral("Коэффициенты заданы без линейного преобразования. Исправьте технические настройки шага."));
+        return false;
+    }
     QDialog dialog(this);
     dialog.setWindowTitle(QStringLiteral("Настройка измерения"));
     auto* layout = new QVBoxLayout(&dialog);
     auto* help = new QLabel(QStringLiteral(
-        "Выберите параметр и укажите допустимые пределы. Значение и единица берутся из источника."), &dialog);
+        "Выберите параметр и укажите допустимые пределы. Преобразование применяется к значению, уже выданному источником."), &dialog);
     help->setWordWrap(true);
     layout->addWidget(help);
     if (node->procedure != "parameter.measure" && !node->procedure.empty()) {
@@ -794,9 +804,42 @@ bool ScenarioVisualEditor::configureParameterMeasurementForNode(const orbita::st
         });
     updateUnit();
     form->addRow(QStringLiteral("Параметр"), parameter);
-    form->addRow(QStringLiteral("Единица"), unit);
-    form->addRow(QStringLiteral("Нижний предел"), lower);
-    form->addRow(QStringLiteral("Верхний предел"), upper);
+    form->addRow(QStringLiteral("Единица источника"), unit);
+    auto* conversion = new QComboBox(&dialog);
+    conversion->setObjectName(QStringLiteral("measurementConversion"));
+    conversion->addItem(QStringLiteral("Без преобразования"), QStringLiteral("identity"));
+    conversion->addItem(QStringLiteral("Коэффициент и смещение"), QStringLiteral("linear"));
+    auto* scale = new QLineEdit(&dialog);
+    auto* offset = new QLineEdit(&dialog);
+    auto* outputUnit = new QLineEdit(&dialog);
+    scale->setObjectName(QStringLiteral("measurementScale"));
+    offset->setObjectName(QStringLiteral("measurementOffset"));
+    outputUnit->setObjectName(QStringLiteral("measurementOutputUnit"));
+    if (args.count("conversion") && args.at("conversion") == "linear") conversion->setCurrentIndex(1);
+    if (!unitChanged && args.count("scale")) scale->setText(QString::fromStdString(args.at("scale")));
+    if (!unitChanged && args.count("offset")) offset->setText(QString::fromStdString(args.at("offset")));
+    if (!unitChanged && args.count("output_unit")) outputUnit->setText(QString::fromStdString(args.at("output_unit")));
+    const auto enableConversion = [conversion, scale, offset, outputUnit] {
+        const bool enabled = conversion->currentIndex() == 1;
+        scale->setEnabled(enabled); offset->setEnabled(enabled); outputUnit->setEnabled(enabled);
+    };
+    connect(conversion, QOverload<int>::of(&QComboBox::currentIndexChanged), &dialog,
+        [enableConversion, lower, upper](int) { lower->clear(); upper->clear(); enableConversion(); });
+    connect(parameter, QOverload<int>::of(&QComboBox::currentIndexChanged), &dialog,
+        [scale, offset, outputUnit](int) { scale->clear(); offset->clear(); outputUnit->clear(); });
+    // Пределы относятся к результату преобразования: после изменения его
+    // параметров оператор должен задать их заново, а не принять старые нормы.
+    for (auto* field : {scale, offset, outputUnit})
+        connect(field, &QLineEdit::textEdited, &dialog, [lower, upper](const QString&) {
+            lower->clear(); upper->clear();
+        });
+    enableConversion();
+    form->addRow(QStringLiteral("Преобразование"), conversion);
+    form->addRow(QStringLiteral("Коэффициент"), scale);
+    form->addRow(QStringLiteral("Смещение"), offset);
+    form->addRow(QStringLiteral("Единица результата"), outputUnit);
+    form->addRow(QStringLiteral("Нижний предел результата"), lower);
+    form->addRow(QStringLiteral("Верхний предел результата"), upper);
     auto* timeout = new QSpinBox(&dialog);
     timeout->setObjectName(QStringLiteral("measurementTimeout"));
     timeout->setRange(500, 600000);
@@ -807,7 +850,7 @@ bool ScenarioVisualEditor::configureParameterMeasurementForNode(const orbita::st
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
     layout->addWidget(buttons);
     connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-    double acceptedLow = 0.0, acceptedHigh = 0.0;
+    double acceptedLow = 0.0, acceptedHigh = 0.0, acceptedScale = 0.0, acceptedOffset = 0.0;
     connect(buttons, &QDialogButtonBox::accepted, &dialog, [&] {
         bool lowerOk = false, upperOk = false;
         double low = QLocale().toDouble(lower->text(), &lowerOk);
@@ -822,6 +865,21 @@ bool ScenarioVisualEditor::configureParameterMeasurementForNode(const orbita::st
                 QStringLiteral("Выберите параметр с известной единицей и задайте числовые пределы: нижний не больше верхнего."));
             return;
         }
+        if (conversion->currentIndex() == 1) {
+            bool scaleOk = false, offsetOk = false;
+            double factor = QLocale().toDouble(scale->text(), &scaleOk);
+            double shift = QLocale().toDouble(offset->text(), &offsetOk);
+            if (!scaleOk) factor = QLocale::c().toDouble(scale->text(), &scaleOk);
+            if (!offsetOk) shift = QLocale::c().toDouble(offset->text(), &offsetOk);
+            if (!scaleOk || !offsetOk || !std::isfinite(factor) || !std::isfinite(shift)
+                || outputUnit->text().trimmed().isEmpty()) {
+                QMessageBox::warning(&dialog, QStringLiteral("Преобразование"),
+                    QStringLiteral("Задайте конечные коэффициент и смещение и единицу результата."));
+                return;
+            }
+            acceptedScale = factor;
+            acceptedOffset = shift;
+        }
         acceptedLow = low;
         acceptedHigh = high;
         dialog.accept();
@@ -834,6 +892,14 @@ bool ScenarioVisualEditor::configureParameterMeasurementForNode(const orbita::st
     args["upper"] = QString::number(acceptedHigh, 'g', 17).toStdString();
     args["unit"] = choice.at(2).toUtf8().toStdString();
     args["timeout_ms"] = std::to_string(timeout->value());
+    args["conversion"] = conversion->currentData().toString().toStdString();
+    if (conversion->currentIndex() == 1) {
+        args["scale"] = QString::number(acceptedScale, 'g', 17).toStdString();
+        args["offset"] = QString::number(acceptedOffset, 'g', 17).toStdString();
+        args["output_unit"] = outputUnit->text().trimmed().toUtf8().toStdString();
+    } else {
+        args.erase("scale"); args.erase("offset"); args.erase("output_unit");
+    }
     QStringList argumentLines;
     for (const auto& [key, value] : args)
         argumentLines << QStringLiteral("%1 = %2").arg(QString::fromStdString(key), QString::fromStdString(value));

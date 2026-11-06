@@ -104,6 +104,28 @@ int main()
                     && measured.steps[0].measurements[0].measured == 12
                     && measured.steps[0].measurements[0].attributes.at("source_id") == "one"
                     && first.reads == 3, "scenario did not use the shared parameter snapshot");
+        checkScenario.steps[0].arguments["conversion"] = "linear";
+        checkScenario.steps[0].arguments["scale"] = "1000";
+        checkScenario.steps[0].arguments["offset"] = "5";
+        checkScenario.steps[0].arguments["output_unit"] = "mV";
+        checkScenario.steps[0].arguments["lower"] = "12000";
+        checkScenario.steps[0].arguments["upper"] = "12010";
+        const auto converted = runFresh(12);
+        require(converted.verdict == RunVerdict::Ok && converted.steps[0].measurements[0].measured == 12005
+                    && converted.steps[0].measurements[0].unit == "mV"
+                    && converted.steps[0].measurements[0].attributes.at("input_value") == "12"
+                    && converted.steps[0].measurements[0].attributes.at("input_unit") == "V"
+                    && converted.steps[0].measurements[0].attributes.at("scale") == "1000",
+                "linear conversion lost input or result provenance");
+        checkScenario.steps[0].arguments["scale"] = "1e308";
+        require(runFresh(12).verdict == RunVerdict::Error,
+                "overflowing conversion was reported as a measurement");
+        checkScenario.steps[0].arguments.erase("conversion");
+        checkScenario.steps[0].arguments.erase("scale");
+        checkScenario.steps[0].arguments.erase("offset");
+        checkScenario.steps[0].arguments.erase("output_unit");
+        checkScenario.steps[0].arguments["lower"] = "11";
+        checkScenario.steps[0].arguments["upper"] = "13";
         checkScenario.steps[0].arguments["unit"] = "A";
         require(runFresh(12).verdict == RunVerdict::Error,
                 "mismatched source unit was accepted");
