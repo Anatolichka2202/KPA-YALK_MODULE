@@ -6,6 +6,7 @@
 #include "address_sets_widget.h"
 #include "table_widget.h"
 #include "detail_view.h"
+#include "parameter_sources.h"
 #include "orbita_stand/run_store.h"
 #include "orbita_stand/sample_source.h"
 
@@ -42,6 +43,7 @@
 #include <atomic>
 #include <cstdlib>
 #include <iostream>
+#include <limits>
 #include <set>
 #include <stdexcept>
 
@@ -249,6 +251,32 @@ int runMonitorChild(bool silent)
                     && sourcesTable->item(0, 0)->text().contains(QStringLiteral("Имитатор"))
                     && sourcesTable->item(1, 0)->text().contains(QStringLiteral("имитатор")),
                 "values from two independent simulators were not shown together");
+        auto* plot = window.findChild<QCustomPlot*>(QStringLiteral("sourceTrendPlot"));
+        require(plot && plot->graphCount() == 2, "multi-source graph unavailable");
+        sourcesTable->item(0, 0)->setCheckState(Qt::Checked);
+        sourcesTable->item(1, 0)->setCheckState(Qt::Checked);
+        QEventLoop graphReady;
+        QTimer graphPoll;
+        QTimer graphTimeout;
+        graphTimeout.setSingleShot(true);
+        QObject::connect(&graphPoll, &QTimer::timeout, &graphReady, [&] {
+            if (plot->graph(0)->data()->size() && plot->graph(1)->data()->size()) graphReady.quit();
+        });
+        QObject::connect(&graphTimeout, &QTimer::timeout, &graphReady, &QEventLoop::quit);
+        graphPoll.start(20); graphTimeout.start(5000); graphReady.exec();
+        require(plot->graph(0)->data()->size() && plot->graph(1)->data()->size()
+                    && plot->graph(0)->valueAxis() != plot->graph(1)->valueAxis()
+                    && plot->graph(0)->keyAxis() == plot->graph(1)->keyAxis(),
+                "signals did not use separate value axes and common time");
+        window.resize(1000, 650);
+        const auto preservedPoints = plot->graph(0)->data()->size();
+        sets->setFromSpecs({{"M16P1A11B21T21", "Имитируемый параметр", "Тест"},
+                            {"M16P1A11B21T22", "Второй канал", "Тест"}});
+        require(sourcesTable->rowCount() == 3 && plot->graphCount() == 3
+                    && sourcesTable->item(0, 0)->checkState() == Qt::Checked
+                    && sourcesTable->item(1, 0)->checkState() == Qt::Checked
+                    && plot->graph(0)->data()->size() >= preservedPoints,
+                "changing channel set reset another source graph");
         require(QMetaObject::invokeMethod(&window, "onChannelDoubleClicked", Qt::DirectConnection,
                                           Q_ARG(int, 0)), "cannot open parameter details");
         auto* detail = window.findChild<DetailView*>();
@@ -272,11 +300,19 @@ int runMonitorChild(bool silent)
         });
         QObject::connect(&disconnectedTimeout, &QTimer::timeout, &disconnected, &QEventLoop::quit);
         disconnectedPoll.start(20); disconnectedTimeout.start(3000); disconnected.exec();
+        const auto graphData = plot->graph(1)->data();
+        require(graphData->size() > 1 && std::isnan((graphData->constEnd() - 1)->value),
+                "disconnect did not create a graph gap");
         require(sourcesTable->item(1, 4)->text() == QStringLiteral("Отключён")
                     && sourcesTable->item(1, 2)->text() == QStringLiteral("—")
                     && sourcesTable->item(0, 2)->text() == "12.5"
                     && sourcesTable->item(0, 4)->text() == QStringLiteral("Актуально"),
                 "one simulator disconnect affected another source");
+        auto* sourceMonitor = window.findChild<MultiSourceMonitor*>();
+        require(sourceMonitor, "source monitor unavailable");
+        sourceMonitor->setRepository(nullptr);
+        require(plot->graph(0)->data()->isEmpty() && plot->graph(1)->data()->isEmpty(),
+                "history from an old profile was retained");
     } else {
         QEventLoop idle;
         QTimer::singleShot(5300, &idle, &QEventLoop::quit);
@@ -825,6 +861,34 @@ int runChild(const QString& mode)
 
 int runParent()
 {
+    {
+        orbita::stand::ParameterRepository repository;
+        repository.add(makeParameterSimulator("unknown-unit", "voltage", 12.0, "V"));
+        repository.add(makeParameterSimulator("invalid-value", "voltage", std::numeric_limits<double>::quiet_NaN(), "V"));
+        repository.refresh("unknown-unit", "voltage");
+        repository.refresh("invalid-value", "voltage");
+        MultiSourceMonitor monitor;
+        monitor.setBindings({{QStringLiteral("unknown-unit"), QStringLiteral("Имитатор"),
+                              QStringLiteral("voltage"), QStringLiteral("Напряжение"), {}, {}},
+                             {QStringLiteral("invalid-value"), QStringLiteral("Имитатор"),
+                              QStringLiteral("voltage"), QStringLiteral("Недостоверное"), {}, QStringLiteral("V")}});
+        monitor.setRepository(&repository);
+        auto* values = monitor.findChild<QTableWidget*>(QStringLiteral("multiSourceValues"));
+        auto* plot = monitor.findChild<QCustomPlot*>(QStringLiteral("sourceTrendPlot"));
+        require(values && plot, "unknown-unit monitor unavailable");
+        values->item(0, 0)->setCheckState(Qt::Checked);
+        values->item(1, 0)->setCheckState(Qt::Checked);
+        QEventLoop wait;
+        QTimer::singleShot(350, &wait, &QEventLoop::quit);
+        wait.exec();
+        require(plot->graph(0)->data()->isEmpty()
+                    && values->item(0, 4)->text().contains(QStringLiteral("нет единицы")),
+                "unconfigured unit was plotted as a confirmed scale");
+        require(plot->graph(1)->data()->isEmpty()
+                    && values->item(1, 2)->text() == QStringLiteral("—")
+                    && values->item(1, 4)->text() == QStringLiteral("Недостоверно"),
+                "non-finite value was shown as a valid measurement");
+    }
     // Виджеты не должны принимать исходное нулевое значение за измерение.
     {
         MainPage page;
