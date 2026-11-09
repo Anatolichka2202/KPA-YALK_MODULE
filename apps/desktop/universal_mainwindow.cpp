@@ -24,6 +24,7 @@
 #include <QFile>
 #include <QSaveFile>
 #include <QSet>
+#include <QTableWidget>
 #include <QStringList>
 #include <QtConcurrent/QtConcurrentRun>
 
@@ -100,6 +101,15 @@ void UniversalMainWindow::openGenericCheck()
     if (!genericDialog_) {
         genericDialog_ = new GenericCheckDialog(this);
         genericDialog_->setAttribute(Qt::WA_DeleteOnClose, false);
+        checkMonitor_ = new MultiSourceMonitor(genericDialog_);
+        checkMonitor_->setObjectName(QStringLiteral("genericCheckMonitor"));
+        if (auto* table = checkMonitor_->findChild<QTableWidget*>(QStringLiteral("multiSourceValues")))
+            table->setObjectName(QStringLiteral("genericMonitorValues"));
+        genericDialog_->setMonitorWidget(checkMonitor_);
+        connect(this, &MainWindow::sourceMonitorChanged, this, &UniversalMainWindow::syncCheckMonitor);
+        connect(this, &MainWindow::sourceMonitorReset, this, [this] {
+            if (checkMonitor_) checkMonitor_->setRepository(nullptr);
+        });
 
         connect(genericDialog_, &GenericCheckDialog::createScenarioRequested,
                 this, &UniversalMainWindow::createGenericScenario);
@@ -112,9 +122,28 @@ void UniversalMainWindow::openGenericCheck()
     }
 
     reloadGenericScenarios();
+    syncCheckMonitor();
+    checkMonitor_->reloadPages();
     genericDialog_->show();
     genericDialog_->raise();
     genericDialog_->activateWindow();
+}
+
+void UniversalMainWindow::syncCheckMonitor()
+{
+    if (!checkMonitor_) return;
+    const auto* project = integrationProject();
+    const auto& profile = integrationStandProfile();
+    const auto scope = project && !project->id.empty() && !profile.id.empty()
+        ? QString::fromStdString(project->id) + QChar(0x1f) + QString::fromStdString(profile.id)
+        : QString();
+    if (scope != checkMonitorScope_) {
+        checkMonitor_->setRepository(nullptr);
+        checkMonitorScope_ = scope;
+        checkMonitor_->setPageScope(scope);
+    }
+    checkMonitor_->setBindings(integrationParameterBindings());
+    checkMonitor_->setRepository(integrationStandRuntimeReady() ? &integrationStationSession().parameters() : nullptr);
 }
 
 void UniversalMainWindow::reloadGenericScenarios()

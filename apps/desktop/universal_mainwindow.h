@@ -6,6 +6,7 @@
 #include <QFutureWatcher>
 
 class GenericCheckDialog;
+class MultiSourceMonitor;
 
 class UniversalMainWindow : public KtmaMainWindow
 {
@@ -28,6 +29,7 @@ private slots:
                             const QString& reportTemplate);
     void stopGenericScenario();
     void finishGenericScenario();
+    void syncCheckMonitor();
 
 private:
     QString renderGenericReport(const orbita::stand::ScenarioRunResult& result) const;
@@ -36,6 +38,8 @@ private:
     QString formatTimestamp(std::chrono::system_clock::time_point timestamp) const;
 
     GenericCheckDialog* genericDialog_ = nullptr;
+    MultiSourceMonitor* checkMonitor_ = nullptr;
+    QString checkMonitorScope_;
     QFutureWatcher<orbita::stand::ScenarioRunResult>* genericWatcher_ = nullptr;
     QString genericDescription_;
     QString genericEngineeringOverride_;

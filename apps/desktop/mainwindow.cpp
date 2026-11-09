@@ -817,6 +817,7 @@ void MainWindow::initializeStandRuntime()
         // A reinitialization must release the bridge before StationSession replaces
         // its sample-source instance. Kind factories survive ComponentRuntime::clear().
         if (parameterAcquisition_) parameterAcquisition_->shutdown();
+        emit sourceMonitorReset();
         if (mainPage_) mainPage_->sourceMonitor()->setRepository(nullptr);
         additionalMonitorBindings_.clear();
         orbitaSampleBridge_.reset();
@@ -1016,9 +1017,11 @@ void MainWindow::initializeStandRuntime()
             }
         });
         standRuntimeReady_ = true;
+        emit sourceMonitorChanged();
         log(QStringLiteral("Плагины оборудования: загружено %1").arg(equipmentPlugins_->plugins().size()));
     } catch (const std::exception& error) {
         standRuntimeReady_ = false;
+        emit sourceMonitorChanged();
         const QString detail = QStringLiteral("Стендовый движок не готов: %1")
             .arg(QString::fromUtf8(error.what()));
         // Delivery/application composition publishes product-specific scenario
@@ -1685,6 +1688,7 @@ void MainWindow::updateSourceMonitorBindings()
         ? QString::fromStdString(project_->id) + QChar(0x1f) + QString::fromStdString(standProfile_.id)
         : QString());
     mainPage_->sourceMonitor()->setBindings(std::move(bindings));
+    emit sourceMonitorChanged();
 }
 
 void MainWindow::onWatchSetChanged(const std::vector<orbita::ChannelSpec>& specs)

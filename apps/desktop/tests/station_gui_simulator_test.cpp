@@ -33,6 +33,7 @@
 #include <QSqlQuery>
 #include <QTemporaryDir>
 #include <QTableWidget>
+#include <QTabWidget>
 #include <QTextBrowser>
 #include <QTextEdit>
 #include <QThread>
@@ -162,6 +163,12 @@ public:
     }
     bool otherSourcePresent() {
         return integrationStationSession().components().findById("other-stream") != nullptr;
+    }
+    void reloadSameProfile() {
+        const auto profile = integrationStandProfile();
+        integrationConfigureStandProfile(profile, {});
+        integrationEnsureStandRuntime();
+        require(integrationStandRuntimeReady(), "profile reload failed");
     }
     void pauseSamples() { require(pausable_, "pausable simulator unavailable"); pausable_->pause(); }
     std::string sourceOperation(const std::string& operation, const std::map<std::string, std::string>& args = {}) {
@@ -394,6 +401,37 @@ int runHealthMonitorChild()
     auto* choices = dialog ? dialog->findChild<QComboBox*>(QStringLiteral("genericScenario")) : nullptr;
     auto* run = dialog ? dialog->findChild<QPushButton*>(QStringLiteral("runGeneric")) : nullptr;
     require(choices && run, "scenario dialog unavailable from monitor");
+    auto* checkMonitor = dialog->findChild<MultiSourceMonitor*>(QStringLiteral("genericCheckMonitor"));
+    auto* checkTable = checkMonitor ? checkMonitor->findChild<QTableWidget*>(QStringLiteral("genericMonitorValues")) : nullptr;
+    auto* createPage = checkMonitor ? checkMonitor->findChild<QPushButton*>(QStringLiteral("createMonitorPage")) : nullptr;
+    auto* tabs = dialog->findChild<QTabWidget*>(QStringLiteral("genericResultTabs"));
+    require(checkMonitor && checkTable && createPage && tabs, "monitor page missing from check");
+    bool configuredPage = false;
+    QTimer::singleShot(0, [&] {
+        auto* editor = qobject_cast<QDialog*>(QApplication::activeModalWidget());
+        if (!editor) return;
+        auto* title = editor->findChild<QLineEdit*>(QStringLiteral("pageTitle"));
+        auto* parameters = editor->findChild<QTableWidget*>(QStringLiteral("pageParameters"));
+        auto* buttons = editor->findChild<QDialogButtonBox*>();
+        if (!title || !parameters || !buttons) { editor->accept(); return; }
+        for (int row = 0; row < parameters->rowCount(); ++row) {
+            if (parameters->item(row, 0)->data(Qt::UserRole).toString() == QStringLiteral("second-simulator")) {
+                parameters->item(row, 0)->setCheckState(Qt::Checked);
+                parameters->item(row, 2)->setText(QStringLiteral("Питание БРП"));
+                parameters->item(row, 3)->setCheckState(Qt::Checked);
+                title->setText(QStringLiteral("Страница проверки"));
+                configuredPage = true;
+                buttons->button(QDialogButtonBox::Save)->click();
+                return;
+            }
+        }
+        editor->accept();
+    });
+    createPage->click();
+    require(configuredPage && checkTable->rowCount() == 1
+                && checkTable->item(0, 1)->text() == QStringLiteral("Питание БРП"),
+            "check monitoring page was not configured");
+    tabs->setCurrentWidget(checkMonitor);
     const int index = choices->findData(path);
     require(index >= 0, "health scenario missing from list");
     choices->setCurrentIndex(index);
@@ -424,6 +462,20 @@ int runHealthMonitorChild()
     auto* home = window.findChild<QAction*>(QStringLiteral("leaveFreeWorkspace"));
     require(window.entered() && !stop->isEnabled() && home && !home->isEnabled() && !sets->isEnabled(),
             "operator can change the monitor source during a dependent check");
+    QEventLoop liveValue;
+    QTimer valuePoll, valueTimeout;
+    valueTimeout.setSingleShot(true);
+    QObject::connect(&valuePoll, &QTimer::timeout, &liveValue, [&] {
+        if (checkTable->item(0, 2)->text() == QStringLiteral("12.5")) liveValue.quit();
+    });
+    QObject::connect(&valueTimeout, &QTimer::timeout, &liveValue, &QEventLoop::quit);
+    valuePoll.start(20); valueTimeout.start(3000); liveValue.exec();
+    require(checkTable->item(0, 2)->text() == QStringLiteral("12.5")
+                && checkTable->item(0, 4)->text() == QStringLiteral("Актуально"),
+            "configured page did not show live simulator values during the check");
+    auto* checkPlot = checkMonitor->findChild<QCustomPlot*>(QStringLiteral("sourceTrendPlot"));
+    require(checkPlot && checkPlot->graphCount() == 1 && !checkPlot->graph(0)->data()->isEmpty(),
+            "check monitoring graph did not receive simulator data");
     window.release();
     finishTimeout.start(8000); finished.exec();
     require(run->isEnabled() && stop->isEnabled() && home->isEnabled() && sets->isEnabled(),
@@ -465,6 +517,9 @@ int runHealthMonitorChild()
                 && read.find("status=no_data") != std::string::npos,
             "stale samples were reported as live data");
     stop->click();
+    window.reloadSameProfile();
+    require(checkPlot->graphCount() == 1 && checkPlot->graph(0)->data()->isEmpty(),
+            "check monitoring graph retained history after reinitializing the same profile");
     require(QFile::remove(measurePath), "cannot remove isolated measurement scenario");
     require(QFile::remove(slowPath), "cannot remove isolated lock scenario");
     require(QFile::remove(path), "cannot remove isolated health scenario");
@@ -625,6 +680,23 @@ int runChild(const QString& mode)
                     && reopenedTable->item(0, 4)->text() == QStringLiteral("Недоступен")
                     && reopenedTable->item(0, 0)->checkState() == Qt::Checked,
                 "saved page did not retain its settings or missing parameter");
+        auto* edit = monitor.findChild<QPushButton*>(QStringLiteral("editMonitorPage"));
+        bool changedGraph = false;
+        QTimer::singleShot(0, [&] {
+            auto* dialog = qobject_cast<QDialog*>(QApplication::activeModalWidget());
+            if (!dialog) return;
+            auto* parameters = dialog->findChild<QTableWidget*>(QStringLiteral("pageParameters"));
+            auto* buttons = dialog->findChild<QDialogButtonBox*>();
+            if (!parameters || !buttons || parameters->rowCount() < 1) { dialog->accept(); return; }
+            parameters->item(0, 3)->setCheckState(Qt::Unchecked);
+            changedGraph = true;
+            buttons->button(QDialogButtonBox::Save)->click();
+        });
+        require(edit, "saved page edit unavailable");
+        edit->click();
+        reopened.reloadPages();
+        require(changedGraph && reopenedTable->item(0, 0)->checkState() == Qt::Unchecked,
+                "page reload did not apply graph settings changed in another view");
         reopened.setPageScope(QStringLiteral("other-delivery\x1ftest-profile"));
         require(pages->count() == 1 && reopenedTable->rowCount() == 1
                     && reopenedTable->item(0, 1)->text() == QStringLiteral("A"),

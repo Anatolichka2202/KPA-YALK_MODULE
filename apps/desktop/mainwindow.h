@@ -57,6 +57,8 @@ public:
 
 signals:
     void freeCheckRequested();
+    void sourceMonitorChanged();
+    void sourceMonitorReset();
 
 protected:
     void closeEvent(QCloseEvent* event) override;

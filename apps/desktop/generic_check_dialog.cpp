@@ -15,6 +15,7 @@
 #include <QSaveFile>
 #include <QSplitter>
 #include <QTextBrowser>
+#include <QTabWidget>
 #include <QVBoxLayout>
 
 namespace {
@@ -163,12 +164,15 @@ GenericCheckDialog::GenericCheckDialog(QWidget* parent)
     eventLog_->setObjectName(QStringLiteral("genericEventLog"));
     eventLog_->setMaximumHeight(220);
     resultLayout->addWidget(eventLog_);
-    auto* reportCaption = new QLabel(QStringLiteral("ПРЕДПРОСМОТР ОТЧЁТА"), resultPanel);
+    auto* reportCaption = new QLabel(QStringLiteral("НАБЛЮДЕНИЕ И ОТЧЁТ"), resultPanel);
     reportCaption->setProperty("caption", true);
     resultLayout->addWidget(reportCaption);
     reportPreview_ = new QTextBrowser(resultPanel);
     reportPreview_->setObjectName(QStringLiteral("genericReportPreview"));
-    resultLayout->addWidget(reportPreview_, 1);
+    viewTabs_ = new QTabWidget(resultPanel);
+    viewTabs_->setObjectName(QStringLiteral("genericResultTabs"));
+    viewTabs_->addTab(reportPreview_, QStringLiteral("Отчёт"));
+    resultLayout->addWidget(viewTabs_, 1);
 
     splitter->addWidget(templatePanel);
     splitter->addWidget(resultPanel);
@@ -210,6 +214,11 @@ GenericCheckDialog::GenericCheckDialog(QWidget* parent)
     connect(closeButton, &QPushButton::clicked, this, &QDialog::close);
     connect(scenario_, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &GenericCheckDialog::updateResourcePreview);
+}
+
+void GenericCheckDialog::setMonitorWidget(QWidget* widget)
+{
+    if (widget) viewTabs_->addTab(widget, QStringLiteral("Параметры"));
 }
 
 void GenericCheckDialog::setScenarios(const QVector<GenericScenarioEntry>& scenarios)

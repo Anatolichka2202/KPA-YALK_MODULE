@@ -13,6 +13,7 @@ class QLineEdit;
 class QPlainTextEdit;
 class QPushButton;
 class QTextBrowser;
+class QTabWidget;
 
 struct GenericScenarioEntry
 {
@@ -42,6 +43,7 @@ public:
     void setRunning(bool running, const QString& detail = {});
     void appendEvent(const orbita::stand::RunEvent& event);
     void setReportHtml(const QString& html, const QString& summary);
+    void setMonitorWidget(QWidget* widget);
 
 signals:
     void createScenarioRequested();
@@ -73,6 +75,7 @@ private:
     QPlainTextEdit* reportTemplate_ = nullptr;
     QTextBrowser* eventLog_ = nullptr;
     QTextBrowser* reportPreview_ = nullptr;
+    QTabWidget* viewTabs_ = nullptr;
     QLabel* status_ = nullptr;
     QPushButton* editScenarioButton_ = nullptr;
     QPushButton* createScenarioButton_ = nullptr;

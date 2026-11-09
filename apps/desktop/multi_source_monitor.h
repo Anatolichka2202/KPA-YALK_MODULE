@@ -31,6 +31,7 @@ public:
     void setRepository(orbita::stand::ParameterRepository* repository);
     void setPageScope(const QString& scope);
     void setBindings(std::vector<MonitoredBinding> bindings);
+    void reloadPages();
     const std::vector<MonitoredBinding>& bindings() const { return availableBindings_; }
 private:
     void rebuildBindings(std::vector<MonitoredBinding> bindings);

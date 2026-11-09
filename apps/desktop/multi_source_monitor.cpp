@@ -143,6 +143,13 @@ void MultiSourceMonitor::setBindings(std::vector<MonitoredBinding> bindings)
     applyPage(false);
 }
 
+void MultiSourceMonitor::reloadPages()
+{
+    const auto selected = pages_->currentData().toString();
+    refreshPages(selected);
+    applyPage(true);
+}
+
 void MultiSourceMonitor::rebuildBindings(std::vector<MonitoredBinding> bindings)
 {
     const QSignalBlocker block(table_);
