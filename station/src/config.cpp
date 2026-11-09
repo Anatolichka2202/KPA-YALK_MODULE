@@ -260,6 +260,7 @@ ScenarioDefinition loadScenarioYaml(const std::string& path)
     scenario.version = root.value("version");
     scenario.catalogVersion = root.value("catalog_version");
     scenario.objectType = root.value("object_type");
+    scenario.monitorPageId = root.value("monitor_page");
     scenario.publicationState = root.value("state") == "published"
         ? PublicationState::Published : PublicationState::Draft;
     const auto& steps = root.at("steps");

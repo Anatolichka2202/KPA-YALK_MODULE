@@ -27,6 +27,7 @@ struct GenericScenarioEntry
     bool resourcesConfigured = true;
     bool published = true;
     QString validationError;
+    QString monitorPageId;
 };
 
 class GenericCheckDialog final : public QDialog
@@ -55,6 +56,7 @@ signals:
                       const QString& engineeringOverride,
                       const QString& reportTemplate);
     void stopRequested();
+    void scenarioPageSelected(const QString& pageId);
 
 private slots:
     void requestRun();

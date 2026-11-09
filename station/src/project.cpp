@@ -56,6 +56,7 @@ std::string scenarioSnapshot(const ScenarioDefinition& scenario)
     result.insert(QStringLiteral("version"), QString::fromUtf8(scenario.version));
     result.insert(QStringLiteral("catalog_version"), QString::fromUtf8(scenario.catalogVersion));
     result.insert(QStringLiteral("object_type"), QString::fromUtf8(scenario.objectType));
+    result.insert(QStringLiteral("monitor_page"), QString::fromUtf8(scenario.monitorPageId));
     result.insert(QStringLiteral("state"), scenario.publicationState == PublicationState::Published
         ? QStringLiteral("published") : QStringLiteral("draft"));
     QJsonArray steps;

@@ -11,6 +11,7 @@ class QTimer;
 class QCheckBox;
 class QComboBox;
 class QSplitter;
+class QLabel;
 
 // Параметр задаётся парой идентификаторов: одинаковые адреса у разных
 // источников не смешиваются и не требуют общего пространства имён приборов.
@@ -32,6 +33,8 @@ public:
     void setPageScope(const QString& scope);
     void setBindings(std::vector<MonitoredBinding> bindings);
     void reloadPages();
+    QList<QPair<QString, QString>> availablePages() const;
+    void selectPage(const QString& id);
     const std::vector<MonitoredBinding>& bindings() const { return availableBindings_; }
 private:
     void rebuildBindings(std::vector<MonitoredBinding> bindings);
@@ -47,6 +50,7 @@ private:
     QCheckBox* followTime_ = nullptr;
     QCheckBox* automaticScale_ = nullptr;
     QComboBox* pages_ = nullptr;
+    QLabel* pageError_ = nullptr;
     QSplitter* splitter_ = nullptr;
     QWidget* graphPanel_ = nullptr;
     struct Series {

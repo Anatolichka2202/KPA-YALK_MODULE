@@ -512,6 +512,10 @@ int main(int argc, char** argv)
         file.close();
         ScenarioVisualEditor editor(measurePath);
         editor.setAvailableProcedures({"parameter.measure"});
+        editor.setMonitorPages({{QStringLiteral("Испытательная страница"), QStringLiteral("1ec1f3d9-0734-4953-8d2c-59b2bc2345f3")}});
+        auto* pageChoice = editor.findChild<QComboBox*>(QStringLiteral("scenarioMonitorPage"));
+        require(pageChoice && pageChoice->count() == 2, "scenario page selector unavailable");
+        pageChoice->setCurrentIndex(1);
         editor.setAvailableParameters({{QStringLiteral("sim"), QStringLiteral("voltage"), QStringLiteral("Имитатор · Напряжение"), QStringLiteral("В")}});
         auto* choice = editor.findChild<QComboBox*>(QStringLiteral("availableScenarioProcedures"));
         auto* settings = editor.findChild<QPushButton*>(QStringLiteral("configureParameterMeasurement"));
@@ -545,7 +549,8 @@ int main(int argc, char** argv)
         settings->click();
         save->click();
         const auto saved = orbita::stand::loadScenarioYaml(measurePath.toStdString());
-        require(saved.steps.size() == 1 && saved.steps[0].procedure == "parameter.measure"
+        require(saved.monitorPageId == "1ec1f3d9-0734-4953-8d2c-59b2bc2345f3"
+                    && saved.steps.size() == 1 && saved.steps[0].procedure == "parameter.measure"
                     && saved.steps[0].arguments.at("source") == "sim"
                     && saved.steps[0].arguments.at("parameter") == "voltage"
                     && saved.steps[0].arguments.at("lower") == "12"

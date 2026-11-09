@@ -42,6 +42,7 @@ public:
     void setAvailableParameters(std::vector<ScenarioParameterOption> parameters)
     { parameterOptions_ = std::move(parameters); }
     void setSwitchResources(QStringList resources) { switchResources_ = std::move(resources); }
+    void setMonitorPages(const QList<QPair<QString, QString>>& pages);
     QString currentPath() const { return path_; }
     void setScenarioStorage(QString writableDirectory, QStringList versionDirectories);
     void setScenarioValidator(std::function<std::vector<std::string>(
@@ -122,6 +123,7 @@ private:
     QLineEdit* tu_ = nullptr;
     QLineEdit* procedure_ = nullptr;
     QComboBox* procedureChoice_ = nullptr;
+    QComboBox* monitorPageChoice_ = nullptr;
     QPlainTextEdit* requires_ = nullptr;
     QPlainTextEdit* resources_ = nullptr;
     QPlainTextEdit* arguments_ = nullptr;

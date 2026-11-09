@@ -70,6 +70,13 @@ ScenarioVisualEditor::ScenarioVisualEditor(QString path, QWidget* parent)
     draftStatus_ = new QLabel(this);
     draftStatus_->setObjectName(QStringLiteral("scenarioDraftStatus"));
     layout->addWidget(draftStatus_);
+    auto* pageRow = new QHBoxLayout;
+    pageRow->addWidget(new QLabel(QStringLiteral("Страница наблюдения:"), this));
+    monitorPageChoice_ = new QComboBox(this);
+    monitorPageChoice_->setObjectName(QStringLiteral("scenarioMonitorPage"));
+    monitorPageChoice_->addItem(QStringLiteral("Все параметры"), QString());
+    pageRow->addWidget(monitorPageChoice_, 1);
+    layout->addLayout(pageRow);
 
     auto* splitter = new QSplitter(Qt::Horizontal, this);
     tree_ = new QTreeWidget(splitter);
@@ -264,12 +271,33 @@ ScenarioVisualEditor::ScenarioVisualEditor(QString path, QWidget* parent)
     connect(versionButton_, &QPushButton::clicked, this, &ScenarioVisualEditor::createRunnableVersion);
     connect(close, &QPushButton::clicked, this, &QDialog::accept);
     load();
+    setMonitorPages({});
     setDirty(false);
     const auto changed = [this] { if (!updatingFields_ && !published_) setDirty(true); };
     for (auto* edit : {id_, title_, tu_, procedure_})
         connect(edit, &QLineEdit::textChanged, this, changed);
     for (auto* edit : {requires_, resources_, arguments_})
         connect(edit, &QPlainTextEdit::textChanged, this, changed);
+    connect(monitorPageChoice_, qOverload<int>(&QComboBox::currentIndexChanged), this, [this] {
+        if (!loaded_ || published_) return;
+        scenario_.monitorPageId = monitorPageChoice_->currentData().toString().toUtf8().toStdString();
+        setDirty(true);
+    });
+}
+
+void ScenarioVisualEditor::setMonitorPages(const QList<QPair<QString, QString>>& pages)
+{
+    const QSignalBlocker blocker(monitorPageChoice_);
+    monitorPageChoice_->clear();
+    monitorPageChoice_->addItem(QStringLiteral("Все параметры"), QString());
+    for (const auto& page : pages) monitorPageChoice_->addItem(page.first, page.second);
+    const auto selected = QString::fromStdString(scenario_.monitorPageId);
+    int index = monitorPageChoice_->findData(selected);
+    if (index < 0) {
+        monitorPageChoice_->addItem(QStringLiteral("Недоступная страница: %1").arg(selected), selected);
+        index = monitorPageChoice_->count() - 1;
+    }
+    monitorPageChoice_->setCurrentIndex(index);
 }
 
 void ScenarioVisualEditor::setDirty(bool dirty)
@@ -381,6 +409,7 @@ void ScenarioVisualEditor::setEditorEnabled(bool enabled)
     tu_->setEnabled(enabled);
     procedure_->setEnabled(enabled);
     procedureChoice_->setEnabled(enabled);
+    monitorPageChoice_->setEnabled(enabled);
     telemetrySettings_->setEnabled(enabled && procedure_->text() == QStringLiteral("telemetry.health"));
     measurementSettings_->setEnabled(enabled && procedure_->text() == QStringLiteral("parameter.measure"));
     delaySettings_->setEnabled(enabled && procedure_->text() == QStringLiteral("station.delay"));
@@ -1187,6 +1216,8 @@ QString ScenarioVisualEditor::serialize() const
         output += QStringLiteral("catalog_version: %1\n").arg(quote(scenario_.catalogVersion));
     if (!scenario_.objectType.empty())
         output += QStringLiteral("object_type: %1\n").arg(quote(scenario_.objectType));
+    if (!scenario_.monitorPageId.empty())
+        output += QStringLiteral("monitor_page: %1\n").arg(quote(scenario_.monitorPageId));
     output += QStringLiteral("state: %1\n").arg(
         scenario_.publicationState == orbita::stand::PublicationState::Published ? QStringLiteral("published") : QStringLiteral("draft"));
     output += scenario_.steps.empty() ? QStringLiteral("steps: []\n") : QStringLiteral("steps:\n");

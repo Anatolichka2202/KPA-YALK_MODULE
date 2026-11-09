@@ -105,6 +105,7 @@ struct ScenarioDefinition {
     std::string objectType;
     PublicationState publicationState = PublicationState::Draft;
     std::vector<ScenarioNode> steps;
+    std::string monitorPageId;
 };
 
 // Legacy/runtime progress event. This remains intentionally lightweight for UI

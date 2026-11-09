@@ -119,11 +119,13 @@ void UniversalMainWindow::openGenericCheck()
                 this, &UniversalMainWindow::runGenericScenario);
         connect(genericDialog_, &GenericCheckDialog::stopRequested,
                 this, &UniversalMainWindow::stopGenericScenario);
+        connect(genericDialog_, &GenericCheckDialog::scenarioPageSelected,
+                checkMonitor_, &MultiSourceMonitor::selectPage);
     }
 
-    reloadGenericScenarios();
     syncCheckMonitor();
     checkMonitor_->reloadPages();
+    reloadGenericScenarios();
     genericDialog_->show();
     genericDialog_->raise();
     genericDialog_->activateWindow();
@@ -243,7 +245,8 @@ void UniversalMainWindow::reloadGenericScenarios()
                         required,
                         resourcesConfigured,
                         scenario.publicationState == orbita::stand::PublicationState::Published,
-                        errors.empty() ? QString() : QString::fromStdString(errors.front())});
+                        errors.empty() ? QString() : QString::fromStdString(errors.front()),
+                        QString::fromStdString(scenario.monitorPageId)});
                 }
             } catch (const std::exception& error) {
                 integrationLog(QStringLiteral("Свободный сценарий %1 не загружен: %2")
@@ -301,6 +304,7 @@ void UniversalMainWindow::editGenericScenario(const QString& path)
     if (genericWatcher_->isRunning() || !QFileInfo::exists(path)) return;
     const QString workflowId = genericDialog_ ? genericDialog_->currentWorkflowId() : QString();
     ScenarioVisualEditor editor(path, this);
+    if (checkMonitor_) { checkMonitor_->reloadPages(); editor.setMonitorPages(checkMonitor_->availablePages()); }
     std::vector<ScenarioParameterOption> parameters;
     for (const auto& binding : integrationParameterBindings())
         if (!binding.parameterKey.isEmpty()) parameters.push_back({binding.sourceId, binding.parameterKey,

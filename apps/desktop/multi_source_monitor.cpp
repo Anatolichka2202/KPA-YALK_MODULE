@@ -53,6 +53,12 @@ MultiSourceMonitor::MultiSourceMonitor(QWidget* parent) : QWidget(parent)
     pageControls->addWidget(createPage);
     pageControls->addWidget(editPageButton);
     layout->addLayout(pageControls);
+    pageError_ = new QLabel(this);
+    pageError_->setObjectName(QStringLiteral("monitorPageError"));
+    pageError_->setWordWrap(true);
+    pageError_->setStyleSheet(QStringLiteral("color:#ffc180;"));
+    pageError_->hide();
+    layout->addWidget(pageError_);
     table_ = new QTableWidget(this);
     table_->setObjectName(QStringLiteral("multiSourceValues"));
     table_->setColumnCount(5);
@@ -147,6 +153,20 @@ void MultiSourceMonitor::reloadPages()
 {
     const auto selected = pages_->currentData().toString();
     refreshPages(selected);
+    applyPage(true);
+}
+
+QList<QPair<QString, QString>> MultiSourceMonitor::availablePages() const
+{
+    QList<QPair<QString, QString>> result;
+    for (int i = 1; i < pages_->count(); ++i)
+        result.push_back({pages_->itemText(i), pages_->itemData(i).toString()});
+    return result;
+}
+
+void MultiSourceMonitor::selectPage(const QString& id)
+{
+    refreshPages(id);
     applyPage(true);
 }
 
@@ -386,16 +406,21 @@ void MultiSourceMonitor::refreshPages(const QString& selectedId)
     const QSignalBlocker blocker(pages_);
     pages_->clear();
     pages_->addItem(QStringLiteral("Все параметры"), QString());
-    if (pageDirectory(pageScope_).isEmpty()) return;
-    const QDir dir(pageDirectory(pageScope_));
-    for (const auto& filename : dir.entryList({QStringLiteral("*.json")}, QDir::Files, QDir::Name)) {
+    const auto directory = pageDirectory(pageScope_);
+    const QDir dir(directory);
+    for (const auto& filename : directory.isEmpty() ? QStringList{}
+             : dir.entryList({QStringLiteral("*.json")}, QDir::Files, QDir::Name)) {
         const QString id = filename.left(filename.size() - 5);
         QString error;
         const auto page = readPage(pageScope_, id, &error);
         pages_->addItem(error.isEmpty() ? page.value("title").toString()
                                       : QStringLiteral("Ошибка страницы: %1").arg(filename), id);
     }
-    const int index = pages_->findData(selectedId);
+    int index = pages_->findData(selectedId);
+    if (index < 0 && !selectedId.isEmpty()) {
+        pages_->addItem(QStringLiteral("Недоступная страница: %1").arg(selectedId), selectedId);
+        index = pages_->count() - 1;
+    }
     pages_->setCurrentIndex(index < 0 ? 0 : index);
 }
 
@@ -403,6 +428,7 @@ void MultiSourceMonitor::applyPage(bool resetSelection)
 {
     const auto id = pages_->currentData().toString();
     if (id.isEmpty()) {
+        pageError_->hide();
         table_->show(); graphPanel_->show();
         splitter_->insertWidget(0, table_);
         rebuildBindings(availableBindings_);
@@ -416,9 +442,11 @@ void MultiSourceMonitor::applyPage(bool resetSelection)
     const auto page = readPage(pageScope_, id, &error);
     if (!error.isEmpty()) {
         rebuildBindings({});
-        QMessageBox::warning(this, QStringLiteral("Страница мониторинга"), error);
+        pageError_->setText(QStringLiteral("Страница недоступна: %1").arg(error));
+        pageError_->show();
         return;
     }
+    pageError_->hide();
     table_->setVisible(page.value("table").toBool(true));
     graphPanel_->setVisible(page.value("graph").toBool(true));
     splitter_->insertWidget(0, page.value("graphFirst").toBool() ? graphPanel_ : table_);

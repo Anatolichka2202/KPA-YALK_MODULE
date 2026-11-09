@@ -431,10 +431,27 @@ int runHealthMonitorChild()
     require(configuredPage && checkTable->rowCount() == 1
                 && checkTable->item(0, 1)->text() == QStringLiteral("Питание БРП"),
             "check monitoring page was not configured");
+    auto* pageList = checkMonitor->findChild<QComboBox*>(QStringLiteral("monitorPages"));
+    require(pageList && !pageList->currentData().toString().isEmpty(), "created page identity is missing");
+    const auto pageId = pageList->currentData().toString();
+    for (const auto& scenarioPath : {path, slowPath}) {
+        QFile file(scenarioPath);
+        require(file.open(QIODevice::Append | QIODevice::Text), "cannot bind test scenario to page");
+        file.write("\nmonitor_page: " + pageId.toUtf8() + "\n");
+    }
+    {
+        QFile file(measurePath);
+        require(file.open(QIODevice::Append | QIODevice::Text), "cannot bind missing test page");
+        file.write("\nmonitor_page: 73bfe5b2-4abf-4047-9300-796e90c5598c\n");
+    }
+    require(QMetaObject::invokeMethod(&window, "openGenericCheck", Qt::DirectConnection),
+            "cannot reopen check after page binding");
     tabs->setCurrentWidget(checkMonitor);
     const int index = choices->findData(path);
     require(index >= 0, "health scenario missing from list");
     choices->setCurrentIndex(index);
+    require(pageList->currentData().toString() == pageId && checkTable->rowCount() == 1,
+            "choosing a check did not select its configured monitoring page");
     require(run->isEnabled(), "session-owned Orbita source was reported unavailable");
     run->click();
     QEventLoop finished;
@@ -483,6 +500,10 @@ int runHealthMonitorChild()
     const int measureIndex = choices->findData(measurePath);
     require(measureIndex >= 0, "measurement scenario missing from list");
     choices->setCurrentIndex(measureIndex);
+    auto* pageError = checkMonitor->findChild<QLabel*>(QStringLiteral("monitorPageError"));
+    require(pageError && !pageError->isHidden() && checkTable->rowCount() == 0,
+            "missing scenario page was silently replaced by another page");
+    pageList->setCurrentIndex(pageList->findData(pageId));
     require(run->isEnabled(), "measurement scenario unavailable");
     run->click();
     finishTimeout.start(8000); finished.exec();
@@ -543,9 +564,12 @@ public:
         orbita::stand::StandProfile profile;
         profile.id = "simulator";
         profile.version = "1";
-        if (mode_ == "--create-new")
+        if (mode_ == "--create-new") {
             profile.components.push_back({"fake-isd", "equipment", "test.isd", true,
                 {"stand.switch_matrix"}, {}});
+            profile.components.push_back({"page-simulator", "parameter_source", "miltech.parameter.simulator", true,
+                {}, {{"parameter", "voltage"}, {"title", "Напряжение"}, {"value", "12.5"}, {"unit", "В"}}});
+        }
         integrationConfigureStandProfile(profile, {});
         integrationEnsureStandRuntime();
         if (!integrationStandRuntimeReady()) {
@@ -811,6 +835,7 @@ int runChild(const QString& mode)
     }
     QString createdVersion;
     QString createdDraft;
+    QString createdPageId;
     bool invalidRejected = false;
     bool conflictRejected = false;
     if (mode == "--new-version") {
@@ -865,6 +890,27 @@ int runChild(const QString& mode)
                 "version validation, conflict handling or selection failed");
     }
     if (mode == "--create-new") {
+        auto* monitor = dialog->findChild<MultiSourceMonitor*>(QStringLiteral("genericCheckMonitor"));
+        auto* createPage = monitor ? monitor->findChild<QPushButton*>(QStringLiteral("createMonitorPage")) : nullptr;
+        auto* pageList = monitor ? monitor->findChild<QComboBox*>(QStringLiteral("monitorPages")) : nullptr;
+        require(createPage && pageList, "cannot configure page for new scenario");
+        bool pageCreated = false;
+        QTimer::singleShot(0, [&] {
+            auto* pageEditor = qobject_cast<QDialog*>(QApplication::activeModalWidget());
+            if (!pageEditor) return;
+            auto* title = pageEditor->findChild<QLineEdit*>(QStringLiteral("pageTitle"));
+            auto* parameters = pageEditor->findChild<QTableWidget*>(QStringLiteral("pageParameters"));
+            auto* buttons = pageEditor->findChild<QDialogButtonBox*>();
+            if (!title || !parameters || !buttons || parameters->rowCount() < 1) { pageEditor->accept(); return; }
+            title->setText(QStringLiteral("Страница новой проверки"));
+            parameters->item(0, 0)->setCheckState(Qt::Checked);
+            pageCreated = true;
+            buttons->button(QDialogButtonBox::Save)->click();
+        });
+        createPage->click();
+        const auto pageId = pageList->currentData().toString();
+        createdPageId = pageId;
+        require(pageCreated && !pageId.isEmpty(), "monitor page was not created");
         auto* create = dialog->findChild<QPushButton*>(QStringLiteral("createGenericScenario"));
         require(create && create->isEnabled(), "new scenario action unavailable");
         bool edited = false;
@@ -880,7 +926,9 @@ int runChild(const QString& mode)
                 auto* tu = editor->findChild<QLineEdit*>(QStringLiteral("scenarioStepTu"));
                 auto* actions = editor->findChild<QComboBox*>(QStringLiteral("availableScenarioProcedures"));
                 auto* version = editor->findChild<QPushButton*>(QStringLiteral("createRunnableScenarioVersion"));
-                if (!add || !tu || !actions || !version) return;
+                auto* pageChoice = editor->findChild<QComboBox*>(QStringLiteral("scenarioMonitorPage"));
+                if (!add || !tu || !actions || !version || !pageChoice) return;
+                pageChoice->setCurrentIndex(pageChoice->findData(pageId));
                 add->click();
                 tu->setText(QStringLiteral("test.1"));
                 const int actionIndex = actions->findData(QStringLiteral("test.simulator"));
@@ -941,6 +989,9 @@ int runChild(const QString& mode)
         require(edited && run->isEnabled() && scenarios->currentData().toString() == createdVersion
                     && createdVersion.startsWith(QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation)),
                 "new scenario was not created in user storage and selected for execution");
+        require(orbita::stand::loadScenarioYaml(createdVersion.toStdString()).monitorPageId == pageId.toStdString()
+                    && pageList->currentData().toString() == pageId,
+                "created scenario did not save and select its monitoring page");
         require(QMetaObject::invokeMethod(&window, "openGenericCheck", Qt::DirectConnection)
                     && scenarios->currentData().toString() == createdVersion && run->isEnabled(),
                 "reopening did not rediscover the user scenario");
@@ -1031,6 +1082,8 @@ int runChild(const QString& mode)
                     && persisted->scenarioTitle == "Новая проверка имитатора"
                     && persisted->steps.back().verdict == orbita::stand::RunVerdict::Ok
                     && window.switchExercised()
+                    && persisted->contextAttributes.count("scenario_definition_json")
+                    && persisted->contextAttributes.at("scenario_definition_json").find(createdPageId.toStdString()) != std::string::npos
                     && std::any_of(persisted->evidence.begin(), persisted->evidence.end(), [](const auto& event) {
                         const auto confirmed = event.data.find("confirmed");
                         return event.operation == "safe_stop_resource" && confirmed != event.data.end()

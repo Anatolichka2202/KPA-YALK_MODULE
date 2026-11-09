@@ -16,6 +16,7 @@
 #include <QSplitter>
 #include <QTextBrowser>
 #include <QTabWidget>
+#include <QSignalBlocker>
 #include <QVBoxLayout>
 
 namespace {
@@ -214,6 +215,9 @@ GenericCheckDialog::GenericCheckDialog(QWidget* parent)
     connect(closeButton, &QPushButton::clicked, this, &QDialog::close);
     connect(scenario_, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &GenericCheckDialog::updateResourcePreview);
+    connect(scenario_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this] {
+        if (!stopButton_->isEnabled()) emit scenarioPageSelected(scenario_->currentData(Qt::UserRole + 7).toString());
+    });
 }
 
 void GenericCheckDialog::setMonitorWidget(QWidget* widget)
@@ -223,6 +227,7 @@ void GenericCheckDialog::setMonitorWidget(QWidget* widget)
 
 void GenericCheckDialog::setScenarios(const QVector<GenericScenarioEntry>& scenarios)
 {
+    const QSignalBlocker blocker(scenario_);
     const QString previousPath = selectedScenarioPath();
     const QString previousWorkflow = selectedWorkflowId();
     scenario_->clear();
@@ -237,6 +242,7 @@ void GenericCheckDialog::setScenarios(const QVector<GenericScenarioEntry>& scena
         scenario_->setItemData(index, entry.resourcesConfigured, Qt::UserRole + 4);
         scenario_->setItemData(index, entry.published, Qt::UserRole + 5);
         scenario_->setItemData(index, entry.validationError, Qt::UserRole + 6);
+        scenario_->setItemData(index, entry.monitorPageId, Qt::UserRole + 7);
     }
     selectScenario(previousPath, previousWorkflow);
     const bool available = scenario_->count() > 0;
@@ -249,6 +255,7 @@ void GenericCheckDialog::setScenarios(const QVector<GenericScenarioEntry>& scena
         : creationAvailable_ ? QStringLiteral("Проверок пока нет — создайте новую")
                              : QStringLiteral("В выбранном проекте нет доступных динамических сценариев"));
     updateResourcePreview();
+    if (!running) emit scenarioPageSelected(scenario_->currentData(Qt::UserRole + 7).toString());
 }
 
 void GenericCheckDialog::setCreationAvailable(bool available)
