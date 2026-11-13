@@ -704,6 +704,10 @@ int main(int argc, char** argv)
                     && recovered->steps.front().children.front().nodeId == "first"
                     && recovered->steps.front().children.front().measurements.size() == 1,
                 "interrupted run did not retain the nested confirmed measurement");
+        const auto recoveredHistory = recoveredStore.history();
+        require(recoveredHistory.size() == 1 && recoveredHistory.front().runId == interruptedId
+                    && recoveredHistory.front().finishedAt == std::chrono::system_clock::time_point{},
+                "history must include interrupted runs as unfinished");
         const auto unfinished = recoveredStore.unfinishedRuns();
         require(unfinished.size() == 1 && unfinished.front().runId == interruptedId
                     && unfinished.front().steps.front().children.front().measurements.front().measured == 42,

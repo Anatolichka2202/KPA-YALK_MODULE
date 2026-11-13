@@ -428,6 +428,24 @@ std::vector<ScenarioRunResult> RunStore::unfinishedRuns() const
     return results;
 }
 
+std::vector<RunSummary> RunStore::history() const
+{
+    QSqlQuery query(impl_->database);
+    execute(query, QStringLiteral(
+        "SELECT run_id,scenario_title,scenario_version,object_serial,started_ms,finished_ms,verdict "
+        "FROM test_runs ORDER BY started_ms DESC,run_id"));
+    std::vector<RunSummary> result;
+    while (query.next()) {
+        result.push_back({query.value(0).toString().toUtf8().toStdString(),
+            query.value(1).toString().toUtf8().toStdString(),
+            query.value(2).toString().toUtf8().toStdString(),
+            query.value(3).toString().toUtf8().toStdString(),
+            fromMilliseconds(query.value(4).toLongLong()),
+            fromMilliseconds(query.value(5).toLongLong()), verdictFromText(query.value(6).toString())});
+    }
+    return result;
+}
+
 std::optional<ScenarioRunResult> RunStore::load(const std::string& runId) const
 {
     QSqlQuery query(impl_->database);

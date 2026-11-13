@@ -10,6 +10,16 @@
 
 namespace orbita::stand {
 
+struct RunSummary {
+    std::string runId;
+    std::string scenarioTitle;
+    std::string scenarioVersion;
+    std::string objectSerial;
+    std::chrono::system_clock::time_point startedAt;
+    std::chrono::system_clock::time_point finishedAt;
+    RunVerdict verdict = RunVerdict::NotRun;
+};
+
 class RunStore final {
 public:
     explicit RunStore(std::string sqlitePath);
@@ -27,6 +37,7 @@ public:
     // malformed persisted verdict/attribute data is reported as an error.
     std::optional<ScenarioRunResult> load(const std::string& runId) const;
     std::vector<ScenarioRunResult> unfinishedRuns() const;
+    std::vector<RunSummary> history() const;
 
 private:
     void saveImpl(const ScenarioRunResult& run, bool replaceIncomplete);

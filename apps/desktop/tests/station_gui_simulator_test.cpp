@@ -1154,6 +1154,31 @@ int runChild(const QString& mode)
                         reloaded->contextAttributes.at("monitor_page_json_base64"))) == createdPageContent,
                 "editing the page changed the stored run snapshot");
     }
+    if (mode == "--create-new") {
+        auto* history = window.findChild<QAction*>(QStringLiteral("runHistoryAction"));
+        require(history, "history action unavailable");
+        bool historyVerified = false;
+        QTimer::singleShot(0, [&] {
+            auto* historyDialog = qobject_cast<QDialog*>(QApplication::activeModalWidget());
+            if (!historyDialog) return;
+            auto* list = historyDialog->findChild<QTableWidget*>(QStringLiteral("runHistoryList"));
+            auto* details = historyDialog->findChild<QTextBrowser*>(QStringLiteral("runHistoryDetails"));
+            if (list && details) {
+                for (int row = 0; row < list->rowCount(); ++row) {
+                    if (list->item(row, 0)->data(Qt::UserRole).toString() == QString::fromStdString(window.runId())) {
+                        list->selectRow(row);
+                        const auto text = details->toPlainText();
+                        historyVerified = text.contains(QStringLiteral("контрольная сумма совпадает"))
+                            && text.contains(QStringLiteral("Напряжение"));
+                        break;
+                    }
+                }
+            }
+            historyDialog->accept();
+        });
+        history->trigger();
+        require(historyVerified, "history did not show the saved monitoring configuration");
+    }
     if (mode == "--new-version" || mode == "--create-new") {
         require(QFile::remove(createdVersion) && QFile::remove(createdDraft), "cannot remove test versions");
     }

@@ -31,6 +31,12 @@
 #include <QFileInfo>
 #include <QSet>
 #include <QEventLoop>
+#include <QTextBrowser>
+#include <QSplitter>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QCryptographicHash>
 #include <QtConcurrent/QtConcurrentRun>
 #include <sstream>
 #include <algorithm>
@@ -609,6 +615,144 @@ void MainWindow::setupToolBar()
     toolsMenu_ = menuBar()->addMenu("Инструменты");
     actScenario_ = toolsMenu_->addAction("Редактор сценариев (экспериментальный)");
     connect(actScenario_, &QAction::triggered, this, &MainWindow::onOpenScenario);
+    auto* historyAction = toolsMenu_->addAction(QStringLiteral("История проверок"));
+    historyAction->setObjectName(QStringLiteral("runHistoryAction"));
+    connect(historyAction, &QAction::triggered, this, [this] {
+        if (stationSession_.busy()) {
+            QMessageBox::information(this, QStringLiteral("История проверок"),
+                QStringLiteral("Откройте историю после завершения активной проверки."));
+            return;
+        }
+        const auto path = QDir(QCoreApplication::applicationDirPath()).filePath("runs/runs.db");
+        if (!QFileInfo::exists(path)) {
+            QMessageBox::information(this, QStringLiteral("История проверок"), QStringLiteral("Проверок пока нет."));
+            return;
+        }
+        try {
+            orbita::stand::RunStore reader(path.toUtf8().toStdString());
+            const auto runs = reader.history();
+            QDialog dialog(this);
+            dialog.setObjectName(QStringLiteral("runHistoryDialog"));
+            dialog.setWindowTitle(QStringLiteral("История проверок"));
+            dialog.resize(1100, 700);
+            auto* layout = new QVBoxLayout(&dialog);
+            auto* splitter = new QSplitter(Qt::Horizontal, &dialog);
+            auto* list = new QTableWidget(splitter);
+            list->setObjectName(QStringLiteral("runHistoryList"));
+            list->setColumnCount(4);
+            list->setHorizontalHeaderLabels({QStringLiteral("Начало"), QStringLiteral("Проверка"),
+                QStringLiteral("Изделие"), QStringLiteral("Результат")});
+            list->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+            list->verticalHeader()->hide();
+            list->setEditTriggers(QAbstractItemView::NoEditTriggers);
+            list->setSelectionBehavior(QAbstractItemView::SelectRows);
+            list->setSelectionMode(QAbstractItemView::SingleSelection);
+            auto* details = new QTextBrowser(splitter);
+            details->setObjectName(QStringLiteral("runHistoryDetails"));
+            splitter->addWidget(list); splitter->addWidget(details);
+            layout->addWidget(splitter);
+            auto* close = new QPushButton(QStringLiteral("Закрыть"), &dialog);
+            layout->addWidget(close, 0, Qt::AlignRight);
+            connect(close, &QPushButton::clicked, &dialog, &QDialog::accept);
+            list->setRowCount(static_cast<int>(runs.size()));
+            for (int row = 0; row < list->rowCount(); ++row) {
+                const auto& run = runs[static_cast<std::size_t>(row)];
+                const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(run.startedAt.time_since_epoch()).count();
+                const QStringList values{QDateTime::fromMSecsSinceEpoch(ms).toString(QStringLiteral("dd.MM.yyyy HH:mm:ss")),
+                    QString::fromStdString(run.scenarioTitle) + QStringLiteral(" · v") + QString::fromStdString(run.scenarioVersion),
+                    QString::fromStdString(run.objectSerial),
+                    run.finishedAt == std::chrono::system_clock::time_point{} ? QStringLiteral("Не завершена")
+                        : QString::fromLatin1(orbita::stand::toString(run.verdict))};
+                for (int column = 0; column < values.size(); ++column) list->setItem(row, column, new QTableWidgetItem(values[column]));
+                list->item(row, 0)->setData(Qt::UserRole, QString::fromStdString(run.runId));
+            }
+            connect(list, &QTableWidget::currentCellChanged, &dialog, [list, details, &reader](int row) {
+                if (row < 0 || !list->item(row, 0)) { details->clear(); return; }
+                try {
+                    const auto run = reader.load(list->item(row, 0)->data(Qt::UserRole).toString().toStdString());
+                    if (!run) { details->setPlainText(QStringLiteral("Запись не найдена.")); return; }
+                    QStringList text{QStringLiteral("Проверка: %1 · версия %2")
+                        .arg(QString::fromStdString(run->scenarioTitle), QString::fromStdString(run->scenarioVersion)),
+                        QStringLiteral("Запуск: %1").arg(QString::fromStdString(run->runId)),
+                        QStringLiteral("Результат: %1").arg(run->finishedAt == std::chrono::system_clock::time_point{}
+                            ? QStringLiteral("Не завершена") : QString::fromLatin1(orbita::stand::toString(run->verdict))),
+                        QString(), QStringLiteral("Этапы:")};
+                    std::function<void(const orbita::stand::StepRunResult&, int)> appendStep;
+                    appendStep = [&](const auto& step, int level) {
+                        const QString indent(level * 2, QLatin1Char(' '));
+                        text << QStringLiteral("%1%2 — %3").arg(indent, QString::fromStdString(step.title),
+                            QString::fromLatin1(orbita::stand::toString(step.verdict)));
+                        for (const auto& measurement : step.measurements)
+                            text << QStringLiteral("%1  %2: %3 %4").arg(indent, QString::fromStdString(measurement.title),
+                                QString::number(measurement.measured, 'g', 12), QString::fromStdString(measurement.unit));
+                        for (const auto& child : step.children) appendStep(child, level + 1);
+                    };
+                    for (const auto& step : run->steps) appendStep(step, 0);
+                    text << QString() << QStringLiteral("Страница на начало проверки:");
+                    const auto& attributes = run->contextAttributes;
+                    const auto status = attributes.find("monitor_page_status");
+                    if (status == attributes.end()) text << QStringLiteral("Снимок страницы не записан.");
+                    else {
+                        const auto pageId = attributes.find("monitor_page_id");
+                        if (pageId != attributes.end()) text << QStringLiteral("Идентификатор: %1").arg(QString::fromStdString(pageId->second));
+                        if (status->second == "all_parameters") text << QStringLiteral("Выбраны все параметры.");
+                        else if (status->second == "unavailable") {
+                            text << QStringLiteral("Страница недоступна.");
+                            const auto error = attributes.find("monitor_page_error");
+                            if (error != attributes.end()) text << QStringLiteral("Причина: %1").arg(QString::fromStdString(error->second));
+                        } else if (status->second != "captured") text << QStringLiteral("Неизвестное состояние: %1").arg(QString::fromStdString(status->second));
+                        const auto source = attributes.find("monitor_page_json_base64");
+                        const auto checksum = attributes.find("monitor_page_sha256");
+                        if (status->second == "captured") {
+                            const auto bytes = source == attributes.end() ? QByteArray() : QByteArray::fromBase64(
+                                QByteArray::fromStdString(source->second), QByteArray::AbortOnBase64DecodingErrors);
+                            const bool valid = !bytes.isEmpty() && checksum != attributes.end()
+                                && QCryptographicHash::hash(bytes, QCryptographicHash::Sha256).toHex().toStdString() == checksum->second
+                                && QJsonDocument::fromJson(bytes).isObject();
+                            text << (valid ? QStringLiteral("Файл страницы сохранён; контрольная сумма совпадает.")
+                                           : QStringLiteral("Ошибка: файл страницы отсутствует или контрольная сумма не совпадает."));
+                        }
+                        const auto state = attributes.find("monitor_display_json");
+                        const auto document = state == attributes.end() ? QJsonDocument()
+                            : QJsonDocument::fromJson(QByteArray::fromStdString(state->second));
+                        if (!document.isObject() || !document.object().value("parameters").isArray()) {
+                            text << QStringLiteral("Состояние представления отсутствует или повреждено.");
+                        } else {
+                            const auto object = document.object();
+                            text << QStringLiteral("Таблица: %1; график: %2")
+                                .arg(object.value("table").toBool() ? QStringLiteral("да") : QStringLiteral("нет"),
+                                     object.value("graph").toBool() ? QStringLiteral("да") : QStringLiteral("нет"));
+                            text << QStringLiteral("Порядок: %1; следование времени: %2; автомасштаб: %3")
+                                .arg(object.value("graph_first").toBool() ? QStringLiteral("сначала график") : QStringLiteral("сначала таблица"),
+                                     object.value("follow_time").toBool() ? QStringLiteral("да") : QStringLiteral("нет"),
+                                     object.value("auto_scale").toBool() ? QStringLiteral("да") : QStringLiteral("нет"));
+                            text << QStringLiteral("Ось времени: %1 … %2")
+                                .arg(object.value("time_lower").toDouble()).arg(object.value("time_upper").toDouble());
+                            for (const auto& value : object.value("parameters").toArray()) {
+                                const auto parameter = value.toObject();
+                                text << QStringLiteral("%1 · %2 [%3]%4")
+                                    .arg(parameter.value("source_title").toString(), parameter.value("label").toString(),
+                                         parameter.value("unit").toString(),
+                                         parameter.value("plot").toBool() ? QStringLiteral(" · график") : QString());
+                                text << QStringLiteral("  Источник: %1; ключ: %2; шкала: %3 … %4")
+                                    .arg(parameter.value("source").toString(), parameter.value("key").toString())
+                                    .arg(parameter.value("axis_lower").toDouble()).arg(parameter.value("axis_upper").toDouble());
+                                const auto reason = parameter.value("unavailable_reason").toString();
+                                if (!reason.isEmpty()) text << QStringLiteral("  Недоступен: %1").arg(reason);
+                            }
+                            text << QStringLiteral("Показана конфигурация на старте; сохранённый поток измерений здесь не воспроизводится.");
+                        }
+                    }
+                    details->setPlainText(text.join(QLatin1Char('\n')));
+                } catch (const std::exception& error) { details->setPlainText(QString::fromUtf8(error.what())); }
+            });
+            if (!runs.empty()) list->selectRow(0);
+            else details->setPlainText(QStringLiteral("Проверок пока нет."));
+            dialog.exec();
+        } catch (const std::exception& error) {
+            QMessageBox::warning(this, QStringLiteral("История проверок"), QString::fromUtf8(error.what()));
+        }
+    });
     auto* unfinishedRunsAction = toolsMenu_->addAction(QStringLiteral("Незавершённые проверки"));
     unfinishedRunsAction->setObjectName(QStringLiteral("unfinishedRunsAction"));
     connect(unfinishedRunsAction, &QAction::triggered, this, [this] {
