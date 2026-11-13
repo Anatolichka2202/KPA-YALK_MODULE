@@ -198,7 +198,10 @@ void UniversalMainWindow::reloadGenericScenarios()
                                   "telemetry.orbita.sample_source") : nullptr;
                         // Встроенный сервис Орбиты использует источник, уже
                         // принадлежащий сессии, а не отдельный equipment-плагин.
-                        const bool configured = (orbitaSource && orbitaSource->enabled
+                        // Подтверждение оператора предоставляет сам интерфейс при подготовке;
+                        // отдельный прибор в профиле для этого не требуется.
+                        const bool configured = capability == "operator.manual_input"
+                            || (orbitaSource && orbitaSource->enabled
                             && integrationHasOrbitaSource() && integrationEquipmentRegistry()
                             && integrationEquipmentRegistry()->hasCapability(capability))
                             || std::any_of(integrationStandProfile().components.begin(),

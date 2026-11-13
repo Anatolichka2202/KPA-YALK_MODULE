@@ -399,6 +399,37 @@ int main(int argc, char** argv)
             require(!timing.validate(timedScenario).empty(), "invalid delay was accepted");
         }
 
+        ScenarioEngine manual;
+        registerManualProcedures(manual);
+        bool afterManual = false;
+        manual.registerProcedure("test.after-manual", [&afterManual](const ScenarioNode&, ProcedureContext&) {
+            afterManual = true;
+            return ProcedureResult{RunVerdict::Ok, "Готово", {}};
+        });
+        auto manualScenario = scenario;
+        manualScenario.steps.clear();
+        ScenarioNode instruction;
+        instruction.id = "manual"; instruction.title = "Переключение";
+        instruction.tuRequirement = "test.manual"; instruction.procedure = "operator.confirm";
+        instruction.requiredCapabilities.insert("operator.manual_input");
+        instruction.arguments = {{"instruction", "Переставьте кабель"}};
+        ScenarioNode after = next;
+        after.procedure = "test.after-manual";
+        manualScenario.steps = {instruction, after};
+        EquipmentRegistry operatorEquipment;
+        operatorEquipment.bind("operator.manual_input", [](const auto&, const auto&) {
+            return std::string("status=not_confirmed\n");
+        });
+        require(manual.validate(manualScenario).empty(), "manual instruction rejected");
+        const auto cancelled = manual.run(manualScenario, operatorEquipment, "profile", "SN", false);
+        require(cancelled.verdict == RunVerdict::Error && !afterManual,
+                "cancelled manual instruction allowed the next action");
+        manualScenario.steps[0].arguments["instruction"] = " ";
+        require(!manual.validate(manualScenario).empty(), "empty instruction was accepted");
+        manualScenario.steps[0].arguments["instruction"] = "Переставьте кабель";
+        manualScenario.steps[0].requiredCapabilities.clear();
+        require(!manual.validate(manualScenario).empty(), "manual confirmation dependency was omitted");
+
         ScenarioEngine switching;
         registerSwitchProcedures(switching);
         auto switchScenario = scenario;

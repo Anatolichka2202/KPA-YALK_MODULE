@@ -1,4 +1,5 @@
 #include "ktma_mainwindow.h"
+#include "operator_confirmation.h"
 
 #include "ktma/ubsi/equipment_readiness.h"
 #include "orbita_stand/catalog.h"
@@ -11,6 +12,7 @@
 #include <QInputDialog>
 #include <QLineEdit>
 #include <QMetaObject>
+#include <QMessageBox>
 #include <QTimer>
 
 #include <algorithm>
@@ -118,7 +120,7 @@ void KtmaMainWindow::integrationPrepareEquipmentForScenario(
     registry->bind("operator.manual_input",
         [this](const std::string& operation,
                const std::map<std::string, std::string>& arguments) {
-            if (operation != "confirm_value" && operation != "confirm_text")
+            if (operation != "confirm_value" && operation != "confirm_text" && operation != "confirm_action")
                 throw std::invalid_argument("Неизвестная ручная операция: " + operation);
 
             const QString title = arguments.count("title")
@@ -126,6 +128,17 @@ void KtmaMainWindow::integrationPrepareEquipmentForScenario(
                 : QStringLiteral("Ручная операция");
             const QString operatorName = qEnvironmentVariable(
                 "USERNAME", qEnvironmentVariable("USER", QStringLiteral("неизвестен")));
+
+            if (operation == "confirm_action") {
+                bool confirmed = false;
+                const auto prompt = arguments.count("prompt")
+                    ? QString::fromStdString(arguments.at("prompt")) : QString();
+                QMetaObject::invokeMethod(this, [&] {
+                    confirmed = requestOperatorConfirmation(this, title, prompt,
+                        [this] { return integrationScenarioEngine()->stopRequested(); });
+                }, Qt::BlockingQueuedConnection);
+                return confirmed ? std::string("status=confirmed\n") : std::string("status=not_confirmed\n");
+            }
 
             if (operation == "confirm_text") {
                 bool accepted = false;

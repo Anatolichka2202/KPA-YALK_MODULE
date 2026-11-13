@@ -110,6 +110,7 @@ ScenarioVisualEditor::ScenarioVisualEditor(QString path, QWidget* parent)
             : id == QStringLiteral("telemetry.health") ? QStringLiteral("Проверка состояния потока «Орбита»")
             : id == QStringLiteral("parameter.measure") ? QStringLiteral("Измерить параметр")
             : id == QStringLiteral("station.delay") ? QStringLiteral("Выдержка времени")
+            : id == QStringLiteral("operator.confirm") ? QStringLiteral("Подтверждение оператора")
             : id == QStringLiteral("switch.set") ? QStringLiteral("Коммутация ИСД")
             : QStringLiteral("Действие: %1").arg(id));
     };
@@ -141,11 +142,17 @@ ScenarioVisualEditor::ScenarioVisualEditor(QString path, QWidget* parent)
     switchSettings_->setObjectName(QStringLiteral("configureScenarioSwitch"));
     form->addRow(QString(), switchSettings_);
     connect(switchSettings_, &QPushButton::clicked, this, &ScenarioVisualEditor::configureSwitch);
+    manualSettings_ = new QPushButton(QStringLiteral("Настроить инструкцию…"), formHost);
+    manualSettings_->setObjectName(QStringLiteral("configureManualConfirmation"));
+    form->addRow(QString(), manualSettings_);
+    connect(manualSettings_, &QPushButton::clicked, this, &ScenarioVisualEditor::configureManualConfirmation);
     connect(procedure_, &QLineEdit::textChanged, this, [this](const QString& procedure) {
         healthConfigured_ = false;
         measurementConfigured_ = false;
         delayConfigured_ = false;
         switchConfigured_ = false;
+        manualConfigured_ = false;
+        manualSettings_->setEnabled(!published_ && procedure == QStringLiteral("operator.confirm"));
         telemetrySettings_->setEnabled(!published_ && procedure == QStringLiteral("telemetry.health"));
         measurementSettings_->setEnabled(!published_ && procedure == QStringLiteral("parameter.measure"));
         delaySettings_->setEnabled(!published_ && procedure == QStringLiteral("station.delay"));
@@ -348,6 +355,7 @@ void ScenarioVisualEditor::setAvailableProcedures(const std::vector<std::string>
             ? QStringLiteral("Проверить состояние потока «Орбита»")
             : id == QStringLiteral("parameter.measure") ? QStringLiteral("Измерить параметр")
             : id == QStringLiteral("station.delay") ? QStringLiteral("Выдержать время")
+            : id == QStringLiteral("operator.confirm") ? QStringLiteral("Подтверждение оператора")
             : id == QStringLiteral("switch.set") ? QStringLiteral("Коммутация ИСД") : id;
         procedureChoice_->addItem(title, id);
     }
@@ -414,6 +422,7 @@ void ScenarioVisualEditor::setEditorEnabled(bool enabled)
     measurementSettings_->setEnabled(enabled && procedure_->text() == QStringLiteral("parameter.measure"));
     delaySettings_->setEnabled(enabled && procedure_->text() == QStringLiteral("station.delay"));
     switchSettings_->setEnabled(enabled && procedure_->text() == QStringLiteral("switch.set"));
+    manualSettings_->setEnabled(enabled && procedure_->text() == QStringLiteral("operator.confirm"));
     requires_->setEnabled(enabled);
     resources_->setEnabled(enabled);
     arguments_->setEnabled(enabled);
@@ -551,6 +560,8 @@ bool ScenarioVisualEditor::commitEditorToNode(const StepPath& path)
         && !delayConfigured_ && !configureDelayForNode(node)) return false;
     if (node->procedure != "switch.set" && procedure_->text() == QStringLiteral("switch.set")
         && !switchConfigured_ && !configureSwitchForNode(node)) return false;
+    if (node->procedure != "operator.confirm" && procedure_->text() == QStringLiteral("operator.confirm")
+        && !manualConfigured_ && !configureManualConfirmationForNode(node)) return false;
     const bool healthArgumentsChanged = arguments_->toPlainText() != healthOriginalArguments_;
     const bool healthRequirementsChanged = requires_->toPlainText() != healthOriginalRequires_
         || resources_->toPlainText() != healthOriginalResources_;
@@ -624,6 +635,7 @@ bool ScenarioVisualEditor::commitEditorToNode(const StepPath& path)
     measurementConfigured_ = false;
     delayConfigured_ = false;
     switchConfigured_ = false;
+    manualConfigured_ = false;
     return true;
 }
 
@@ -862,6 +874,58 @@ bool ScenarioVisualEditor::configureSwitchForNode(const orbita::stand::ScenarioN
     requires_->clear();
     resources_->setPlainText(resource->currentData().toString() + QStringLiteral(" | stand.switch_matrix"));
     switchConfigured_ = true;
+    return true;
+}
+
+void ScenarioVisualEditor::configureManualConfirmation()
+{
+    configureManualConfirmationForNode(findNode(selectedPath()));
+}
+
+bool ScenarioVisualEditor::configureManualConfirmationForNode(const orbita::stand::ScenarioNode* node)
+{
+    if (published_ || !node || procedure_->text() != QStringLiteral("operator.confirm")) return false;
+    const auto raw = arguments_->toPlainText().trimmed();
+    const bool existing = node->procedure == "operator.confirm" || manualConfigured_;
+    QString initial;
+    if (existing) {
+        const auto match = QRegularExpression(QStringLiteral("^instruction\\s*=\\s*(.+)$")).match(raw);
+        if (!match.hasMatch() || lines(requires_->toPlainText()) != std::vector<std::string>{"operator.manual_input"}
+            || !resources_->toPlainText().trimmed().isEmpty()) {
+            QMessageBox::warning(this, QStringLiteral("Инструкция"),
+                QStringLiteral("Сохранённые параметры не поддерживаются формой и не изменены."));
+            return false;
+        }
+        initial = match.captured(1).trimmed();
+    } else if ((!raw.isEmpty() || !requires_->toPlainText().trimmed().isEmpty()
+                || !resources_->toPlainText().trimmed().isEmpty())
+        && QMessageBox::question(this, QStringLiteral("Смена действия"),
+            QStringLiteral("Заменить параметры и зависимости предыдущего действия инструкцией?"),
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes) return false;
+    QDialog dialog(this);
+    dialog.setWindowTitle(QStringLiteral("Инструкция оператору"));
+    auto* layout = new QVBoxLayout(&dialog);
+    auto* label = new QLabel(QStringLiteral("Что необходимо сделать перед продолжением проверки?"), &dialog);
+    label->setWordWrap(true);
+    layout->addWidget(label);
+    auto* instruction = new QLineEdit(initial, &dialog);
+    instruction->setObjectName(QStringLiteral("manualConfirmationInstruction"));
+    layout->addWidget(instruction);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, [&] {
+        if (instruction->text().trimmed().isEmpty()) {
+            QMessageBox::warning(&dialog, QStringLiteral("Инструкция"), QStringLiteral("Введите инструкцию."));
+            return;
+        }
+        dialog.accept();
+    });
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    layout->addWidget(buttons);
+    if (dialog.exec() != QDialog::Accepted) return false;
+    arguments_->setPlainText(QStringLiteral("instruction = ") + instruction->text().trimmed());
+    requires_->setPlainText(QStringLiteral("operator.manual_input"));
+    resources_->clear();
+    manualConfigured_ = true;
     return true;
 }
 

@@ -307,6 +307,7 @@ public:
     void requestStop() noexcept;
     void resetStop() noexcept;
     bool running() const noexcept { return running_.load(); }
+    bool stopRequested() const noexcept { return stopRequested_.load(); }
 
 private:
     StepRunResult runNode(
@@ -322,6 +323,9 @@ private:
 
 // Общая выдержка времени не зависит от используемого оборудования.
 void registerTimingProcedures(ScenarioEngine& engine);
+
+// Ручная инструкция завершается только после явного подтверждения оператора.
+void registerManualProcedures(ScenarioEngine& engine);
 
 const char* toString(RunVerdict verdict) noexcept;
 RunVerdict combineVerdicts(RunVerdict current, RunVerdict next) noexcept;

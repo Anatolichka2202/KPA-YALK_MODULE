@@ -66,6 +66,7 @@ private slots:
     void configureParameterMeasurement();
     void configureDelay();
     void configureSwitch();
+    void configureManualConfirmation();
 
 private:
     using StepPath = std::vector<int>;
@@ -88,6 +89,7 @@ private:
     bool configureParameterMeasurementForNode(const orbita::stand::ScenarioNode* node);
     bool configureDelayForNode(const orbita::stand::ScenarioNode* node);
     bool configureSwitchForNode(const orbita::stand::ScenarioNode* node);
+    bool configureManualConfirmationForNode(const orbita::stand::ScenarioNode* node);
     QString serialize() const;
     static QString quote(const std::string& value);
     static std::vector<std::string> lines(const QString& text);
@@ -111,6 +113,7 @@ private:
     bool measurementConfigured_ = false;
     bool delayConfigured_ = false;
     bool switchConfigured_ = false;
+    bool manualConfigured_ = false;
     QStringList switchResources_;
     std::vector<ScenarioParameterOption> parameterOptions_;
     QString healthOriginalArguments_;
@@ -136,4 +139,5 @@ private:
     QPushButton* measurementSettings_ = nullptr;
     QPushButton* delaySettings_ = nullptr;
     QPushButton* switchSettings_ = nullptr;
+    QPushButton* manualSettings_ = nullptr;
 };

@@ -1,5 +1,6 @@
 #include "universal_mainwindow.h"
 #include "generic_check_dialog.h"
+#include "operator_confirmation.h"
 #include "scenario_visual_editor.h"
 #include "main_page.h"
 #include "metadata_service.h"
@@ -646,6 +647,19 @@ protected:
                 const std::map<std::string, std::string>&) { return std::string("42"); },
                 [this] { ++safeStops_; });
             if (mode_ == "--create-new")
+                integrationEquipmentRegistry()->bind("operator.manual_input", [this](const std::string& operation,
+                    const std::map<std::string, std::string>& arguments) {
+                    if (operation != "confirm_action" || arguments.at("prompt") != "Переставьте кабель")
+                        throw std::runtime_error("unexpected manual instruction");
+                    bool accepted = false;
+                    QMetaObject::invokeMethod(this, [&] {
+                        accepted = requestOperatorConfirmation(this, QStringLiteral("Инструкция"),
+                            QString::fromStdString(arguments.at("prompt")),
+                            [this] { return integrationScenarioEngine()->stopRequested(); });
+                    }, Qt::BlockingQueuedConnection);
+                    return accepted ? std::string("status=confirmed\n") : std::string("status=not_confirmed\n");
+                });
+            if (mode_ == "--create-new")
                 integrationEquipmentRegistry()->bindResource("fake-isd", {"stand.switch_matrix"},
                     [this](const std::string& capability, const std::string& operation,
                            const std::map<std::string, std::string>& arguments) {
@@ -672,6 +686,29 @@ private:
 
 int runChild(const QString& mode)
 {
+    if (mode == "--manual-dialog-stop") {
+        QWidget parent;
+        parent.show();
+        std::atomic_bool stopped{false};
+        bool visibleAndNonModal = false;
+        QTimer::singleShot(50, [&] {
+            auto* question = parent.findChild<QMessageBox*>(QStringLiteral("operatorConfirmationDialog"));
+            visibleAndNonModal = question && question->isVisible()
+                && question->windowModality() == Qt::NonModal && parent.isEnabled();
+            stopped.store(true);
+        });
+        QTimer::singleShot(3000, [&] {
+            if (auto* question = parent.findChild<QMessageBox*>(QStringLiteral("operatorConfirmationDialog")))
+                question->reject();
+        });
+        QElapsedTimer elapsed;
+        elapsed.start();
+        const auto result = requestOperatorConfirmation(&parent, QStringLiteral("Инструкция"),
+            QStringLiteral("Переставьте кабель"), [&] { return stopped.load(); });
+        require(visibleAndNonModal && stopped.load() && !result && elapsed.elapsed() < 1000,
+            "operator dialog did not close on stop or blocked the parent");
+        return 0;
+    }
     if (mode == "--monitor-page") {
         const std::vector<MonitoredBinding> bindings{
             {QStringLiteral("one"), QStringLiteral("Первый"), QStringLiteral("a"), QStringLiteral("A"), {}, QStringLiteral("V")},
@@ -963,6 +1000,23 @@ int runChild(const QString& mode)
                 });
                 delaySettings->click();
                 add->click();
+                tu->setText(QStringLiteral("test.manual"));
+                const int manualIndex = actions->findData(QStringLiteral("operator.confirm"));
+                auto* manualSettings = editor->findChild<QPushButton*>(QStringLiteral("configureManualConfirmation"));
+                if (manualIndex < 0 || !manualSettings) return;
+                QMetaObject::invokeMethod(actions, "activated", Q_ARG(int, manualIndex));
+                QTimer::singleShot(0, [] {
+                    auto* config = qobject_cast<QDialog*>(QApplication::activeModalWidget());
+                    if (!config) return;
+                    auto* instruction = config->findChild<QLineEdit*>(QStringLiteral("manualConfirmationInstruction"));
+                    auto* buttons = config->findChild<QDialogButtonBox*>();
+                    if (instruction && buttons) {
+                        instruction->setText(QStringLiteral("Переставьте кабель"));
+                        buttons->button(QDialogButtonBox::Ok)->click();
+                    }
+                });
+                manualSettings->click();
+                add->click();
                 tu->setText(QStringLiteral("test.switch"));
                 const int switchIndex = actions->findData(QStringLiteral("switch.set"));
                 auto* switchSettings = editor->findChild<QPushButton*>(QStringLiteral("configureScenarioSwitch"));
@@ -1051,6 +1105,18 @@ int runChild(const QString& mode)
         });
         lockPoll.start(5);
     }
+    bool manualWaitVerified = false;
+    QTimer manualPoll;
+    if (mode == "--create-new") {
+        QObject::connect(&manualPoll, &QTimer::timeout, qApp, [&] {
+            auto* question = window.findChild<QMessageBox*>(QStringLiteral("operatorConfirmationDialog"));
+            if (!question || question->text() != QStringLiteral("Переставьте кабель")) return;
+            manualWaitVerified = !window.switchExercised();
+            question->button(QMessageBox::Yes)->click();
+            manualPoll.stop();
+        });
+        manualPoll.start(10);
+    }
     QTimer timeout;
     timeout.setSingleShot(true);
     QObject::connect(&timeout, &QTimer::timeout, qApp, [] { qApp->exit(3); });
@@ -1088,6 +1154,7 @@ int runChild(const QString& mode)
         return 0;
     }
     require(status == 0, "free scenario did not finish");
+    if (mode == "--create-new") require(manualWaitVerified, "dependent action ran before operator confirmation");
     auto* report = dialog->findChild<QTextBrowser*>(QStringLiteral("genericReportPreview"));
     if (report && !report->toPlainText().contains(QStringLiteral("Имитируемое значение")))
         std::cerr << report->toPlainText().toUtf8().constData() << '\n';
@@ -1106,7 +1173,7 @@ int runChild(const QString& mode)
                         persisted->contextAttributes.at("monitor_display_json"))).isObject(),
                 "default monitoring view was not captured");
     require(persisted && persisted->verdict == orbita::stand::RunVerdict::Ok
-                && persisted->steps.size() == (mode == "--create-new" ? 3u : 2u)
+                && persisted->steps.size() == (mode == "--create-new" ? 4u : 2u)
                 && (mode != "--new-version" || (persisted->scenarioVersion == "2"
                     && persisted->steps.front().title == "Изменённый шаг"))
                 && (mode != "--create-new" || (persisted->scenarioVersion == "2"
@@ -1314,6 +1381,7 @@ int runParent()
             throw std::runtime_error("unexpected GUI child exit code");
         }
     };
+    execute("--manual-dialog-stop", 0);
     execute("--profile-selection", 0);
     execute("--monitor-page", 0);
     execute("--monitor-disconnect", 0);

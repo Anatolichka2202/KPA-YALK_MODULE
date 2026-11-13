@@ -458,6 +458,37 @@ void registerTimingProcedures(ScenarioEngine& engine)
     }, validate);
 }
 
+void registerManualProcedures(ScenarioEngine& engine)
+{
+    const auto validate = [](const ScenarioNode& node) {
+        std::vector<std::string> errors;
+        for (const auto& [key, value] : node.arguments) {
+            (void)value;
+            if (key != "instruction") errors.push_back("Неизвестный параметр ручной инструкции: " + key);
+        }
+        const auto instruction = node.arguments.find("instruction");
+        if (instruction == node.arguments.end() || instruction->second.find_first_not_of(" \t\r\n") == std::string::npos
+            || instruction->second.find_first_of("\r\n") != std::string::npos)
+            errors.push_back("Укажите непустую однострочную инструкцию оператору");
+        if (!node.requiredCapabilities.count("operator.manual_input"))
+            errors.push_back("Для инструкции требуется подтверждение оператора");
+        return errors;
+    };
+    engine.registerProcedure("operator.confirm", [](const ScenarioNode& node, ProcedureContext& context) {
+        if (context.stopRequested.load()) return ProcedureResult{RunVerdict::Aborted, "Проверка остановлена", {}};
+        const auto reply = context.equipment.invoke("operator.manual_input", "confirm_action", {
+            {"title", node.title}, {"prompt", node.arguments.at("instruction")}});
+        // Подтверждением считается только отдельное поле с точным значением.
+        bool confirmed = false;
+        std::istringstream lines(reply);
+        std::string line;
+        while (std::getline(lines, line)) if (line == "status=confirmed") confirmed = true;
+        if (context.stopRequested.load()) return ProcedureResult{RunVerdict::Aborted, "Проверка остановлена", {}};
+        if (!confirmed) return ProcedureResult{RunVerdict::Error, "Действие не подтверждено оператором", {}};
+        return ProcedureResult{RunVerdict::Ok, "Действие подтверждено оператором", {}};
+    }, validate);
+}
+
 ScenarioRunResult ScenarioEngine::run(
     const ScenarioDefinition& scenario,
     ICapabilityProvider& equipment,
