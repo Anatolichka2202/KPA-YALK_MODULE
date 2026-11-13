@@ -120,7 +120,7 @@ void KtmaMainWindow::integrationPrepareEquipmentForScenario(
     registry->bind("operator.manual_input",
         [this](const std::string& operation,
                const std::map<std::string, std::string>& arguments) {
-            if (operation != "confirm_value" && operation != "confirm_text" && operation != "confirm_action")
+            if (operation != "confirm_value" && operation != "confirm_text" && operation != "confirm_action" && operation != "enter_measurement")
                 throw std::invalid_argument("Неизвестная ручная операция: " + operation);
 
             const QString title = arguments.count("title")
@@ -128,6 +128,17 @@ void KtmaMainWindow::integrationPrepareEquipmentForScenario(
                 : QStringLiteral("Ручная операция");
             const QString operatorName = qEnvironmentVariable(
                 "USERNAME", qEnvironmentVariable("USER", QStringLiteral("неизвестен")));
+
+            if (operation == "enter_measurement") {
+                std::optional<double> value;
+                QMetaObject::invokeMethod(this, [&] {
+                    value = requestOperatorMeasurement(this, title,
+                        QString::fromStdString(arguments.at("prompt")), QString::fromStdString(arguments.at("unit")),
+                        [this] { return integrationScenarioEngine()->stopRequested(); });
+                }, Qt::BlockingQueuedConnection);
+                if (!value) return std::string("status=not_confirmed\n");
+                return std::string("status=confirmed\nvalue=") + QString::number(*value, 'g', 17).toStdString() + "\n";
+            }
 
             if (operation == "confirm_action") {
                 bool confirmed = false;

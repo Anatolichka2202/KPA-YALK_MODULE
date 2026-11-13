@@ -430,6 +430,25 @@ int main(int argc, char** argv)
         manualScenario.steps[0].requiredCapabilities.clear();
         require(!manual.validate(manualScenario).empty(), "manual confirmation dependency was omitted");
 
+        manualScenario.steps[0].procedure = "operator.measure";
+        manualScenario.steps[0].requiredCapabilities.insert("operator.manual_input");
+        manualScenario.steps[0].arguments = {{"instruction", "Введите измерение"}, {"unit", "В"},
+                                             {"lower", "10"}, {"upper", "15"}};
+        require(manual.validate(manualScenario).empty(), "manual measurement rejected");
+        const auto cancelledMeasurement = manual.run(manualScenario, operatorEquipment, "profile", "SN", false);
+        require(cancelledMeasurement.verdict == RunVerdict::Error && !afterManual
+                    && cancelledMeasurement.steps.front().measurements.empty(),
+                "cancelled measurement produced a value or allowed another action");
+        operatorEquipment.bind("operator.manual_input", [](const auto&, const auto&) {
+            return std::string("status=confirmed\nvalue=16\n");
+        });
+        const auto outside = manual.run(manualScenario, operatorEquipment, "profile", "SN", false);
+        require(outside.verdict == RunVerdict::Fail && !outside.steps.front().measurements.empty()
+                    && outside.steps.front().measurements.front().verdict == RunVerdict::Fail,
+                "out-of-range manual input did not fail");
+        manualScenario.steps[0].arguments["lower"] = "nan";
+        require(!manual.validate(manualScenario).empty(), "non-finite manual limit was accepted");
+
         ScenarioEngine switching;
         registerSwitchProcedures(switching);
         auto switchScenario = scenario;

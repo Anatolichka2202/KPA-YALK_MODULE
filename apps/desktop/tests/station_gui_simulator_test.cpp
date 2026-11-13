@@ -649,6 +649,16 @@ protected:
             if (mode_ == "--create-new")
                 integrationEquipmentRegistry()->bind("operator.manual_input", [this](const std::string& operation,
                     const std::map<std::string, std::string>& arguments) {
+                    if (operation == "enter_measurement") {
+                        std::optional<double> value;
+                        QMetaObject::invokeMethod(this, [&] {
+                            value = requestOperatorMeasurement(this, QStringLiteral("Ручное измерение"),
+                                QString::fromStdString(arguments.at("prompt")), QString::fromStdString(arguments.at("unit")),
+                                [this] { return integrationScenarioEngine()->stopRequested(); });
+                        }, Qt::BlockingQueuedConnection);
+                        return value ? std::string("status=confirmed\nvalue=") + QString::number(*value, 'g', 17).toStdString() + "\n"
+                                     : std::string("status=not_confirmed\n");
+                    }
                     if (operation != "confirm_action" || arguments.at("prompt") != "Переставьте кабель")
                         throw std::runtime_error("unexpected manual instruction");
                     bool accepted = false;
@@ -687,6 +697,9 @@ private:
 int runChild(const QString& mode)
 {
     if (mode == "--manual-dialog-stop") {
+        const auto comma = parseOperatorNumber(QStringLiteral("1,234"));
+        require(comma && *comma == 1.234 && !parseOperatorNumber(QStringLiteral("1,234.5")),
+            "decimal comma was interpreted as grouping or an ambiguous number was accepted");
         QWidget parent;
         parent.show();
         std::atomic_bool stopped{false};
@@ -964,6 +977,7 @@ int runChild(const QString& mode)
         auto* create = dialog->findChild<QPushButton*>(QStringLiteral("createGenericScenario"));
         require(create && create->isEnabled(), "new scenario action unavailable");
         bool edited = false;
+        bool manualUnitResetVerified = false;
         QTimer::singleShot(0, [&] {
             auto* input = qobject_cast<QInputDialog*>(QApplication::activeModalWidget());
             if (!input) return;
@@ -1017,6 +1031,30 @@ int runChild(const QString& mode)
                 });
                 manualSettings->click();
                 add->click();
+                tu->setText(QStringLiteral("test.manual.measure"));
+                const int measurementIndex = actions->findData(QStringLiteral("operator.measure"));
+                auto* measurementSettings = editor->findChild<QPushButton*>(QStringLiteral("configureManualMeasurement"));
+                if (measurementIndex < 0 || !measurementSettings) return;
+                QMetaObject::invokeMethod(actions, "activated", Q_ARG(int, measurementIndex));
+                QTimer::singleShot(0, [&] {
+                    auto* config = qobject_cast<QDialog*>(QApplication::activeModalWidget());
+                    if (!config) return;
+                    auto* instruction = config->findChild<QLineEdit*>(QStringLiteral("manualMeasurementInstruction"));
+                    auto* unit = config->findChild<QLineEdit*>(QStringLiteral("manualMeasurementUnit"));
+                    auto* lower = config->findChild<QLineEdit*>(QStringLiteral("manualMeasurementLower"));
+                    auto* upper = config->findChild<QLineEdit*>(QStringLiteral("manualMeasurementUpper"));
+                    auto* buttons = config->findChild<QDialogButtonBox*>();
+                    if (instruction && unit && lower && upper && buttons) {
+                        instruction->setText(QStringLiteral("Введите показание прибора"));
+                        unit->setText(QStringLiteral("мВ")); lower->setText(QStringLiteral("10000")); upper->setText(QStringLiteral("15000"));
+                        unit->setText(QStringLiteral("В"));
+                        manualUnitResetVerified = lower->text().isEmpty() && upper->text().isEmpty();
+                        lower->setText(QStringLiteral("10")); upper->setText(QStringLiteral("15"));
+                        buttons->button(QDialogButtonBox::Ok)->click();
+                    }
+                });
+                measurementSettings->click();
+                add->click();
                 tu->setText(QStringLiteral("test.switch"));
                 const int switchIndex = actions->findData(QStringLiteral("switch.set"));
                 auto* switchSettings = editor->findChild<QPushButton*>(QStringLiteral("configureScenarioSwitch"));
@@ -1053,7 +1091,7 @@ int runChild(const QString& mode)
             input->accept();
         });
         create->click();
-        require(edited && run->isEnabled() && scenarios->currentData().toString() == createdVersion
+        require(edited && manualUnitResetVerified && run->isEnabled() && scenarios->currentData().toString() == createdVersion
                     && createdVersion.startsWith(QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation)),
                 "new scenario was not created in user storage and selected for execution");
         require(orbita::stand::loadScenarioYaml(createdVersion.toStdString()).monitorPageId == pageId.toStdString()
@@ -1110,9 +1148,18 @@ int runChild(const QString& mode)
     if (mode == "--create-new") {
         QObject::connect(&manualPoll, &QTimer::timeout, qApp, [&] {
             auto* question = window.findChild<QMessageBox*>(QStringLiteral("operatorConfirmationDialog"));
-            if (!question || question->text() != QStringLiteral("Переставьте кабель")) return;
-            manualWaitVerified = !window.switchExercised();
-            question->button(QMessageBox::Yes)->click();
+            if (question && question->text() == QStringLiteral("Переставьте кабель")) {
+                manualWaitVerified = !window.switchExercised();
+                question->button(QMessageBox::Yes)->click();
+                return;
+            }
+            auto* measure = window.findChild<QDialog*>(QStringLiteral("operatorMeasurementDialog"));
+            if (!measure) return;
+            auto* input = measure->findChild<QLineEdit*>(QStringLiteral("operatorMeasurementValue"));
+            auto* buttons = measure->findChild<QDialogButtonBox*>();
+            if (!input || !buttons || !input->text().isEmpty() || buttons->button(QDialogButtonBox::Ok)->isEnabled()) return;
+            input->setText(QStringLiteral("12,5"));
+            buttons->button(QDialogButtonBox::Ok)->click();
             manualPoll.stop();
         });
         manualPoll.start(10);
@@ -1173,7 +1220,7 @@ int runChild(const QString& mode)
                         persisted->contextAttributes.at("monitor_display_json"))).isObject(),
                 "default monitoring view was not captured");
     require(persisted && persisted->verdict == orbita::stand::RunVerdict::Ok
-                && persisted->steps.size() == (mode == "--create-new" ? 4u : 2u)
+                && persisted->steps.size() == (mode == "--create-new" ? 5u : 2u)
                 && (mode != "--new-version" || (persisted->scenarioVersion == "2"
                     && persisted->steps.front().title == "Изменённый шаг"))
                 && (mode != "--create-new" || (persisted->scenarioVersion == "2"
@@ -1199,6 +1246,17 @@ int runChild(const QString& mode)
                 && persisted->steps.front().measurements.size() == 1
                 && persisted->steps.front().measurements.front().measured == 42,
             "completed GUI run lost its persisted measurement");
+    if (mode == "--create-new") {
+        const auto measured = std::find_if(persisted->steps.begin(), persisted->steps.end(), [](const auto& step) {
+            return !step.measurements.empty() && step.measurements.front().attributes.count("input_method")
+                && step.measurements.front().attributes.at("input_method") == "manual";
+        });
+        require(measured != persisted->steps.end() && measured->measurements.front().measured == 12.5
+                    && measured->measurements.front().unit == "В"
+                    && measured->measurements.front().attributes.count("sample_time_ms")
+                    && measured->measurements.front().verdict == orbita::stand::RunVerdict::Ok,
+                "manual measurement did not round-trip with its unit, time and verdict");
+    }
     if (mode == "--create-new") {
         auto* monitor = dialog->findChild<MultiSourceMonitor*>(QStringLiteral("genericCheckMonitor"));
         auto* edit = monitor ? monitor->findChild<QPushButton*>(QStringLiteral("editMonitorPage")) : nullptr;

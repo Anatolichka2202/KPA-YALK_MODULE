@@ -2,6 +2,7 @@
 #include "orbita_stand/resource_lease.h"
 
 #include <algorithm>
+#include <cmath>
 #include <iomanip>
 #include <optional>
 #include <random>
@@ -487,6 +488,76 @@ void registerManualProcedures(ScenarioEngine& engine)
         if (!confirmed) return ProcedureResult{RunVerdict::Error, "Действие не подтверждено оператором", {}};
         return ProcedureResult{RunVerdict::Ok, "Действие подтверждено оператором", {}};
     }, validate);
+    const auto validateMeasurement = [](const ScenarioNode& node) {
+        std::vector<std::string> errors;
+        for (const auto& [key, value] : node.arguments) {
+            (void)value;
+            if (key != "instruction" && key != "unit" && key != "lower" && key != "upper")
+                errors.push_back("Неизвестный параметр ручного измерения: " + key);
+        }
+        for (const auto* key : {"instruction", "unit"}) {
+            const auto found = node.arguments.find(key);
+            if (found == node.arguments.end() || found->second.find_first_not_of(" \t\r\n") == std::string::npos
+                || found->second.find_first_of("\r\n") != std::string::npos)
+                errors.push_back(std::string("Не задано поле ручного измерения: ") + key);
+        }
+        double bounds[2]{};
+        bool valid = true;
+        int index = 0;
+        for (const auto* key : {"lower", "upper"}) {
+            try {
+                const auto& text = node.arguments.at(key);
+                std::size_t used = 0;
+                bounds[index] = std::stod(text, &used);
+                if (used != text.size() || !std::isfinite(bounds[index])) throw std::invalid_argument("limit");
+            } catch (const std::exception&) {
+                valid = false;
+                errors.push_back(std::string("Неверный предел ручного измерения: ") + key);
+            }
+            ++index;
+        }
+        if (valid && bounds[0] > bounds[1]) errors.push_back("Нижний предел больше верхнего");
+        if (!node.requiredCapabilities.count("operator.manual_input"))
+            errors.push_back("Для ручного измерения требуется ввод оператора");
+        return errors;
+    };
+    engine.registerProcedure("operator.measure", [](const ScenarioNode& node, ProcedureContext& context) {
+        if (context.stopRequested.load()) return ProcedureResult{RunVerdict::Aborted, "Проверка остановлена", {}};
+        const auto reply = context.equipment.invoke("operator.manual_input", "enter_measurement", {
+            {"title", node.title}, {"prompt", node.arguments.at("instruction")}, {"unit", node.arguments.at("unit")}});
+        if (context.stopRequested.load()) return ProcedureResult{RunVerdict::Aborted, "Проверка остановлена", {}};
+        std::istringstream lines(reply);
+        std::map<std::string, std::string> fields;
+        std::string line;
+        while (std::getline(lines, line)) {
+            const auto separator = line.find('=');
+            if (separator != std::string::npos && !fields.emplace(line.substr(0, separator), line.substr(separator + 1)).second)
+                return ProcedureResult{RunVerdict::Error, "Повторное поле ответа оператора", {}};
+        }
+        if (fields["status"] != "confirmed") return ProcedureResult{RunVerdict::Error, "Ввод измерения отменён", {}};
+        double value = 0.0;
+        try {
+            std::size_t used = 0;
+            value = std::stod(fields.at("value"), &used);
+            if (used != fields.at("value").size() || !std::isfinite(value)) throw std::invalid_argument("value");
+        } catch (const std::exception&) {
+            return ProcedureResult{RunVerdict::Error, "Введено некорректное измерение", {}};
+        }
+        MeasurementResult measurement;
+        measurement.parameterKey = node.id;
+        measurement.title = node.title;
+        measurement.measured = value;
+        measurement.lowerLimit = std::stod(node.arguments.at("lower"));
+        measurement.upperLimit = std::stod(node.arguments.at("upper"));
+        measurement.unit = node.arguments.at("unit");
+        measurement.verdict = value >= measurement.lowerLimit && value <= measurement.upperLimit
+            ? RunVerdict::Ok : RunVerdict::Fail;
+        measurement.message = measurement.verdict == RunVerdict::Ok ? "В пределах допуска" : "Значение вне допуска";
+        measurement.attributes["input_method"] = "manual";
+        measurement.attributes["sample_time_ms"] = std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count());
+        return ProcedureResult{measurement.verdict, measurement.message, {measurement}};
+    }, validateMeasurement);
 }
 
 ScenarioRunResult ScenarioEngine::run(

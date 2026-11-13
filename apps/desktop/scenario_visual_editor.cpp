@@ -1,4 +1,5 @@
 #include "scenario_visual_editor.h"
+#include "operator_confirmation.h"
 
 #include <QDialogButtonBox>
 #include <QComboBox>
@@ -110,6 +111,7 @@ ScenarioVisualEditor::ScenarioVisualEditor(QString path, QWidget* parent)
             : id == QStringLiteral("telemetry.health") ? QStringLiteral("Проверка состояния потока «Орбита»")
             : id == QStringLiteral("parameter.measure") ? QStringLiteral("Измерить параметр")
             : id == QStringLiteral("station.delay") ? QStringLiteral("Выдержка времени")
+            : id == QStringLiteral("operator.measure") ? QStringLiteral("Ручное измерение")
             : id == QStringLiteral("operator.confirm") ? QStringLiteral("Подтверждение оператора")
             : id == QStringLiteral("switch.set") ? QStringLiteral("Коммутация ИСД")
             : QStringLiteral("Действие: %1").arg(id));
@@ -146,12 +148,18 @@ ScenarioVisualEditor::ScenarioVisualEditor(QString path, QWidget* parent)
     manualSettings_->setObjectName(QStringLiteral("configureManualConfirmation"));
     form->addRow(QString(), manualSettings_);
     connect(manualSettings_, &QPushButton::clicked, this, &ScenarioVisualEditor::configureManualConfirmation);
+    manualMeasurementSettings_ = new QPushButton(QStringLiteral("Настроить ручное измерение…"), formHost);
+    manualMeasurementSettings_->setObjectName(QStringLiteral("configureManualMeasurement"));
+    form->addRow(QString(), manualMeasurementSettings_);
+    connect(manualMeasurementSettings_, &QPushButton::clicked, this, &ScenarioVisualEditor::configureManualMeasurement);
     connect(procedure_, &QLineEdit::textChanged, this, [this](const QString& procedure) {
         healthConfigured_ = false;
         measurementConfigured_ = false;
         delayConfigured_ = false;
         switchConfigured_ = false;
         manualConfigured_ = false;
+        manualMeasurementConfigured_ = false;
+        manualMeasurementSettings_->setEnabled(!published_ && procedure == QStringLiteral("operator.measure"));
         manualSettings_->setEnabled(!published_ && procedure == QStringLiteral("operator.confirm"));
         telemetrySettings_->setEnabled(!published_ && procedure == QStringLiteral("telemetry.health"));
         measurementSettings_->setEnabled(!published_ && procedure == QStringLiteral("parameter.measure"));
@@ -355,6 +363,7 @@ void ScenarioVisualEditor::setAvailableProcedures(const std::vector<std::string>
             ? QStringLiteral("Проверить состояние потока «Орбита»")
             : id == QStringLiteral("parameter.measure") ? QStringLiteral("Измерить параметр")
             : id == QStringLiteral("station.delay") ? QStringLiteral("Выдержать время")
+            : id == QStringLiteral("operator.measure") ? QStringLiteral("Ручное измерение")
             : id == QStringLiteral("operator.confirm") ? QStringLiteral("Подтверждение оператора")
             : id == QStringLiteral("switch.set") ? QStringLiteral("Коммутация ИСД") : id;
         procedureChoice_->addItem(title, id);
@@ -423,6 +432,7 @@ void ScenarioVisualEditor::setEditorEnabled(bool enabled)
     delaySettings_->setEnabled(enabled && procedure_->text() == QStringLiteral("station.delay"));
     switchSettings_->setEnabled(enabled && procedure_->text() == QStringLiteral("switch.set"));
     manualSettings_->setEnabled(enabled && procedure_->text() == QStringLiteral("operator.confirm"));
+    manualMeasurementSettings_->setEnabled(enabled && procedure_->text() == QStringLiteral("operator.measure"));
     requires_->setEnabled(enabled);
     resources_->setEnabled(enabled);
     arguments_->setEnabled(enabled);
@@ -562,6 +572,8 @@ bool ScenarioVisualEditor::commitEditorToNode(const StepPath& path)
         && !switchConfigured_ && !configureSwitchForNode(node)) return false;
     if (node->procedure != "operator.confirm" && procedure_->text() == QStringLiteral("operator.confirm")
         && !manualConfigured_ && !configureManualConfirmationForNode(node)) return false;
+    if (node->procedure != "operator.measure" && procedure_->text() == QStringLiteral("operator.measure")
+        && !manualMeasurementConfigured_ && !configureManualMeasurementForNode(node)) return false;
     const bool healthArgumentsChanged = arguments_->toPlainText() != healthOriginalArguments_;
     const bool healthRequirementsChanged = requires_->toPlainText() != healthOriginalRequires_
         || resources_->toPlainText() != healthOriginalResources_;
@@ -636,6 +648,7 @@ bool ScenarioVisualEditor::commitEditorToNode(const StepPath& path)
     delayConfigured_ = false;
     switchConfigured_ = false;
     manualConfigured_ = false;
+    manualMeasurementConfigured_ = false;
     return true;
 }
 
@@ -874,6 +887,89 @@ bool ScenarioVisualEditor::configureSwitchForNode(const orbita::stand::ScenarioN
     requires_->clear();
     resources_->setPlainText(resource->currentData().toString() + QStringLiteral(" | stand.switch_matrix"));
     switchConfigured_ = true;
+    return true;
+}
+
+void ScenarioVisualEditor::configureManualMeasurement()
+{
+    configureManualMeasurementForNode(findNode(selectedPath()));
+}
+
+bool ScenarioVisualEditor::configureManualMeasurementForNode(const orbita::stand::ScenarioNode* node)
+{
+    if (published_ || !node || procedure_->text() != QStringLiteral("operator.measure")) return false;
+    const auto raw = arguments_->toPlainText().trimmed();
+    const bool existing = node->procedure == "operator.measure" || manualMeasurementConfigured_;
+    std::map<std::string, std::string> args;
+    if (existing) {
+        std::set<std::string> names;
+        for (const auto& line : raw.split(QLatin1Char('\n'), Qt::SkipEmptyParts)) {
+            const int equal = line.indexOf(QLatin1Char('='));
+            const auto key = trimmedUtf8(line.left(equal));
+            if (equal < 1 || !names.insert(key).second ||
+                (key != "instruction" && key != "unit" && key != "lower" && key != "upper")) {
+                QMessageBox::warning(this, QStringLiteral("Ручное измерение"),
+                    QStringLiteral("Сохранённые параметры не поддерживаются формой и не изменены.")); return false;
+            }
+        }
+        args = arguments(raw);
+        if (args.size() != 4 || lines(requires_->toPlainText()) != std::vector<std::string>{"operator.manual_input"}
+            || !resources_->toPlainText().trimmed().isEmpty()) {
+            QMessageBox::warning(this, QStringLiteral("Ручное измерение"),
+                QStringLiteral("Сохранённые параметры не поддерживаются формой и не изменены.")); return false;
+        }
+    } else if ((!raw.isEmpty() || !requires_->toPlainText().trimmed().isEmpty()
+                || !resources_->toPlainText().trimmed().isEmpty())
+        && QMessageBox::question(this, QStringLiteral("Смена действия"),
+            QStringLiteral("Заменить параметры и зависимости предыдущего действия ручным измерением?"),
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes) return false;
+    QDialog dialog(this);
+    dialog.setWindowTitle(QStringLiteral("Ручное измерение"));
+    auto* layout = new QVBoxLayout(&dialog);
+    auto* form = new QFormLayout;
+    auto makeField = [&](const char* name, const char* key) {
+        auto* field = new QLineEdit(&dialog);
+        field->setObjectName(QString::fromLatin1(name));
+        if (args.count(key)) field->setText(QString::fromStdString(args.at(key)));
+        return field;
+    };
+    auto* instruction = makeField("manualMeasurementInstruction", "instruction");
+    auto* unit = makeField("manualMeasurementUnit", "unit");
+    auto* lower = makeField("manualMeasurementLower", "lower");
+    auto* upper = makeField("manualMeasurementUpper", "upper");
+    // Пределы имеют смысл только вместе с единицей; после её изменения
+    // инженер должен указать новые значения осознанно.
+    connect(unit, &QLineEdit::textChanged, &dialog, [lower, upper] {
+        lower->clear();
+        upper->clear();
+    });
+    form->addRow(QStringLiteral("Инструкция:"), instruction);
+    form->addRow(QStringLiteral("Единица:"), unit);
+    form->addRow(QStringLiteral("Нижний предел:"), lower);
+    form->addRow(QStringLiteral("Верхний предел:"), upper);
+    layout->addLayout(form);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, [&] {
+        const auto lo = parseOperatorNumber(lower->text());
+        const auto hi = parseOperatorNumber(upper->text());
+        if (instruction->text().trimmed().isEmpty() || unit->text().trimmed().isEmpty()
+            || !lo || !hi || *lo > *hi) {
+            QMessageBox::warning(&dialog, QStringLiteral("Ручное измерение"),
+                QStringLiteral("Заполните инструкцию, единицу и числовые пределы; нижний предел не должен превышать верхний."));
+            return;
+        }
+        lower->setText(QString::number(*lo, 'g', 17));
+        upper->setText(QString::number(*hi, 'g', 17));
+        dialog.accept();
+    });
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    layout->addWidget(buttons);
+    if (dialog.exec() != QDialog::Accepted) return false;
+    arguments_->setPlainText(QStringLiteral("instruction = %1\nunit = %2\nlower = %3\nupper = %4")
+        .arg(instruction->text().trimmed(), unit->text().trimmed(), lower->text(), upper->text()));
+    requires_->setPlainText(QStringLiteral("operator.manual_input"));
+    resources_->clear();
+    manualMeasurementConfigured_ = true;
     return true;
 }
 
