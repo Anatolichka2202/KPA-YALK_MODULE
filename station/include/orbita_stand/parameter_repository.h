@@ -8,8 +8,22 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <vector>
+#include <cstdint>
 
 namespace orbita::stand {
+
+struct ParameterObservation {
+    ParameterSample sample;
+    std::chrono::steady_clock::time_point received;
+    std::uint64_t revision = 0;
+};
+
+struct ParameterObservationBatch {
+    std::vector<ParameterObservation> observations;
+    std::uint64_t lastRevision = 0;
+    bool overflow = false;
+};
 
 // Сессия владеет источниками. Опрос выполняется одним владельцем вне GUI,
 // а наблюдение и проверка читают один и тот же последний снимок без повторного
@@ -27,6 +41,9 @@ public:
     ParameterSample refresh(const std::string& sourceId, const std::string& parameterKey);
     std::optional<ParameterSample> latest(const std::string& sourceId,
         const std::string& parameterKey, std::chrono::milliseconds maxAge) const;
+    // Курсор UINT64_MAX возвращает только текущую ревизию для начала наблюдения.
+    ParameterObservationBatch observationsAfter(const std::string& sourceId,
+        const std::string& parameterKey, std::uint64_t revision) const;
     void clear() noexcept;
 private:
     struct Source;

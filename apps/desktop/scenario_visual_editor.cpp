@@ -109,6 +109,7 @@ ScenarioVisualEditor::ScenarioVisualEditor(QString path, QWidget* parent)
     const auto updateCurrentProcedure = [currentProcedure](const QString& id) {
         currentProcedure->setText(id.isEmpty() ? QStringLiteral("Действие не выбрано")
             : id == QStringLiteral("telemetry.health") ? QStringLiteral("Проверка состояния потока «Орбита»")
+            : id == QStringLiteral("parameter.wait") ? QStringLiteral("Ожидать устойчивый параметр")
             : id == QStringLiteral("parameter.measure") ? QStringLiteral("Измерить параметр")
             : id == QStringLiteral("station.delay") ? QStringLiteral("Выдержка времени")
             : id == QStringLiteral("operator.measure") ? QStringLiteral("Ручное измерение")
@@ -162,7 +163,8 @@ ScenarioVisualEditor::ScenarioVisualEditor(QString path, QWidget* parent)
         manualMeasurementSettings_->setEnabled(!published_ && procedure == QStringLiteral("operator.measure"));
         manualSettings_->setEnabled(!published_ && procedure == QStringLiteral("operator.confirm"));
         telemetrySettings_->setEnabled(!published_ && procedure == QStringLiteral("telemetry.health"));
-        measurementSettings_->setEnabled(!published_ && procedure == QStringLiteral("parameter.measure"));
+        measurementSettings_->setEnabled(!published_ && (procedure == QStringLiteral("parameter.measure")
+            || procedure == QStringLiteral("parameter.wait")));
         delaySettings_->setEnabled(!published_ && procedure == QStringLiteral("station.delay"));
         switchSettings_->setEnabled(!published_ && procedure == QStringLiteral("switch.set"));
     });
@@ -361,6 +363,7 @@ void ScenarioVisualEditor::setAvailableProcedures(const std::vector<std::string>
         const auto id = QString::fromStdString(procedure);
         const auto title = id == QStringLiteral("telemetry.health")
             ? QStringLiteral("Проверить состояние потока «Орбита»")
+            : id == QStringLiteral("parameter.wait") ? QStringLiteral("Ожидать устойчивый параметр")
             : id == QStringLiteral("parameter.measure") ? QStringLiteral("Измерить параметр")
             : id == QStringLiteral("station.delay") ? QStringLiteral("Выдержать время")
             : id == QStringLiteral("operator.measure") ? QStringLiteral("Ручное измерение")
@@ -428,7 +431,8 @@ void ScenarioVisualEditor::setEditorEnabled(bool enabled)
     procedureChoice_->setEnabled(enabled);
     monitorPageChoice_->setEnabled(enabled);
     telemetrySettings_->setEnabled(enabled && procedure_->text() == QStringLiteral("telemetry.health"));
-    measurementSettings_->setEnabled(enabled && procedure_->text() == QStringLiteral("parameter.measure"));
+    measurementSettings_->setEnabled(enabled && (procedure_->text() == QStringLiteral("parameter.measure")
+        || procedure_->text() == QStringLiteral("parameter.wait")));
     delaySettings_->setEnabled(enabled && procedure_->text() == QStringLiteral("station.delay"));
     switchSettings_->setEnabled(enabled && procedure_->text() == QStringLiteral("switch.set"));
     manualSettings_->setEnabled(enabled && procedure_->text() == QStringLiteral("operator.confirm"));
@@ -564,7 +568,8 @@ bool ScenarioVisualEditor::commitEditorToNode(const StepPath& path)
         showTechnicalField(id_);
         return false;
     }
-    if (node->procedure != "parameter.measure" && procedure_->text() == QStringLiteral("parameter.measure")
+    if ((procedure_->text() == QStringLiteral("parameter.measure") || procedure_->text() == QStringLiteral("parameter.wait"))
+        && node->procedure != procedure_->text().toStdString()
         && !measurementConfigured_ && !configureParameterMeasurementForNode(node)) return false;
     if (node->procedure != "station.delay" && procedure_->text() == QStringLiteral("station.delay")
         && !delayConfigured_ && !configureDelayForNode(node)) return false;
@@ -1079,8 +1084,10 @@ void ScenarioVisualEditor::configureParameterMeasurement()
 
 bool ScenarioVisualEditor::configureParameterMeasurementForNode(const orbita::stand::ScenarioNode* node)
 {
-    if (published_ || procedure_->text() != QStringLiteral("parameter.measure") || !node) return false;
-    if (node->procedure == "parameter.measure") {
+    const bool waiting = procedure_->text() == QStringLiteral("parameter.wait");
+    if (published_ || (!waiting && procedure_->text() != QStringLiteral("parameter.measure")) || !node) return false;
+    const bool existing = node->procedure == procedure_->text().toStdString();
+    if (existing) {
         std::set<std::string> names;
         for (const auto& line : arguments_->toPlainText().split(QLatin1Char('\n'))) {
             if (line.trimmed().isEmpty()) continue;
@@ -1093,14 +1100,38 @@ bool ScenarioVisualEditor::configureParameterMeasurementForNode(const orbita::st
             }
         }
     }
-    auto args = node->procedure == "parameter.measure"
-        ? arguments(arguments_->toPlainText()) : std::map<std::string, std::string>{};
+    auto args = existing ? arguments(arguments_->toPlainText()) : std::map<std::string, std::string>{};
     if (args.count("timeout_ms")) {
         bool ok = false;
         const auto timeout = QString::fromStdString(args.at("timeout_ms")).toInt(&ok);
         if (!ok || timeout < 500 || timeout > 600000) {
             QMessageBox::warning(this, QStringLiteral("Измерение"),
                 QStringLiteral("Исправьте время ожидания в технических настройках: от 500 до 600000 мс."));
+            return false;
+        }
+    }
+    if (waiting && existing && (!args.count("stable_ms") || !args.count("max_gap_ms"))) {
+        QMessageBox::warning(this, QStringLiteral("Ожидание"),
+            QStringLiteral("В сохранённом действии отсутствуют параметры времени. Исправьте их в технических настройках."));
+        return false;
+    }
+    if (waiting && args.count("stable_ms")) {
+        const auto text = QString::fromStdString(args.at("stable_ms"));
+        bool ok = false;
+        const auto value = text.toUInt(&ok);
+        if (!ok || text.isEmpty() || text.contains(QRegularExpression(QStringLiteral("[^0-9]"))) || value > 600000) {
+            QMessageBox::warning(this, QStringLiteral("Ожидание"),
+                QStringLiteral("Исправьте сохранённое время устойчивости в технических настройках."));
+            return false;
+        }
+    }
+    if (waiting && args.count("max_gap_ms")) {
+        const auto text = QString::fromStdString(args.at("max_gap_ms"));
+        bool ok = false;
+        const auto value = text.toUInt(&ok);
+        if (!ok || text.isEmpty() || text.contains(QRegularExpression(QStringLiteral("[^0-9]"))) || value < 1 || value > 5000) {
+            QMessageBox::warning(this, QStringLiteral("Ожидание"),
+                QStringLiteral("Исправьте сохранённый максимальный разрыв отсчётов."));
             return false;
         }
     }
@@ -1115,13 +1146,14 @@ bool ScenarioVisualEditor::configureParameterMeasurementForNode(const orbita::st
         return false;
     }
     QDialog dialog(this);
-    dialog.setWindowTitle(QStringLiteral("Настройка измерения"));
+    dialog.setWindowTitle(waiting ? QStringLiteral("Ожидание параметра") : QStringLiteral("Настройка измерения"));
     auto* layout = new QVBoxLayout(&dialog);
-    auto* help = new QLabel(QStringLiteral(
-        "Выберите параметр и укажите допустимые пределы. Преобразование применяется к значению, уже выданному источником."), &dialog);
+    auto* help = new QLabel(waiting ? QStringLiteral(
+        "Проверяются только полученные отсчёты; изменения между ними могут быть пропущены. Укажите допустимый разрыв между отсчётами.")
+        : QStringLiteral("Выберите параметр и укажите допустимые пределы. Преобразование применяется к значению, уже выданному источником."), &dialog);
     help->setWordWrap(true);
     layout->addWidget(help);
-    if (node->procedure != "parameter.measure" && !node->procedure.empty()) {
+    if (!existing && !node->procedure.empty()) {
         auto* replaced = new QLabel(QStringLiteral("Настройки предыдущего действия будут заменены."), &dialog);
         replaced->setWordWrap(true);
         layout->addWidget(replaced);
@@ -1216,7 +1248,19 @@ bool ScenarioVisualEditor::configureParameterMeasurementForNode(const orbita::st
     timeout->setRange(500, 600000);
     timeout->setSuffix(QStringLiteral(" мс"));
     timeout->setValue(args.count("timeout_ms") ? QString::fromStdString(args.at("timeout_ms")).toInt() : 2000);
-    form->addRow(QStringLiteral("Ожидание нового отсчёта"), timeout);
+    form->addRow(waiting ? QStringLiteral("Тайм-аут") : QStringLiteral("Ожидание нового отсчёта"), timeout);
+    auto* stable = new QSpinBox(&dialog);
+    stable->setObjectName(QStringLiteral("parameterStableMilliseconds"));
+    stable->setRange(0, 600000);
+    stable->setSuffix(QStringLiteral(" мс"));
+    stable->setValue(args.count("stable_ms") ? QString::fromStdString(args.at("stable_ms")).toInt() : 0);
+    if (waiting) form->addRow(QStringLiteral("Время устойчивости"), stable);
+    auto* gap = new QSpinBox(&dialog);
+    gap->setObjectName(QStringLiteral("parameterMaxGapMilliseconds"));
+    gap->setRange(1, 5000);
+    gap->setSuffix(QStringLiteral(" мс"));
+    gap->setValue(args.count("max_gap_ms") ? QString::fromStdString(args.at("max_gap_ms")).toInt() : 1000);
+    if (waiting) form->addRow(QStringLiteral("Максимальный разрыв отсчётов"), gap);
     layout->addLayout(form);
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
     layout->addWidget(buttons);
@@ -1234,6 +1278,11 @@ bool ScenarioVisualEditor::configureParameterMeasurementForNode(const orbita::st
             || !std::isfinite(high) || low > high) {
             QMessageBox::warning(&dialog, QStringLiteral("Измерение"),
                 QStringLiteral("Выберите параметр с известной единицей и задайте числовые пределы: нижний не больше верхнего."));
+            return;
+        }
+        if (waiting && stable->value() > timeout->value()) {
+            QMessageBox::warning(&dialog, QStringLiteral("Ожидание"),
+                QStringLiteral("Время устойчивости не может превышать тайм-аут."));
             return;
         }
         if (conversion->currentIndex() == 1) {
@@ -1263,6 +1312,10 @@ bool ScenarioVisualEditor::configureParameterMeasurementForNode(const orbita::st
     args["upper"] = QString::number(acceptedHigh, 'g', 17).toStdString();
     args["unit"] = choice.at(2).toUtf8().toStdString();
     args["timeout_ms"] = std::to_string(timeout->value());
+    if (waiting) {
+        args["stable_ms"] = std::to_string(stable->value());
+        args["max_gap_ms"] = std::to_string(gap->value());
+    }
     args["conversion"] = conversion->currentData().toString().toStdString();
     if (conversion->currentIndex() == 1) {
         args["scale"] = QString::number(acceptedScale, 'g', 17).toStdString();

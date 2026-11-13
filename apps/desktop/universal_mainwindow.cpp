@@ -405,7 +405,7 @@ void UniversalMainWindow::runGenericScenario(
         std::function<bool(const orbita::stand::ScenarioNode&)> usesOrbita;
         usesOrbita = [&](const orbita::stand::ScenarioNode& node) {
             if (node.procedure == "telemetry.health"
-                || (node.procedure == "parameter.measure" && node.arguments.count("source")
+                || ((node.procedure == "parameter.measure" || node.procedure == "parameter.wait") && node.arguments.count("source")
                     && node.arguments.at("source") == "orbita")
                 || std::find(node.requiredCapabilities.begin(), node.requiredCapabilities.end(),
                              "orbita.parameter_source") != node.requiredCapabilities.end()) return true;
@@ -418,7 +418,7 @@ void UniversalMainWindow::runGenericScenario(
         QMap<QString, QStringList> parameterSubscriptions;
         std::function<void(const orbita::stand::ScenarioNode&)> collectParameters;
         collectParameters = [&](const orbita::stand::ScenarioNode& node) {
-            if (node.procedure == "parameter.measure" && node.arguments.count("source")
+            if ((node.procedure == "parameter.measure" || node.procedure == "parameter.wait") && node.arguments.count("source")
                 && node.arguments.count("parameter")) {
                 const auto source = QString::fromStdString(node.arguments.at("source"));
                 const auto key = QString::fromStdString(node.arguments.at("parameter"));

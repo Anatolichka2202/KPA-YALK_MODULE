@@ -1,5 +1,7 @@
 #include "orbita_stand/parameter_repository.h"
 #include <stdexcept>
+#include <deque>
+#include <limits>
 #include <utility>
 
 namespace orbita::stand {
@@ -10,6 +12,12 @@ struct ParameterRepository::Source {
         ParameterSample sample;
         std::chrono::steady_clock::time_point received;
         std::optional<ParameterSample> lastGood;
+        std::deque<ParameterObservation> observations;
+        std::uint64_t revision = 0;
+        void append(const ParameterSample& value) {
+            observations.push_back({value, std::chrono::steady_clock::now(), ++revision});
+            if (observations.size() > 256) observations.pop_front();
+        }
     };
     std::unique_ptr<IParameterSource> device;
     std::mutex io;
@@ -65,6 +73,7 @@ ParameterSample ParameterRepository::refresh(const std::string& id, const std::s
             for (auto& item : source->cache) {
                 item.second.sample.quality = SampleQuality::Disconnected;
                 item.second.sample.diagnostic = result.diagnostic;
+                if (item.first != key) item.second.append(item.second.sample);
             }
         }
         auto& entry = source->cache[key];
@@ -76,6 +85,7 @@ ParameterSample ParameterRepository::refresh(const std::string& id, const std::s
             entry.lastGood = result;
         }
         entry.sample = result;
+        entry.append(result);
     }
     return result;
 }
@@ -101,6 +111,23 @@ std::optional<ParameterSample> ParameterRepository::latest(const std::string& id
             result.quality = SampleQuality::Stale;
     }
     return result;
+}
+
+ParameterObservationBatch ParameterRepository::observationsAfter(const std::string& id,
+    const std::string& key, std::uint64_t revision) const
+{
+    const auto source = find(id);
+    std::lock_guard<std::mutex> lock(source->cacheMutex);
+    const auto it = source->cache.find(key);
+    if (it == source->cache.end()) return {};
+    ParameterObservationBatch batch;
+    batch.lastRevision = it->second.revision;
+    if (revision == std::numeric_limits<std::uint64_t>::max()) return batch;
+    const auto& history = it->second.observations;
+    batch.overflow = !history.empty() && revision < history.front().revision - 1;
+    for (const auto& observation : history)
+        if (observation.revision > revision) batch.observations.push_back(observation);
+    return batch;
 }
 
 void ParameterRepository::clear() noexcept

@@ -14,6 +14,7 @@ struct State {
     int reads = 0; int stops = 0; bool fail = false; bool disconnected = false;
     std::atomic_bool advance{false};
     std::atomic<double> nextValue{0};
+    std::atomic<int> timestampOffsetMs{0};
 };
 class Simulator final : public IParameterSource {
 public:
@@ -33,7 +34,7 @@ public:
         ParameterSample sample;
         sample.parameterKey = key;
         sample.sequence = sequence_;
-        sample.timestamp = timestamp_;
+        sample.timestamp = timestamp_ + std::chrono::milliseconds(state_.timestampOffsetMs.load());
         sample.physicalValue = value_;
         sample.unit = "V";
         sample.quality = state_.disconnected ? SampleQuality::Disconnected : SampleQuality::Good;
@@ -150,6 +151,64 @@ int main()
         require(station.runScenario(checkScenario, "test", "", false).verdict == RunVerdict::Error,
                 "disconnected source was accepted as a measurement");
         first.disconnected = false;
+        checkScenario.steps[0].procedure = "parameter.wait";
+        checkScenario.steps[0].arguments["stable_ms"] = "100";
+        checkScenario.steps[0].arguments["max_gap_ms"] = "200";
+        checkScenario.steps[0].arguments["timeout_ms"] = "1000";
+        require(station.scenarioEngine().validate(checkScenario).empty(), "valid stability wait rejected");
+        std::thread sequence([&] {
+            const auto emit = [&](double value, std::chrono::milliseconds pause) {
+                std::this_thread::sleep_for(pause);
+                first.nextValue = value; first.advance = true;
+                samples.refresh("one", "voltage");
+            };
+            emit(12, 50ms); emit(14, 40ms); emit(12, 40ms); emit(12, 120ms);
+        });
+        const auto startWait = std::chrono::steady_clock::now();
+        const auto stable = station.runScenario(checkScenario, "test", "", false);
+        sequence.join();
+        require(stable.verdict == RunVerdict::Ok && stable.steps[0].measurements[0].measured == 12
+                    && std::chrono::steady_clock::now() - startWait >= 230ms,
+                "stability wait ignored an intermediate out-of-range sample");
+        checkScenario.steps[0].arguments["timeout_ms"] = "500";
+        require(station.runScenario(checkScenario, "test", "", false).verdict == RunVerdict::Error,
+                "stability wait accepted an old or repeated sample");
+        checkScenario.steps[0].arguments["max_gap_ms"] = "50";
+        std::thread sparse([&] {
+            for (int i = 0; i < 3; ++i) {
+                std::this_thread::sleep_for(120ms);
+                first.nextValue = 12; first.advance = true;
+                samples.refresh("one", "voltage");
+            }
+        });
+        const auto sparseResult = station.runScenario(checkScenario, "test", "", false);
+        sparse.join();
+        require(sparseResult.verdict == RunVerdict::Error,
+                "sparse in-range samples were accepted as stable");
+        checkScenario.steps[0].arguments["max_gap_ms"] = "200";
+        checkScenario.steps[0].arguments["max_gap_ms"] = "500";
+        std::thread delayed([&] {
+            std::this_thread::sleep_for(50ms);
+            first.nextValue = 12; first.advance = true; samples.refresh("one", "voltage");
+            std::this_thread::sleep_for(200ms);
+            first.timestampOffsetMs = -150; first.advance = true; samples.refresh("one", "voltage");
+        });
+        const auto delayedResult = station.runScenario(checkScenario, "test", "", false);
+        delayed.join();
+        first.timestampOffsetMs = 0;
+        require(delayedResult.verdict == RunVerdict::Error,
+                "arrival-time duration was mistaken for source-time stability");
+        checkScenario.steps[0].arguments["max_gap_ms"] = "200";
+        const auto beforeOverflow = samples.observationsAfter("one", "voltage", UINT64_MAX).lastRevision;
+        for (int i = 0; i < 260; ++i) samples.refresh("one", "voltage");
+        require(samples.observationsAfter("one", "voltage", beforeOverflow).overflow,
+                "lost intermediate observations were not detected");
+        checkScenario.steps[0].arguments["stable_ms"] = "501";
+        require(!station.scenarioEngine().validate(checkScenario).empty(), "stability longer than timeout accepted");
+        checkScenario.steps[0].procedure = "parameter.measure";
+        checkScenario.steps[0].arguments.erase("stable_ms");
+        checkScenario.steps[0].arguments.erase("max_gap_ms");
+        checkScenario.steps[0].arguments["timeout_ms"] = "2000";
         checkScenario.steps[0].arguments["lower"] = "13";
         checkScenario.steps[0].arguments["upper"] = "11";
         require(!station.scenarioEngine().validate(checkScenario).empty(), "reversed bounds accepted");

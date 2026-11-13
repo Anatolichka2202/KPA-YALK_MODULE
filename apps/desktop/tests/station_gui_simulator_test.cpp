@@ -1059,6 +1059,33 @@ int runChild(const QString& mode)
                 });
                 measurementSettings->click();
                 add->click();
+                tu->setText(QStringLiteral("test.wait"));
+                const int waitIndex = actions->findData(QStringLiteral("parameter.wait"));
+                auto* waitSettings = editor->findChild<QPushButton*>(QStringLiteral("configureParameterMeasurement"));
+                if (waitIndex < 0 || !waitSettings) return;
+                QMetaObject::invokeMethod(actions, "activated", Q_ARG(int, waitIndex));
+                QTimer::singleShot(0, [] {
+                    auto* config = qobject_cast<QDialog*>(QApplication::activeModalWidget());
+                    if (!config) return;
+                    auto* parameter = config->findChild<QComboBox*>(QStringLiteral("measurementParameter"));
+                    auto* lower = config->findChild<QLineEdit*>(QStringLiteral("measurementLower"));
+                    auto* upper = config->findChild<QLineEdit*>(QStringLiteral("measurementUpper"));
+                    auto* stable = config->findChild<QSpinBox*>(QStringLiteral("parameterStableMilliseconds"));
+                    auto* timeout = config->findChild<QSpinBox*>(QStringLiteral("measurementTimeout"));
+                    auto* buttons = config->findChild<QDialogButtonBox*>();
+                    if (!parameter || !lower || !upper || !stable || !timeout || !buttons) return;
+                    for (int i = 1; i < parameter->count(); ++i) {
+                        const auto data = parameter->itemData(i).toStringList();
+                        if (data.size() == 3 && data[0] == QStringLiteral("page-simulator") && data[1] == QStringLiteral("voltage")) {
+                            parameter->setCurrentIndex(i); break;
+                        }
+                    }
+                    lower->setText(QStringLiteral("10")); upper->setText(QStringLiteral("15"));
+                    stable->setValue(100); timeout->setValue(2000);
+                    buttons->button(QDialogButtonBox::Ok)->click();
+                });
+                waitSettings->click();
+                add->click();
                 tu->setText(QStringLiteral("test.switch"));
                 const int switchIndex = actions->findData(QStringLiteral("switch.set"));
                 auto* switchSettings = editor->findChild<QPushButton*>(QStringLiteral("configureScenarioSwitch"));
@@ -1249,7 +1276,7 @@ int runChild(const QString& mode)
                         persisted->contextAttributes.at("monitor_display_json"))).isObject(),
                 "default monitoring view was not captured");
     require(persisted && persisted->verdict == orbita::stand::RunVerdict::Ok
-                && persisted->steps.size() == (mode == "--create-new" ? 5u : 2u)
+                && persisted->steps.size() == (mode == "--create-new" ? 6u : 2u)
                 && (mode != "--new-version" || (persisted->scenarioVersion == "2"
                     && persisted->steps.front().title == "Изменённый шаг"))
                 && (mode != "--create-new" || (persisted->scenarioVersion == "2"
@@ -1275,6 +1302,14 @@ int runChild(const QString& mode)
                 && persisted->steps.front().measurements.size() == 1
                 && persisted->steps.front().measurements.front().measured == 42,
             "completed GUI run lost its persisted measurement");
+    if (mode == "--create-new") {
+        const auto waited = std::find_if(persisted->steps.begin(), persisted->steps.end(), [](const auto& step) {
+            return !step.measurements.empty() && step.measurements.front().attributes.count("stable_ms");
+        });
+        require(waited != persisted->steps.end() && waited->measurements.front().attributes.at("stable_ms") == "100"
+                    && waited->measurements.front().measured == 12.5 && waited->verdict == orbita::stand::RunVerdict::Ok,
+                "configured stability wait did not complete and persist through the UI");
+    }
     if (mode == "--create-new") {
         const auto measured = std::find_if(persisted->steps.begin(), persisted->steps.end(), [](const auto& step) {
             return !step.measurements.empty() && step.measurements.front().attributes.count("input_method")

@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cmath>
 #include <iomanip>
+#include <limits>
 #include <sstream>
 #include <thread>
 
@@ -137,11 +138,155 @@ ProcedureResult measure(const ScenarioNode& node, ProcedureContext& context, Par
         sample->timestamp.time_since_epoch()).count());
     return {measurement.verdict, measurement.message, {measurement}};
 }
+
+std::vector<std::string> validateWait(const ScenarioNode& node)
+{
+    auto copy = node;
+    copy.arguments.erase("stable_ms");
+    copy.arguments.erase("max_gap_ms");
+    auto errors = validateMeasurement(copy);
+    try {
+        const auto& text = node.arguments.at("stable_ms");
+        std::size_t used = 0;
+        const auto duration = std::stoul(text, &used);
+        const auto timeout = std::stoul(node.arguments.at("timeout_ms"));
+        if (text.empty() || text.find_first_not_of("0123456789") != std::string::npos
+            || used != text.size() || duration > timeout)
+            throw std::invalid_argument("stable");
+    } catch (const std::exception&) {
+        errors.push_back("Время устойчивости должно быть от 0 до времени ожидания");
+    }
+    try {
+        const auto& text = node.arguments.at("max_gap_ms");
+        std::size_t used = 0;
+        const auto gap = std::stoul(text, &used);
+        if (text.empty() || text.find_first_not_of("0123456789") != std::string::npos
+            || used != text.size() || gap < 1 || gap > 5000) throw std::invalid_argument("gap");
+    } catch (const std::exception&) {
+        errors.push_back("Допустимый разрыв между отсчётами должен быть от 1 до 5000 мс");
+    }
+    return errors;
+}
+
+ProcedureResult waitForParameter(const ScenarioNode& node, ProcedureContext& context, ParameterRepository& repository)
+{
+    const auto& source = node.arguments.at("source");
+    const auto& key = node.arguments.at("parameter");
+    const auto startedWall = std::chrono::system_clock::now();
+    const auto deadline = std::chrono::steady_clock::now()
+        + std::chrono::milliseconds(std::stoul(node.arguments.at("timeout_ms")));
+    const auto stableDuration = std::chrono::milliseconds(std::stoul(node.arguments.at("stable_ms")));
+    const auto maxGap = std::chrono::milliseconds(std::stoul(node.arguments.at("max_gap_ms")));
+    const auto lower = std::stod(node.arguments.at("lower"));
+    const auto upper = std::stod(node.arguments.at("upper"));
+    const bool linear = node.arguments.count("conversion") && node.arguments.at("conversion") == "linear";
+    const auto scale = linear ? std::stod(node.arguments.at("scale")) : 1.0;
+    const auto offset = linear ? std::stod(node.arguments.at("offset")) : 0.0;
+    std::optional<std::chrono::steady_clock::time_point> stableSince, lastDistinctAt;
+    std::optional<std::chrono::system_clock::time_point> stableSampleSince;
+    std::optional<ParameterSample> lastDistinct;
+    std::optional<MeasurementResult> candidate;
+    std::uint64_t cursor = 0;
+    try { cursor = repository.observationsAfter(source, key, std::numeric_limits<std::uint64_t>::max()).lastRevision; }
+    catch (const std::exception& error) { return {RunVerdict::Error, std::string("Источник недоступен: ") + error.what(), {}}; }
+    do {
+        if (context.stopRequested.load()) return {RunVerdict::Aborted, "Ожидание остановлено", {}};
+        ParameterObservationBatch batch;
+        try { batch = repository.observationsAfter(source, key, cursor); }
+        catch (const std::exception& error) { return {RunVerdict::Error, std::string("Источник недоступен: ") + error.what(), {}}; }
+        cursor = batch.lastRevision;
+        // Потеря даже одного промежуточного отсчёта запрещает считать
+        // предыдущее окно непрерывно устойчивым.
+        if (batch.overflow) {
+            stableSince.reset(); stableSampleSince.reset(); lastDistinct.reset(); lastDistinctAt.reset(); candidate.reset();
+        }
+        for (const auto& observation : batch.observations) {
+            if (observation.received > deadline) continue;
+            const auto& sample = observation.sample;
+            const auto wallNow = std::chrono::system_clock::now();
+            if (sample.quality != SampleQuality::Good || sample.timestamp < startedWall || sample.timestamp > wallNow
+                || wallNow - sample.timestamp > maxGap || sample.unit != node.arguments.at("unit")
+                || !std::isfinite(sample.physicalValue)) {
+                stableSince.reset(); stableSampleSince.reset(); lastDistinct.reset(); lastDistinctAt.reset(); candidate.reset(); continue;
+            }
+            const double value = sample.physicalValue * scale + offset;
+            if (!std::isfinite(value) || value < lower || value > upper) {
+                stableSince.reset(); stableSampleSince.reset(); lastDistinct.reset(); lastDistinctAt.reset(); candidate.reset(); continue;
+            }
+            const bool distinct = !lastDistinct || sample.sequence != lastDistinct->sequence
+                || sample.timestamp != lastDistinct->timestamp;
+            if (!distinct) {
+                // Один идентификатор отсчёта не может обозначать два значения.
+                if (sample.physicalValue != lastDistinct->physicalValue || sample.rawValue != lastDistinct->rawValue) {
+                    stableSince.reset(); stableSampleSince.reset(); lastDistinct.reset(); lastDistinctAt.reset(); candidate.reset();
+                }
+                continue;
+            }
+            if (lastDistinctAt && (observation.received - *lastDistinctAt > maxGap
+                    || sample.timestamp <= lastDistinct->timestamp
+                    || sample.timestamp - lastDistinct->timestamp > maxGap)) {
+                stableSince.reset(); stableSampleSince.reset(); candidate.reset();
+            }
+            if (!stableSince) { stableSince = observation.received; stableSampleSince = sample.timestamp; }
+            lastDistinct = sample;
+            lastDistinctAt = observation.received;
+            if (observation.received - *stableSince >= stableDuration
+                && sample.timestamp - *stableSampleSince >= stableDuration) {
+                MeasurementResult result;
+                result.parameterKey = key;
+                result.title = node.title.empty() ? key : node.title;
+                result.measured = value;
+                result.lowerLimit = lower; result.upperLimit = upper;
+                result.unit = linear ? node.arguments.at("output_unit") : sample.unit;
+                result.verdict = RunVerdict::Ok;
+                result.message = "Наблюдаемые значения устойчивы в диапазоне";
+                result.attributes = {{"source_id", source}, {"sample_quality", "GOOD"},
+                    {"sample_sequence", std::to_string(sample.sequence)}, {"stable_ms", node.arguments.at("stable_ms")},
+                    {"max_gap_ms", node.arguments.at("max_gap_ms")},
+                    {"sample_time_ms", std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(
+                        sample.timestamp.time_since_epoch()).count())}};
+                std::ostringstream input;
+                input << std::setprecision(17) << sample.physicalValue;
+                result.attributes["input_value"] = input.str();
+                result.attributes["input_unit"] = sample.unit;
+                result.attributes["conversion"] = linear ? "linear" : "identity";
+                if (linear) {
+                    result.attributes["scale"] = node.arguments.at("scale");
+                    result.attributes["offset"] = node.arguments.at("offset");
+                }
+                candidate = std::move(result);
+            }
+        }
+        const auto now = std::chrono::steady_clock::now();
+        const auto wallNow = std::chrono::system_clock::now();
+        if (candidate && lastDistinctAt && lastDistinct && now <= deadline
+            && now - *lastDistinctAt <= maxGap && wallNow >= lastDistinct->timestamp
+            && wallNow - lastDistinct->timestamp <= maxGap
+            && !context.stopRequested.load()) {
+            // Прежде чем принять результат, убедимся под блокировкой кэша,
+            // что за время обработки не поступило новых наблюдений.
+            try {
+                const auto current = repository.observationsAfter(source, key,
+                    std::numeric_limits<std::uint64_t>::max());
+                if (current.lastRevision == cursor)
+                    return {RunVerdict::Ok, candidate->message, {*candidate}};
+            } catch (const std::exception& error) {
+                return {RunVerdict::Error, std::string("Источник недоступен: ") + error.what(), {}};
+            }
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    } while (std::chrono::steady_clock::now() < deadline);
+    if (context.stopRequested.load()) return {RunVerdict::Aborted, "Ожидание остановлено", {}};
+    return {RunVerdict::Error, "Истекло время ожидания устойчивого параметра", {}};
+}
 }
 void registerParameterProcedures(ScenarioEngine& engine, ParameterRepository& parameters)
 {
     engine.registerProcedure("parameter.measure", [&parameters](const ScenarioNode& node, ProcedureContext& context) {
         return measure(node, context, parameters);
     }, validateMeasurement);
+    engine.registerProcedure("parameter.wait", [&parameters](const ScenarioNode& node, ProcedureContext& context) {
+        return waitForParameter(node, context, parameters);
+    }, validateWait);
 }
 }
