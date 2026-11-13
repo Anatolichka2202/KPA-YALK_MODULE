@@ -45,6 +45,7 @@ public:
     void appendEvent(const orbita::stand::RunEvent& event);
     void setReportHtml(const QString& html, const QString& summary);
     void setMonitorWidget(QWidget* widget);
+    bool monitorViewActive() const;
 
 signals:
     void createScenarioRequested();

@@ -13,6 +13,7 @@
 #include <QAction>
 #include <QApplication>
 #include <QComboBox>
+#include <QCryptographicHash>
 #include <QDir>
 #include <QDirIterator>
 #include <QDialogButtonBox>
@@ -23,6 +24,9 @@
 #include <QLabel>
 #include <QInputDialog>
 #include <QLineEdit>
+#include <QJsonDocument>
+#include <QJsonArray>
+#include <QJsonObject>
 #include <QMessageBox>
 #include <QProcess>
 #include <QPushButton>
@@ -501,7 +505,9 @@ int runHealthMonitorChild()
     require(measureIndex >= 0, "measurement scenario missing from list");
     choices->setCurrentIndex(measureIndex);
     auto* pageError = checkMonitor->findChild<QLabel*>(QStringLiteral("monitorPageError"));
-    require(pageError && !pageError->isHidden() && checkTable->rowCount() == 0,
+    require(pageError && !pageError->isHidden() && checkTable->rowCount() == 0
+                && !checkMonitor->pageSnapshot().error.isEmpty()
+                && checkMonitor->pageSnapshot().content.isEmpty(),
             "missing scenario page was silently replaced by another page");
     pageList->setCurrentIndex(pageList->findData(pageId));
     require(run->isEnabled(), "measurement scenario unavailable");
@@ -624,6 +630,11 @@ protected:
         require(runs.size() == previousRunIds_.size() + 1 && current != runs.end()
                     && current->steps.empty() && current->contextAttributes.count("scenario_definition_json"),
                 "initial snapshot missing before preparation");
+        if (mode_ == "--create-new")
+            require(current->contextAttributes.count("monitor_page_json_base64")
+                        && current->contextAttributes.count("monitor_display_json")
+                        && current->contextAttributes.at("monitor_page_status") == "captured",
+                    "monitoring page snapshot missing before equipment preparation");
         runId_ = current->runId;
         QFile idFile(QDir(QCoreApplication::applicationDirPath()).filePath("run" + mode_ + ".txt"));
         require(idFile.open(QIODevice::WriteOnly | QIODevice::Truncate), "cannot record run id");
@@ -836,6 +847,8 @@ int runChild(const QString& mode)
     QString createdVersion;
     QString createdDraft;
     QString createdPageId;
+    QByteArray createdPageContent;
+    QByteArray createdDisplayState;
     bool invalidRejected = false;
     bool conflictRejected = false;
     if (mode == "--new-version") {
@@ -992,9 +1005,21 @@ int runChild(const QString& mode)
         require(orbita::stand::loadScenarioYaml(createdVersion.toStdString()).monitorPageId == pageId.toStdString()
                     && pageList->currentData().toString() == pageId,
                 "created scenario did not save and select its monitoring page");
+        createdPageContent = monitor->pageSnapshot().content;
+        require(!createdPageContent.isEmpty(), "selected page content is unavailable");
         require(QMetaObject::invokeMethod(&window, "openGenericCheck", Qt::DirectConnection)
                     && scenarios->currentData().toString() == createdVersion && run->isEnabled(),
                 "reopening did not rediscover the user scenario");
+        auto* values = monitor->findChild<QTableWidget*>(QStringLiteral("genericMonitorValues"));
+        auto* resultTabs = dialog->findChild<QTabWidget*>(QStringLiteral("genericResultTabs"));
+        require(resultTabs, "result tabs unavailable");
+        resultTabs->setCurrentWidget(monitor);
+        require(values && values->rowCount() == 1, "configured page is not displayed");
+        values->item(0, 0)->setCheckState(Qt::Checked);
+        createdDisplayState = monitor->pageSnapshot().displayState;
+        const auto selected = QJsonDocument::fromJson(createdDisplayState).object().value("parameters").toArray();
+        require(selected.size() == 1 && selected[0].toObject().value("plot").toBool(),
+                "temporary graph selection missing from live display state");
     }
     run->click();
     require(!run->isEnabled(), "scenario was not started from the dialog");
@@ -1074,6 +1099,12 @@ int runChild(const QString& mode)
     if (mode != "--new-version" && mode != "--create-new")
         require(store.unfinishedRuns().empty(), "completed GUI run was not finalized");
     const auto persisted = store.load(window.runId());
+    if (mode == "--complete")
+        require(persisted && persisted->contextAttributes.count("monitor_display_json")
+                    && persisted->contextAttributes.at("monitor_page_status") == "all_parameters"
+                    && QJsonDocument::fromJson(QByteArray::fromStdString(
+                        persisted->contextAttributes.at("monitor_display_json"))).isObject(),
+                "default monitoring view was not captured");
     require(persisted && persisted->verdict == orbita::stand::RunVerdict::Ok
                 && persisted->steps.size() == (mode == "--create-new" ? 3u : 2u)
                 && (mode != "--new-version" || (persisted->scenarioVersion == "2"
@@ -1084,6 +1115,15 @@ int runChild(const QString& mode)
                     && window.switchExercised()
                     && persisted->contextAttributes.count("scenario_definition_json")
                     && persisted->contextAttributes.at("scenario_definition_json").find(createdPageId.toStdString()) != std::string::npos
+                    && persisted->contextAttributes.count("monitor_page_json_base64")
+                    && QByteArray::fromBase64(QByteArray::fromStdString(
+                        persisted->contextAttributes.at("monitor_page_json_base64"))) == createdPageContent
+                    && persisted->contextAttributes.at("monitor_display_json") == createdDisplayState.toStdString()
+                    && persisted->contextAttributes.at("monitor_page_status") == "captured"
+                    && persisted->contextAttributes.at("monitor_view_active") == "true"
+                    && persisted->contextAttributes.at("monitor_page_id") == createdPageId.toStdString()
+                    && persisted->contextAttributes.at("monitor_page_sha256") == QCryptographicHash::hash(
+                        createdPageContent, QCryptographicHash::Sha256).toHex().toStdString()
                     && std::any_of(persisted->evidence.begin(), persisted->evidence.end(), [](const auto& event) {
                         const auto confirmed = event.data.find("confirmed");
                         return event.operation == "safe_stop_resource" && confirmed != event.data.end()
@@ -1092,6 +1132,28 @@ int runChild(const QString& mode)
                 && persisted->steps.front().measurements.size() == 1
                 && persisted->steps.front().measurements.front().measured == 42,
             "completed GUI run lost its persisted measurement");
+    if (mode == "--create-new") {
+        auto* monitor = dialog->findChild<MultiSourceMonitor*>(QStringLiteral("genericCheckMonitor"));
+        auto* edit = monitor ? monitor->findChild<QPushButton*>(QStringLiteral("editMonitorPage")) : nullptr;
+        bool pageChanged = false;
+        QTimer::singleShot(0, [&] {
+            auto* editor = qobject_cast<QDialog*>(QApplication::activeModalWidget());
+            if (!editor) return;
+            auto* title = editor->findChild<QLineEdit*>(QStringLiteral("pageTitle"));
+            auto* buttons = editor->findChild<QDialogButtonBox*>();
+            if (!title || !buttons) { editor->accept(); return; }
+            title->setText(QStringLiteral("Изменённая страница"));
+            pageChanged = true;
+            buttons->button(QDialogButtonBox::Save)->click();
+        });
+        require(edit, "page editor unavailable after run");
+        edit->click();
+        const auto reloaded = store.load(window.runId());
+        require(pageChanged && monitor->pageSnapshot().content != createdPageContent
+                    && reloaded && QByteArray::fromBase64(QByteArray::fromStdString(
+                        reloaded->contextAttributes.at("monitor_page_json_base64"))) == createdPageContent,
+                "editing the page changed the stored run snapshot");
+    }
     if (mode == "--new-version" || mode == "--create-new") {
         require(QFile::remove(createdVersion) && QFile::remove(createdDraft), "cannot remove test versions");
     }

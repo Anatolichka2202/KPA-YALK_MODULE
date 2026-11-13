@@ -24,6 +24,13 @@ struct MonitoredBinding {
     QString unit;
 };
 
+struct MonitorPageSnapshot {
+    QString id;
+    QByteArray content;
+    QString error;
+    QByteArray displayState;
+};
+
 class MultiSourceMonitor final : public QWidget {
     Q_OBJECT
 public:
@@ -35,6 +42,7 @@ public:
     void reloadPages();
     QList<QPair<QString, QString>> availablePages() const;
     void selectPage(const QString& id);
+    MonitorPageSnapshot pageSnapshot() const;
     const std::vector<MonitoredBinding>& bindings() const { return availableBindings_; }
 private:
     void rebuildBindings(std::vector<MonitoredBinding> bindings);
@@ -67,4 +75,6 @@ private:
     std::vector<MonitoredBinding> bindings_;
     std::vector<MonitoredBinding> availableBindings_;
     QString pageScope_;
+    QByteArray displayedPageContent_;
+    QString displayedPageError_;
 };

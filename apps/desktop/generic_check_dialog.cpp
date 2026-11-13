@@ -225,6 +225,11 @@ void GenericCheckDialog::setMonitorWidget(QWidget* widget)
     if (widget) viewTabs_->addTab(widget, QStringLiteral("Параметры"));
 }
 
+bool GenericCheckDialog::monitorViewActive() const
+{
+    return viewTabs_->currentWidget() != reportPreview_ && viewTabs_->currentWidget() != nullptr;
+}
+
 void GenericCheckDialog::setScenarios(const QVector<GenericScenarioEntry>& scenarios)
 {
     const QSignalBlocker blocker(scenario_);

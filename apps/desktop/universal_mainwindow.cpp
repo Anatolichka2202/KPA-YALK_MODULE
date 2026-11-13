@@ -446,6 +446,23 @@ void UniversalMainWindow::runGenericScenario(
         initialRun.contextAttributes["scenario_config_source"] = path.toUtf8().toStdString();
         initialRun.contextAttributes["scenario_definition_json"] =
             orbita::stand::scenarioDefinitionSnapshot(scenario);
+        // Сохраняем исходную конфигурацию и отдельно временные настройки
+        // отображения до подготовки. Позднейшее редактирование их не заменяет.
+        const auto page = checkMonitor_->pageSnapshot();
+        initialRun.contextAttributes["monitor_page_id"] = page.id.toUtf8().toStdString();
+        initialRun.contextAttributes["monitor_page_status"] = page.id.isEmpty() ? "all_parameters"
+            : page.error.isEmpty() ? "captured" : "unavailable";
+        initialRun.contextAttributes["monitor_view_active"] = genericDialog_->monitorViewActive() ? "true" : "false";
+        initialRun.contextAttributes["monitor_display_json"] = page.displayState.toStdString();
+        if (!page.error.isEmpty())
+            initialRun.contextAttributes["monitor_page_error"] = page.error.toUtf8().toStdString();
+        if (!page.content.isEmpty()) {
+            // Хранилище контекста преобразует переводы строк в пробелы; base64
+            // сохраняет точные байты и позволяет проверить записанный SHA-256.
+            initialRun.contextAttributes["monitor_page_json_base64"] = page.content.toBase64().toStdString();
+            initialRun.contextAttributes["monitor_page_sha256"] = QCryptographicHash::hash(
+                page.content, QCryptographicHash::Sha256).toHex().toStdString();
+        }
         if (!integrationPersistRun(initialRun))
             throw std::runtime_error("Не удалось записать начало проверки; подготовка не выполнена");
         initialRun.persistenceStarted = true;

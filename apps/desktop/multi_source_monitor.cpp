@@ -170,6 +170,29 @@ void MultiSourceMonitor::selectPage(const QString& id)
     applyPage(true);
 }
 
+MonitorPageSnapshot MultiSourceMonitor::pageSnapshot() const
+{
+    QJsonArray parameters;
+    for (int row = 0; row < static_cast<int>(bindings_.size()); ++row) {
+        const auto& binding = bindings_[static_cast<std::size_t>(row)];
+        const auto& series = series_[static_cast<std::size_t>(row)];
+        parameters.append(QJsonObject{
+            {"source", binding.sourceId}, {"source_title", binding.sourceTitle},
+            {"key", binding.parameterKey}, {"label", binding.parameterTitle},
+            {"unit", binding.unit}, {"unavailable_reason", binding.unavailableReason},
+            {"plot", table_->item(row, 0)->checkState() == Qt::Checked},
+            {"axis_lower", series.axis->range().lower}, {"axis_upper", series.axis->range().upper}});
+    }
+    const QJsonObject state{
+        {"version", 1}, {"parameters", parameters},
+        {"table", !table_->isHidden()}, {"graph", !graphPanel_->isHidden()},
+        {"graph_first", splitter_->indexOf(graphPanel_) < splitter_->indexOf(table_)},
+        {"follow_time", followTime_->isChecked()}, {"auto_scale", automaticScale_->isChecked()},
+        {"time_lower", plot_->xAxis->range().lower}, {"time_upper", plot_->xAxis->range().upper}};
+    return {pages_->currentData().toString(), displayedPageContent_, displayedPageError_,
+            QJsonDocument(state).toJson(QJsonDocument::Compact)};
+}
+
 void MultiSourceMonitor::rebuildBindings(std::vector<MonitoredBinding> bindings)
 {
     const QSignalBlocker block(table_);
@@ -352,14 +375,15 @@ QString pageDirectory(const QString& scope)
     return QDir(root).filePath(QStringLiteral("monitor-pages/") + QString::fromLatin1(key));
 }
 
-QJsonObject readPage(const QString& scope, const QString& id, QString* error)
+QJsonObject readPage(const QString& scope, const QString& id, QString* error, QByteArray* source = nullptr)
 {
     if (pageDirectory(scope).isEmpty()) { *error = QStringLiteral("Не задана поставка или каталог данных"); return {}; }
     if (QUuid(id).isNull()) { *error = QStringLiteral("Некорректный идентификатор страницы"); return {}; }
     QFile file(QDir(pageDirectory(scope)).filePath(id + QStringLiteral(".json")));
     if (!file.open(QIODevice::ReadOnly)) { *error = file.errorString(); return {}; }
     QJsonParseError parseError;
-    const auto document = QJsonDocument::fromJson(file.readAll(), &parseError);
+    const auto bytes = file.readAll();
+    const auto document = QJsonDocument::fromJson(bytes, &parseError);
     if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
         *error = QStringLiteral("Не удалось прочитать страницу: %1").arg(parseError.errorString());
         return {};
@@ -376,6 +400,7 @@ QJsonObject readPage(const QString& scope, const QString& id, QString* error)
             *error = QStringLiteral("Некорректный параметр страницы"); return {};
         }
     }
+    if (source) *source = bytes;
     return result;
 }
 
@@ -427,6 +452,8 @@ void MultiSourceMonitor::refreshPages(const QString& selectedId)
 void MultiSourceMonitor::applyPage(bool resetSelection)
 {
     const auto id = pages_->currentData().toString();
+    displayedPageContent_.clear();
+    displayedPageError_.clear();
     if (id.isEmpty()) {
         pageError_->hide();
         table_->show(); graphPanel_->show();
@@ -439,8 +466,9 @@ void MultiSourceMonitor::applyPage(bool resetSelection)
         return;
     }
     QString error;
-    const auto page = readPage(pageScope_, id, &error);
+    const auto page = readPage(pageScope_, id, &error, &displayedPageContent_);
     if (!error.isEmpty()) {
+        displayedPageError_ = error;
         rebuildBindings({});
         pageError_->setText(QStringLiteral("Страница недоступна: %1").arg(error));
         pageError_->show();
