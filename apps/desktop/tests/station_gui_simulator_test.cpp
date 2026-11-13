@@ -619,7 +619,7 @@ public:
     bool switchExercised() const { return switchCommands_.load() == 1; }
 
 protected:
-    void integrationPrepareEquipmentForScenario(const orbita::stand::ScenarioDefinition&,
+    void integrationPrepareEquipmentForScenario(const orbita::stand::ScenarioDefinition& scenario,
         const std::shared_ptr<orbita::stand::StationSession::Activity>& activity) override
     {
         const auto path = QDir(QCoreApplication::applicationDirPath()).filePath("runs/runs.db");
@@ -642,6 +642,10 @@ protected:
         idFile.write(runId_.data(), static_cast<qint64>(runId_.size()));
         idFile.close();
         if (mode_ == "--interrupt-before") std::_Exit(22);
+        if (mode_.startsWith("--manual-stop-")) {
+            KtmaMainWindow::integrationPrepareEquipmentForScenario(scenario, activity);
+            return;
+        }
         integrationStationSession().prepare(activity, [this](orbita::stand::StationSession::Preparation&) {
             integrationEquipmentRegistry()->bind("test.simulator", [](const std::string&,
                 const std::map<std::string, std::string>&) { return std::string("42"); },
@@ -1143,6 +1147,19 @@ int runChild(const QString& mode)
         });
         lockPoll.start(5);
     }
+    bool manualStopClicked = false;
+    QTimer manualStopPoll;
+    if (mode.startsWith("--manual-stop-")) {
+        QObject::connect(&manualStopPoll, &QTimer::timeout, qApp, [&] {
+            const char* name = mode == "--manual-stop-confirm" ? "operatorConfirmationDialog" : "operatorMeasurementDialog";
+            auto* prompt = window.findChild<QDialog*>(QString::fromLatin1(name));
+            if (!prompt || !prompt->isVisible() || !stop->isEnabled()) return;
+            manualStopClicked = true;
+            stop->click();
+            manualStopPoll.stop();
+        });
+        manualStopPoll.start(10);
+    }
     bool manualWaitVerified = false;
     QTimer manualPoll;
     if (mode == "--create-new") {
@@ -1198,6 +1215,18 @@ int runChild(const QString& mode)
                         && !saved->steps.empty() && saved->steps.front().measurements.size() == 1,
                     "GUI stop did not stop the scenario after the database recovered");
         }
+        return 0;
+    }
+    if (mode.startsWith("--manual-stop-")) {
+        orbita::stand::RunStore store(QDir(QCoreApplication::applicationDirPath())
+            .filePath("runs/runs.db").toStdString());
+        const auto saved = store.load(window.runId());
+        require(status == 0 && manualStopClicked && saved
+                    && saved->verdict == orbita::stand::RunVerdict::Aborted
+                    && saved->steps.size() == 1 && saved->steps.front().measurements.empty()
+                    && !window.findChild<QDialog*>(QStringLiteral("operatorConfirmationDialog"))
+                    && !window.findChild<QDialog*>(QStringLiteral("operatorMeasurementDialog")),
+                "stop did not close the real operator dialog or allowed the dependent action");
         return 0;
     }
     require(status == 0, "free scenario did not finish");
@@ -1471,6 +1500,20 @@ int runParent()
             "GUI stop did not prevent the next simulator action after recovery");
     execute("--new-version", 0);
     execute("--create-new", 0);
+    for (const auto& mode : {QStringLiteral("--manual-stop-confirm"), QStringLiteral("--manual-stop-measure")}) {
+        QFile manualScenario(root.filePath("scenarios/simulator.yaml"));
+        require(manualScenario.open(QIODevice::WriteOnly | QIODevice::Truncate), "cannot create manual stop scenario");
+        QByteArray content = "schema: 1\nid: gui.manual.stop\ntitle: Manual stop\nversion: 1\n"
+            "catalog_version: 1\nobject_type: TEST\nstate: published\nsteps:\n"
+            "  - id: manual\n    title: Operator\n    tu: test.manual\n    procedure: ";
+        content += mode == "--manual-stop-confirm" ? "operator.confirm\n" : "operator.measure\n";
+        content += "    requires:\n      - operator.manual_input\n    args:\n      instruction: Prepare\n";
+        if (mode == "--manual-stop-measure") content += "      unit: V\n      lower: 0\n      upper: 10\n";
+        content += "  - id: after_manual\n    title: After\n    tu: test.after\n    procedure: test.simulator\n";
+        require(manualScenario.write(content) == content.size(), "cannot write manual stop scenario");
+        manualScenario.close();
+        execute(mode, 0);
+    }
     return 0;
 }
 }

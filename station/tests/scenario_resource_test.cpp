@@ -435,6 +435,11 @@ int main(int argc, char** argv)
         manualScenario.steps[0].arguments = {{"instruction", "Введите измерение"}, {"unit", "В"},
                                              {"lower", "10"}, {"upper", "15"}};
         require(manual.validate(manualScenario).empty(), "manual measurement rejected");
+        EquipmentRegistry unavailableOperator;
+        const auto unavailableMeasurement = manual.run(manualScenario, unavailableOperator, "profile", "SN", false);
+        require(unavailableMeasurement.verdict == RunVerdict::Incomplete && !afterManual
+                    && unavailableMeasurement.steps.front().measurements.empty(),
+                "unavailable operator input produced a value or allowed another action");
         const auto cancelledMeasurement = manual.run(manualScenario, operatorEquipment, "profile", "SN", false);
         require(cancelledMeasurement.verdict == RunVerdict::Error && !afterManual
                     && cancelledMeasurement.steps.front().measurements.empty(),
