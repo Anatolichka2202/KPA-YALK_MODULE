@@ -179,9 +179,18 @@ void UniversalMainWindow::reloadGenericScenarios()
 
     genericDialog_->setCreationAvailable(true);
     const QString userRoot = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
-    QList<QDir> directories = {
-        QDir(QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("scenarios")))};
-    if (!userRoot.isEmpty()) directories.push_back(QDir(QDir(userRoot).filePath(QStringLiteral("scenarios"))));
+    // У другой поставки собственный каталог методик: сценарии УБСИ
+    // из установленного каталога КТМА не должны появляться в её HMI.
+    QList<QDir> directories;
+    if (project->id == "ktma") {
+        directories.push_back(QDir(QDir(QCoreApplication::applicationDirPath())
+            .filePath(QStringLiteral("scenarios"))));
+    } else {
+        directories.push_back(QDir(QDir(QString::fromStdString(project->rootDirectory))
+            .filePath(QStringLiteral("scenarios"))));
+    }
+    if (!userRoot.isEmpty())
+        directories.push_back(QDir(QDir(userRoot).filePath(QStringLiteral("scenarios"))));
     for (const auto& directory : directories) {
         for (const auto& file : directory.entryInfoList(
                  {QStringLiteral("*.yaml")}, QDir::Files, QDir::Name)) {
