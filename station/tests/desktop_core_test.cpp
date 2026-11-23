@@ -122,6 +122,16 @@ void testTuPolicy(const std::filesystem::path& root)
         invalidTu = true;
     }
     require(invalidTu, "TU build accepted an unbound workflow");
+    invalidTu = false;
+    try {
+        policy.tuWorkflowId = "free";
+        policy.supportedActions = {"station.free"};
+        (void)DesktopCore::load(
+            (root / "projects/ktma/project.yaml").string(), policy);
+    } catch (const std::invalid_argument&) {
+        invalidTu = true;
+    }
+    require(invalidTu, "TU executable accepted a free engineering workflow");
 }
 
 void testExplicitHandlerAllowlist(const std::filesystem::path& root)
