@@ -29,6 +29,8 @@ struct ParameterFixture {
 };
 
 class ParameterModel final : public QAbstractTableModel {
+    Q_OBJECT
+
 public:
     explicit ParameterModel(QObject* parent = nullptr);
     int rowCount(const QModelIndex& parent = {}) const override;
@@ -47,6 +49,8 @@ private:
 };
 
 class ParameterPanel final : public QWidget {
+    Q_OBJECT
+
 public:
     explicit ParameterPanel(bool reference, QWidget* parent = nullptr);
     void setFixture(bool reference);
@@ -62,6 +66,8 @@ private:
 };
 
 class TrendCanvas final : public QWidget {
+    Q_OBJECT
+
 public:
     explicit TrendCanvas(QWidget* parent = nullptr);
     void setSyntheticVisible(bool visible);
@@ -78,6 +84,8 @@ private:
 };
 
 class TrendPanel final : public QFrame {
+    Q_OBJECT
+
 public:
     explicit TrendPanel(QWidget* parent = nullptr);
     QCheckBox* syntheticToggle() const noexcept { return syntheticToggle_; }
@@ -91,11 +99,15 @@ private:
 };
 
 class SignalTopology final : public QFrame {
+    Q_OBJECT
+
 public:
     explicit SignalTopology(bool reference, QWidget* parent = nullptr);
 };
 
 class EquipmentOverview final : public QWidget {
+    Q_OBJECT
+
 public:
     explicit EquipmentOverview(const QStringList& components,
                                QWidget* parent = nullptr);
@@ -110,6 +122,8 @@ private:
 };
 
 class EventLogPanel final : public QWidget {
+    Q_OBJECT
+
 public:
     explicit EventLogPanel(QWidget* parent = nullptr);
     void appendUiEvent(const QString& text);
