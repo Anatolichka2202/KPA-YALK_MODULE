@@ -868,13 +868,14 @@ int runChild(const QString& mode)
         QTimer timeout;
         timeout.setSingleShot(true);
         QObject::connect(&poll, &QTimer::timeout, &finished, [&] {
-            if (run->isEnabled() && report->toPlainText().contains(QStringLiteral("Эталон")))
+            if (run->isEnabled() && report->toPlainText().contains(QStringLiteral("reference_device")))
                 finished.quit();
         });
         QObject::connect(&timeout, &QTimer::timeout, &finished, &QEventLoop::quit);
         poll.start(30); timeout.start(6000); finished.exec();
         const auto resultText = report->toPlainText();
-        if (!run->isEnabled() || !resultText.contains(QStringLiteral("НОРМА"))
+        if (!run->isEnabled() || !resultText.contains(QStringLiteral("reference_device"))
+            || !resultText.contains(QStringLiteral("НОРМА"))
             || !resultText.contains(QStringLiteral("12"))) {
             std::cerr << "reference HMI run: " << resultText.toUtf8().constData() << std::endl;
             require(false, "independent-device HMI did not execute and report a passing measurement");
