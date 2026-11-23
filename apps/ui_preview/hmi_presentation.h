@@ -97,6 +97,7 @@ public:
     HmiCanvas* canvas() const noexcept { return canvas_; }
     QComboBox* previewMode() const noexcept { return mode_; }
     QComboBox* zoomChoice() const noexcept { return zoom_; }
+    QComboBox* bindingChoice() const noexcept { return bindingChoice_; }
     QPushButton* addButton(const QString& type) const;
     QPushButton* exportButton() const noexcept { return export_; }
     QPushButton* importButton() const noexcept { return import_; }
@@ -106,6 +107,7 @@ private:
     void applySelected();
     void updateMode(int index);
     void setNotice(const QString& notice);
+    void refreshBindingHint();
 
     HmiDocument* document_ = nullptr;
     HmiCanvas* canvas_ = nullptr;
@@ -114,6 +116,8 @@ private:
     QLineEdit* id_ = nullptr;
     QLineEdit* title_ = nullptr;
     QLineEdit* binding_ = nullptr;
+    QComboBox* bindingChoice_ = nullptr;
+    QLabel* bindingHint_ = nullptr;
     QLineEdit* unit_ = nullptr;
     QSpinBox* x_ = nullptr;
     QSpinBox* y_ = nullptr;
