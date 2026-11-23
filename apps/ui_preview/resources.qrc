@@ -1,5 +1,8 @@
 <RCC>
   <qresource prefix="/ui">
     <file>theme.qss</file>
+    <file>manifests/ktma.json</file>
+    <file>manifests/reference.json</file>
+    <file>manifests/tu_ubsi.json</file>
   </qresource>
 </RCC>
