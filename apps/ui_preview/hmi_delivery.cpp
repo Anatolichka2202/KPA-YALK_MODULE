@@ -372,6 +372,12 @@ HmiDeliveryEditor::HmiDeliveryEditor(HmiDeliveryCollection* pages, QWidget* pare
     rebuild();
 }
 
+HmiDesignerPage* HmiDeliveryEditor::currentDesigner() const
+{
+    auto* scroll = qobject_cast<QScrollArea*>(stack_->currentWidget());
+    return scroll ? qobject_cast<HmiDesignerPage*>(scroll->widget()) : nullptr;
+}
+
 void HmiDeliveryEditor::notification(const QString& message)
 {
     note_->setText(message);
@@ -454,6 +460,11 @@ HmiDeliveryViewer::HmiDeliveryViewer(HmiDeliveryCollection* pages, QWidget* pare
 int HmiDeliveryViewer::visiblePageIndex() const
 {
     return views_->currentIndex();
+}
+
+HmiReadOnlyPanel* HmiDeliveryViewer::currentPanel() const
+{
+    return qobject_cast<HmiReadOnlyPanel*>(views_->currentWidget());
 }
 
 void HmiDeliveryViewer::rebuild()
