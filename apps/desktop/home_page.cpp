@@ -123,6 +123,7 @@ HomePage::HomePage(QWidget* parent)
     adminLayout->addWidget(adminTitle);
     auto* adminAction = actionButton(QStringLiteral("ОБОРУДОВАНИЕ И ДИАГНОСТИКА"), stationAdminCard_);
     adminAction->setObjectName(QStringLiteral("stationAdminAction"));
+    adminAction->setEnabled(false);
     adminAction->setAccessibleDescription(QStringLiteral(
         "Просмотр компонентов, соединений и диагностики без отправки команд оборудованию."));
     adminLayout->addWidget(adminAction, 0, Qt::AlignLeft);
@@ -139,6 +140,10 @@ void HomePage::setProjectWorkflows(const QVector<HomeWorkflowEntry>& workflows,
 {
     if (!rootLayout_) return;
     ktmaMode_ = ktmaMode;
+    if (stationAdminCard_) {
+        if (auto* action = stationAdminCard_->findChild<QPushButton*>(QStringLiteral("stationAdminAction")))
+            action->setEnabled(!ktmaMode);
+    }
     if (genericCard_) genericCard_->show();
     if (ktmaCard_) {
         ktmaCard_->show();
