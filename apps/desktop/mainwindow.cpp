@@ -922,8 +922,11 @@ void MainWindow::onOpenScenario()
 
 void MainWindow::onOpenCatalog()
 {
-    const QString path = QDir(QCoreApplication::applicationDirPath())
-        .filePath(QStringLiteral("catalog/catalog.yaml"));
+    const auto* project = integrationProject();
+    const QString path = project && !project->catalogPath.empty()
+        ? QString::fromStdString(project->catalogPath)
+        : QDir(QCoreApplication::applicationDirPath())
+            .filePath(QStringLiteral("catalog/catalog.yaml"));
     ScenarioYamlEditor editor(path, this);
     editor.exec();
 }
@@ -1077,9 +1080,12 @@ void MainWindow::initializeStandRuntime()
                 if (!code.isEmpty()) testPage_->setEquipmentConnection(code, endpoint);
             }
         }
+        const auto* project = integrationProject();
+        const std::string catalogPath = project && !project->catalogPath.empty()
+            ? project->catalogPath
+            : root.filePath(QStringLiteral("catalog/catalog.yaml")).toStdString();
         const auto catalog = orbita::stand::importCatalogYaml(
-            root.filePath("catalog/catalog.yaml").toStdString(),
-            root.filePath("parameters.db").toStdString());
+            catalogPath, root.filePath("parameters.db").toStdString());
         equipmentRegistry_->bind("orbita.parameter_source",
             [this](const std::string& operation,
                    const std::map<std::string, std::string>& arguments) {
