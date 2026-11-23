@@ -15,6 +15,7 @@
 
 class QComboBox;
 class QLineEdit;
+class QLabel;
 class QPushButton;
 class QStackedWidget;
 
