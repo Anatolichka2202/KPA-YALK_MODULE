@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "format": "miltech.ui.hmi.preview",
+  "delivery_id": "reference_device",
+  "canvas_width": 960,
+  "canvas_height": 540,
+  "runtime_binding_resolved": false,
+  "elements": [
+    {
+      "id": "heading",
+      "type": "label",
+      "title": "Эталонный имитатор · макет HMI",
+      "binding": "",
+      "unit": "",
+      "x": 24,
+      "y": 24,
+      "width": 390,
+      "height": 98
+    },
+    {
+      "id": "voltage",
+      "type": "numeric",
+      "title": "Тестовое напряжение",
+      "binding": "ui.demo.voltage",
+      "unit": "В",
+      "x": 440,
+      "y": 24,
+      "width": 235,
+      "height": 98
+    },
+    {
+      "id": "state",
+      "type": "status",
+      "title": "Состояние имитатора",
+      "binding": "ui.demo.flag",
+      "unit": "",
+      "x": 24,
+      "y": 148,
+      "width": 270,
+      "height": 108
+    },
+    {
+      "id": "trend",
+      "type": "trend",
+      "title": "Тренд · UI-образец",
+      "binding": "ui.demo.voltage",
+      "unit": "",
+      "x": 312,
+      "y": 148,
+      "width": 363,
+      "height": 172
+    }
+  ]
+}
