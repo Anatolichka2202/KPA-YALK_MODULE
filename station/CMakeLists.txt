@@ -220,6 +220,22 @@ endif()
 add_executable(station_project_inspect tools/station_project_inspect.cpp)
 target_link_libraries(station_project_inspect PRIVATE
     orbita_stand_desktop_core Qt6::Core)
+if(BUILD_TESTING)
+    add_test(NAME stand.project_inspect_reference
+        COMMAND station_project_inspect
+            "${CMAKE_SOURCE_DIR}/projects/reference_device/project.yaml"
+            --edition engineering --handler station.generic --allow-edit)
+    add_test(NAME stand.project_inspect_tu
+        COMMAND station_project_inspect
+            "${CMAKE_SOURCE_DIR}/projects/ktma/project.yaml"
+            --edition tu --workflow tu_normal --handler ktma.tu)
+    if(WIN32)
+        set_tests_properties(
+            stand.project_inspect_reference stand.project_inspect_tu
+            PROPERTIES ENVIRONMENT_MODIFICATION
+                "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+    endif()
+endif()
 
 add_executable(catalog_import tools/catalog_import.cpp)
 target_link_libraries(catalog_import PRIVATE orbita_stand_runtime Qt6::Core)
