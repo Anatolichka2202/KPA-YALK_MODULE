@@ -49,3 +49,16 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: ./build-ui-preview/MilTechStationUiPreview.exe --ui-smoke
+
+      - name: Render offscreen UI snapshots
+        shell: msys2 {0}
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ./build-ui-preview/MilTechStationUiPreview.exe --ui-snapshot-dir build-ui-preview/screenshots
+      - name: Upload UI snapshots for review
+        uses: actions/upload-artifact@v4
+        with:
+          name: miltech-ui-preview-screenshots
+          path: build-ui-preview/screenshots/*.png
+          if-no-files-found: error
+          retention-days: 14
