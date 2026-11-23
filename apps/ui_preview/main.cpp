@@ -830,6 +830,36 @@ int main(int argc, char* argv[])
                 const auto* moved = document->find(addedId);
                 if (!moved || moved->geometry.right() >= 960
                     || moved->geometry.bottom() >= 540) return 59;
+
+                auto* pages = window.findChild<miltech::ui::HmiDeliveryCollection*>();
+                auto* pageEditor = window.findChild<miltech::ui::HmiDeliveryEditor*>();
+                auto* pageViewer = window.findChild<miltech::ui::HmiDeliveryViewer*>();
+                if (!pages || !pageEditor || !pageViewer
+                    || pages->pageCount() != composition.hmiPages.size()) return 62;
+                if (!pages->setCurrentIndex(1)
+                    || pageEditor->pageSelector()->currentIndex() != 1
+                    || pageViewer->visiblePageIndex() != 1) return 63;
+                pageEditor->addPageButton()->click();
+                if (pages->pageCount() != composition.hmiPages.size() + 1
+                    || pageViewer->visiblePageIndex() != pages->currentIndex()) return 64;
+                pageEditor->nameInput()->setText(QStringLiteral("Новый экран · проверка UX"));
+                pageEditor->renamePageButton()->click();
+                if (pages->pageAt(pages->currentIndex()).title
+                    != QStringLiteral("Новый экран · проверка UX")) return 65;
+                pageEditor->duplicatePageButton()->click();
+                if (pages->pageCount() != composition.hmiPages.size() + 2
+                    || !pages->pageAt(pages->currentIndex()).title.contains(QStringLiteral("копия")))
+                    return 66;
+                miltech::ui::HmiDeliveryCollection restoredPages(composition.id);
+                if (!restoredPages.loadFromJson(pages->toJson(), &reason)
+                    || restoredPages.pageCount() != pages->pageCount()) return 67;
+                const QByteArray beforeInvalid = pages->toJson();
+                miltech::ui::HmiDeliveryCollection otherDelivery(QStringLiteral("another_delivery"));
+                if (otherDelivery.loadFromJson(beforeInvalid, &reason)) return 68;
+                if (!pages->deletePage(pages->currentIndex())
+                    || pages->pageCount() != composition.hmiPages.size() + 1) return 69;
+                if (pageEditor->pageSelector()->count() != pages->pageCount()
+                    || pageViewer->pageSelector()->count() != pages->pageCount()) return 70;
             }
             nav.at(0)->click();
             QApplication::processEvents();
