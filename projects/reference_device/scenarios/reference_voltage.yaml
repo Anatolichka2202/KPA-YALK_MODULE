@@ -1,0 +1,20 @@
+schema: 1
+id: reference.simulator.voltage
+title: Измерение напряжения эталонного имитатора
+version: 1.0.0
+catalog_version: reference-sim-1
+object_type: REFERENCE_DEVICE
+state: published
+steps:
+  - id: reference_voltage
+    title: Контроль имитируемого напряжения
+    tu: SIMULATION / VOLTAGE
+    procedure: parameter.measure
+    args:
+      source: ref-sim
+      parameter: voltage
+      unit: В
+      lower: 10
+      upper: 14
+      timeout_ms: 2000
+      conversion: identity
