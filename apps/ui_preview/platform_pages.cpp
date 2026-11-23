@@ -1,5 +1,6 @@
 #include "platform_pages.h"
 
+#include <QAbstractItemView>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QFormLayout>
@@ -18,6 +19,8 @@
 #include <QTableWidget>
 #include <QHeaderView>
 #include <QVBoxLayout>
+
+#include <utility>
 
 namespace miltech::ui {
 namespace {
@@ -92,7 +95,7 @@ TuConfiguratorPage::TuConfiguratorPage(QString deliveryId, QWidget* parent)
     form->addRow(QStringLiteral("ID приложения"), packageId_);
     form->addRow(QStringLiteral("Название"), title_);
     form->addRow(QStringLiteral("Версия проекта"), version_);
-    identity->layout()->addItem(form);
+    static_cast<QVBoxLayout*>(identity->layout())->addLayout(form);
     body->addWidget(identity);
 
     auto* scenario = panel(QStringLiteral("2 · Методика"),
