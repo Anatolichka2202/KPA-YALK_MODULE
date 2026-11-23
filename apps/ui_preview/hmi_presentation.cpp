@@ -1080,6 +1080,7 @@ HmiDesignerPage::HmiDesignerPage(HmiDocument* document, QWidget* parent, bool co
         setNotice(QStringLiteral("Загружен HMI-черновик: %1").arg(filename));
     });
     showSelected({});
+    updateEditActions();
 }
 
 QPushButton* HmiDesignerPage::addButton(const QString& type) const
@@ -1088,6 +1089,45 @@ QPushButton* HmiDesignerPage::addButton(const QString& type) const
         if (item.first == type) return item.second;
     }
     return nullptr;
+}
+
+QPushButton* HmiDesignerPage::editCommand(const QString& id) const
+{
+    for (const auto& action : edits_)
+        if (action.first == id) return action.second;
+    return nullptr;
+}
+
+void HmiDesignerPage::updateEditActions()
+{
+    if (!canvas_) return;
+    const QStringList ids = canvas_->selectedElements();
+    const bool editing = canvas_->editing();
+    bool grouped = false;
+    for (const QString& id : ids) {
+        const auto* element = document_->find(id);
+        if (element && !element->groupId.isEmpty()) grouped = true;
+    }
+    for (const auto& action : edits_) {
+        const QString id = action.first;
+        bool enabled = false;
+        if (id == QStringLiteral("undo")) enabled = document_->canUndo();
+        else if (id == QStringLiteral("redo")) enabled = document_->canRedo();
+        else if (id == QStringLiteral("duplicate")) enabled = !ids.isEmpty();
+        else if (id == QStringLiteral("group")) enabled = ids.size() > 1;
+        else if (id == QStringLiteral("ungroup")) enabled = grouped;
+        else if (id.startsWith(QStringLiteral("align."))) enabled = ids.size() > 1;
+        action.second->setEnabled(editing && enabled);
+    }
+    if (selectionInfo_) {
+        selectionInfo_->setText(ids.isEmpty()
+            ? QStringLiteral("Ctrl+Click · выбрать несколько элементов")
+            : ids.size() == 1
+                ? QStringLiteral("Выбран 1 элемент%1")
+                      .arg(grouped ? QStringLiteral(" · группа") : QString())
+                : QStringLiteral("Выбрано: %1 · свойства первого элемента%2")
+                      .arg(ids.size()).arg(grouped ? QStringLiteral(" · группа") : QString()));
+    }
 }
 
 void HmiDesignerPage::setNotice(const QString& notice)
@@ -1120,6 +1160,7 @@ void HmiDesignerPage::refreshBindingHint()
 
 void HmiDesignerPage::showSelected(const QString& id)
 {
+    updateEditActions();
     const HmiElement* item = document_->find(id);
     const bool exists = item != nullptr;
     for (QWidget* field : QVector<QWidget*>{title_, binding_, bindingChoice_, unit_,
@@ -1171,6 +1212,7 @@ void HmiDesignerPage::updateMode(int index)
     canvas_->setDemoValues(index == 2);
     for (const auto& element : palette_) element.second->setEnabled(index == 0);
     showSelected(canvas_->selectedElement());
+    updateEditActions();
     if (index == 2)
         setNotice(QStringLiteral("СИНТЕТИКА · значения только из UI-фикстур, НЕ измерения"));
     else if (index == 1)
