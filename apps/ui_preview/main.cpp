@@ -15,6 +15,7 @@
 #include <QKeySequence>
 #include <QPixmap>
 #include <QLabel>
+#include <QLineEdit>
 #include <QMainWindow>
 #include <QPushButton>
 #include <QScrollArea>
