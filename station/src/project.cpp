@@ -385,6 +385,7 @@ ProjectDefinition loadProjectPackage(const std::string& projectFile)
     project.rootDirectory = source.parent_path().generic_string();
     project.equipmentProfilePath = resolvedPath(
         source.parent_path(), root.value("equipment_profile"));
+    project.catalogPath = resolvedPath(source.parent_path(), root.value("catalog"));
     project.dutTypes = stringSequence(root.find("dut_types"), "dut_types");
 
     for (const auto& relative : stringSequence(root.find("workflows"), "workflows")) {
@@ -421,6 +422,7 @@ std::vector<std::string> validateProjectPackage(const ProjectDefinition& project
         errors.emplace_back("equipment_profile is required");
     else
         appendMissingFile(errors, "equipment profile", project.equipmentProfilePath);
+    appendMissingFile(errors, "catalog", project.catalogPath);
     if (project.workflows.empty()) errors.emplace_back("at least one workflow is required");
 
     std::set<std::string> ids;
