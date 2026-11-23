@@ -78,6 +78,7 @@ class HmiCanvas final : public QGraphicsView {
     Q_OBJECT
 public:
     explicit HmiCanvas(HmiDocument* document, QWidget* parent = nullptr);
+    ~HmiCanvas() override;
     void setEditing(bool editing);
     bool editing() const noexcept { return editing_; }
     void setDemoValues(bool enabled);
