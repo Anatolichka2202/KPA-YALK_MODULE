@@ -59,14 +59,14 @@ struct ProjectDefinition {
     std::string version;
     std::string rootDirectory;
     std::string equipmentProfilePath;
-    // Optional delivery-specific catalog. Empty keeps the legacy installed catalog.
-    std::string catalogPath;
-
     std::vector<std::string> dutTypes;
     std::vector<WorkflowDefinition> workflows;
     std::vector<std::string> screenPaths;
     std::vector<std::string> reportPaths;
     std::vector<std::string> scriptPaths;
+    // Append-only extension: keep existing aggregate initializers compatible.
+    // Optional delivery-specific catalog; empty uses the installed legacy catalog.
+    std::string catalogPath;
 };
 
 // Runtime identity supplied by application/delivery composition. `dutRegistered`
