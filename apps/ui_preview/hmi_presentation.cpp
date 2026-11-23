@@ -1232,7 +1232,7 @@ void HmiDesignerPage::updateMode(int index)
 }
 
 HmiReadOnlyPanel::HmiReadOnlyPanel(HmiDocument* document, QWidget* parent)
-    : QFrame(parent)
+    : QFrame(parent), document_(document)
 {
     setObjectName(QStringLiteral("card"));
     auto* layout = new QVBoxLayout(this);
