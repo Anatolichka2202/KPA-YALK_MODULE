@@ -8,6 +8,7 @@
 #include <QApplication>
 #include <QCheckBox>
 #include <QDir>
+#include <QDebug>
 #include <QCloseEvent>
 #include <QComboBox>
 #include <QDockWidget>
@@ -794,14 +795,29 @@ int main(int argc, char* argv[])
             if (events->entryCount() < 3) return 15;
             if (bool(window.findChild<miltech::ui::SignalTopology*>()) != composition.hasComponent(QStringLiteral("topology"))) return 24;
             if (composition.hasComponent(QStringLiteral("hmi"))) {
-                auto* document = window.findChild<miltech::ui::HmiDocument*>();
-                auto* designer = window.findChild<miltech::ui::HmiDesignerPage*>();
-                auto* viewer = window.findChild<miltech::ui::HmiReadOnlyPanel*>();
-                if (!document || !designer || !viewer || document->elements().isEmpty())
+                auto* pages = window.findChild<miltech::ui::HmiDeliveryCollection*>();
+                auto* pageEditor = window.findChild<miltech::ui::HmiDeliveryEditor*>();
+                auto* pageViewer = window.findChild<miltech::ui::HmiDeliveryViewer*>();
+                auto* document = pages ? pages->pageAt(0).document : nullptr;
+                auto* designer = pageEditor
+                    ? pageEditor->findChild<miltech::ui::HmiDesignerPage*>() : nullptr;
+                auto* viewer = pageViewer
+                    ? pageViewer->findChild<miltech::ui::HmiReadOnlyPanel*>() : nullptr;
+                if (!pages || !pageEditor || !pageViewer || !document
+                    || !designer || !viewer || document->elements().isEmpty()) {
+                    qWarning() << "HMI smoke missing view/controller in" << composition.id;
                     return 50;
-                if (designer->canvas()->renderedElementCount() != document->elements().size()
-                    || viewer->canvas()->renderedElementCount() != document->elements().size())
+                }
+                const int expected = document->elements().size();
+                const int designerCount = designer->canvas()->renderedElementCount();
+                const int viewerCount = viewer->canvas()->renderedElementCount();
+                if (designerCount != expected || viewerCount != expected) {
+                    qWarning() << "HMI renderer count mismatch" << composition.id
+                               << "expected" << expected
+                               << "designer" << designerCount
+                               << "viewer" << viewerCount;
                     return 51;
+                }
                 auto* button = designer->addButton(QStringLiteral("numeric"));
                 if (!button) return 52;
                 const int before = document->elements().size();
@@ -844,11 +860,7 @@ int main(int argc, char* argv[])
                 if (!moved || moved->geometry.right() >= 960
                     || moved->geometry.bottom() >= 540) return 59;
 
-                auto* pages = window.findChild<miltech::ui::HmiDeliveryCollection*>();
-                auto* pageEditor = window.findChild<miltech::ui::HmiDeliveryEditor*>();
-                auto* pageViewer = window.findChild<miltech::ui::HmiDeliveryViewer*>();
-                if (!pages || !pageEditor || !pageViewer
-                    || pages->pageCount() != composition.hmiPages.size()) return 62;
+                if (pages->pageCount() != composition.hmiPages.size()) return 62;
                 if (!pages->setCurrentIndex(1)
                     || pageEditor->pageSelector()->currentIndex() != 1
                     || pageViewer->visiblePageIndex() != 1) return 63;
