@@ -797,6 +797,27 @@ int runChild(const QString& mode)
         require(window.simulatorSelected(), "simulator profile did not override project profile");
         return 0;
     }
+    if (mode == "--reference-project") {
+        ProfileWindow window;
+        const auto* launch = window.findChild<QPushButton*>(QStringLiteral("openKtmaDelivery"));
+        auto* workflow = window.findChild<QPushButton*>(QStringLiteral("projectWorkflow_generic"));
+        require(launch && launch->text() == QStringLiteral("ОТКРЫТЬ ЭТАЛОННЫЙ ИМИТАТОР")
+                    && workflow && workflow->text() == QStringLiteral("Проверка эталонного устройства"),
+                "foreign project did not replace KTMA labels in the shared HMI");
+        const auto* orbita = window.findChild<QPushButton*>(QStringLiteral("projectWorkflow_production"));
+        require(!orbita, "foreign project exposed KTMA production actions");
+        launch->click();
+        workflow->click();
+        auto* dialog = window.findChild<GenericCheckDialog*>();
+        auto* scenarios = dialog ? dialog->findChild<QComboBox*>(QStringLiteral("genericScenario")) : nullptr;
+        auto* monitor = dialog ? dialog->findChild<MultiSourceMonitor*>(QStringLiteral("genericCheckMonitor")) : nullptr;
+        require(dialog && scenarios && scenarios->count() == 1
+                    && scenarios->currentText().contains(QStringLiteral("эталонного имитатора"))
+                    && monitor && monitor->bindings().size() == 1
+                    && monitor->bindings().front().sourceId == QStringLiteral("ref-sim"),
+                "independent reference device could not open its scenario and parameter monitor");
+        return 0;
+    }
     if (mode == "--monitor-broken") {
         MonitorWindow window(false, true);
         window.show();
@@ -1545,10 +1566,12 @@ int runParent()
         QProcess child;
         auto env = QProcessEnvironment::systemEnvironment();
         env.insert("QT_QPA_PLATFORM", "offscreen");
-        env.insert("MILTECH_PROJECT", root.filePath(
-            mode == "--profile-selection" ? "project.yaml" : "absent-project.yaml"));
-        env.insert("MILTECH_STAND_PROFILE",
-            mode == "--profile-selection" ? "stand_ktma_simulator.yaml" : "absent-profile.yaml");
+        env.insert("MILTECH_PROJECT", mode == "--reference-project"
+            ? source.filePath(QStringLiteral("projects/reference_device/project.yaml"))
+            : root.filePath(mode == "--profile-selection" ? "project.yaml" : "absent-project.yaml"));
+        env.insert("MILTECH_STAND_PROFILE", mode == "--reference-project" ? QString()
+            : mode == "--profile-selection" ? QStringLiteral("stand_ktma_simulator.yaml")
+                                            : QStringLiteral("absent-profile.yaml"));
         child.setProcessEnvironment(env);
         child.start(executable, {mode});
         require(child.waitForStarted(5000), "GUI child did not start");
@@ -1566,6 +1589,7 @@ int runParent()
     };
     execute("--manual-dialog-stop", 0);
     execute("--profile-selection", 0);
+    execute("--reference-project", 0);
     execute("--monitor-page", 0);
     execute("--monitor-disconnect", 0);
     execute("--monitor-live", 0);
