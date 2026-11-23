@@ -21,6 +21,7 @@
 #include <QPainterPath>
 #include <QPushButton>
 #include <QRegularExpression>
+#include <QResizeEvent>
 #include <QSet>
 #include <QFont>
 #include <QSaveFile>
@@ -313,6 +314,33 @@ HmiCanvas::HmiCanvas(HmiDocument* document, QWidget* parent)
     connect(scene_, &QGraphicsScene::selectionChanged, this, &HmiCanvas::onSelected);
     connect(document_, &HmiDocument::changed, this, &HmiCanvas::redraw);
     redraw();
+    applyZoom();
+}
+
+void HmiCanvas::setZoom(double factor)
+{
+    zoomFactor_ = factor;
+    const auto policy = factor == 0.0 ? Qt::ScrollBarAlwaysOff : Qt::ScrollBarAsNeeded;
+    setHorizontalScrollBarPolicy(policy);
+    setVerticalScrollBarPolicy(policy);
+    applyZoom();
+}
+
+void HmiCanvas::resizeEvent(QResizeEvent* event)
+{
+    QGraphicsView::resizeEvent(event);
+    if (zoomFactor_ == 0.0) applyZoom();
+}
+
+void HmiCanvas::applyZoom()
+{
+    if (viewport()->width() < 24 || viewport()->height() < 24) return;
+    if (zoomFactor_ == 0.0) {
+        fitInView(scene_->sceneRect().adjusted(-5, -5, 5, 5), Qt::KeepAspectRatio);
+    } else {
+        resetTransform();
+        scale(zoomFactor_, zoomFactor_);
+    }
 }
 
 void HmiCanvas::setEditing(bool editing)
@@ -495,6 +523,7 @@ void HmiCanvas::redraw()
                  QPointF(12, h - 22), 8,
                  QColor(QStringLiteral("#9EB5C6")), false, availableWidth);
     }
+    applyZoom();
     viewport()->update();
 }
 
@@ -519,6 +548,15 @@ HmiDesignerPage::HmiDesignerPage(HmiDocument* document, QWidget* parent)
     mode_->addItem(QStringLiteral("Предпросмотр · нет данных"));
     mode_->addItem(QStringLiteral("Предпросмотр · синтетика"));
     toolbar->addWidget(mode_);
+    toolbar->addWidget(label(QStringLiteral("Масштаб"), "muted"));
+    zoom_ = new QComboBox;
+    zoom_->setObjectName(QStringLiteral("ui.hmi.zoom"));
+    zoom_->setAccessibleName(QStringLiteral("Масштаб полотна HMI"));
+    zoom_->addItem(QStringLiteral("Вписать"), 0.0);
+    zoom_->addItem(QStringLiteral("100%"), 1.0);
+    zoom_->addItem(QStringLiteral("75%"), 0.75);
+    zoom_->addItem(QStringLiteral("50%"), 0.5);
+    toolbar->addWidget(zoom_);
     toolbar->addStretch();
 
     import_ = new QPushButton(QStringLiteral("Открыть JSON"));
@@ -566,6 +604,7 @@ HmiDesignerPage::HmiDesignerPage(HmiDocument* document, QWidget* parent)
     canvas_ = new HmiCanvas(document_);
     canvas_->setObjectName(QStringLiteral("ui.hmi.editorCanvas"));
     canvas_->setEditing(true);
+    canvas_->setZoom(0.0);
     canvas_->setMinimumWidth(300);
     splitter->addWidget(canvas_);
 
@@ -638,6 +677,8 @@ HmiDesignerPage::HmiDesignerPage(HmiDocument* document, QWidget* parent)
     });
     connect(mode_, qOverload<int>(&QComboBox::currentIndexChanged),
             this, &HmiDesignerPage::updateMode);
+    connect(zoom_, qOverload<int>(&QComboBox::currentIndexChanged), this,
+            [this](int index) { canvas_->setZoom(zoom_->itemData(index).toDouble()); });
     connect(apply_, &QPushButton::clicked, this, &HmiDesignerPage::applySelected);
     connect(remove_, &QPushButton::clicked, this, [this] {
         const QString id = id_->text();
@@ -767,6 +808,7 @@ HmiReadOnlyPanel::HmiReadOnlyPanel(HmiDocument* document, QWidget* parent)
     canvas_->setObjectName(QStringLiteral("ui.hmi.viewerCanvas"));
     canvas_->setEditing(false);
     canvas_->setDemoValues(false);
+    canvas_->setZoom(0.0);
     canvas_->setMinimumHeight(290);
     layout->addWidget(canvas_);
 }
