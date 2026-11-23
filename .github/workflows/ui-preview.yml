@@ -49,6 +49,15 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: ./build-ui-preview/MilTechStationUiPreview.exe --ui-smoke
+      - name: Show UI smoke crash trace on failure
+        if: failure()
+        shell: msys2 {0}
+        run: |
+          if [ -f build-ui-preview/ui-smoke.trace ]; then
+            cat build-ui-preview/ui-smoke.trace
+          else
+            echo "No UI smoke trace produced."
+          fi
 
       - name: Render offscreen UI snapshots
         shell: msys2 {0}
