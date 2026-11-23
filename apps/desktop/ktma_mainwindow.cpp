@@ -141,7 +141,12 @@ KtmaMainWindow::KtmaMainWindow(QWidget* parent)
                 // поставки сами определяют доступные пункты через YAML.
                 if (isKtma && workflow.id != "tu_normal" && workflow.id != "production"
                     && workflow.id != "free") continue;
-                const bool hasHandler = !workflow.operatorAction.empty();
+                const auto& action = workflow.operatorAction;
+                const bool hasHandler = action == "station.free" || action == "station.generic"
+                    || (isKtma && (action == "ktma.tu" || action == "ktma.production"
+                        || action == "ktma.production.full" || action == "ktma.production.power"
+                        || action == "ktma.production.yalk" || action == "ktma.production.ytp"
+                        || action == "ktma.production.yvp"));
                 QString reason = QString::fromStdString(workflow.unavailableReason);
                 if (!hasHandler && reason.isEmpty())
                     reason = QStringLiteral("Для workflow не зарегистрирован обработчик запуска");
@@ -358,6 +363,12 @@ void KtmaMainWindow::openProjectWorkflow(const QString& workflowId)
     }
 
     const auto action = QString::fromStdString(workflow->operatorAction);
+    if (project->id != "ktma" && action.startsWith(QStringLiteral("ktma."))) {
+        pendingWorkflowContext_.clear();
+        QMessageBox::warning(this, QStringLiteral("Процесс проекта"),
+            QStringLiteral("Команды поставки КТМА недоступны в другом проекте."));
+        return;
+    }
     if (action == QStringLiteral("station.free")) {
         // Свободный live-контур уже является частью Host.
         emit home->freeWorkspaceRequested();
@@ -366,7 +377,7 @@ void KtmaMainWindow::openProjectWorkflow(const QString& workflowId)
         emit home->genericCheckRequested();
     } else if (action == QStringLiteral("ktma.tu")) {
         emit home->tuRequested();
-    } else if (workflowId == QStringLiteral("production")) {
+    } else if (project->id == "ktma" && workflowId == QStringLiteral("production")) {
         projectProductionCode_.clear();
         emit home->productionRequested();
     } else if (action == QStringLiteral("ktma.production")) {
