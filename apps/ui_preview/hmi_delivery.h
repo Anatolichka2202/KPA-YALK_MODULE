@@ -7,6 +7,7 @@
 #include "ui_composition.h"
 
 #include <QByteArray>
+#include <QDialog>
 #include <QFrame>
 #include <QObject>
 #include <QPointer>
@@ -15,7 +16,6 @@
 #include <QWidget>
 
 class QComboBox;
-class QDialog;
 class QLineEdit;
 class QLabel;
 class QPushButton;
