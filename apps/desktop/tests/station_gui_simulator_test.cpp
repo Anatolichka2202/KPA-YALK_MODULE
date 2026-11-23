@@ -845,14 +845,11 @@ int runChild(const QString& mode)
         create->click();
         require(!draftPath.isEmpty() && QFileInfo::exists(draftPath),
             "reference project could not save a new scenario draft");
-        QFile draft(draftPath);
-        require(draft.open(QIODevice::ReadOnly), "new reference scenario cannot be inspected");
-        const auto contents = draft.readAll();
-        draft.close();
+        const auto draftScenario = orbita::stand::loadScenarioYaml(draftPath.toUtf8().toStdString());
         require(draftPath.contains(QStringLiteral("/by-project/"), Qt::CaseInsensitive)
                     || draftPath.contains(QStringLiteral("\\by-project\\"), Qt::CaseInsensitive),
                 "reference-device drafts are not isolated from other deliveries");
-        require(contents.contains("catalog_version: reference-sim-1"),
+        require(draftScenario.catalogVersion == "reference-sim-1",
             "new scenario used the installed KTMA catalog instead of the active project catalog");
         require(QFile::remove(draftPath), "test reference draft cleanup failed");
         int publishedIndex = -1;
