@@ -95,6 +95,7 @@ signals:
     void selectionChanged();
 
 protected:
+    void mousePressEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
 
@@ -109,6 +110,7 @@ private:
     double zoomFactor_ = 0.0;
     QString selectedId_;
     QStringList selectedIds_;
+    QPoint dragStart_;
 };
 
 class HmiDesignerPage final : public QWidget {
