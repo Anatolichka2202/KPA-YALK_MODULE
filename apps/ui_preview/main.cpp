@@ -1,11 +1,14 @@
 #include "components.h"
 #include "platform_pages.h"
+#include "hmi_presentation.h"
+#include "hmi_delivery.h"
 #include "ui_composition.h"
 
 #include <QAbstractItemView>
 #include <QApplication>
 #include <QCheckBox>
 #include <QDir>
+#include <QDebug>
 #include <QCloseEvent>
 #include <QComboBox>
 #include <QDockWidget>
@@ -200,6 +203,12 @@ public:
         headerLayout->setContentsMargins(24, 15, 24, 15);
         headerLayout->setSpacing(17);
         auto* identity = new QHBoxLayout;
+        navigationToggle_ = new QPushButton(QStringLiteral("☰"));
+        navigationToggle_->setObjectName(QStringLiteral("ui.navigationToggle"));
+        navigationToggle_->setAccessibleName(QStringLiteral("Показать или скрыть навигацию"));
+        navigationToggle_->setToolTip(QStringLiteral("Развернуть или свернуть меню разделов"));
+        navigationToggle_->setFixedWidth(44);
+        identity->addWidget(navigationToggle_);
         identity->addWidget(label(QStringLiteral("MilTechStation"), "appName"));
         identity->addStretch();
         context_ = label(QStringLiteral("КТМА"), "muted");
@@ -234,6 +243,10 @@ public:
         navigationScroll->setFixedWidth(290);
         navigationScroll->setWidget(sidebar);
         workspace->addWidget(navigationScroll);
+        navigationScroll_ = navigationScroll;
+        connect(navigationToggle_, &QPushButton::clicked, this, [this] {
+            if (navigationScroll_) navigationScroll_->setVisible(!navigationScroll_->isVisible());
+        });
         stack_ = new QStackedWidget;
         stack_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
         workspace->addWidget(stack_, 1);
@@ -260,11 +273,19 @@ protected:
     {
         QMainWindow::resizeEvent(event);
         if (headerLayout_) {
-            headerLayout_->setDirection(event->size().width() < 1050
-                                            ? QBoxLayout::TopToBottom : QBoxLayout::LeftToRight);
+            const bool narrow = event->size().width() < 1050;
+            headerLayout_->setDirection(narrow ? QBoxLayout::TopToBottom
+                                               : QBoxLayout::LeftToRight);
             headerLayout_->invalidate();
             headerLayout_->parentWidget()->setMinimumHeight(headerLayout_->minimumSize().height());
             headerLayout_->parentWidget()->updateGeometry();
+            if (navigationScroll_ && narrow && !compactNavigation_) {
+                navigationScroll_->hide();
+                compactNavigation_ = true;
+            } else if (navigationScroll_ && !narrow && compactNavigation_) {
+                navigationScroll_->show();
+                compactNavigation_ = false;
+            }
         }
     }
 
@@ -413,12 +434,16 @@ private:
         eventDock_ = nullptr;
         parameterPanel_ = nullptr;
         eventLog_ = nullptr;
+        delete hmiCollection_;
+        hmiCollection_ = nullptr;
     }
 
     QWidget* createModuleScreen(const QString& id, const DeliveryFixture& delivery)
     {
         if (id == QStringLiteral("overview")) return makeOverview(delivery);
         if (id == QStringLiteral("workspace")) return makeWorkspace(delivery);
+        if (id == QStringLiteral("hmi") && hmiCollection_)
+            return new miltech::ui::HmiDeliveryEditor(hmiCollection_);
         if (id == QStringLiteral("equipment")) return makeEquipment(delivery);
         if (id == QStringLiteral("scenarios")) return makeScenarios(delivery);
         if (id == QStringLiteral("results")) return makeResults();
@@ -466,6 +491,26 @@ private:
             return;
         }
 
+        if (!composition_.isTu()
+            && (composition_.hasComponent(QStringLiteral("hmi"))
+                || composition_.indexOf(QStringLiteral("hmi")) >= 0)) {
+            hmiCollection_ = new miltech::ui::HmiDeliveryCollection(composition_.id, this);
+            QString problem;
+            if (!hmiCollection_->initialize(composition_.hmiPages, &problem)) {
+                delete hmiCollection_;
+                hmiCollection_ = nullptr;
+                composition_.error = QStringLiteral("Не удалось загрузить HMI поставки: %1")
+                                         .arg(problem);
+            }
+        }
+        if (!composition_.valid()) {
+            Page error = page(QStringLiteral("HMI-ПОСТАВКА"),
+                              QStringLiteral("Ошибка комплекта HMI"), composition_.error);
+            error.body->addStretch();
+            addNavigation(QStringLiteral("error"), QStringLiteral("Ошибка HMI"), error.widget);
+            setPage(0);
+            return;
+        }
         bool serviceSection = false;
         for (const miltech::ui::ScreenSpec& screen : composition_.screens) {
             if (screen.group == QStringLiteral("service") && !serviceSection) {
@@ -531,6 +576,9 @@ private:
         connect(reset, &QPushButton::clicked, this, [this] { resetWorkspaceLayout(); });
         topRow->row()->addWidget(reset);
         p.body->addWidget(topRow);
+
+        if (composition_.hasComponent(QStringLiteral("hmi")) && hmiCollection_)
+            p.body->addWidget(new miltech::ui::HmiDeliveryViewer(hmiCollection_));
 
         if (composition_.hasComponent(QStringLiteral("trend"))) {
             auto* chart = new miltech::ui::TrendPanel;
@@ -664,6 +712,9 @@ private:
     }
 
     QBoxLayout* headerLayout_ = nullptr;
+    QScrollArea* navigationScroll_ = nullptr;
+    QPushButton* navigationToggle_ = nullptr;
+    bool compactNavigation_ = false;
     QComboBox* modeSelector_ = nullptr;
     QLabel* context_ = nullptr;
     QVBoxLayout* navLayout_ = nullptr;
@@ -673,6 +724,7 @@ private:
     QMainWindow* dockHost_ = nullptr;
     miltech::ui::ParameterPanel* parameterPanel_ = nullptr;
     miltech::ui::EventLogPanel* eventLog_ = nullptr;
+    miltech::ui::HmiDeliveryCollection* hmiCollection_ = nullptr;
     QVector<QPushButton*> navButtons_;
     QStringList screenIds_;
     miltech::ui::UiComposition composition_;
@@ -718,6 +770,8 @@ int main(int argc, char* argv[])
                 if (!docks.isEmpty()
                     || window.findChild<miltech::ui::ParameterPanel*>()
                     || window.findChild<miltech::ui::TrendPanel*>()
+                    || window.findChild<miltech::ui::HmiDesignerPage*>()
+                    || window.findChild<miltech::ui::HmiReadOnlyPanel*>()
                     || window.findChild<miltech::ui::TuConfiguratorPage*>()
                     || window.findChild<miltech::ui::StationAdministrationPage*>()) return 4;
                 continue;
@@ -761,6 +815,98 @@ int main(int argc, char* argv[])
             if (!chart->canvas()->syntheticVisible()) return 14;
             if (events->entryCount() < 3) return 15;
             if (bool(window.findChild<miltech::ui::SignalTopology*>()) != composition.hasComponent(QStringLiteral("topology"))) return 24;
+            if (composition.hasComponent(QStringLiteral("hmi"))) {
+                auto* pages = window.findChild<miltech::ui::HmiDeliveryCollection*>();
+                auto* pageEditor = window.findChild<miltech::ui::HmiDeliveryEditor*>();
+                auto* pageViewer = window.findChild<miltech::ui::HmiDeliveryViewer*>();
+                auto* document = pages ? pages->pageAt(0).document : nullptr;
+                auto* designer = pageEditor ? pageEditor->currentDesigner() : nullptr;
+                auto* viewer = pageViewer ? pageViewer->currentPanel() : nullptr;
+                if (!pages || !pageEditor || !pageViewer || !document
+                    || !designer || !viewer || document->elements().isEmpty()) {
+                    qWarning() << "HMI smoke missing view/controller in" << composition.id;
+                    return 50;
+                }
+                const int expected = document->elements().size();
+                const int designerCount = designer->canvas()->renderedElementCount();
+                const int viewerCount = viewer->canvas()->renderedElementCount();
+                if (designerCount != expected || viewerCount != expected) {
+                    qWarning() << "HMI renderer count mismatch" << composition.id
+                               << "expected" << expected
+                               << "designer" << designerCount
+                               << "viewer" << viewerCount;
+                    return designerCount != expected
+                        ? 100 + qMin(40, designerCount)
+                        : 150 + qMin(40, viewerCount);
+                }
+                auto* button = designer->addButton(QStringLiteral("numeric"));
+                if (!button) return 52;
+                const int before = document->elements().size();
+                button->click();
+                if (document->elements().size() != before + 1
+                    || viewer->canvas()->renderedElementCount() != before + 1)
+                    return 53;
+                auto* sourcePicker = designer->bindingChoice();
+                auto* bindingField = designer->findChild<QLineEdit*>(QStringLiteral("ui.hmi.binding"));
+                auto* applyBinding = designer->findChild<QPushButton*>(QStringLiteral("ui.hmi.apply"));
+                auto* bindingHint = designer->findChild<QLabel*>(QStringLiteral("ui.hmi.bindingHint"));
+                if (!sourcePicker || !bindingField || !applyBinding || !bindingHint
+                    || sourcePicker->count() != 5) return 71;
+                sourcePicker->setCurrentIndex(3);
+                if (bindingField->text() != QStringLiteral("ui.demo.load")
+                    || !bindingHint->text().contains(QStringLiteral("Совместим"))) return 72;
+                applyBinding->click();
+                if (document->elements().constLast().binding != QStringLiteral("ui.demo.load")) return 73;
+                sourcePicker->setCurrentIndex(4);
+                if (!bindingHint->text().contains(QStringLiteral("несовместим"))) return 74;
+                designer->zoomChoice()->setCurrentIndex(1); // 100%
+                if (qAbs(designer->canvas()->transform().m11() - 1.0) > 0.02) return 60;
+                designer->zoomChoice()->setCurrentIndex(0); // fit all
+                QApplication::processEvents();
+                if (designer->canvas()->transform().m11() <= 0.0) return 61;
+                designer->previewMode()->setCurrentIndex(1);
+                if (designer->canvas()->editing() || designer->canvas()->demoValues()) return 54;
+                designer->previewMode()->setCurrentIndex(2);
+                if (designer->canvas()->editing() || !designer->canvas()->demoValues()
+                    || viewer->canvas()->demoValues()) return 55;
+                miltech::ui::HmiDocument restored(composition.id);
+                QString reason;
+                if (!restored.loadFromJson(document->toJson(), &reason)
+                    || restored.elements().size() != document->elements().size()) return 56;
+                miltech::ui::HmiDocument wrongProject(QStringLiteral("other_project"));
+                if (wrongProject.loadFromJson(document->toJson(), &reason)) return 57;
+                const QString addedId = document->elements().constLast().id;
+                if (!document->moveElement(addedId, 2000, 2000)) return 58;
+                const auto* moved = document->find(addedId);
+                if (!moved || moved->geometry.right() >= 960
+                    || moved->geometry.bottom() >= 540) return 59;
+
+                if (pages->pageCount() != composition.hmiPages.size()) return 62;
+                if (!pages->setCurrentIndex(1)
+                    || pageEditor->pageSelector()->currentIndex() != 1
+                    || pageViewer->visiblePageIndex() != 1) return 63;
+                pageEditor->addPageButton()->click();
+                if (pages->pageCount() != composition.hmiPages.size() + 1
+                    || pageViewer->visiblePageIndex() != pages->currentIndex()) return 64;
+                pageEditor->nameInput()->setText(QStringLiteral("Новый экран · проверка UX"));
+                pageEditor->renamePageButton()->click();
+                if (pages->pageAt(pages->currentIndex()).title
+                    != QStringLiteral("Новый экран · проверка UX")) return 65;
+                pageEditor->duplicatePageButton()->click();
+                if (pages->pageCount() != composition.hmiPages.size() + 2
+                    || !pages->pageAt(pages->currentIndex()).title.contains(QStringLiteral("копия")))
+                    return 66;
+                miltech::ui::HmiDeliveryCollection restoredPages(composition.id);
+                if (!restoredPages.loadFromJson(pages->toJson(), &reason)
+                    || restoredPages.pageCount() != pages->pageCount()) return 67;
+                const QByteArray beforeInvalid = pages->toJson();
+                miltech::ui::HmiDeliveryCollection otherDelivery(QStringLiteral("another_delivery"));
+                if (otherDelivery.loadFromJson(beforeInvalid, &reason)) return 68;
+                if (!pages->deletePage(pages->currentIndex())
+                    || pages->pageCount() != composition.hmiPages.size() + 1) return 69;
+                if (pageEditor->pageSelector()->count() != pages->pageCount()
+                    || pageViewer->pageSelector()->count() != pages->pageCount()) return 70;
+            }
             nav.at(0)->click();
             QApplication::processEvents();
         }
@@ -776,7 +922,13 @@ int main(int argc, char* argv[])
                 }
                 const auto nav = window.findChildren<QPushButton*>(QStringLiteral("navButton"));
                 auto* navScroll = window.findChild<QScrollArea*>(QStringLiteral("ui.navigationScroll"));
-                if (!navScroll || nav.isEmpty()) return 42;
+                auto* menuButton = window.findChild<QPushButton*>(QStringLiteral("ui.navigationToggle"));
+                if (!navScroll || !menuButton || nav.isEmpty()) return 42;
+                if (!navScroll->isVisible()) {
+                    menuButton->click();
+                    QApplication::processEvents();
+                    if (!navScroll->isVisible()) return 75;
+                }
                 for (int n = 0; n < nav.size(); ++n) {
                     navScroll->ensureWidgetVisible(nav.at(n));
                     nav.at(n)->click();

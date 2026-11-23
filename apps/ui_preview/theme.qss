@@ -234,3 +234,31 @@ QPlainTextEdit {
 QPlainTextEdit:focus { border: 2px solid #80C8EA; }
 QFrame#card QCheckBox { background: transparent; }
 QWidget#uiConfigActions { background: transparent; }
+
+/* HMI presentation / authoring */
+QGraphicsView#ui\.hmi\.editorCanvas,
+QGraphicsView#ui\.hmi\.viewerCanvas,
+QGraphicsView#ui\.hmi\.canvas {
+    background: #0B1927;
+    border: 1px solid #38556B;
+    border-radius: 8px;
+}
+QSplitter#ui\.hmi\.splitter::handle {
+    background: #38546A;
+    width: 5px;
+}
+QWidget#ui\.hmi\.designer QSpinBox {
+    background: #14283A;
+    color: #EBF5FB;
+    border: 1px solid #39576D;
+    border-radius: 6px;
+    min-height: 24px;
+    padding: 4px;
+}
+QWidget#ui\.hmi\.designer QSpinBox:focus {
+    border: 2px solid #7AC8EF;
+}
+QWidget#ui\.hmi\.designer QLineEdit:read-only {
+    background: #192A3A;
+    color: #AFC2D0;
+}

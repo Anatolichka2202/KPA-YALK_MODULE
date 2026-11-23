@@ -1,0 +1,76 @@
+{
+  "schema": 1,
+  "format": "miltech.ui.hmi.preview",
+  "delivery_id": "ktma",
+  "canvas_width": 960,
+  "canvas_height": 540,
+  "runtime_binding_resolved": false,
+  "elements": [
+    {
+      "id": "heading",
+      "type": "label",
+      "title": "КТМА · диагностика и сигналы",
+      "binding": "",
+      "unit": "",
+      "x": 20,
+      "y": 20,
+      "width": 330,
+      "height": 95
+    },
+    {
+      "id": "status",
+      "type": "status",
+      "title": "Готовность · пример",
+      "binding": "ui.demo.flag",
+      "unit": "",
+      "x": 370,
+      "y": 20,
+      "width": 255,
+      "height": 105
+    },
+    {
+      "id": "voltage",
+      "type": "numeric",
+      "title": "Канал напряжения · пример",
+      "binding": "ui.demo.voltage",
+      "unit": "В",
+      "x": 650,
+      "y": 20,
+      "width": 265,
+      "height": 105
+    },
+    {
+      "id": "trend1",
+      "type": "trend",
+      "title": "Сигнал A · UI-пример",
+      "binding": "ui.demo.voltage",
+      "unit": "",
+      "x": 20,
+      "y": 160,
+      "width": 425,
+      "height": 205
+    },
+    {
+      "id": "trend2",
+      "type": "trend",
+      "title": "Сигнал B · UI-пример",
+      "binding": "ui.demo.current",
+      "unit": "",
+      "x": 475,
+      "y": 160,
+      "width": 440,
+      "height": 205
+    },
+    {
+      "id": "command",
+      "type": "command",
+      "title": "Сброс · действие недоступно",
+      "binding": "capability.reset",
+      "unit": "",
+      "x": 20,
+      "y": 390,
+      "width": 420,
+      "height": 105
+    }
+  ]
+}

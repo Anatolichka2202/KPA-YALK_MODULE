@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "format": "miltech.ui.hmi.preview",
+  "delivery_id": "reference_device",
+  "canvas_width": 960,
+  "canvas_height": 540,
+  "runtime_binding_resolved": false,
+  "elements": [
+    {
+      "id": "heading",
+      "type": "label",
+      "title": "Эталонный имитатор · мониторинг",
+      "binding": "",
+      "unit": "",
+      "x": 20,
+      "y": 20,
+      "width": 375,
+      "height": 95
+    },
+    {
+      "id": "counter",
+      "type": "numeric",
+      "title": "Тестовый счётчик · пример",
+      "binding": "ui.demo.load",
+      "unit": "код",
+      "x": 415,
+      "y": 20,
+      "width": 265,
+      "height": 105
+    },
+    {
+      "id": "trend",
+      "type": "trend",
+      "title": "Тренд UI-фикстуры",
+      "binding": "ui.demo.voltage",
+      "unit": "",
+      "x": 20,
+      "y": 160,
+      "width": 570,
+      "height": 230
+    },
+    {
+      "id": "state",
+      "type": "status",
+      "title": "Статус образца",
+      "binding": "ui.demo.flag",
+      "unit": "",
+      "x": 615,
+      "y": 160,
+      "width": 275,
+      "height": 115
+    }
+  ]
+}

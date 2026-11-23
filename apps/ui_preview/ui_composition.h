@@ -15,6 +15,12 @@ struct ScreenSpec {
     QString group;
 };
 
+struct HmiPageSpec {
+    QString id;
+    QString title;
+    QString source;
+};
+
 struct UiComposition {
     QString id;
     QString title;
@@ -27,6 +33,7 @@ struct UiComposition {
     bool referenceSample = false;
     QVector<ScreenSpec> screens;
     QStringList workspaceComponents;
+    QVector<HmiPageSpec> hmiPages;
     QString error;
 
     bool valid() const noexcept { return error.isEmpty() && !screens.isEmpty(); }

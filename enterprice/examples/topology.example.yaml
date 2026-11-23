@@ -1,0 +1,57 @@
+# REFERENCE ONLY. Educational addressing from a separate design example.
+# Each L2 domain must be reviewed and assigned by actual enterprise IT/OT.
+topology_version: 1
+name: miltech-enterprise-pilot-example
+security_default: deny
+zones:
+  - id: SERVER
+    purpose: application/database/evidence
+    sample_ipv4_network: 10.30.50.0/27
+    example_vlan: null
+  - id: STATIONS
+    purpose: stand management / Enterprise outbound
+    sample_ipv4_network: 10.30.30.0/27
+    example_vlan: 130
+  - id: STAND01_OT
+    purpose: local bench equipment only
+    sample_ipv4_network: 192.168.10.0/24
+    example_vlan: 2201
+    layer2_isolated: true
+  - id: STAND02_OT
+    purpose: local bench equipment only
+    sample_ipv4_network: 192.168.10.0/24
+    example_vlan: 2202
+    layer2_isolated: true
+nodes:
+  - id: enterprise_gateway
+    zone: SERVER
+    service: https_api
+    transport: tcp
+    port: 443
+    example_ipv4: 10.30.50.10
+  - id: station_01
+    zones: [STATIONS, STAND01_OT]
+    local_sqlite: true
+  - id: station_02
+    zones: [STATIONS, STAND02_OT]
+    local_sqlite: true
+links:
+  - from: station_01
+    to: enterprise_gateway
+    initiator: station_01
+    protocol: HTTPS
+    allow: true
+  - from: station_02
+    to: enterprise_gateway
+    initiator: station_02
+    protocol: HTTPS
+    allow: true
+  - from: enterprise_gateway
+    to: STAND01_OT
+    allow: false
+  - from: enterprise_gateway
+    to: STAND02_OT
+    allow: false
+  - from: STAND01_OT
+    to: STAND02_OT
+    allow: false

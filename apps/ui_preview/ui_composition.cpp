@@ -17,6 +17,7 @@ const QSet<QString>& availableFullScreens()
     static const QSet<QString> ids = {
         QStringLiteral("overview"),
         QStringLiteral("workspace"),
+        QStringLiteral("hmi"),
         QStringLiteral("equipment"),
         QStringLiteral("scenarios"),
         QStringLiteral("results"),
@@ -42,7 +43,8 @@ const QSet<QString>& availableComponents()
         QStringLiteral("parameters"),
         QStringLiteral("events"),
         QStringLiteral("trend"),
-        QStringLiteral("topology")
+        QStringLiteral("topology"),
+        QStringLiteral("hmi")
     };
     return ids;
 }
@@ -150,6 +152,51 @@ UiComposition parseComposition(const QByteArray& bytes)
         }
         seenWidgets.insert(component);
         composition.workspaceComponents.push_back(component);
+    }
+    if (object.contains(QStringLiteral("hmiPages"))) {
+        if (!object.value(QStringLiteral("hmiPages")).isArray()) {
+            composition.error = QStringLiteral("HMI-страницы должны быть массивом");
+            return composition;
+        }
+        QSet<QString> pageIds;
+        const auto pages = object.value(QStringLiteral("hmiPages")).toArray();
+        if (pages.size() > 12) {
+            composition.error = QStringLiteral("Предел 12 HMI-страниц на поставку");
+            return composition;
+        }
+        for (const QJsonValue& value : pages) {
+            if (!value.isObject()) {
+                composition.error = QStringLiteral("Неверная HMI-страница");
+                return composition;
+            }
+            const auto p = value.toObject();
+            const HmiPageSpec spec{
+                p.value(QStringLiteral("id")).toString(),
+                p.value(QStringLiteral("title")).toString(),
+                p.value(QStringLiteral("source")).toString()
+            };
+            if (!QRegularExpression(QStringLiteral("^[a-z][a-z0-9_-]{0,63}$"))
+                    .match(spec.id).hasMatch()
+                || pageIds.contains(spec.id)
+                || spec.title.trimmed().isEmpty()
+                || spec.title.size() > 100
+                || spec.source.isEmpty()) {
+                composition.error = QStringLiteral("Некорректная HMI-страница: %1").arg(spec.id);
+                return composition;
+            }
+            pageIds.insert(spec.id);
+            composition.hmiPages.append(spec);
+        }
+    }
+    const bool hasHmiUI = seen.contains(QStringLiteral("hmi"))
+                       || seenWidgets.contains(QStringLiteral("hmi"));
+    if (composition.isTu() && !composition.hmiPages.isEmpty()) {
+        composition.error = QStringLiteral("ТУ-сборка не может редактировать инженерные HMI-страницы");
+        return composition;
+    }
+    if (hasHmiUI && composition.hmiPages.isEmpty()) {
+        composition.error = QStringLiteral("Для HMI-модуля нужна хотя бы одна страница");
+        return composition;
     }
     return composition;
 }
