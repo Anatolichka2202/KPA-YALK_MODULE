@@ -524,6 +524,18 @@ HmiCanvas::HmiCanvas(HmiDocument* document, QWidget* parent)
     applyZoom();
 }
 
+HmiCanvas::~HmiCanvas()
+{
+    // QGraphicsScene can emit selectionChanged while its items are being
+    // destroyed. Disconnect before QGraphicsView/Qt destroys the scene graph.
+    if (scene_) {
+        QObject::disconnect(scene_, nullptr, this, nullptr);
+        scene_->blockSignals(true);
+        scene_->clearSelection();
+        setScene(nullptr);
+    }
+}
+
 void HmiCanvas::setZoom(double factor)
 {
     zoomFactor_ = factor;
