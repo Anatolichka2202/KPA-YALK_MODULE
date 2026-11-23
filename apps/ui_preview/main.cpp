@@ -809,6 +809,19 @@ int main(int argc, char* argv[])
                 if (document->elements().size() != before + 1
                     || viewer->canvas()->renderedElementCount() != before + 1)
                     return 53;
+                auto* sourcePicker = designer->bindingChoice();
+                auto* bindingField = designer->findChild<QLineEdit*>(QStringLiteral("ui.hmi.binding"));
+                auto* applyBinding = designer->findChild<QPushButton*>(QStringLiteral("ui.hmi.apply"));
+                auto* bindingHint = designer->findChild<QLabel*>(QStringLiteral("ui.hmi.bindingHint"));
+                if (!sourcePicker || !bindingField || !applyBinding || !bindingHint
+                    || sourcePicker->count() != 5) return 71;
+                sourcePicker->setCurrentIndex(3);
+                if (bindingField->text() != QStringLiteral("ui.demo.load")
+                    || !bindingHint->text().contains(QStringLiteral("Совместим"))) return 72;
+                applyBinding->click();
+                if (document->elements().constLast().binding != QStringLiteral("ui.demo.load")) return 73;
+                sourcePicker->setCurrentIndex(4);
+                if (!bindingHint->text().contains(QStringLiteral("несовместим"))) return 74;
                 designer->zoomChoice()->setCurrentIndex(1); // 100%
                 if (qAbs(designer->canvas()->transform().m11() - 1.0) > 0.02) return 60;
                 designer->zoomChoice()->setCurrentIndex(0); // fit all
