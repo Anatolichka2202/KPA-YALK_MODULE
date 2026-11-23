@@ -71,6 +71,7 @@ public:
     QPushButton* deletePageButton() const noexcept { return remove_; }
     QPushButton* renamePageButton() const noexcept { return rename_; }
     QLineEdit* nameInput() const noexcept { return name_; }
+    HmiDesignerPage* currentDesigner() const;
 
 private:
     void rebuild();
@@ -96,6 +97,7 @@ public:
     explicit HmiDeliveryViewer(HmiDeliveryCollection* pages, QWidget* parent = nullptr);
     QComboBox* pageSelector() const noexcept { return selector_; }
     int visiblePageIndex() const;
+    HmiReadOnlyPanel* currentPanel() const;
 
 private:
     void rebuild();
