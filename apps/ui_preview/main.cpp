@@ -224,23 +224,26 @@ private:
         host->setDockOptions(QMainWindow::AllowTabbedDocks | QMainWindow::AllowNestedDocks);
         host->setAnimated(false);
 
-        parameterDock_ = new QDockWidget(QStringLiteral("Параметры"), host);
-        parameterDock_->setObjectName(QStringLiteral("uiPreview.parameters"));
-        parameterDock_->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea
-                                        | Qt::BottomDockWidgetArea);
-        parameterDock_->setMinimumWidth(260);
-        parameterPanel_ = new miltech::ui::ParameterPanel(reference);
-        parameterDock_->setWidget(parameterPanel_);
-        host->addDockWidget(Qt::RightDockWidgetArea, parameterDock_);
-
-        eventDock_ = new QDockWidget(QStringLiteral("Журнал событий"), host);
-        eventDock_->setObjectName(QStringLiteral("uiPreview.events"));
-        eventDock_->setAllowedAreas(Qt::TopDockWidgetArea | Qt::BottomDockWidgetArea
-                                    | Qt::RightDockWidgetArea);
-        eventLog_ = new miltech::ui::EventLogPanel;
-        eventDock_->setWidget(eventLog_);
-        host->addDockWidget(Qt::BottomDockWidgetArea, eventDock_);
-        eventDock_->setMinimumHeight(145);
+        if (composition_.hasComponent(QStringLiteral("parameters"))) {
+            parameterDock_ = new QDockWidget(QStringLiteral("Параметры"), host);
+            parameterDock_->setObjectName(QStringLiteral("uiPreview.parameters"));
+            parameterDock_->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea
+                                            | Qt::BottomDockWidgetArea);
+            parameterDock_->setMinimumWidth(260);
+            parameterPanel_ = new miltech::ui::ParameterPanel(reference);
+            parameterDock_->setWidget(parameterPanel_);
+            host->addDockWidget(Qt::RightDockWidgetArea, parameterDock_);
+        }
+        if (composition_.hasComponent(QStringLiteral("events"))) {
+            eventDock_ = new QDockWidget(QStringLiteral("Журнал событий"), host);
+            eventDock_->setObjectName(QStringLiteral("uiPreview.events"));
+            eventDock_->setAllowedAreas(Qt::TopDockWidgetArea | Qt::BottomDockWidgetArea
+                                        | Qt::RightDockWidgetArea);
+            eventLog_ = new miltech::ui::EventLogPanel;
+            eventDock_->setWidget(eventLog_);
+            host->addDockWidget(Qt::BottomDockWidgetArea, eventDock_);
+            eventDock_->setMinimumHeight(145);
+        }
     }
 
     QString workspaceKey() const
@@ -259,29 +262,34 @@ private:
     void restoreWorkspace()
     {
         if (!dockHost_) return;
-        parameterDock_->show();
-        eventDock_->show();
+        if (parameterDock_) parameterDock_->show();
+        if (eventDock_) eventDock_->show();
         QSettings settings(QStringLiteral("MilTechStation"),
                            QStringLiteral("UI-Preview"));
         const QByteArray state = settings.value(workspaceKey()).toByteArray();
-        if (!state.isEmpty() && !dockHost_->restoreState(state, kLayoutVersion))
+        if (!state.isEmpty() && !dockHost_->restoreState(state, kLayoutVersion)
+            && eventLog_)
             eventLog_->appendUiEvent(QStringLiteral("Предыдущая компоновка несовместима; используется текущая"));
     }
 
     void resetWorkspaceLayout()
     {
-        if (!dockHost_ || !parameterDock_ || !eventDock_) return;
+        if (!dockHost_) return;
         QSettings settings(QStringLiteral("MilTechStation"),
                            QStringLiteral("UI-Preview"));
         settings.remove(workspaceKey());
-        dockHost_->removeDockWidget(parameterDock_);
-        dockHost_->removeDockWidget(eventDock_);
-        parameterDock_->setFloating(false);
-        eventDock_->setFloating(false);
-        dockHost_->addDockWidget(Qt::RightDockWidgetArea, parameterDock_);
-        dockHost_->addDockWidget(Qt::BottomDockWidgetArea, eventDock_);
-        parameterDock_->show();
-        eventDock_->show();
+        if (parameterDock_) {
+            dockHost_->removeDockWidget(parameterDock_);
+            parameterDock_->setFloating(false);
+            dockHost_->addDockWidget(Qt::RightDockWidgetArea, parameterDock_);
+            parameterDock_->show();
+        }
+        if (eventDock_) {
+            dockHost_->removeDockWidget(eventDock_);
+            eventDock_->setFloating(false);
+            dockHost_->addDockWidget(Qt::BottomDockWidgetArea, eventDock_);
+            eventDock_->show();
+        }
         if (eventLog_)
             eventLog_->appendUiEvent(QStringLiteral("Восстановлена исходная компоновка"));
     }
@@ -462,24 +470,28 @@ private:
         topRow->addWidget(reset);
         p.body->addLayout(topRow);
 
-        auto* chart = new miltech::ui::TrendPanel;
-        p.body->addWidget(chart);
-        connect(chart->syntheticToggle(), &QCheckBox::toggled,
-                parameterPanel_, &miltech::ui::ParameterPanel::setSyntheticVisible);
-        connect(chart->syntheticToggle(), &QCheckBox::toggled, this,
-                [this](bool visible) {
-            if (eventLog_)
-                eventLog_->appendUiEvent(visible
-                    ? QStringLiteral("Включена демонстрация синтетических значений")
-                    : QStringLiteral("Показаны пустые состояния данных"));
-        });
-        connect(chart->waveformSelector(), qOverload<int>(&QComboBox::currentIndexChanged),
-                this, [this](int index) {
-            if (eventLog_)
-                eventLog_->appendUiEvent(index == 1
-                    ? QStringLiteral("Выбран график счётчика 0–1023 (синтетика)")
-                    : QStringLiteral("Выбран демонстрационный тренд"));
-        });
+        if (composition_.hasComponent(QStringLiteral("trend"))) {
+            auto* chart = new miltech::ui::TrendPanel;
+            p.body->addWidget(chart);
+            if (parameterPanel_) {
+                connect(chart->syntheticToggle(), &QCheckBox::toggled,
+                        parameterPanel_, &miltech::ui::ParameterPanel::setSyntheticVisible);
+            }
+            connect(chart->syntheticToggle(), &QCheckBox::toggled, this,
+                    [this](bool visible) {
+                if (eventLog_)
+                    eventLog_->appendUiEvent(visible
+                        ? QStringLiteral("Включена демонстрация синтетических значений")
+                        : QStringLiteral("Показаны пустые состояния данных"));
+            });
+            connect(chart->waveformSelector(), qOverload<int>(&QComboBox::currentIndexChanged),
+                    this, [this](int index) {
+                if (eventLog_)
+                    eventLog_->appendUiEvent(index == 1
+                        ? QStringLiteral("Выбран график счётчика 0–1023 (синтетика)")
+                        : QStringLiteral("Выбран демонстрационный тренд"));
+            });
+        }
 
         if (composition_.hasComponent(QStringLiteral("topology")))
             p.body->addWidget(new miltech::ui::SignalTopology(
