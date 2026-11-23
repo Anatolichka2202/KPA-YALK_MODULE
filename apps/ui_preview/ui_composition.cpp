@@ -17,6 +17,7 @@ const QSet<QString>& availableFullScreens()
     static const QSet<QString> ids = {
         QStringLiteral("overview"),
         QStringLiteral("workspace"),
+        QStringLiteral("hmi"),
         QStringLiteral("equipment"),
         QStringLiteral("scenarios"),
         QStringLiteral("results"),
@@ -42,7 +43,8 @@ const QSet<QString>& availableComponents()
         QStringLiteral("parameters"),
         QStringLiteral("events"),
         QStringLiteral("trend"),
-        QStringLiteral("topology")
+        QStringLiteral("topology"),
+        QStringLiteral("hmi")
     };
     return ids;
 }
