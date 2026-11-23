@@ -1,3 +1,5 @@
+#include "components.h"
+
 #include <QAbstractItemView>
 #include <QApplication>
 #include <QCloseEvent>
@@ -24,7 +26,7 @@
 
 namespace {
 
-constexpr int kLayoutVersion = 1;
+constexpr int kLayoutVersion = 2;
 
 // UI preview deliberately has no dependency on StationSession, drivers or scenarios.
 // These are view-only fixtures, not station telemetry or hardware availability.
@@ -134,31 +136,6 @@ Page page(const QString& eyebrow, const QString& title, const QString& subtitle)
     return {scroll, layout};
 }
 
-QTableWidget* equipmentTable(const QStringList& names)
-{
-    auto* table = new QTableWidget(names.size(), 3);
-    table->setHorizontalHeaderLabels({QStringLiteral("КОМПОНЕНТ"),
-                                      QStringLiteral("СОСТОЯНИЕ"),
-                                      QStringLiteral("ДЕЙСТВИЕ")});
-    table->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
-    table->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
-    table->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
-    table->verticalHeader()->setVisible(false);
-    table->setSelectionBehavior(QAbstractItemView::SelectRows);
-    table->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    table->setAlternatingRowColors(true);
-    table->setFocusPolicy(Qt::StrongFocus);
-    for (int row = 0; row < names.size(); ++row) {
-        table->setItem(row, 0, new QTableWidgetItem(names.at(row)));
-        table->setItem(row, 1, new QTableWidgetItem(QStringLiteral("Не опрошен")));
-        table->setItem(row, 2, new QTableWidgetItem(QStringLiteral("Недоступно")));
-        table->setRowHeight(row, 48);
-    }
-    const int expectedHeight = static_cast<int>(names.size()) * 48 + 42;
-    table->setMinimumHeight(qMax(190, expectedHeight));
-    table->setAccessibleName(QStringLiteral("Компоненты оборудования из макета поставки"));
-    return table;
-}
 
 } // namespace
 
@@ -170,7 +147,6 @@ public:
         setWindowTitle(QStringLiteral("MilTechStation · UI Preview"));
         setMinimumSize(1120, 720);
         resize(1510, 900);
-        setDockOptions(QMainWindow::AllowTabbedDocks | QMainWindow::AllowNestedDocks);
         setAnimated(false);
 
         auto* shell = new QWidget;
@@ -221,7 +197,6 @@ public:
         root->addWidget(footer);
         setCentralWidget(shell);
 
-        createDocks();
         connect(modeSelector_, qOverload<int>(&QComboBox::currentIndexChanged),
                 this, [this](int index) { switchMode(index); });
         switchMode(0);
@@ -235,49 +210,71 @@ protected:
     }
 
 private:
-    void createDocks()
+    void createDocks(QMainWindow* host, bool reference)
     {
-        parameterDock_ = new QDockWidget(QStringLiteral("Параметры"), this);
+        host->setDockOptions(QMainWindow::AllowTabbedDocks | QMainWindow::AllowNestedDocks);
+        host->setAnimated(false);
+
+        parameterDock_ = new QDockWidget(QStringLiteral("Параметры"), host);
         parameterDock_->setObjectName(QStringLiteral("uiPreview.parameters"));
         parameterDock_->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea
                                         | Qt::BottomDockWidgetArea);
-        parameterDock_->setMinimumWidth(210);
-        parameterDock_->setWidget(empty(QStringLiteral("Нет измерений"),
-                                        QStringLiteral("Панель ожидает интерфейс представления данных")));
-        addDockWidget(Qt::RightDockWidgetArea, parameterDock_);
+        parameterDock_->setMinimumWidth(260);
+        parameterPanel_ = new miltech::ui::ParameterPanel(reference);
+        parameterDock_->setWidget(parameterPanel_);
+        host->addDockWidget(Qt::RightDockWidgetArea, parameterDock_);
 
-        eventDock_ = new QDockWidget(QStringLiteral("Журнал событий"), this);
+        eventDock_ = new QDockWidget(QStringLiteral("Журнал событий"), host);
         eventDock_->setObjectName(QStringLiteral("uiPreview.events"));
         eventDock_->setAllowedAreas(Qt::TopDockWidgetArea | Qt::BottomDockWidgetArea
                                     | Qt::RightDockWidgetArea);
-        eventDock_->setWidget(empty(QStringLiteral("Нет событий"),
-                                   QStringLiteral("Пока показывается только макет журнала")));
-        addDockWidget(Qt::BottomDockWidgetArea, eventDock_);
-        parameterDock_->hide();
-        eventDock_->hide();
+        eventLog_ = new miltech::ui::EventLogPanel;
+        eventDock_->setWidget(eventLog_);
+        host->addDockWidget(Qt::BottomDockWidgetArea, eventDock_);
+        eventDock_->setMinimumHeight(145);
     }
 
     QString workspaceKey() const
     {
-        return QStringLiteral("layouts/%1/v1").arg(fixture(modeIndex_).id);
+        return QStringLiteral("layouts/%1/v2").arg(fixture(modeIndex_).id);
     }
 
     void saveWorkspace()
     {
-        if (modeIndex_ == 2 || currentPage_ != 1) return;
+        if (modeIndex_ == 2 || currentPage_ != 1 || !dockHost_) return;
         QSettings settings(QStringLiteral("MilTechStation"),
                            QStringLiteral("UI-Preview"));
-        settings.setValue(workspaceKey(), saveState(kLayoutVersion));
+        settings.setValue(workspaceKey(), dockHost_->saveState(kLayoutVersion));
     }
 
     void restoreWorkspace()
     {
+        if (!dockHost_) return;
         parameterDock_->show();
         eventDock_->show();
         QSettings settings(QStringLiteral("MilTechStation"),
                            QStringLiteral("UI-Preview"));
         const QByteArray state = settings.value(workspaceKey()).toByteArray();
-        if (!state.isEmpty()) restoreState(state, kLayoutVersion);
+        if (!state.isEmpty() && !dockHost_->restoreState(state, kLayoutVersion))
+            eventLog_->appendUiEvent(QStringLiteral("Предыдущая компоновка несовместима; используется текущая"));
+    }
+
+    void resetWorkspaceLayout()
+    {
+        if (!dockHost_ || !parameterDock_ || !eventDock_) return;
+        QSettings settings(QStringLiteral("MilTechStation"),
+                           QStringLiteral("UI-Preview"));
+        settings.remove(workspaceKey());
+        dockHost_->removeDockWidget(parameterDock_);
+        dockHost_->removeDockWidget(eventDock_);
+        parameterDock_->setFloating(false);
+        eventDock_->setFloating(false);
+        dockHost_->addDockWidget(Qt::RightDockWidgetArea, parameterDock_);
+        dockHost_->addDockWidget(Qt::BottomDockWidgetArea, eventDock_);
+        parameterDock_->show();
+        eventDock_->show();
+        if (eventLog_)
+            eventLog_->appendUiEvent(QStringLiteral("Восстановлена исходная компоновка"));
     }
 
     void setPage(int index)
@@ -295,9 +292,12 @@ private:
         const bool fullWorkspace = modeIndex_ != 2 && index == 1;
         if (fullWorkspace) restoreWorkspace();
         else {
-            parameterDock_->hide();
-            eventDock_->hide();
+            if (parameterDock_) parameterDock_->hide();
+            if (eventDock_) eventDock_->hide();
         }
+        if (eventLog_)
+            eventLog_->appendUiEvent(
+                QStringLiteral("Раздел: %1").arg(navButtons_.at(index)->text()));
     }
 
     void addNavigation(const QString& title, QWidget* screen)
@@ -329,6 +329,11 @@ private:
             stack_->removeWidget(widget);
             delete widget;
         }
+        dockHost_ = nullptr;
+        parameterDock_ = nullptr;
+        eventDock_ = nullptr;
+        parameterPanel_ = nullptr;
+        eventLog_ = nullptr;
     }
 
     void switchMode(int index)
@@ -355,6 +360,9 @@ private:
         }
         navLayout_->addStretch();
         navLayout_->addWidget(label(QStringLiteral("Alt+1…5 · навигация"), "muted"));
+        if (eventLog_)
+            eventLog_->appendUiEvent(
+                QStringLiteral("Выбран интерфейс: %1").arg(spec.name));
         setPage(0);
     }
 
@@ -385,18 +393,55 @@ private:
 
     QWidget* makeWorkspace(const DeliveryFixture& spec)
     {
+        // Nested QMainWindow keeps engineering docks INSIDE the workspace:
+        // the persistent top bar and application navigation cannot be docked over.
+        dockHost_ = new QMainWindow;
+        dockHost_->setObjectName(QStringLiteral("ui.workspaceHost"));
+        dockHost_->setMinimumSize(520, 420);
+        createDocks(dockHost_, spec.id == QStringLiteral("reference_device"));
+
         Page p = page(QStringLiteral("ИНЖЕНЕРНАЯ СРЕДА"),
                       QStringLiteral("Рабочая область"),
-                      QStringLiteral("Док-панели можно перемещать, закреплять и объединять во вкладки"));
-        p.body->addWidget(card(QStringLiteral("ПРОФИЛЬ РАБОТЫ"),
-                               QStringLiteral("Диагностика"),
-                               QStringLiteral("Компоновка хранится отдельно для %1").arg(spec.name)));
-        p.body->addWidget(empty(QStringLiteral("Область измерений"),
-                                QStringLiteral("Графики и мнемосхемы появятся после подключения UI-моделей")));
-        p.body->addWidget(item(QStringLiteral("Работа с панелями"),
-                               QStringLiteral("Попробуйте перетащить панели «Параметры» и «Журнал событий». Их позиции сохраняются по поставкам.")));
+                      QStringLiteral("Параметры, графики и схема представления · только UI-демонстрация"));
+
+        auto* topRow = new QHBoxLayout;
+        topRow->addWidget(label(
+            QStringLiteral("ПОСТАВКА · %1  /  ФИЗИЧЕСКИЙ СТЕНД НЕ ПОДКЛЮЧЁН").arg(spec.name),
+            "eyebrow"), 1);
+        auto* reset = new QPushButton(QStringLiteral("Исходная компоновка"));
+        reset->setObjectName(QStringLiteral("ui.resetLayout"));
+        reset->setAccessibleName(QStringLiteral("Восстановить исходное расположение инженерных панелей"));
+        connect(reset, &QPushButton::clicked, this, [this] { resetWorkspaceLayout(); });
+        topRow->addWidget(reset);
+        p.body->addLayout(topRow);
+
+        auto* chart = new miltech::ui::TrendPanel;
+        p.body->addWidget(chart);
+        connect(chart->syntheticToggle(), &QCheckBox::toggled,
+                parameterPanel_, &miltech::ui::ParameterPanel::setSyntheticVisible);
+        connect(chart->syntheticToggle(), &QCheckBox::toggled, this,
+                [this](bool visible) {
+            if (eventLog_)
+                eventLog_->appendUiEvent(visible
+                    ? QStringLiteral("Включена демонстрация синтетических значений")
+                    : QStringLiteral("Показаны пустые состояния данных"));
+        });
+        connect(chart->waveformSelector(), qOverload<int>(&QComboBox::currentIndexChanged),
+                this, [this](int index) {
+            if (eventLog_)
+                eventLog_->appendUiEvent(index == 1
+                    ? QStringLiteral("Выбран график счётчика 0–1023 (синтетика)")
+                    : QStringLiteral("Выбран демонстрационный тренд"));
+        });
+
+        p.body->addWidget(new miltech::ui::SignalTopology(
+            spec.id == QStringLiteral("reference_device")));
+        p.body->addWidget(item(QStringLiteral("Док-панели"),
+                                QStringLiteral("Параметры и журнал можно закреплять, закрывать и переносить. "
+                                               "«Исходная компоновка» возвращает обе панели.")));
         p.body->addStretch();
-        return p.widget;
+        dockHost_->setCentralWidget(p.widget);
+        return dockHost_;
     }
 
     QWidget* makeEquipment(const DeliveryFixture& spec)
@@ -404,7 +449,7 @@ private:
         Page p = page(QStringLiteral("СТЕНД / КОМПОНЕНТЫ"),
                       QStringLiteral("Оборудование"),
                       QStringLiteral("Состав — из описания поставки; статусы в прототипе всегда неизвестны"));
-        p.body->addWidget(equipmentTable(spec.equipment));
+        p.body->addWidget(new miltech::ui::EquipmentOverview(spec.equipment));
         p.body->addWidget(item(QStringLiteral("Безопасность представления"),
                                QStringLiteral("Нет связи с адаптерами. Отсутствие данных нельзя считать ни готовностью, ни отказом изделия.")));
         p.body->addStretch();
@@ -503,6 +548,9 @@ private:
     QStackedWidget* stack_ = nullptr;
     QDockWidget* parameterDock_ = nullptr;
     QDockWidget* eventDock_ = nullptr;
+    QMainWindow* dockHost_ = nullptr;
+    miltech::ui::ParameterPanel* parameterPanel_ = nullptr;
+    miltech::ui::EventLogPanel* eventLog_ = nullptr;
     QVector<QPushButton*> navButtons_;
     int modeIndex_ = -1;
     int currentPage_ = -1;
