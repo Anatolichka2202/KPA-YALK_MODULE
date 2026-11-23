@@ -1,6 +1,16 @@
 #include "orbita_stand/desktop_core.h"
+#include "orbita_stand/station_capabilities.h"
+#include "orbita_stand/parameter_procedures.h"
+#include "orbita_stand/parameter_repository.h"
+#include "orbita_stand/station_session.h"
+
+#include <QJsonArray>
+#include <QTemporaryDir>
+#include <QFile>
 
 #include <chrono>
+#include <atomic>
+#include <thread>
 #include <cmath>
 #include <filesystem>
 #include <iostream>
@@ -16,6 +26,236 @@ namespace {
 void require(bool condition, const std::string& explanation)
 {
     if (!condition) throw std::runtime_error(explanation);
+}
+
+void testCapabilityComposition(const std::filesystem::path& root)
+{
+    DesktopPolicy policy;
+    policy.supportedActions = {"station.generic"};
+    policy.allowScenarioEditing = true;
+    const auto reference = DesktopCore::load((root / "projects/reference_device/project.yaml").string(), policy);
+    ParameterRepository parameters;
+    ScenarioEngine engine;
+    registerTimingProcedures(engine);
+    registerParameterProcedures(engine, parameters);
+    StationCapabilityRegistry registry(reference, engine);
+    registry.exposeAction("parameter.measure", ApplicationScope::Engineering);
+    registry.exposeAction("station.delay", ApplicationScope::Engineering);
+    const auto available = [](const RuntimeObservation&) { return CapabilityObservation{true, {}, ServiceConnection::NotApplicable}; };
+    bool engineeringProbed = false;
+    registry.registerModule({"editor", "Редактор", "scenarios", "test.editor", ApplicationScope::Engineering,
+        {{"edit", "Редактирование", ApplicationScope::Engineering, available}}, true,
+        [&](const RuntimeObservation&) { engineeringProbed = true; return CapabilityObservation{true, {}, ServiceConnection::NotApplicable}; }});
+    registry.registerModule({"storage", "Хранилище", "local_storage", "test.storage", ApplicationScope::Both,
+        {{"read", "Просмотр", ApplicationScope::Both, available},
+         {"write", "Запись", ApplicationScope::Engineering, [](const RuntimeObservation&) { return CapabilityObservation{false, "нет БД", ServiceConnection::Disconnected}; }}},
+        true, available});
+    StationSession session;
+    registerTimingProcedures(session.scenarioEngine());
+    registerParameterProcedures(session.scenarioEngine(), session.parameters());
+    QTemporaryDir plugins;
+    require(plugins.isValid(), "temporary plugin directory unavailable");
+    session.configure(reference.profile(), plugins.path().toStdString(), {"test-unused-kind"}, EquipmentInstantiation::Deferred);
+    StationCapabilityRegistry sessionRegistry(reference, session.scenarioEngine());
+    sessionRegistry.exposeAction("parameter.measure", ApplicationScope::Engineering);
+    std::atomic_bool holdObservation{false}, observerEntered{false};
+    const auto whenIdle = [&](const RuntimeObservation& observation) {
+        if (holdObservation.load()) {
+            observerEntered.store(true);
+            while (holdObservation.load()) std::this_thread::yield();
+        }
+        return CapabilityObservation{!observation.busy, observation.busy ? "занято" : "", ServiceConnection::NotApplicable};
+    };
+    sessionRegistry.registerModule({"session-observer", "Наблюдатель", "equipment", "test.observer", ApplicationScope::Both,
+        {{"inspect", "Состояние", ApplicationScope::Both, whenIdle}}, true, whenIdle});
+    bool unboundRejected = false;
+    try { (void)sessionRegistry.compose(reference, session, {}); }
+    catch (const std::invalid_argument&) { unboundRejected = true; }
+    require(unboundRejected, "unbound session exposed action handlers");
+    sessionRegistry.bindSession(session);
+    const auto provider = session.profile().components[0].provider;
+    session.profile().components[0].provider = "different-provider";
+    bool changedProfileRejected = false;
+    try { (void)sessionRegistry.compose(reference, session, {}); }
+    catch (const std::invalid_argument&) { changedProfileRejected = true; }
+    require(changedProfileRejected, "modified profile with same identity was accepted");
+    session.profile().components[0].provider = provider;
+    const auto sessionView = sessionRegistry.compose(reference, session, {"session-station", {}, {}});
+    require(sessionView.desktop.runtimeState == RuntimeState::Idle && !sessionView.desktop.workflows[0].launchable
+        && sessionView.desktop.components[0].state == ComponentState::NotChecked
+        && sessionView.modules[0].state == CapabilityAvailability::Available,
+        "configured session fabricated equipment readiness");
+    holdObservation.store(true);
+    std::exception_ptr snapshotError;
+    std::thread snapshotWorker([&] {
+        try { (void)sessionRegistry.compose(reference, session, {}); }
+        catch (...) { snapshotError = std::current_exception(); }
+    });
+    const auto waitUntil = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (!observerEntered.load() && std::chrono::steady_clock::now() < waitUntil) std::this_thread::yield();
+    bool concurrentRejected = false;
+    if (observerEntered.load()) {
+        try { (void)sessionRegistry.composeDuringActivity(reference, session); }
+        catch (const std::runtime_error&) { concurrentRejected = true; }
+    }
+    holdObservation.store(false);
+    snapshotWorker.join();
+    require(observerEntered.load() && concurrentRejected && !snapshotError,
+        "concurrent reader treated the snapshot reservation as an active run");
+    auto activity = session.beginActivity();
+    bool busyRejected = false;
+    try { (void)sessionRegistry.compose(reference, session, {}); }
+    catch (const std::runtime_error&) { busyRejected = true; }
+    const auto busyView = sessionRegistry.composeDuringActivity(reference, session);
+    require(busyRejected && busyView.staleDuringActivity && busyView.desktop.runtimeState == RuntimeState::Busy
+        && !busyView.desktop.workflows[0].launchable && !busyView.stopAvailabilityKnown && !busyView.desktop.stopAvailable
+        && busyView.modules[0].state == CapabilityAvailability::Unavailable
+        && busyView.modules[0].connection == ServiceConnection::Unknown,
+        "busy session did not return a safe cached composition");
+    activity.reset();
+    auto dynamicScenario = loadScenarioYaml((root / "projects/reference_device/scenarios/reference_voltage.yaml").string());
+    require(sessionRegistry.compose(reference, session, {}, {}, {{"generic", dynamicScenario}}).methodologies.size() == 1,
+        "fixed methodology was duplicated by discovery");
+    auto conflicting = dynamicScenario;
+    conflicting.title = "Конфликт той же версии";
+    bool conflictRejected = false;
+    try { (void)sessionRegistry.compose(reference, session, {}, {}, {{"generic", conflicting}}); }
+    catch (const std::invalid_argument&) { conflictRejected = true; }
+    require(conflictRejected, "conflicting definition of the same version was accepted");
+    dynamicScenario.id = "reference.user-copy";
+    const auto dynamicView = sessionRegistry.compose(reference, session, {}, {}, {{"generic", dynamicScenario}});
+    require(dynamicView.methodologies.size() == 2 && dynamicView.methodologies[1].id == "reference.user-copy"
+        && dynamicView.methodologies[1].valid,
+        "discovered user methodology was not projected from the session engine");
+    bool rejectedUnknownWorkflow = false;
+    try { (void)sessionRegistry.compose(reference, session, {}, {}, {{"unknown", dynamicScenario}}); }
+    catch (const std::invalid_argument&) { rejectedUnknownWorkflow = true; }
+    require(rejectedUnknownWorkflow, "discovered method attached to unknown workflow");
+    session.clear();
+    bool staleSessionRejected = false;
+    try { (void)sessionRegistry.compose(reference, session, {}); }
+    catch (const std::invalid_argument&) { staleSessionRejected = true; }
+    require(staleSessionRejected, "cleared session reused stale action bindings");
+    session.resetScenarioEngine();
+    bool rawBypassRejected = false;
+    try { (void)sessionRegistry.compose(reference, RuntimeObservation{}, {}); }
+    catch (const std::logic_error&) { rawBypassRejected = true; }
+    require(rawBypassRejected, "raw snapshot bypassed stale session protection");
+    session.configure(reference.profile(), plugins.path().toStdString(), {"test-unused-kind"}, EquipmentInstantiation::Deferred);
+    bool rebindRejected = false;
+    try { sessionRegistry.bindSession(session); }
+    catch (const std::logic_error&) { rebindRejected = true; }
+    require(rebindRejected, "old module registrations survived session reconfiguration");
+
+    auto incomplete = registry.compose(reference, {}, {"station-test", {}, {}}, {"enterprise"});
+    require(incomplete.requestedModules[0].state == CapabilityAvailability::NotRegistered,
+        "incomplete inventory falsely reported an absent module");
+    registry.markInventoryComplete();
+    auto view = registry.compose(reference, {}, {"station-test", {}, {}}, {"enterprise", "storage"});
+    require(view.identity.stationId == "station-test" && view.desktop.projectId == "reference_device"
+        && view.desktop.components.size() == 1 && view.desktop.components[0].id == "ref-sim"
+        && view.desktop.runtimeState == RuntimeState::Unconfigured,
+        "composition borrowed KTMA data or invented station readiness");
+    require(view.requestedModules.size() == 2 && view.requestedModules[0].state == CapabilityAvailability::Absent
+        && view.requestedModules[1].state == CapabilityAvailability::Available
+        && view.requestedModules[1].features[1].state == CapabilityAvailability::Unavailable
+        && view.requestedModules[1].features[1].connection == ServiceConnection::Disconnected,
+        "absent and unavailable module/function states were confused");
+    require(view.methodologies.size() == 1 && view.methodologies[0].valid && view.methodologies[0].published
+        && view.methodologies[0].id == "reference.simulator.voltage"
+        && !view.desktop.workflows[0].launchable,
+        "reference methodology or unconfigured readiness was misreported");
+    const auto json = compositionToJson(view);
+    require(json.value("station_id").toString() == QStringLiteral("station-test")
+        && json.value("delivery").isNull()
+        && json.value("project").toObject().value("id").toString() == QStringLiteral("reference_device")
+        && json.value("inventory_complete").toBool()
+        && json.value("modules").toArray().size() == 2
+        && json.value("requested_modules").toArray().at(0).toObject().value("availability").toString() == "absent",
+        "JSON does not preserve typed module states");
+    RuntimeObservation busyRaw;
+    busyRaw.configured = true; busyRaw.busy = true;
+    require(!registry.compose(reference, busyRaw, {}).stopAvailabilityKnown,
+        "a busy non-scenario operation was reported as stoppable");
+    DesktopCore mutableCore(reference.project(), reference.profile(), policy);
+    StationCapabilityRegistry immutableBinding(mutableCore, engine);
+    auto changedPolicy = policy;
+    changedPolicy.allowScenarioEditing = false;
+    mutableCore = DesktopCore(reference.project(), reference.profile(), changedPolicy);
+    bool changedCoreRejected = false;
+    try { (void)immutableBinding.compose(mutableCore, RuntimeObservation{}, {}); }
+    catch (const std::invalid_argument&) { changedCoreRejected = true; }
+    require(changedCoreRejected, "registry accepted an overwritten application policy");
+    bool duplicateRejected = false;
+    try { registry.registerModule({"storage", "Дубль", "local_storage", "test", ApplicationScope::Both, {}, true, available}); }
+    catch (const std::invalid_argument&) { duplicateRejected = true; }
+    require(duplicateRejected, "duplicate module registration accepted");
+
+    DesktopPolicy tuPolicy;
+    tuPolicy.edition = Edition::Tu; tuPolicy.tuWorkflowId = "tu_normal";
+    tuPolicy.supportedActions = {"ktma.tu", "station.generic"};
+    tuPolicy.allowScenarioEditing = true;
+    const auto ktma = DesktopCore::load((root / "projects/ktma/project.yaml").string(), tuPolicy);
+    StationSession switched;
+    switched.configure(ktma.profile(), plugins.path().toStdString(), {"test-unused-kind"}, EquipmentInstantiation::Deferred);
+    registerTimingProcedures(switched.scenarioEngine());
+    switched.configure(reference.profile(), plugins.path().toStdString(), {"test-unused-kind"}, EquipmentInstantiation::Deferred);
+    StationCapabilityRegistry switchedRegistry(reference, switched.scenarioEngine());
+    switchedRegistry.bindSession(switched);
+    const auto switchedView = switchedRegistry.compose(reference, switched, {});
+    require(switchedView.actionHandlers.empty() && !switchedView.methodologies[0].valid,
+        "actions left in the engine by a previous project leaked into the next composition");
+    bool crossProjectRejected = false;
+    try { (void)registry.compose(ktma, {}, {}); }
+    catch (const std::invalid_argument&) { crossProjectRejected = true; }
+    require(crossProjectRejected, "reference registry leaked modules into another project");
+    StationCapabilityRegistry ktmaRegistry(ktma, engine);
+    ktmaRegistry.registerModule({"editor", "Редактор", "scenarios", "test.editor", ApplicationScope::Engineering,
+        {{"edit", "Редактирование", ApplicationScope::Engineering, available}}, true,
+        [&](const RuntimeObservation&) { engineeringProbed = true; return CapabilityObservation{true, {}, ServiceConnection::NotApplicable}; }});
+    ktmaRegistry.registerModule({"storage", "Хранилище", "local_storage", "test.storage", ApplicationScope::Both,
+        {{"read", "Просмотр", ApplicationScope::Both, available},
+         {"write", "Запись", ApplicationScope::Engineering, available}}, true, available});
+    engineeringProbed = false;
+    const auto tu = ktmaRegistry.compose(ktma, {}, {}, {"editor", "storage"});
+    require(tu.desktop.projectId == "ktma" && tu.desktop.workflows.size() == 1
+        && tu.desktop.workflows[0].id == "tu_normal" && !tu.desktop.workflows[0].draftCreationAvailable
+        && tu.requestedModules[0].state == CapabilityAvailability::Forbidden && !engineeringProbed
+        && tu.requestedModules[1].features[1].state == CapabilityAvailability::Forbidden,
+        "TU composition exposed or probed an engineering-only function");
+    require(!tu.methodologies.empty() && !tu.methodologies[0].valid && !tu.desktop.workflows[0].launchable,
+        "missing product procedures were reported as an executable TU method");
+    auto tuProject = reference.project();
+    tuProject.workflows[0].kind = "tu";
+    DesktopPolicy isolatedPolicy;
+    isolatedPolicy.edition = Edition::Tu;
+    isolatedPolicy.tuWorkflowId = tuProject.workflows[0].id;
+    isolatedPolicy.supportedActions = {"station.generic"};
+    DesktopCore isolatedTu(tuProject, reference.profile(), isolatedPolicy);
+    StationCapabilityRegistry isolatedRegistry(isolatedTu, engine);
+    isolatedRegistry.exposeAction("parameter.measure", ApplicationScope::Tu);
+    const auto tuReference = isolatedRegistry.compose(isolatedTu, {}, {"test-tu", {}, {}});
+    require(tuReference.methodologies.size() == 1 && tuReference.methodologies[0].valid
+        && tuReference.actionHandlers.size() == 1 && tuReference.actionHandlers[0] == "parameter.measure",
+        "explicit TU action scope did not filter registered engineering handlers");
+    StationCapabilityRegistry restricted(isolatedTu, engine);
+    const auto denied = restricted.compose(isolatedTu, {}, {"test-tu", {}, {}});
+    require(!denied.methodologies[0].valid && denied.actionHandlers.empty(),
+        "unapproved TU action was exposed or its methodology considered executable");
+    QTemporaryDir invalidDirectory;
+    require(invalidDirectory.isValid(), "temporary package directory unavailable");
+    QFile invalidFile(invalidDirectory.filePath("project.yaml"));
+    require(invalidFile.open(QIODevice::WriteOnly), "cannot create malformed package");
+    invalidFile.write("schema: 999\nid: broken\n");
+    invalidFile.close();
+    bool malformedRejected = false;
+    try { (void)DesktopCore::load(invalidFile.fileName().toStdString(), policy); }
+    catch (const std::exception&) { malformedRejected = true; }
+    require(malformedRejected, "malformed package was accepted");
+    bool invalidRejected = false;
+    try { (void)DesktopCore::load((root / "projects/does-not-exist/project.yaml").string(), policy); }
+    catch (const std::exception&) { invalidRejected = true; }
+    require(invalidRejected, "invalid package was accepted");
 }
 
 void testReferencePackage(const std::filesystem::path& root)
@@ -209,6 +449,7 @@ int main()
 {
     try {
         const auto source = std::filesystem::path(ORBITA_SOURCE_DIR);
+        testCapabilityComposition(source);
         testReferencePackage(source);
         testTuPolicy(source);
         testExplicitHandlerAllowlist(source);

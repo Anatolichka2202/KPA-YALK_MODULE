@@ -104,6 +104,7 @@ void StationSession::resetScenarioEngine()
     ActivityGuard guard(*active_);
     if (!guard) throw std::runtime_error(busyReason);
     scenarioEngine_ = std::make_unique<ScenarioEngine>();
+    ++compositionGeneration_;
 }
 
 ScenarioRunResult StationSession::runScenario(const ScenarioDefinition& scenario,
@@ -371,6 +372,7 @@ void StationSession::clear()
 
 void StationSession::clearUnchecked() noexcept
 {
+    ++compositionGeneration_;
     parameters_.clear();
     components_.clear();
     clearEquipmentUnchecked();

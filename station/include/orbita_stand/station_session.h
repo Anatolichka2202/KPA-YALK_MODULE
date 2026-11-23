@@ -79,6 +79,7 @@ public:
                  const std::function<void(Preparation&)>& operation);
 
     ScenarioEngine& scenarioEngine() noexcept { return *scenarioEngine_; }
+    const ScenarioEngine& scenarioEngine() const noexcept { return *scenarioEngine_; }
     void resetScenarioEngine();
     void requestStop() noexcept { scenarioEngine_->requestStop(); }
 
@@ -132,6 +133,7 @@ public:
     }
 
     bool configured() const noexcept { return configured_; }
+    std::uint64_t compositionGeneration() const noexcept { return compositionGeneration_.load(); }
 
     // `componentKinds` intentionally excludes equipment while the Equipment
     // Plugin ABI is still on its compatibility runtime. Empty means "all
@@ -212,6 +214,7 @@ private:
     std::map<std::string, std::shared_ptr<EquipmentDevice>> sessionEquipment_;
     ComponentRuntime components_;
     ParameterRepository parameters_;
+    std::atomic<std::uint64_t> compositionGeneration_{0};
     bool configured_ = false;
 };
 
