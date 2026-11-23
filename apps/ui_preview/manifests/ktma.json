@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "id": "ktma",
+  "title": "КТМА · Инженерная среда",
+  "kind": "full",
+  "screens": [
+    {
+      "id": "overview",
+      "title": "Обзор",
+      "group": "primary"
+    },
+    {
+      "id": "workspace",
+      "title": "Рабочая область",
+      "group": "primary"
+    },
+    {
+      "id": "equipment",
+      "title": "Оборудование",
+      "group": "primary"
+    },
+    {
+      "id": "scenarios",
+      "title": "Сценарии",
+      "group": "primary"
+    },
+    {
+      "id": "results",
+      "title": "Результаты",
+      "group": "primary"
+    },
+    {
+      "id": "configurator",
+      "title": "Конфигуратор",
+      "group": "service"
+    },
+    {
+      "id": "administration",
+      "title": "Администрирование",
+      "group": "service"
+    }
+  ],
+  "workspaceComponents": [
+    "parameters",
+    "events",
+    "trend",
+    "topology"
+  ]
+}
