@@ -2,6 +2,7 @@ schema: 1
 id: generic
 title: Проверка эталонного устройства
 kind: free
+scenario: scenarios/reference_voltage.yaml
 operator_action: station.generic
 operator_available: true
 allow_dynamic_scenario: true
