@@ -203,6 +203,12 @@ public:
         headerLayout->setContentsMargins(24, 15, 24, 15);
         headerLayout->setSpacing(17);
         auto* identity = new QHBoxLayout;
+        navigationToggle_ = new QPushButton(QStringLiteral("☰"));
+        navigationToggle_->setObjectName(QStringLiteral("ui.navigationToggle"));
+        navigationToggle_->setAccessibleName(QStringLiteral("Показать или скрыть навигацию"));
+        navigationToggle_->setToolTip(QStringLiteral("Развернуть или свернуть меню разделов"));
+        navigationToggle_->setFixedWidth(44);
+        identity->addWidget(navigationToggle_);
         identity->addWidget(label(QStringLiteral("MilTechStation"), "appName"));
         identity->addStretch();
         context_ = label(QStringLiteral("КТМА"), "muted");
@@ -237,6 +243,10 @@ public:
         navigationScroll->setFixedWidth(290);
         navigationScroll->setWidget(sidebar);
         workspace->addWidget(navigationScroll);
+        navigationScroll_ = navigationScroll;
+        connect(navigationToggle_, &QPushButton::clicked, this, [this] {
+            if (navigationScroll_) navigationScroll_->setVisible(!navigationScroll_->isVisible());
+        });
         stack_ = new QStackedWidget;
         stack_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
         workspace->addWidget(stack_, 1);
@@ -263,11 +273,19 @@ protected:
     {
         QMainWindow::resizeEvent(event);
         if (headerLayout_) {
-            headerLayout_->setDirection(event->size().width() < 1050
-                                            ? QBoxLayout::TopToBottom : QBoxLayout::LeftToRight);
+            const bool narrow = event->size().width() < 1050;
+            headerLayout_->setDirection(narrow ? QBoxLayout::TopToBottom
+                                               : QBoxLayout::LeftToRight);
             headerLayout_->invalidate();
             headerLayout_->parentWidget()->setMinimumHeight(headerLayout_->minimumSize().height());
             headerLayout_->parentWidget()->updateGeometry();
+            if (navigationScroll_ && narrow && !compactNavigation_) {
+                navigationScroll_->hide();
+                compactNavigation_ = true;
+            } else if (navigationScroll_ && !narrow && compactNavigation_) {
+                navigationScroll_->show();
+                compactNavigation_ = false;
+            }
         }
     }
 
@@ -694,6 +712,9 @@ private:
     }
 
     QBoxLayout* headerLayout_ = nullptr;
+    QScrollArea* navigationScroll_ = nullptr;
+    QPushButton* navigationToggle_ = nullptr;
+    bool compactNavigation_ = false;
     QComboBox* modeSelector_ = nullptr;
     QLabel* context_ = nullptr;
     QVBoxLayout* navLayout_ = nullptr;
@@ -901,7 +922,13 @@ int main(int argc, char* argv[])
                 }
                 const auto nav = window.findChildren<QPushButton*>(QStringLiteral("navButton"));
                 auto* navScroll = window.findChild<QScrollArea*>(QStringLiteral("ui.navigationScroll"));
-                if (!navScroll || nav.isEmpty()) return 42;
+                auto* menuButton = window.findChild<QPushButton*>(QStringLiteral("ui.navigationToggle"));
+                if (!navScroll || !menuButton || nav.isEmpty()) return 42;
+                if (!navScroll->isVisible()) {
+                    menuButton->click();
+                    QApplication::processEvents();
+                    if (!navScroll->isVisible()) return 75;
+                }
                 for (int n = 0; n < nav.size(); ++n) {
                     navScroll->ensureWidgetVisible(nav.at(n));
                     nav.at(n)->click();
