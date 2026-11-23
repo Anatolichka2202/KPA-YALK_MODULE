@@ -7,6 +7,7 @@ version: 1.0.0
 # scenarios. The referenced data remains single-source in data/ during the
 # migration; no physical mappings are duplicated here.
 equipment_profile: ../../data/profiles/stand_ktma.yaml
+catalog: ../../data/catalog/catalog.yaml
 
 dut_types:
   - UBSI_468157_002
