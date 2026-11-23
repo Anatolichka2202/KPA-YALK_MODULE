@@ -119,6 +119,7 @@ public:
     explicit HmiDesignerPage(HmiDocument* document, QWidget* parent = nullptr,
                              bool compact = false);
     HmiCanvas* canvas() const noexcept { return canvas_; }
+    HmiDocument* document() const noexcept { return document_; }
     QComboBox* previewMode() const noexcept { return mode_; }
     QComboBox* zoomChoice() const noexcept { return zoom_; }
     QComboBox* bindingChoice() const noexcept { return bindingChoice_; }
@@ -164,8 +165,10 @@ class HmiReadOnlyPanel final : public QFrame {
 public:
     explicit HmiReadOnlyPanel(HmiDocument* document, QWidget* parent = nullptr);
     HmiCanvas* canvas() const noexcept { return canvas_; }
+    HmiDocument* document() const noexcept { return document_; }
 
 private:
+    HmiDocument* document_ = nullptr;
     HmiCanvas* canvas_ = nullptr;
 };
 
