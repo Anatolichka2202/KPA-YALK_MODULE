@@ -18,6 +18,8 @@ add_executable(MilTechStationUiPreview
     platform_pages.h
     hmi_presentation.cpp
     hmi_presentation.h
+    hmi_delivery.cpp
+    hmi_delivery.h
     resources.qrc
 )
 
