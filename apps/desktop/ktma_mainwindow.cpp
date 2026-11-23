@@ -113,12 +113,6 @@ KtmaMainWindow::KtmaMainWindow(QWidget* parent)
     setWindowTitle(QStringLiteral("MilTech Station · КТМА / УБСИ · 2.0"));
     auto* page = integrationTestPage();
     if (!page) return;
-    integrationUseUbsiEngineering();
-
-    page->registerEquipmentRow(QStringLiteral("RIGOL"),
-        QStringLiteral("Rigol DG-1022Z / ДГ10.2"), QStringLiteral("USB / VISA"),
-        QStringLiteral("Требуется только сценариям, где есть signal.generator"));
-
     const QDir root(QCoreApplication::applicationDirPath());
     try {
         const QString projectPath = qEnvironmentVariable(
@@ -141,10 +135,11 @@ KtmaMainWindow::KtmaMainWindow(QWidget* parent)
         if (const auto* project = integrationProject()) {
             QVector<HomeWorkflowEntry> entries;
             entries.reserve(static_cast<int>(project->workflows.size()));
+            const bool isKtma = project->id == "ktma";
             for (const auto& workflow : project->workflows) {
-                // Оператору доступны только маршруты верхнего уровня, а не
-                // все внутренние варианты сценариев и пакетов проекта.
-                if (workflow.id != "tu_normal" && workflow.id != "production"
+                // В КТМА показываем три верхнеуровневых маршрута; остальные
+                // поставки сами определяют доступные пункты через YAML.
+                if (isKtma && workflow.id != "tu_normal" && workflow.id != "production"
                     && workflow.id != "free") continue;
                 const bool hasHandler = !workflow.operatorAction.empty();
                 QString reason = QString::fromStdString(workflow.unavailableReason);
@@ -157,7 +152,8 @@ KtmaMainWindow::KtmaMainWindow(QWidget* parent)
                     reason,
                     QString::fromStdString(workflow.kind)});
             }
-            home->setProjectWorkflows(entries);
+            home->setProjectWorkflows(
+                entries, QString::fromStdString(project->title), isKtma);
         }
         connect(home, &HomePage::workflowRequested,
                 this, &KtmaMainWindow::openProjectWorkflow);
@@ -183,6 +179,18 @@ KtmaMainWindow::KtmaMainWindow(QWidget* parent)
     }
 
     integrationEnsureStandRuntime();
+    // Временная граница совместимости: универсальный HMI пока наследует
+    // оболочку КТМА, но чужой пакет не должен активировать её регистратор,
+    // специальные процедуры, маршруты или элементы управления УБСИ.
+    if (const auto* project = integrationProject(); project && project->id != "ktma") {
+        integrationLog(QStringLiteral("Универсальный пакет %1 загружен без подсистемы КТМА")
+            .arg(QString::fromStdString(project->id)));
+        return;
+    }
+    integrationUseUbsiEngineering();
+    page->registerEquipmentRow(QStringLiteral("RIGOL"),
+        QStringLiteral("Rigol DG-1022Z / ДГ10.2"), QStringLiteral("USB / VISA"),
+        QStringLiteral("Требуется только сценариям, где есть signal.generator"));
     loadTuScenarios();
     loadProductionScenarios();
 
@@ -351,9 +359,11 @@ void KtmaMainWindow::openProjectWorkflow(const QString& workflowId)
 
     const auto action = QString::fromStdString(workflow->operatorAction);
     if (action == QStringLiteral("station.free")) {
-        // Свободный live-контур уже является частью Host. Workflow только
-        // выбирает его, а не запускает отдельный сценарий или маршрут КТМА.
+        // Свободный live-контур уже является частью Host.
         emit home->freeWorkspaceRequested();
+    } else if (action == QStringLiteral("station.generic")) {
+        // Пакет использует универсальный редактор и движок без сценариев КТМА.
+        emit home->genericCheckRequested();
     } else if (action == QStringLiteral("ktma.tu")) {
         emit home->tuRequested();
     } else if (workflowId == QStringLiteral("production")) {
