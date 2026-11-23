@@ -69,6 +69,7 @@ private slots:
     void configureSwitch();
     void configureManualConfirmation();
     void configureManualMeasurement();
+    void configureRepeatTable();
 
 private:
     using StepPath = std::vector<int>;
@@ -132,6 +133,7 @@ private:
     QComboBox* procedureChoice_ = nullptr;
     QComboBox* monitorPageChoice_ = nullptr;
     QSpinBox* groupRepeatCount_ = nullptr;
+    QPushButton* repeatTableSettings_ = nullptr;
     QPlainTextEdit* requires_ = nullptr;
     QPlainTextEdit* resources_ = nullptr;
     QPlainTextEdit* arguments_ = nullptr;

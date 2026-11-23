@@ -5,6 +5,8 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QSaveFile>
 #include <QSqlDatabase>
 #include <QSqlError>
@@ -163,12 +165,16 @@ void saveStep(QSqlDatabase& database, const std::string& runId, const std::strin
 {
     QSqlQuery query(database);
     query.prepare(QStringLiteral(
-        "INSERT INTO run_steps(run_id,node_id,parent_node,sort_order,title,tu_requirement,verdict,message,definition_id) VALUES(?,?,?,?,?,?,?,?,?)"));
+        "INSERT INTO run_steps(run_id,node_id,parent_node,sort_order,title,tu_requirement,verdict,message,definition_id,applied_overrides) VALUES(?,?,?,?,?,?,?,?,?,?)"));
     query.addBindValue(QString::fromUtf8(runId)); query.addBindValue(QString::fromUtf8(step.nodeId));
     query.addBindValue(QString::fromUtf8(parent)); query.addBindValue(order);
     query.addBindValue(QString::fromUtf8(step.title)); query.addBindValue(QString::fromUtf8(step.tuRequirement));
     query.addBindValue(QString::fromLatin1(toString(step.verdict))); query.addBindValue(QString::fromUtf8(step.message));
     query.addBindValue(QString::fromUtf8(step.definitionId));
+    QJsonObject overrides;
+    for (const auto& [key, value] : step.appliedOverrides)
+        overrides.insert(QString::fromUtf8(key), QString::fromUtf8(value));
+    query.addBindValue(QString::fromUtf8(QJsonDocument(overrides).toJson(QJsonDocument::Compact)));
     executePrepared(query);
     query.prepare(QStringLiteral(
         "INSERT INTO run_measurements(run_id,node_id,sort_order,parameter_key,title,reference,measured,lower_limit,upper_limit,unit,verdict,message,attributes,evidence_state,evidence_resource,evidence_device,evidence_quality) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"));
@@ -237,6 +243,7 @@ RunStore::RunStore(std::string sqlitePath) : impl_(std::make_unique<Impl>())
 
     addTextColumnIfMissing(
         impl_->database, QStringLiteral("run_steps"), QStringLiteral("definition_id"));
+    addTextColumnIfMissing(impl_->database, QStringLiteral("run_steps"), QStringLiteral("applied_overrides"));
     addTextColumnIfMissing(
         impl_->database, QStringLiteral("run_events"), QStringLiteral("attributes"));
     addTextColumnIfMissing(
@@ -519,7 +526,7 @@ std::optional<ScenarioRunResult> RunStore::load(const std::string& runId) const
     };
     std::map<std::string, std::vector<StoredStep>> children;
     query.prepare(QStringLiteral(
-        "SELECT node_id,parent_node,title,tu_requirement,verdict,message,definition_id "
+        "SELECT node_id,parent_node,title,tu_requirement,verdict,message,definition_id,applied_overrides "
         "FROM run_steps WHERE run_id=? ORDER BY parent_node,sort_order"));
     query.addBindValue(QString::fromUtf8(runId));
     executePrepared(query);
@@ -532,6 +539,16 @@ std::optional<ScenarioRunResult> RunStore::load(const std::string& runId) const
         stored.step.verdict = verdictFromText(query.value(4).toString());
         stored.step.message = query.value(5).toString().toUtf8().toStdString();
         stored.step.definitionId = query.value(6).toString().toUtf8().toStdString();
+        const auto overridesText = query.value(7).toString();
+        if (!overridesText.isEmpty()) {
+            const auto document = QJsonDocument::fromJson(overridesText.toUtf8());
+            if (!document.isObject()) throw std::runtime_error("Invalid stored step overrides");
+            const auto object = document.object();
+            for (auto it = object.begin(); it != object.end(); ++it) {
+                if (!it.value().isString()) throw std::runtime_error("Invalid stored step override value");
+                stored.step.appliedOverrides.emplace(it.key().toUtf8().toStdString(), it.value().toString().toUtf8().toStdString());
+            }
+        }
         const auto found = measurements.find(stored.step.nodeId);
         if (found != measurements.end()) stored.step.measurements = found->second;
         children[stored.parent].push_back(std::move(stored));

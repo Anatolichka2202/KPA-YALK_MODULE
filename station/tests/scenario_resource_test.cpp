@@ -454,6 +454,36 @@ int main(int argc, char** argv)
         manualScenario.steps[0].arguments["lower"] = "nan";
         require(!manual.validate(manualScenario).empty(), "non-finite manual limit was accepted");
 
+        auto tableScenario = scenario;
+        ScenarioNode repeatedGroup;
+        repeatedGroup.id = "timed-group"; repeatedGroup.title = "Группа"; repeatedGroup.repeatCount = 2;
+        delay.arguments["duration_ms"] = "10";
+        repeatedGroup.children = {delay};
+        repeatedGroup.repeatRows = {{{"delay", "duration_ms", "20"}}, {{"delay", "duration_ms", "40"}}};
+        tableScenario.steps = {repeatedGroup};
+        require(timing.validate(tableScenario).empty(), "valid per-pass table rejected");
+        const auto tableStart = std::chrono::steady_clock::now();
+        const auto tableRun = timing.run(tableScenario, equipment, "profile", "SN", false);
+        require(tableRun.verdict == RunVerdict::Ok && std::chrono::steady_clock::now() - tableStart >= 60ms
+                    && tableRun.steps[0].children[0].children[0].appliedOverrides.at("duration_ms") == "20"
+                    && tableRun.steps[0].children[1].children[0].appliedOverrides.at("duration_ms") == "40",
+                "per-pass overrides were not executed independently");
+        auto invalidTable = tableScenario;
+        invalidTable.steps[0].repeatRows[1][0].value = "0";
+        require(!timing.validate(invalidTable).empty(), "invalid value in later pass was accepted");
+        invalidTable = tableScenario;
+        invalidTable.steps[0].repeatRows[1][0].argument = "unknown";
+        require(!timing.validate(invalidTable).empty(), "unknown table target was accepted");
+        invalidTable = tableScenario;
+        invalidTable.steps[0].repeatRows.pop_back();
+        require(!timing.validate(invalidTable).empty(), "missing table row was accepted");
+        bool oldTableRejected = false;
+        try {
+            (void)parseScenarioYaml("schema: 2\nid: table\nversion: 1\nsteps:\n"
+                "  - id: group\n    repeat_count: 2\n    repeat_rows: [[], []]\n    steps: []\n");
+        } catch (const std::exception&) { oldTableRejected = true; }
+        require(oldTableRejected, "repeat table accepted by old schema");
+
         ScenarioEngine switching;
         registerSwitchProcedures(switching);
         auto switchScenario = scenario;

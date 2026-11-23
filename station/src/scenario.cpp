@@ -199,6 +199,36 @@ void validateNode(
     if (node.repeatCount != 1 && node.children.empty())
         errors.emplace_back("Повтор можно задать только для группы: " + node.id);
 
+    if (!node.repeatRows.empty()) {
+        if (node.children.empty() || node.repeatCount < 2 || node.repeatRows.size() != node.repeatCount)
+            errors.emplace_back("Число строк таблицы должно совпадать с числом проходов группы: " + node.id);
+        for (const auto& row : node.repeatRows) {
+            std::set<std::pair<std::string, std::string>> targets;
+            for (const auto& value : row) {
+                if (value.stepId.empty() || value.argument.empty() || !targets.emplace(value.stepId, value.argument).second) {
+                    errors.emplace_back("Повторяющийся или пустой параметр таблицы группы: " + node.id);
+                    continue;
+                }
+                const ScenarioNode* target = nullptr;
+                bool nestedRepeat = false;
+                std::function<void(const ScenarioNode&, bool)> find = [&](const ScenarioNode& child, bool nested) {
+                    const bool inside = nested || child.repeatCount > 1;
+                    if (child.id == value.stepId) { target = &child; nestedRepeat = inside; }
+                    for (const auto& descendant : child.children) find(descendant, inside);
+                };
+                for (const auto& child : node.children) find(child, false);
+                if (!target || !target->children.empty() || nestedRepeat || !target->arguments.count(value.argument))
+                    errors.emplace_back("Таблица ссылается на отсутствующий параметр или вложенный повтор: "
+                        + value.stepId + "." + value.argument);
+                else if ((target->procedure == "parameter.measure" || target->procedure == "parameter.wait")
+                    && (value.argument == "source" || value.argument == "parameter" || value.argument == "unit"
+                        || value.argument == "conversion" || value.argument == "scale" || value.argument == "offset"
+                        || value.argument == "output_unit"))
+                    errors.emplace_back("Источник и преобразование параметра настраиваются в самом действии: " + value.stepId);
+            }
+        }
+    }
+
     std::set<std::string> resources;
     for (const auto& requirement : node.requiredResources) {
         if (requirement.resource.empty() || requirement.capability.empty()) {
@@ -265,6 +295,7 @@ std::vector<ScenarioNode> expandRepeats(const std::vector<ScenarioNode>& roots)
         ScenarioNode out = source;
         if (cloned) { out.definitionId = source.id; out.id = nextId(); }
         out.repeatCount = 1;
+        out.repeatRows.clear();
         out.children.clear();
         if (source.repeatCount > 1) {
             for (unsigned pass = 1; pass <= source.repeatCount; ++pass) {
@@ -273,7 +304,20 @@ std::vector<ScenarioNode> expandRepeats(const std::vector<ScenarioNode>& roots)
                 iteration.id = nextId();
                 iteration.definitionId = source.id;
                 iteration.title = "Проход " + std::to_string(pass) + " из " + std::to_string(source.repeatCount);
-                for (const auto& child : source.children) iteration.children.push_back(expand(child, true));
+                auto children = source.children;
+                if (!source.repeatRows.empty()) {
+                    for (const auto& overrideValue : source.repeatRows.at(pass - 1)) {
+                        std::function<void(ScenarioNode&)> apply = [&](ScenarioNode& child) {
+                            if (child.id == overrideValue.stepId) {
+                                child.arguments.at(overrideValue.argument) = overrideValue.value;
+                                child.appliedOverrides[overrideValue.argument] = overrideValue.value;
+                            }
+                            for (auto& nested : child.children) apply(nested);
+                        };
+                        for (auto& child : children) apply(child);
+                    }
+                }
+                for (const auto& child : children) iteration.children.push_back(expand(child, true));
                 out.children.push_back(std::move(iteration));
             }
         } else {
@@ -352,8 +396,11 @@ std::vector<std::string> ScenarioEngine::validate(const ScenarioDefinition& scen
         validateNode(node, procedures_, validators_, ids, errors);
     }
     if (errors.empty()) {
-        try { (void)expandRepeats(scenario.steps); }
-        catch (const std::exception& error) { errors.emplace_back(error.what()); }
+        try {
+            const auto expanded = expandRepeats(scenario.steps);
+            std::set<std::string> expandedIds;
+            for (const auto& node : expanded) validateNode(node, procedures_, validators_, expandedIds, errors);
+        } catch (const std::exception& error) { errors.emplace_back(error.what()); }
     }
     return errors;
 }
@@ -366,6 +413,7 @@ StepRunResult ScenarioEngine::runNode(
     StepRunResult result;
     result.nodeId = node.id;
     result.definitionId = node.definitionId;
+    result.appliedOverrides = node.appliedOverrides;
     result.title = node.title;
     result.tuRequirement = node.tuRequirement;
 

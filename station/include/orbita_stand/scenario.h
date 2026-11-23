@@ -77,6 +77,12 @@ struct StepExecutionPolicy {
     unsigned technicalRetries = 0;
 };
 
+struct RepeatOverride {
+    std::string stepId;
+    std::string argument;
+    std::string value;
+};
+
 struct ScenarioNode {
     std::string id;
     std::string title;
@@ -98,8 +104,12 @@ struct ScenarioNode {
 
     // Повтор относится к группе; каждый проход получает отдельную запись.
     unsigned repeatCount = 1;
+    // Строка соответствует проходу; значения заменяют только существующие
+    // параметры шагов, не затрагивая исходное определение сценария.
+    std::vector<std::vector<RepeatOverride>> repeatRows;
     // Заполняется только исполнителем для повторного вхождения.
     std::string definitionId;
+    std::map<std::string, std::string> appliedOverrides;
 };
 
 struct ScenarioDefinition {
@@ -167,6 +177,7 @@ struct StepRunResult {
     std::vector<StepRunResult> children;
     // Исходный шаг методики, если nodeId обозначает отдельное вхождение.
     std::string definitionId;
+    std::map<std::string, std::string> appliedOverrides;
 };
 
 struct ScenarioRunResult {

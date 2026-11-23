@@ -173,7 +173,7 @@ bool hasComponentId(const std::vector<ComponentProfile>& components, const std::
         [&](const ComponentProfile& component) { return component.id == id; });
 }
 
-ScenarioNode scenarioNode(const yaml::Node& value, bool supportsRepeat)
+ScenarioNode scenarioNode(const yaml::Node& value, int schema)
 {
     if (!value.isMap()) throw yaml::Error("Scenario step must be a mapping");
     ScenarioNode node;
@@ -189,7 +189,7 @@ ScenarioNode scenarioNode(const yaml::Node& value, bool supportsRepeat)
     node.policy.technicalRetries = consumeTechnicalRetries(node.arguments);
     const auto* repeat = value.find("repeat_count");
     if (repeat) {
-        if (!supportsRepeat) throw yaml::Error("repeat_count requires scenario schema 2");
+        if (schema < 2) throw yaml::Error("repeat_count requires scenario schema 2");
         if (!repeat->isScalar() || repeat->scalar.empty()
             || repeat->scalar.find_first_not_of("0123456789") != std::string::npos)
             throw yaml::Error("repeat_count must be an integer from 1 to 100");
@@ -202,10 +202,26 @@ ScenarioNode scenarioNode(const yaml::Node& value, bool supportsRepeat)
         }
     }
 
+    if (const auto* rows = value.find("repeat_rows")) {
+        if (schema < 3) throw yaml::Error("repeat_rows requires scenario schema 3");
+        if (!rows->isSequence() || rows->sequence.empty() || rows->sequence.size() > 100)
+            throw yaml::Error("repeat_rows must contain 1 to 100 rows");
+        for (const auto& row : rows->sequence) {
+            if (!row.isSequence()) throw yaml::Error("repeat row must be a sequence");
+            std::vector<RepeatOverride> overrides;
+            for (const auto& item : row.sequence) {
+                if (!item.isMap() || item.map.size() != 3 || !item.find("step") || !item.find("argument") || !item.find("value")
+                    || !item.at("step").isScalar() || !item.at("argument").isScalar() || !item.at("value").isScalar())
+                    throw yaml::Error("repeat override requires scalar step, argument and value");
+                overrides.push_back({item.value("step"), item.value("argument"), item.value("value")});
+            }
+            node.repeatRows.push_back(std::move(overrides));
+        }
+    }
     node.requiredResources = resourceRequirements(value.find("resources"));
     if (const auto* children = value.find("steps")) {
         if (!children->isSequence()) throw yaml::Error("Scenario steps must be a sequence");
-        for (const auto& child : children->sequence) node.children.push_back(scenarioNode(child, supportsRepeat));
+        for (const auto& child : children->sequence) node.children.push_back(scenarioNode(child, schema));
     }
     return node;
 }
@@ -268,7 +284,7 @@ static ScenarioDefinition parseScenarioRoot(const yaml::Node& root)
 {
     if (!root.isMap()) throw yaml::Error("Scenario root must be a mapping");
     const auto schema = root.value("schema");
-    if (schema != "1" && schema != "2") throw yaml::Error("Unsupported scenario schema");
+    if (schema != "1" && schema != "2" && schema != "3") throw yaml::Error("Unsupported scenario schema");
     ScenarioDefinition scenario;
     scenario.id = root.value("id");
     scenario.title = root.value("title");
@@ -280,7 +296,7 @@ static ScenarioDefinition parseScenarioRoot(const yaml::Node& root)
         ? PublicationState::Published : PublicationState::Draft;
     const auto& steps = root.at("steps");
     if (!steps.isSequence()) throw yaml::Error("Scenario steps must be a sequence");
-    for (const auto& step : steps.sequence) scenario.steps.push_back(scenarioNode(step, schema == "2"));
+    for (const auto& step : steps.sequence) scenario.steps.push_back(scenarioNode(step, schema == "1" ? 1 : schema == "2" ? 2 : 3));
     return scenario;
 }
 

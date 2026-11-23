@@ -27,6 +27,19 @@ QJsonObject nodeSnapshot(const ScenarioNode& node)
     result.insert(QStringLiteral("procedure"), QString::fromUtf8(node.procedure));
     result.insert(QStringLiteral("technical_retries"), static_cast<int>(node.policy.technicalRetries));
     if (node.repeatCount != 1) result.insert(QStringLiteral("repeat_count"), static_cast<int>(node.repeatCount));
+    if (!node.repeatRows.empty()) {
+        QJsonArray rows;
+        for (const auto& row : node.repeatRows) {
+            QJsonArray values;
+            for (const auto& item : row)
+                values.append(QJsonObject{{QStringLiteral("step"), QString::fromUtf8(item.stepId)},
+                    {QStringLiteral("argument"), QString::fromUtf8(item.argument)},
+                    {QStringLiteral("value"), QString::fromUtf8(item.value)}});
+            rows.append(values);
+        }
+        result.insert(QStringLiteral("repeat_rows"), rows);
+    }
+
     QJsonObject arguments;
     for (const auto& [key, value] : node.arguments)
         arguments.insert(QString::fromUtf8(key), QString::fromUtf8(value));

@@ -682,6 +682,8 @@ void MainWindow::setupToolBar()
                         const QString indent(level * 2, QLatin1Char(' '));
                         text << QStringLiteral("%1%2 — %3").arg(indent, QString::fromStdString(step.title),
                             QString::fromLatin1(orbita::stand::toString(step.verdict)));
+                        for (const auto& [key, value] : step.appliedOverrides)
+                            text << QStringLiteral("%1  %2: %3").arg(indent, QString::fromStdString(key), QString::fromStdString(value));
                         for (const auto& measurement : step.measurements)
                             text << QStringLiteral("%1  %2: %3 %4").arg(indent, QString::fromStdString(measurement.title),
                                 QString::number(measurement.measured, 'g', 12), QString::fromStdString(measurement.unit));

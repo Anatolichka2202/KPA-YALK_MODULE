@@ -1136,6 +1136,19 @@ int runChild(const QString& mode)
                 tree->setCurrentItem(group);
                 if (!repeat->isEnabled()) return;
                 repeat->setValue(2);
+                auto* repeatTable = editor->findChild<QPushButton*>(QStringLiteral("configureRepeatTable"));
+                if (!repeatTable || !repeatTable->isEnabled()) return;
+                QTimer::singleShot(0, [] {
+                    auto* config = qobject_cast<QDialog*>(QApplication::activeModalWidget());
+                    if (!config) return;
+                    auto* table = config->findChild<QTableWidget*>(QStringLiteral("repeatValuesTable"));
+                    auto* buttons = config->findChild<QDialogButtonBox*>();
+                    if (!table || !buttons || table->rowCount() != 2 || table->columnCount() != 1) return;
+                    table->item(0, 0)->setText(QStringLiteral("20"));
+                    table->item(1, 0)->setText(QStringLiteral("40"));
+                    buttons->button(QDialogButtonBox::Ok)->click();
+                });
+                repeatTable->click();
                 QTimer::singleShot(0, [] {
                     if (auto* versionInput = qobject_cast<QInputDialog*>(QApplication::activeModalWidget())) {
                         versionInput->setTextValue(QStringLiteral("2"));
@@ -1154,8 +1167,8 @@ int runChild(const QString& mode)
                     && createdVersion.startsWith(QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation)),
                 "new scenario was not created in user storage and selected for execution");
         QFile versionFile(createdVersion);
-        require(versionFile.open(QIODevice::ReadOnly) && versionFile.readAll().startsWith("schema: 2\n"),
-                "repeated scenario did not use a schema rejected by older stations");
+        require(versionFile.open(QIODevice::ReadOnly) && versionFile.readAll().startsWith("schema: 3\n"),
+                "repeat table did not use a schema rejected by older stations");
         versionFile.close();
         require(orbita::stand::loadScenarioYaml(createdVersion.toStdString()).monitorPageId == pageId.toStdString()
                     && pageList->currentData().toString() == pageId,
@@ -1339,8 +1352,10 @@ int runChild(const QString& mode)
             return step.children.size() == 2 && step.children.front().title == "Проход 1 из 2";
         });
         require(group != persisted->steps.end() && group->children[0].nodeId != group->children[1].nodeId
-                    && group->children[0].children.size() == 1 && group->children[1].children.size() == 1,
-                "repeated group was not executed and saved as distinct iterations");
+                    && group->children[0].children.size() == 1 && group->children[1].children.size() == 1
+                    && group->children[0].children[0].appliedOverrides.at("duration_ms") == "20"
+                    && group->children[1].children[0].appliedOverrides.at("duration_ms") == "40",
+                "repeat table values or distinct iterations were not saved");
     }
     if (mode == "--create-new") {
         const auto waited = std::find_if(persisted->steps.begin(), persisted->steps.end(), [](const auto& step) {

@@ -25,6 +25,8 @@
 #include <QScrollArea>
 #include <QSplitter>
 #include <QTreeWidget>
+#include <QTableWidget>
+#include <QHeaderView>
 #include <QVBoxLayout>
 
 #include <algorithm>
@@ -108,6 +110,12 @@ ScenarioVisualEditor::ScenarioVisualEditor(QString path, QWidget* parent)
     groupRepeatCount_->setEnabled(false);
     groupRepeatCount_->setToolTip(QStringLiteral("Одинаковые действия выполняются указанное число раз; результаты проходов сохраняются отдельно."));
     form->addRow(QStringLiteral("Проходов группы:"), groupRepeatCount_);
+    repeatTableSettings_ = new QPushButton(QStringLiteral("Значения по проходам…"), formHost);
+    repeatTableSettings_->setObjectName(QStringLiteral("configureRepeatTable"));
+    repeatTableSettings_->setEnabled(false);
+    form->addRow(QString(), repeatTableSettings_);
+    connect(repeatTableSettings_, &QPushButton::clicked, this, &ScenarioVisualEditor::configureRepeatTable);
+
     connect(groupRepeatCount_, QOverload<int>::of(&QSpinBox::valueChanged), this, [this] {
         if (!updatingFields_) setDirty(true);
     });
@@ -441,6 +449,7 @@ void ScenarioVisualEditor::setEditorEnabled(bool enabled)
     procedureChoice_->setEnabled(enabled);
     const auto* selected = findNode(selectedPath());
     groupRepeatCount_->setEnabled(enabled && selected && (!selected->children.empty() || selected->repeatCount != 1));
+    repeatTableSettings_->setEnabled(enabled && selected && !selected->children.empty());
     monitorPageChoice_->setEnabled(enabled);
     telemetrySettings_->setEnabled(enabled && procedure_->text() == QStringLiteral("telemetry.health"));
     measurementSettings_->setEnabled(enabled && (procedure_->text() == QStringLiteral("parameter.measure")
@@ -519,6 +528,7 @@ void ScenarioVisualEditor::showNode(const orbita::stand::ScenarioNode& node)
     switchConfigured_ = false;
     groupRepeatCount_->setValue(static_cast<int>(node.repeatCount));
     groupRepeatCount_->setEnabled(!published_ && (!node.children.empty() || node.repeatCount != 1));
+    repeatTableSettings_->setEnabled(!published_ && !node.children.empty());
     id_->setText(QString::fromStdString(node.id));
     title_->setText(QString::fromStdString(node.title));
     tu_->setText(QString::fromStdString(node.tuRequirement));
@@ -908,6 +918,95 @@ bool ScenarioVisualEditor::configureSwitchForNode(const orbita::stand::ScenarioN
     resources_->setPlainText(resource->currentData().toString() + QStringLiteral(" | stand.switch_matrix"));
     switchConfigured_ = true;
     return true;
+}
+
+void ScenarioVisualEditor::configureRepeatTable()
+{
+    if (published_ || !commitEditorToSelectedNode()) return;
+    auto* node = findNode(selectedPath());
+    if (!node || node->children.empty()) return;
+    if (node->repeatCount < 2) {
+        QMessageBox::information(this, QStringLiteral("Проходы"), QStringLiteral("Укажите не менее двух проходов."));
+        return;
+    }
+    if (node->repeatRows.size() > node->repeatCount
+        && QMessageBox::question(this, QStringLiteral("Проходы"),
+            QStringLiteral("Число проходов уменьшилось. Удалить лишние строки таблицы?"),
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes) return;
+    struct Column { std::string step; std::string argument; std::string initial; QString title; };
+    std::vector<Column> columns;
+    std::function<void(const orbita::stand::ScenarioNode&)> collect = [&](const auto& child) {
+        if (child.repeatCount > 1) return;
+        if (child.children.empty()) {
+            for (const auto& [key, value] : child.arguments) {
+                if ((child.procedure == "parameter.measure" || child.procedure == "parameter.wait")
+                    && (key == "source" || key == "parameter" || key == "unit" || key == "conversion"
+                        || key == "scale" || key == "offset" || key == "output_unit")) continue;
+                columns.push_back({child.id, key, value, QString::fromStdString(child.title) + QStringLiteral(" · ") + QString::fromStdString(key)});
+            }
+        } else for (const auto& nested : child.children) collect(nested);
+    };
+    for (const auto& child : node->children) collect(child);
+    if (columns.empty() || columns.size() > 64) {
+        QMessageBox::warning(this, QStringLiteral("Проходы"),
+            QStringLiteral("В группе нет доступных параметров или их более 64. Вложенные повторы настраиваются отдельно."));
+        return;
+    }
+    for (const auto& row : node->repeatRows) for (const auto& value : row) {
+        const auto found = std::find_if(columns.begin(), columns.end(), [&](const auto& column) {
+            return column.step == value.stepId && column.argument == value.argument;
+        });
+        if (found == columns.end()) {
+            QMessageBox::warning(this, QStringLiteral("Проходы"),
+                QStringLiteral("Таблица содержит удалённый или недоступный параметр. Данные не изменены."));
+            return;
+        }
+    }
+    QDialog dialog(this);
+    dialog.setWindowTitle(QStringLiteral("Значения по проходам"));
+    dialog.resize(900, 520);
+    auto* layout = new QVBoxLayout(&dialog);
+    auto* note = new QLabel(QStringLiteral("Каждая строка — отдельный проход. Изменяйте только нужные значения; остальные остаются как в действиях. Вложенные повторы настраиваются отдельно."), &dialog);
+    note->setWordWrap(true);
+    layout->addWidget(note);
+    auto* table = new QTableWidget(static_cast<int>(node->repeatCount), static_cast<int>(columns.size()), &dialog);
+    table->setObjectName(QStringLiteral("repeatValuesTable"));
+    table->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+    for (int col = 0; col < static_cast<int>(columns.size()); ++col) {
+        table->setHorizontalHeaderItem(col, new QTableWidgetItem(columns[col].title));
+        for (int row = 0; row < table->rowCount(); ++row) {
+            auto value = columns[col].initial;
+            if (static_cast<std::size_t>(row) < node->repeatRows.size())
+                for (const auto& saved : node->repeatRows[static_cast<std::size_t>(row)])
+                    if (saved.stepId == columns[col].step && saved.argument == columns[col].argument) value = saved.value;
+            table->setItem(row, col, new QTableWidgetItem(QString::fromStdString(value)));
+        }
+    }
+    layout->addWidget(table);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    auto* clear = buttons->addButton(QStringLiteral("Одинаковые значения"), QDialogButtonBox::ActionRole);
+    bool removeTable = false;
+    connect(clear, &QPushButton::clicked, &dialog, [&] { removeTable = true; dialog.accept(); });
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, [&] {
+        for (int row = 0; row < table->rowCount(); ++row) for (int col = 0; col < table->columnCount(); ++col)
+            if (!table->item(row, col) || table->item(row, col)->text().contains(QLatin1Char('\n'))
+                || table->item(row, col)->text().contains(QLatin1Char('\r'))) {
+                QMessageBox::warning(&dialog, QStringLiteral("Проходы"), QStringLiteral("Значения должны занимать одну строку.")); return;
+            }
+        dialog.accept();
+    });
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    layout->addWidget(buttons);
+    if (dialog.exec() != QDialog::Accepted) return;
+    std::vector<std::vector<orbita::stand::RepeatOverride>> rows;
+    if (!removeTable) {
+        rows.resize(static_cast<std::size_t>(table->rowCount()));
+        for (int row = 0; row < table->rowCount(); ++row) for (int col = 0; col < table->columnCount(); ++col)
+            rows[static_cast<std::size_t>(row)].push_back({columns[col].step, columns[col].argument,
+                table->item(row, col)->text().toUtf8().toStdString()});
+    }
+    node->repeatRows = std::move(rows);
+    setDirty(true);
 }
 
 void ScenarioVisualEditor::configureManualMeasurement()
@@ -1441,8 +1540,15 @@ QString ScenarioVisualEditor::serialize() const
         if (node.repeatCount != 1) return true;
         return std::any_of(node.children.begin(), node.children.end(), hasRepeat);
     };
+    std::function<bool(const orbita::stand::ScenarioNode&)> hasTable;
+    hasTable = [&](const auto& node) {
+        if (!node.repeatRows.empty()) return true;
+        return std::any_of(node.children.begin(), node.children.end(), hasTable);
+    };
     const bool repeated = std::any_of(scenario_.steps.begin(), scenario_.steps.end(), hasRepeat);
-    output += repeated ? QStringLiteral("schema: 2\n") : QStringLiteral("schema: 1\n");
+    const bool table = std::any_of(scenario_.steps.begin(), scenario_.steps.end(), hasTable);
+    output += table ? QStringLiteral("schema: 3\n")
+        : repeated ? QStringLiteral("schema: 2\n") : QStringLiteral("schema: 1\n");
     output += QStringLiteral("id: %1\n").arg(quote(scenario_.id));
     output += QStringLiteral("title: %1\n").arg(quote(scenario_.title));
     output += QStringLiteral("version: %1\n").arg(quote(scenario_.version));
@@ -1468,6 +1574,20 @@ void ScenarioVisualEditor::appendNodeYaml(QString& output, const orbita::stand::
     if (!node.tuRequirement.empty()) output += prefix + QStringLiteral("  tu: %1\n").arg(quote(node.tuRequirement));
     if (!node.procedure.empty()) output += prefix + QStringLiteral("  procedure: %1\n").arg(quote(node.procedure));
     if (node.repeatCount != 1) output += prefix + QStringLiteral("  repeat_count: %1\n").arg(node.repeatCount);
+    if (!node.repeatRows.empty()) {
+        output += prefix + QStringLiteral("  repeat_rows:\n");
+        for (const auto& row : node.repeatRows) {
+            if (row.empty()) { output += prefix + QStringLiteral("    - []\n"); continue; }
+            bool first = true;
+            for (const auto& item : row) {
+                output += prefix + (first ? QStringLiteral("    - - step: %1\n") : QStringLiteral("      - step: %1\n")).arg(quote(item.stepId));
+                output += prefix + QStringLiteral("        argument: %1\n").arg(quote(item.argument));
+                output += prefix + QStringLiteral("        value: %1\n").arg(quote(item.value));
+                first = false;
+            }
+        }
+    }
+
     if (!node.requiredCapabilities.empty()) {
         output += prefix + QStringLiteral("  requires:\n");
         for (const auto& capability : node.requiredCapabilities)

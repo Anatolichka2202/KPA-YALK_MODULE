@@ -126,7 +126,7 @@ bool ScenarioYamlEditor::validate()
 {
     try {
         const auto root = orbita::stand::yaml::parse(editor_->toPlainText().toStdString());
-        if (!root.isMap() || (root.value("schema") != "1" && !(scenario_ && root.value("schema") == "2")))
+        if (!root.isMap() || (root.value("schema") != "1" && !(scenario_ && (root.value("schema") == "2" || root.value("schema") == "3"))))
             throw std::runtime_error("неподдерживаемая версия схемы");
         if (scenario_) {
             if (root.value("id").empty() || root.value("version").empty() || !root.find("steps"))
