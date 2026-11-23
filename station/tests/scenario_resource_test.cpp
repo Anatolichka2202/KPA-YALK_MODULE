@@ -464,7 +464,7 @@ int main(int argc, char** argv)
         require(timing.validate(tableScenario).empty(), "valid per-pass table rejected");
         const auto tableStart = std::chrono::steady_clock::now();
         const auto tableRun = timing.run(tableScenario, equipment, "profile", "SN", false);
-        require(tableRun.verdict == RunVerdict::Ok && std::chrono::steady_clock::now() - tableStart >= 60ms
+        require(tableRun.verdict == RunVerdict::Ok && std::chrono::steady_clock::now() - tableStart >= std::chrono::milliseconds(60)
                     && tableRun.steps[0].children[0].children[0].appliedOverrides.at("duration_ms") == "20"
                     && tableRun.steps[0].children[1].children[0].appliedOverrides.at("duration_ms") == "40",
                 "per-pass overrides were not executed independently");
