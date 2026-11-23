@@ -63,5 +63,17 @@
       "Инженерная проверка на симуляторе"
     ],
     "sample": "reference"
-  }
+  },
+  "hmiPages": [
+    {
+      "id": "main",
+      "title": "Эталон · обзор",
+      "source": ":/ui/hmi/reference_device.json"
+    },
+    {
+      "id": "diagnostics",
+      "title": "Эталон · сигналы",
+      "source": ":/ui/hmi/reference_device_diagnostics.json"
+    }
+  ]
 }
