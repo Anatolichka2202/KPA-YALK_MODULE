@@ -1451,9 +1451,15 @@ int runParent()
         QEventLoop wait;
         QTimer::singleShot(350, &wait, &QEventLoop::quit);
         wait.exec();
-        require(plot->graph(0)->data()->isEmpty()
-                    && values->item(0, 4)->text().contains(QStringLiteral("нет единицы")),
-                "unconfigured unit was plotted as a confirmed scale");
+        if (!plot->graph(0)->data()->isEmpty()
+            || !values->item(0, 4)->text().contains(QStringLiteral("нет единицы"))) {
+            std::cerr << "unit plot diagnostic: samples=" << plot->graph(0)->data()->size()
+                      << " status=" << values->item(0, 4)->text().toUtf8().constData()
+                      << " diagnostic=" << values->item(0, 4)->toolTip().toUtf8().constData()
+                      << " unit=" << values->item(0, 3)->text().toUtf8().constData()
+                      << std::endl;
+            require(false, "unconfigured unit was plotted as a confirmed scale");
+        }
         require(plot->graph(1)->data()->isEmpty()
                     && values->item(1, 2)->text() == QStringLiteral("—")
                     && values->item(1, 4)->text() == QStringLiteral("Недостоверно"),
