@@ -100,12 +100,14 @@ HomePage::HomePage(QWidget* parent)
 
     auto* ktmaTitle = new QLabel(QStringLiteral("КТМА"), ktmaCard);
     ktmaTitle->setProperty("title", true);
+    ktmaTitle->setObjectName(QStringLiteral("projectDeliveryTitle"));
     ktmaLayout->addWidget(ktmaTitle);
 
     auto* ktmaText = new QLabel(QStringLiteral(
         "Готовые проверки и производственные маршруты оборудования КТМА."), ktmaCard);
     ktmaText->setProperty("muted", true);
     ktmaText->setWordWrap(true);
+    ktmaText->setObjectName(QStringLiteral("projectDeliveryDescription"));
     ktmaLayout->addWidget(ktmaText);
 
     auto* openKtma = actionButton(QStringLiteral("ОТКРЫТЬ КТМА"), ktmaCard, true);
@@ -132,11 +134,22 @@ HomePage::HomePage(QWidget* parent)
     connect(genericAction, &QPushButton::clicked, this, &HomePage::freeWorkspaceRequested);
 }
 
-void HomePage::setProjectWorkflows(const QVector<HomeWorkflowEntry>& workflows)
+void HomePage::setProjectWorkflows(const QVector<HomeWorkflowEntry>& workflows,
+                                   const QString& projectTitle, bool ktmaMode)
 {
     if (!rootLayout_) return;
     if (genericCard_) genericCard_->show();
-    if (ktmaCard_) ktmaCard_->show();
+    if (ktmaCard_) {
+        ktmaCard_->show();
+        if (auto* title = ktmaCard_->findChild<QLabel*>(QStringLiteral("projectDeliveryTitle")))
+            title->setText(projectTitle);
+        if (auto* detail = ktmaCard_->findChild<QLabel*>(QStringLiteral("projectDeliveryDescription")))
+            detail->setText(ktmaMode
+                ? QStringLiteral("Готовые проверки и производственные маршруты оборудования КТМА.")
+                : QStringLiteral("Методики и проверки выбранного пакета. Свободный контур остаётся общим для станции."));
+        if (auto* launch = ktmaCard_->findChild<QPushButton*>(QStringLiteral("openKtmaDelivery")))
+            launch->setText(QStringLiteral("ОТКРЫТЬ %1").arg(projectTitle.toUpper()));
+    }
     if (auto* section = findChild<QLabel*>(QStringLiteral("legacyWorkflowSection")))
         section->hide();
 
@@ -158,25 +171,26 @@ void HomePage::setProjectWorkflows(const QVector<HomeWorkflowEntry>& workflows)
     layout->addWidget(back, 0, Qt::AlignLeft);
     connect(back, &QPushButton::clicked, this, [this] { showKtmaMenu(false); });
 
-    auto* heading = new QLabel(QStringLiteral("КТМА · ПРОВЕРКИ"), card);
+    auto* heading = new QLabel(QStringLiteral("%1 · ПРОВЕРКИ").arg(projectTitle.toUpper()), card);
     heading->setProperty("kicker", true);
     layout->addWidget(heading);
-    auto* hint = new QLabel(QStringLiteral(
-        "ТУ 5.6 — фиксированный маршрут УБСИ. Производственные пакеты выбираются внутри производственной сессии."), card);
+    auto* hint = new QLabel(ktmaMode ? QStringLiteral(
+        "ТУ 5.6 — фиксированный маршрут УБСИ. Производственные пакеты выбираются внутри производственной сессии.")
+        : QStringLiteral("Доступные действия определяются пакетом проекта, а не прошиваются в универсальный интерфейс."), card);
     hint->setProperty("muted", true);
     hint->setWordWrap(true);
     layout->addWidget(hint);
 
     for (const auto& workflow : workflows) {
-        if (workflow.kind == QStringLiteral("free")) continue;
+        if (ktmaMode && workflow.kind == QStringLiteral("free")) continue;
         if (!workflow.available) continue;
         QString title = workflow.title;
-        if (workflow.kind == QStringLiteral("tu"))
-            title = QStringLiteral("ПРОВЕРКА УБСИ ПО ТУ");
-        else if (workflow.kind == QStringLiteral("production"))
-            title = QStringLiteral("ПРОИЗВОДСТВО УБСИ");
-        else if (workflow.kind == QStringLiteral("free"))
-            title = QStringLiteral("СВОБОДНАЯ ИНЖЕНЕРНАЯ ПРОВЕРКА");
+        if (ktmaMode) {
+            if (workflow.kind == QStringLiteral("tu"))
+                title = QStringLiteral("ПРОВЕРКА УБСИ ПО ТУ");
+            else if (workflow.kind == QStringLiteral("production"))
+                title = QStringLiteral("ПРОИЗВОДСТВО УБСИ");
+        }
         auto* button = actionButton(title, card, workflow.kind == QStringLiteral("tu"));
         button->setObjectName(QStringLiteral("projectWorkflow_%1").arg(workflow.id));
         layout->addWidget(button);
