@@ -799,10 +799,8 @@ int main(int argc, char* argv[])
                 auto* pageEditor = window.findChild<miltech::ui::HmiDeliveryEditor*>();
                 auto* pageViewer = window.findChild<miltech::ui::HmiDeliveryViewer*>();
                 auto* document = pages ? pages->pageAt(0).document : nullptr;
-                auto* designer = pageEditor
-                    ? pageEditor->findChild<miltech::ui::HmiDesignerPage*>() : nullptr;
-                auto* viewer = pageViewer
-                    ? pageViewer->findChild<miltech::ui::HmiReadOnlyPanel*>() : nullptr;
+                auto* designer = pageEditor ? pageEditor->currentDesigner() : nullptr;
+                auto* viewer = pageViewer ? pageViewer->currentPanel() : nullptr;
                 if (!pages || !pageEditor || !pageViewer || !document
                     || !designer || !viewer || document->elements().isEmpty()) {
                     qWarning() << "HMI smoke missing view/controller in" << composition.id;
@@ -816,7 +814,9 @@ int main(int argc, char* argv[])
                                << "expected" << expected
                                << "designer" << designerCount
                                << "viewer" << viewerCount;
-                    return 51;
+                    return designerCount != expected
+                        ? 100 + qMin(40, designerCount)
+                        : 150 + qMin(40, viewerCount);
                 }
                 auto* button = designer->addButton(QStringLiteral("numeric"));
                 if (!button) return 52;
