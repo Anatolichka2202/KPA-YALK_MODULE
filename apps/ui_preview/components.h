@@ -11,6 +11,8 @@
 
 #include <functional>
 
+class QBoxLayout;
+class QResizeEvent;
 class QCheckBox;
 class QComboBox;
 class QLabel;
@@ -92,7 +94,11 @@ public:
     QComboBox* waveformSelector() const noexcept { return waveformSelector_; }
     TrendCanvas* canvas() const noexcept { return canvas_; }
 
+protected:
+    void resizeEvent(QResizeEvent* event) override;
+
 private:
+    QBoxLayout* header_ = nullptr;
     QCheckBox* syntheticToggle_ = nullptr;
     QComboBox* waveformSelector_ = nullptr;
     TrendCanvas* canvas_ = nullptr;
@@ -103,6 +109,13 @@ class SignalTopology final : public QFrame {
 
 public:
     explicit SignalTopology(bool reference, QWidget* parent = nullptr);
+
+protected:
+    void resizeEvent(QResizeEvent* event) override;
+
+private:
+    QBoxLayout* nodes_ = nullptr;
+    QVector<QLabel*> arrows_;
 };
 
 class EquipmentOverview final : public QWidget {
@@ -114,7 +127,11 @@ public:
     int equipmentCount() const noexcept { return count_; }
     QListWidget* equipmentList() const noexcept { return list_; }
 
+protected:
+    void resizeEvent(QResizeEvent* event) override;
+
 private:
+    QBoxLayout* layout_ = nullptr;
     int count_ = 0;
     QListWidget* list_ = nullptr;
     QLabel* selectedName_ = nullptr;

@@ -16,6 +16,7 @@
 #include <QPainterPath>
 #include <QPen>
 #include <QPushButton>
+#include <QResizeEvent>
 #include <QSortFilterProxyModel>
 #include <QSplitter>
 #include <QTableView>
@@ -327,6 +328,7 @@ TrendPanel::TrendPanel(QWidget* parent)
     layout->setSpacing(10);
 
     auto* header = new QHBoxLayout;
+    header_ = header;
     auto* title = label(QStringLiteral("График сигнала"), "section");
     header->addWidget(title);
     header->addStretch();
@@ -355,6 +357,13 @@ TrendPanel::TrendPanel(QWidget* parent)
         "muted"));
 }
 
+void TrendPanel::resizeEvent(QResizeEvent* event)
+{
+    QFrame::resizeEvent(event);
+    header_->setDirection(event->size().width() < 450
+                              ? QBoxLayout::TopToBottom : QBoxLayout::LeftToRight);
+}
+
 SignalTopology::SignalTopology(bool reference, QWidget* parent)
     : QFrame(parent)
 {
@@ -367,27 +376,45 @@ SignalTopology::SignalTopology(bool reference, QWidget* parent)
         "МАКЕТ · НЕ ФИЗИЧЕСКАЯ СХЕМА СОЕДИНЕНИЙ, НЕ ИНДИКАЦИЯ КОММУТАЦИИ"),
         "warning"));
     auto* nodes = new QHBoxLayout;
+    nodes_ = nodes;
     nodes->setSpacing(9);
     if (reference) {
         nodes->addWidget(flowNode(QStringLiteral("Имитатор"),
                                   QStringLiteral("UI источник")));
-        nodes->addWidget(label(QStringLiteral("→"), "section"));
+        auto* arrow = label(QStringLiteral("→"), "section");
+        arrows_.append(arrow);
+        nodes->addWidget(arrow);
         nodes->addWidget(flowNode(QStringLiteral("Параметры"),
                                   QStringLiteral("Представление")));
-        nodes->addWidget(label(QStringLiteral("→"), "section"));
+        arrow = label(QStringLiteral("→"), "section");
+        arrows_.append(arrow);
+        nodes->addWidget(arrow);
         nodes->addWidget(flowNode(QStringLiteral("Анализ"),
                                   QStringLiteral("Отображение")));
     } else {
         nodes->addWidget(flowNode(QStringLiteral("Источник"),
                                   QStringLiteral("Роль из профиля")));
-        nodes->addWidget(label(QStringLiteral("→"), "section"));
+        auto* arrow = label(QStringLiteral("→"), "section");
+        arrows_.append(arrow);
+        nodes->addWidget(arrow);
         nodes->addWidget(flowNode(QStringLiteral("Коммутация"),
                                   QStringLiteral("Логическая роль")));
-        nodes->addWidget(label(QStringLiteral("→"), "section"));
+        arrow = label(QStringLiteral("→"), "section");
+        arrows_.append(arrow);
+        nodes->addWidget(arrow);
         nodes->addWidget(flowNode(QStringLiteral("Изделие"),
                                   QStringLiteral("УБСИ · тип")));
     }
     layout->addLayout(nodes);
+}
+
+void SignalTopology::resizeEvent(QResizeEvent* event)
+{
+    QFrame::resizeEvent(event);
+    const bool compact = event->size().width() < 500;
+    nodes_->setDirection(compact ? QBoxLayout::TopToBottom : QBoxLayout::LeftToRight);
+    for (auto* arrow : arrows_)
+        arrow->setText(compact ? QStringLiteral("↓") : QStringLiteral("→"));
 }
 
 EquipmentOverview::EquipmentOverview(const QStringList& components, QWidget* parent)
@@ -395,6 +422,7 @@ EquipmentOverview::EquipmentOverview(const QStringList& components, QWidget* par
 {
     setObjectName(QStringLiteral("ui.equipmentOverview"));
     auto* layout = new QHBoxLayout(this);
+    layout_ = layout;
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(12);
 
@@ -438,6 +466,13 @@ EquipmentOverview::EquipmentOverview(const QStringList& components, QWidget* par
             "Фактическая доступность и состояние пока неизвестны."));
     });
     if (!components.isEmpty()) list_->setCurrentRow(0);
+}
+
+void EquipmentOverview::resizeEvent(QResizeEvent* event)
+{
+    QWidget::resizeEvent(event);
+    layout_->setDirection(event->size().width() < 650
+                              ? QBoxLayout::TopToBottom : QBoxLayout::LeftToRight);
 }
 
 EventLogPanel::EventLogPanel(QWidget* parent)

@@ -23,6 +23,7 @@
 #include <QMainWindow>
 #include <QPushButton>
 #include <QScrollArea>
+#include <QResizeEvent>
 #include <QStyle>
 #include <QSettings>
 #include <QStackedWidget>
@@ -97,6 +98,61 @@ QFrame* empty(const QString& title, const QString& detail)
     return frame;
 }
 
+// При недостатке ширины переносим существующие элементы строки друг под друга.
+class AdaptiveRow final : public QWidget {
+public:
+    explicit AdaptiveRow(QWidget* parent = nullptr) : QWidget(parent), row_(new QHBoxLayout(this))
+    {
+        row_->setContentsMargins(0, 0, 0, 0);
+    }
+    QBoxLayout* row() const { return row_; }
+
+protected:
+    void resizeEvent(QResizeEvent* event) override
+    {
+        QWidget::resizeEvent(event);
+        row_->setDirection(event->size().width() < 550
+                               ? QBoxLayout::TopToBottom : QBoxLayout::LeftToRight);
+    }
+
+private:
+    QBoxLayout* row_;
+};
+
+// Перестраиваем только существующие карточки: порядок чтения при этом не меняется.
+class AdaptiveCards final : public QWidget {
+public:
+    explicit AdaptiveCards(QWidget* parent = nullptr) : QWidget(parent), grid_(new QGridLayout(this))
+    {
+        grid_->setContentsMargins(0, 0, 0, 0);
+        grid_->setSpacing(12);
+    }
+
+    void addCard(QWidget* card)
+    {
+        cards_.append(card);
+        grid_->addWidget(card, 0, cards_.size() - 1);
+    }
+
+protected:
+    void resizeEvent(QResizeEvent* event) override
+    {
+        QWidget::resizeEvent(event);
+        const int columns = event->size().width() < 620 ? 1 : cards_.size();
+        if (columns == columns_) return;
+        columns_ = columns;
+        for (int i = 0; i < cards_.size(); ++i) {
+            grid_->removeWidget(cards_.at(i));
+            grid_->addWidget(cards_.at(i), i / columns, i % columns);
+        }
+    }
+
+private:
+    QGridLayout* grid_;
+    QVector<QWidget*> cards_;
+    int columns_ = 0;
+};
+
 struct Page {
     QWidget* widget;
     QVBoxLayout* body;
@@ -127,7 +183,7 @@ public:
     explicit UiPreviewWindow(const QString& manifestDirectory = QStringLiteral(":/ui/manifests"))
     {
         setWindowTitle(QStringLiteral("MilTechStation · UI Preview"));
-        setMinimumSize(1120, 720);
+        setMinimumSize(800, 600);
         resize(1510, 900);
         setAnimated(false);
 
@@ -139,21 +195,28 @@ public:
 
         auto* header = new QFrame;
         header->setObjectName(QStringLiteral("header"));
+        header->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
         auto* headerLayout = new QHBoxLayout(header);
         headerLayout->setContentsMargins(24, 15, 24, 15);
         headerLayout->setSpacing(17);
-        headerLayout->addWidget(label(QStringLiteral("MilTechStation"), "appName"));
-        headerLayout->addStretch();
+        auto* identity = new QHBoxLayout;
+        identity->addWidget(label(QStringLiteral("MilTechStation"), "appName"));
+        identity->addStretch();
         context_ = label(QStringLiteral("КТМА"), "muted");
-        headerLayout->addWidget(context_);
+        identity->addWidget(context_);
+        headerLayout->addLayout(identity, 1);
+        auto* selection = new QHBoxLayout;
         modeSelector_ = new QComboBox;
         modeSelector_->setObjectName(QStringLiteral("ui.variantSelector"));
         compositions_ = miltech::ui::loadPreviewCompositions(manifestDirectory);
         for (const auto& composition : compositions_)
             modeSelector_->addItem(composition.selectorTitle, composition.id);
         modeSelector_->setAccessibleName(QStringLiteral("Вариант интерфейса"));
-        headerLayout->addWidget(modeSelector_);
-        headerLayout->addWidget(label(QStringLiteral("UI PREVIEW · БЕЗ ОБОРУДОВАНИЯ"), "demo"));
+        modeSelector_->setMinimumHeight(modeSelector_->sizeHint().height());
+        selection->addWidget(modeSelector_);
+        selection->addWidget(label(QStringLiteral("UI PREVIEW · БЕЗ ОБОРУДОВАНИЯ"), "demo"));
+        headerLayout->addLayout(selection);
+        headerLayout_ = headerLayout;
         root->addWidget(header);
 
         auto* workspace = new QHBoxLayout;
@@ -161,17 +224,24 @@ public:
         workspace->setSpacing(0);
         auto* sidebar = new QFrame;
         sidebar->setObjectName(QStringLiteral("sidebar"));
-        sidebar->setFixedWidth(210);
         navLayout_ = new QVBoxLayout(sidebar);
         navLayout_->setContentsMargins(12, 17, 12, 14);
         navLayout_->setSpacing(6);
-        workspace->addWidget(sidebar);
+        auto* navigationScroll = new QScrollArea;
+        navigationScroll->setObjectName(QStringLiteral("ui.navigationScroll"));
+        navigationScroll->setWidgetResizable(true);
+        navigationScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        navigationScroll->setFixedWidth(290);
+        navigationScroll->setWidget(sidebar);
+        workspace->addWidget(navigationScroll);
         stack_ = new QStackedWidget;
+        stack_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
         workspace->addWidget(stack_, 1);
         root->addLayout(workspace, 1);
 
         auto* footer = new QFrame;
         footer->setObjectName(QStringLiteral("footer"));
+        footer->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
         auto* footerLayout = new QHBoxLayout(footer);
         footerLayout->setContentsMargins(22, 10, 22, 10);
         footerLayout->addWidget(label(QStringLiteral("ПРОТОТИП UI · НЕТ ДАННЫХ ОТ СТЕНДА"), "warning"));
@@ -186,6 +256,18 @@ public:
     }
 
 protected:
+    void resizeEvent(QResizeEvent* event) override
+    {
+        QMainWindow::resizeEvent(event);
+        if (headerLayout_) {
+            headerLayout_->setDirection(event->size().width() < 1050
+                                            ? QBoxLayout::TopToBottom : QBoxLayout::LeftToRight);
+            headerLayout_->invalidate();
+            headerLayout_->parentWidget()->setMinimumHeight(headerLayout_->minimumSize().height());
+            headerLayout_->parentWidget()->updateGeometry();
+        }
+    }
+
     void closeEvent(QCloseEvent* event) override
     {
         saveWorkspace();
@@ -205,7 +287,10 @@ private:
                                             | Qt::BottomDockWidgetArea);
             parameterDock_->setMinimumWidth(260);
             parameterPanel_ = new miltech::ui::ParameterPanel(reference);
-            parameterDock_->setWidget(parameterPanel_);
+            auto* panelScroll = new QScrollArea;
+            panelScroll->setWidgetResizable(true);
+            panelScroll->setWidget(parameterPanel_);
+            parameterDock_->setWidget(panelScroll);
             host->addDockWidget(Qt::RightDockWidgetArea, parameterDock_);
         }
         if (composition_.hasComponent(QStringLiteral("events"))) {
@@ -402,15 +487,15 @@ private:
     {
         Page p = page(QStringLiteral("СТАНЦИЯ / ОБЗОР"), spec.name,
                       QStringLiteral("Контекст поставки и точка входа в инженерную работу"));
-        auto* metrics = new QGridLayout;
-        metrics->setSpacing(12);
-        metrics->addWidget(card(QStringLiteral("ИЗДЕЛИЕ"), spec.dut,
-                                QStringLiteral("Тип из UI-фикстуры")), 0, 0);
-        metrics->addWidget(card(QStringLiteral("СТЕНД"), QStringLiteral("Не опрошен"),
-                                QStringLiteral("Связь с оборудованием отсутствует")), 0, 1);
-        metrics->addWidget(card(QStringLiteral("АКТИВНЫЙ ЗАПУСК"), QStringLiteral("Нет"),
-                                QStringLiteral("Сценарии не подключены")), 0, 2);
-        p.body->addLayout(metrics);
+        auto* metrics = new AdaptiveCards;
+        metrics->setObjectName(QStringLiteral("ui.overviewCards"));
+        metrics->addCard(card(QStringLiteral("ИЗДЕЛИЕ"), spec.dut,
+                              QStringLiteral("Тип из UI-фикстуры")));
+        metrics->addCard(card(QStringLiteral("СТЕНД"), QStringLiteral("Не опрошен"),
+                              QStringLiteral("Связь с оборудованием отсутствует")));
+        metrics->addCard(card(QStringLiteral("АКТИВНЫЙ ЗАПУСК"), QStringLiteral("Нет"),
+                              QStringLiteral("Сценарии не подключены")));
+        p.body->addWidget(metrics);
         p.body->addWidget(label(QStringLiteral("Рабочие возможности"), "section"));
         for (const QString& capability : spec.capabilities) {
             p.body->addWidget(item(capability, QStringLiteral("Доступность определяется поставкой; в прототипе действия отключены")));
@@ -429,23 +514,23 @@ private:
         // the persistent top bar and application navigation cannot be docked over.
         dockHost_ = new QMainWindow;
         dockHost_->setObjectName(QStringLiteral("ui.workspaceHost"));
-        dockHost_->setMinimumSize(520, 420);
+        dockHost_->setMinimumSize(0, 0);
         createDocks(dockHost_, composition_.referenceSample);
 
         Page p = page(QStringLiteral("ИНЖЕНЕРНАЯ СРЕДА"),
                       QStringLiteral("Рабочая область"),
                       QStringLiteral("Параметры, графики и схема представления · только UI-демонстрация"));
 
-        auto* topRow = new QHBoxLayout;
-        topRow->addWidget(label(
+        auto* topRow = new AdaptiveRow;
+        topRow->row()->addWidget(label(
             QStringLiteral("ПОСТАВКА · %1  /  ФИЗИЧЕСКИЙ СТЕНД НЕ ПОДКЛЮЧЁН").arg(spec.name),
             "eyebrow"), 1);
         auto* reset = new QPushButton(QStringLiteral("Исходная компоновка"));
         reset->setObjectName(QStringLiteral("ui.resetLayout"));
         reset->setAccessibleName(QStringLiteral("Восстановить исходное расположение инженерных панелей"));
         connect(reset, &QPushButton::clicked, this, [this] { resetWorkspaceLayout(); });
-        topRow->addWidget(reset);
-        p.body->addLayout(topRow);
+        topRow->row()->addWidget(reset);
+        p.body->addWidget(topRow);
 
         if (composition_.hasComponent(QStringLiteral("trend"))) {
             auto* chart = new miltech::ui::TrendPanel;
@@ -549,13 +634,12 @@ private:
         p.body->addWidget(card(QStringLiteral("ТЕКУЩАЯ ОПЕРАЦИЯ"),
                                QStringLiteral("Не начата"),
                                QStringLiteral("Здесь отображается шаг методики и необходимые действия")));
-        auto* metrics = new QGridLayout;
-        metrics->setSpacing(12);
-        metrics->addWidget(card(QStringLiteral("ФАКТИЧЕСКОЕ"), QStringLiteral("—"),
-                                QStringLiteral("Нет измерения")), 0, 0);
-        metrics->addWidget(card(QStringLiteral("ДОПУСК"), QStringLiteral("—"),
-                                QStringLiteral("Не загружен")), 0, 1);
-        p.body->addLayout(metrics);
+        auto* metrics = new AdaptiveCards;
+        metrics->addCard(card(QStringLiteral("ФАКТИЧЕСКОЕ"), QStringLiteral("—"),
+                              QStringLiteral("Нет измерения")));
+        metrics->addCard(card(QStringLiteral("ДОПУСК"), QStringLiteral("—"),
+                              QStringLiteral("Не загружен")));
+        p.body->addWidget(metrics);
         p.body->addWidget(empty(QStringLiteral("Протокол выполнения"),
                                 QStringLiteral("Шаги и события будут отображаться из UI-модели")));
         p.body->addStretch();
@@ -579,6 +663,7 @@ private:
         return p.widget;
     }
 
+    QBoxLayout* headerLayout_ = nullptr;
     QComboBox* modeSelector_ = nullptr;
     QLabel* context_ = nullptr;
     QVBoxLayout* navLayout_ = nullptr;
@@ -679,6 +764,52 @@ int main(int argc, char* argv[])
             nav.at(0)->click();
             QApplication::processEvents();
         }
+        for (const QSize size : {QSize(800, 600), QSize(1024, 768), QSize(1366, 768), QSize(1600, 900)}) {
+            window.resize(size);
+            for (int variant = 0; variant < selector->count(); ++variant) {
+                selector->setCurrentIndex(variant);
+                QApplication::processEvents();
+                if (window.size() != size || !window.rect().contains(
+                        QRect(selector->mapTo(&window, QPoint()), selector->size()))
+                    || selector->height() < selector->sizeHint().height()) {
+                    return 41;
+                }
+                const auto nav = window.findChildren<QPushButton*>(QStringLiteral("navButton"));
+                auto* navScroll = window.findChild<QScrollArea*>(QStringLiteral("ui.navigationScroll"));
+                if (!navScroll || nav.isEmpty()) return 42;
+                for (int n = 0; n < nav.size(); ++n) {
+                    navScroll->ensureWidgetVisible(nav.at(n));
+                    nav.at(n)->click();
+                    QApplication::processEvents();
+                    if (stack->currentIndex() != n || stack->width() <= 0 || stack->height() <= 0)
+                        return 43;
+                    const QRect navRect(nav.at(n)->mapTo(navScroll->viewport(), QPoint()), nav.at(n)->size());
+                    if (!navScroll->viewport()->rect().contains(navRect)) return 47;
+                }
+                const auto composition = compositions.at(variant);
+                if (!composition.isTu()) {
+                    nav.at(composition.indexOf(QStringLiteral("overview")))->click();
+                    QApplication::processEvents();
+                    auto* cards = window.findChild<QWidget*>(QStringLiteral("ui.overviewCards"));
+                    auto* grid = cards ? qobject_cast<QGridLayout*>(cards->layout()) : nullptr;
+                    if (!grid || grid->count() != 3) return 44;
+                    const QRect first = grid->itemAt(0)->geometry();
+                    const QRect second = grid->itemAt(1)->geometry();
+                    if (cards->width() < 620 ? second.top() <= first.top() : second.left() <= first.left())
+                        return 45;
+                    const int equipmentIndex = composition.indexOf(QStringLiteral("equipment"));
+                    if (equipmentIndex >= 0) {
+                        nav.at(equipmentIndex)->click();
+                        QApplication::processEvents();
+                        auto* equipment = window.findChild<miltech::ui::EquipmentOverview*>();
+                        auto* layout = equipment ? qobject_cast<QBoxLayout*>(equipment->layout()) : nullptr;
+                        if (!layout || (equipment->width() < 650
+                            ? layout->direction() != QBoxLayout::TopToBottom
+                            : layout->direction() != QBoxLayout::LeftToRight)) return 46;
+                    }
+                }
+            }
+        }
         if (miltech::ui::loadPreviewComposition(QStringLiteral(":/missing.json")).valid()) return 26;
         QTemporaryDir testDirectory;
         if (!testDirectory.isValid()) return 27;
@@ -735,7 +866,7 @@ int main(int argc, char* argv[])
             const int captured = nav.size();
             for (int page = 0; page < captured; ++page) {
                 nav.at(page)->click();
-                for (const QSize size : {QSize(1366, 768), QSize(1600, 900)}) {
+                for (const QSize size : {QSize(800, 600), QSize(1024, 768), QSize(1366, 768), QSize(1600, 900)}) {
                     window.resize(size);
                     QApplication::processEvents();
                     const QString filename = QStringLiteral("%1/%2-page%3-%4x%5.png")
