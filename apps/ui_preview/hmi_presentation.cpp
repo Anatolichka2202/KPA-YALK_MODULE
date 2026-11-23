@@ -23,6 +23,7 @@
 #include <QRegularExpression>
 #include <QResizeEvent>
 #include <QSet>
+#include <QHash>
 #include <QFont>
 #include <QSaveFile>
 #include <QScrollArea>
@@ -126,17 +127,15 @@ QColor borderColor(const QString& type)
 HmiDocument::HmiDocument(QString deliveryId, QObject* parent)
     : QObject(parent), deliveryId_(std::move(deliveryId))
 {
+    history_.append(elements_);
 }
 
 QStringList HmiDocument::allowedTypes()
 {
     return {
-        QStringLiteral("label"),
-        QStringLiteral("numeric"),
-        QStringLiteral("status"),
-        QStringLiteral("bar"),
-        QStringLiteral("trend"),
-        QStringLiteral("command")
+        QStringLiteral("label"), QStringLiteral("numeric"),
+        QStringLiteral("status"), QStringLiteral("bar"),
+        QStringLiteral("trend"), QStringLiteral("command")
     };
 }
 
@@ -145,6 +144,35 @@ const HmiElement* HmiDocument::find(const QString& id) const
     const auto it = std::find_if(elements_.cbegin(), elements_.cend(),
         [&id](const HmiElement& value) { return value.id == id; });
     return it == elements_.cend() ? nullptr : &*it;
+}
+
+void HmiDocument::checkpoint()
+{
+    // One snapshot per logical user action; undo never re-enters this function.
+    history_.resize(historyIndex_ + 1);
+    history_.append(elements_);
+    if (history_.size() > 100) history_.removeFirst();
+    historyIndex_ = history_.size() - 1;
+    emit changed();
+    emit historyChanged();
+}
+
+bool HmiDocument::undo()
+{
+    if (!canUndo()) return false;
+    elements_ = history_.at(--historyIndex_);
+    emit changed();
+    emit historyChanged();
+    return true;
+}
+
+bool HmiDocument::redo()
+{
+    if (!canRedo()) return false;
+    elements_ = history_.at(++historyIndex_);
+    emit changed();
+    emit historyChanged();
+    return true;
 }
 
 QByteArray HmiDocument::toJson() const
@@ -161,6 +189,8 @@ QByteArray HmiDocument::toJson() const
         element.insert(QStringLiteral("y"), value.geometry.y());
         element.insert(QStringLiteral("width"), value.geometry.width());
         element.insert(QStringLiteral("height"), value.geometry.height());
+        if (!value.groupId.isEmpty())
+            element.insert(QStringLiteral("groupId"), value.groupId);
         elements.append(element);
     }
 
@@ -181,7 +211,6 @@ bool HmiDocument::loadFromJson(const QByteArray& json, QString* error)
         if (error) *error = reason;
         return false;
     };
-
     QJsonParseError parseError{};
     const auto parsed = QJsonDocument::fromJson(json, &parseError);
     if (parseError.error != QJsonParseError::NoError || !parsed.isObject())
@@ -223,21 +252,28 @@ bool HmiDocument::loadFromJson(const QByteArray& json, QString* error)
             QRect(e.value(QStringLiteral("x")).toInt(),
                   e.value(QStringLiteral("y")).toInt(),
                   e.value(QStringLiteral("width")).toInt(),
-                  e.value(QStringLiteral("height")).toInt())
+                  e.value(QStringLiteral("height")).toInt()),
+            e.value(QStringLiteral("groupId")).toString()
         };
         if (!idPattern.match(element.id).hasMatch() || ids.contains(element.id))
             return fail(QStringLiteral("Повторяющийся или неверный ID элемента"));
         if (!allowedType(element.type) || element.title.trimmed().isEmpty()
             || !geometryValid(element.geometry)
             || element.title.size() > 160 || element.binding.size() > 256
-            || element.unit.size() > 32)
+            || element.unit.size() > 32
+            || (!element.groupId.isEmpty()
+                && !idPattern.match(element.groupId).hasMatch()))
             return fail(QStringLiteral("Неверные свойства элемента: %1").arg(element.id));
         ids.insert(element.id);
         next.push_back(element);
     }
     elements_ = std::move(next);
+    history_.clear();
+    history_.append(elements_);
+    historyIndex_ = 0;
     if (error) error->clear();
     emit changed();
+    emit historyChanged();
     return true;
 }
 
@@ -246,9 +282,8 @@ QString HmiDocument::add(const QString& type)
     if (!allowedType(type) || elements_.size() >= maxElements) return {};
     int serial = 1;
     QString id;
-    do {
-        id = QStringLiteral("element_%1").arg(serial++);
-    } while (find(id) != nullptr);
+    do { id = QStringLiteral("element_%1").arg(serial++); }
+    while (find(id) != nullptr);
     const int index = static_cast<int>(elements_.size());
     const int w = type == QStringLiteral("trend") ? 245 : 195;
     const int h = type == QStringLiteral("trend") ? 145 : 105;
@@ -261,9 +296,9 @@ QString HmiDocument::add(const QString& type)
                 ? QStringLiteral("ui.demo.flag") : type == QStringLiteral("bar")
                     ? QStringLiteral("ui.demo.load") : QStringLiteral("ui.demo.voltage"),
         type == QStringLiteral("numeric") ? QStringLiteral("В") : QString(),
-        QRect(x, y, w, h)
+        QRect(x, y, w, h), {}
     });
-    emit changed();
+    checkpoint();
     return id;
 }
 
@@ -275,40 +310,196 @@ bool HmiDocument::updateElement(const HmiElement& updated)
         return false;
     for (auto& item : elements_) {
         if (item.id == updated.id) {
+            if (item.type == updated.type && item.title == updated.title
+                && item.binding == updated.binding && item.unit == updated.unit
+                && item.geometry == updated.geometry) return true;
+            const QString originalGroup = item.groupId;
             item = updated;
-            emit changed();
+            item.groupId = originalGroup; // group membership is changed via group/ungroup only
+            checkpoint();
             return true;
         }
     }
     return false;
 }
 
-bool HmiDocument::moveElement(const QString& id, int x, int y)
+QStringList HmiDocument::expandGroups(const QStringList& ids) const
 {
-    for (auto& item : elements_) {
-        if (item.id == id) {
-            item.geometry.moveTo(
-                std::clamp(x, 0, canvasWidth - item.geometry.width()),
-                std::clamp(y, 0, canvasHeight - item.geometry.height()));
-            emit changed();
-            return true;
+    QSet<QString> groups;
+    QSet<QString> direct;
+    for (const QString& id : ids) {
+        if (const auto* element = find(id)) {
+            direct.insert(id);
+            if (!element->groupId.isEmpty()) groups.insert(element->groupId);
         }
     }
-    return false;
+    QStringList output;
+    for (const auto& element : elements_) {
+        if (direct.contains(element.id) || (!element.groupId.isEmpty()
+                                             && groups.contains(element.groupId)))
+            output.append(element.id);
+    }
+    return output;
+}
+
+QStringList HmiDocument::duplicateElements(const QStringList& ids)
+{
+    const QStringList expanded = expandGroups(ids);
+    if (expanded.isEmpty() || elements_.size() + expanded.size() > maxElements) return {};
+    const QSet<QString> include(expanded.begin(), expanded.end());
+    QSet<QString> used;
+    QSet<QString> usedGroups;
+    for (const auto& e : elements_) {
+        used.insert(e.id);
+        if (!e.groupId.isEmpty()) usedGroups.insert(e.groupId);
+    }
+    QStringList produced;
+    QVector<HmiElement> copies;
+    QHash<QString, QString> groupMapping;
+    int idSerial = 1, groupSerial = 1;
+    for (const auto& e : elements_) {
+        if (!include.contains(e.id)) continue;
+        HmiElement copy = e;
+        do { copy.id = QStringLiteral("element_%1").arg(idSerial++); }
+        while (used.contains(copy.id));
+        used.insert(copy.id);
+        copy.geometry.moveTo(
+            qMin(canvasWidth - copy.geometry.width(), copy.geometry.x() + gridStep),
+            qMin(canvasHeight - copy.geometry.height(), copy.geometry.y() + gridStep));
+        if (!copy.groupId.isEmpty()) {
+            if (!groupMapping.contains(copy.groupId)) {
+                QString groupId;
+                do { groupId = QStringLiteral("group_%1").arg(groupSerial++); }
+                while (usedGroups.contains(groupId));
+                usedGroups.insert(groupId);
+                groupMapping.insert(copy.groupId, groupId);
+            }
+            copy.groupId = groupMapping.value(copy.groupId);
+        }
+        produced.append(copy.id);
+        copies.push_back(copy);
+    }
+    for (const auto& copy : copies) elements_.append(copy);
+    checkpoint();
+    return produced;
+}
+
+bool HmiDocument::removeElements(const QStringList& ids)
+{
+    const QStringList expanded = expandGroups(ids);
+    const QSet<QString> include(expanded.begin(), expanded.end());
+    if (include.isEmpty()) return false;
+    const int before = elements_.size();
+    elements_.erase(std::remove_if(elements_.begin(), elements_.end(),
+        [&include](const HmiElement& e) { return include.contains(e.id); }),
+        elements_.end());
+    if (elements_.size() == before) return false;
+    checkpoint();
+    return true;
 }
 
 bool HmiDocument::remove(const QString& id)
 {
-    for (int i = 0; i < elements_.size(); ++i) {
-        if (elements_.at(i).id == id) {
-            elements_.removeAt(i);
-            emit changed();
-            return true;
-        }
-    }
-    return false;
+    return removeElements(QStringList{id});
 }
 
+bool HmiDocument::translateElements(const QStringList& ids, int dx, int dy)
+{
+    const QStringList expanded = expandGroups(ids);
+    if (expanded.isEmpty()) return false;
+    const QSet<QString> include(expanded.begin(), expanded.end());
+    int minX = canvasWidth, minY = canvasHeight, maxX = 0, maxY = 0;
+    for (const auto& e : elements_) {
+        if (!include.contains(e.id)) continue;
+        minX = qMin(minX, e.geometry.left());
+        minY = qMin(minY, e.geometry.top());
+        maxX = qMax(maxX, e.geometry.right());
+        maxY = qMax(maxY, e.geometry.bottom());
+    }
+    dx = std::clamp(dx, -minX, canvasWidth - 1 - maxX);
+    dy = std::clamp(dy, -minY, canvasHeight - 1 - maxY);
+    if (dx == 0 && dy == 0) return false;
+    for (auto& e : elements_) {
+        if (include.contains(e.id)) e.geometry.translate(dx, dy);
+    }
+    checkpoint();
+    return true;
+}
+
+bool HmiDocument::moveElement(const QString& id, int x, int y)
+{
+    const auto* element = find(id);
+    if (!element) return false;
+    return translateElements(QStringList{id}, x - element->geometry.x(),
+                            y - element->geometry.y());
+}
+
+bool HmiDocument::alignElements(const QStringList& ids, const QString& edge)
+{
+    const QStringList expanded = expandGroups(ids);
+    if (expanded.size() < 2) return false;
+    const QSet<QString> include(expanded.begin(), expanded.end());
+    QRect bounds;
+    bool first = true;
+    for (const auto& e : elements_) {
+        if (!include.contains(e.id)) continue;
+        bounds = first ? e.geometry : bounds.united(e.geometry);
+        first = false;
+    }
+    if (first) return false;
+    bool modified = false;
+    for (auto& e : elements_) {
+        if (!include.contains(e.id)) continue;
+        QRect next = e.geometry;
+        if (edge == QStringLiteral("left")) next.moveLeft(bounds.left());
+        else if (edge == QStringLiteral("right")) next.moveRight(bounds.right());
+        else if (edge == QStringLiteral("top")) next.moveTop(bounds.top());
+        else if (edge == QStringLiteral("bottom")) next.moveBottom(bounds.bottom());
+        else if (edge == QStringLiteral("hcenter")) next.moveCenter(QPoint(bounds.center().x(), next.center().y()));
+        else if (edge == QStringLiteral("vcenter")) next.moveCenter(QPoint(next.center().x(), bounds.center().y()));
+        else return false;
+        if (next != e.geometry && geometryValid(next)) {
+            e.geometry = next;
+            modified = true;
+        }
+    }
+    if (modified) checkpoint();
+    return modified;
+}
+
+bool HmiDocument::groupElements(const QStringList& ids)
+{
+    const QStringList expanded = expandGroups(ids);
+    if (expanded.size() < 2) return false;
+    const QSet<QString> include(expanded.begin(), expanded.end());
+    int serial = 1;
+    QString group;
+    bool exists;
+    do {
+        group = QStringLiteral("group_%1").arg(serial++);
+        exists = std::any_of(elements_.cbegin(), elements_.cend(),
+            [&group](const HmiElement& e) { return e.groupId == group; });
+    } while (exists);
+    for (auto& e : elements_)
+        if (include.contains(e.id)) e.groupId = group;
+    checkpoint();
+    return true;
+}
+
+bool HmiDocument::ungroupElements(const QStringList& ids)
+{
+    const QStringList expanded = expandGroups(ids);
+    const QSet<QString> include(expanded.begin(), expanded.end());
+    bool modified = false;
+    for (auto& e : elements_) {
+        if (include.contains(e.id) && !e.groupId.isEmpty()) {
+            e.groupId.clear();
+            modified = true;
+        }
+    }
+    if (modified) checkpoint();
+    return modified;
+}
 HmiCanvas::HmiCanvas(HmiDocument* document, QWidget* parent)
     : QGraphicsView(parent), document_(document),
       scene_(new QGraphicsScene(this))
