@@ -13,6 +13,7 @@
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QSaveFile>
+#include <QSet>
 #include <QSignalBlocker>
 #include <QStackedWidget>
 #include <QVBoxLayout>
@@ -160,8 +161,8 @@ bool HmiDeliveryCollection::deletePage(int index)
     if (pages_.size() <= 1 || index < 0 || index >= pages_.size()) return false;
     HmiDocument* document = pages_.at(index).document;
     pages_.removeAt(index);
-    if (selectedIndex_ >= pages_.size()) selectedIndex_ = pages_.size() - 1;
     if (index < selectedIndex_) --selectedIndex_;
+    if (selectedIndex_ >= pages_.size()) selectedIndex_ = pages_.size() - 1;
     emit pagesChanged();
     emit currentPageChanged(selectedIndex_);
     delete document;
