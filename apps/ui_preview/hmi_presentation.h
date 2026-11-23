@@ -1,0 +1,133 @@
+#pragma once
+
+// Authoring and rendering of HMI views. Entirely presentation-only:
+// does not discover devices, subscribe to telemetry or execute commands.
+
+#include <QByteArray>
+#include <QFrame>
+#include <QGraphicsView>
+#include <QObject>
+#include <QRect>
+#include <QString>
+#include <QVector>
+#include <QWidget>
+
+class QComboBox;
+class QGraphicsScene;
+class QLabel;
+class QLineEdit;
+class QPushButton;
+class QSpinBox;
+class QSplitter;
+class QVBoxLayout;
+class QMouseEvent;
+
+namespace miltech::ui {
+
+struct HmiElement {
+    QString id;
+    QString type;      // label | numeric | status | bar | trend | command
+    QString title;
+    QString binding;   // unresolved key, NEVER an active hardware route
+    QString unit;
+    QRect geometry;    // fixed logical canvas coordinates; pixels at 100% zoom
+};
+
+class HmiDocument final : public QObject {
+    Q_OBJECT
+public:
+    explicit HmiDocument(QString deliveryId, QObject* parent = nullptr);
+
+    QString deliveryId() const { return deliveryId_; }
+    const QVector<HmiElement>& elements() const noexcept { return elements_; }
+    const HmiElement* find(const QString& id) const;
+    QByteArray toJson() const;
+    bool loadFromJson(const QByteArray& json, QString* error = nullptr);
+    QString add(const QString& type);
+    bool updateElement(const HmiElement& updated);
+    bool moveElement(const QString& id, int x, int y);
+    bool remove(const QString& id);
+    static QStringList allowedTypes();
+
+signals:
+    void changed();
+
+private:
+    QString deliveryId_;
+    QVector<HmiElement> elements_;
+};
+
+class HmiCanvas final : public QGraphicsView {
+    Q_OBJECT
+public:
+    explicit HmiCanvas(HmiDocument* document, QWidget* parent = nullptr);
+    void setEditing(bool editing);
+    bool editing() const noexcept { return editing_; }
+    void setDemoValues(bool enabled);
+    bool demoValues() const noexcept { return demoValues_; }
+    void selectElement(const QString& id);
+    QString selectedElement() const { return selectedId_; }
+    int renderedElementCount() const;
+
+signals:
+    void selectedElementChanged(const QString& id);
+
+protected:
+    void mouseReleaseEvent(QMouseEvent* event) override;
+
+private:
+    void redraw();
+    void onSelected();
+    HmiDocument* document_ = nullptr;
+    QGraphicsScene* scene_ = nullptr;
+    bool editing_ = false;
+    bool demoValues_ = false;
+    QString selectedId_;
+};
+
+class HmiDesignerPage final : public QWidget {
+    Q_OBJECT
+public:
+    explicit HmiDesignerPage(HmiDocument* document, QWidget* parent = nullptr);
+    HmiCanvas* canvas() const noexcept { return canvas_; }
+    QComboBox* previewMode() const noexcept { return mode_; }
+    QPushButton* addButton(const QString& type) const;
+    QPushButton* exportButton() const noexcept { return export_; }
+    QPushButton* importButton() const noexcept { return import_; }
+
+private:
+    void showSelected(const QString& id);
+    void applySelected();
+    void updateMode(int index);
+    void setNotice(const QString& notice);
+
+    HmiDocument* document_ = nullptr;
+    HmiCanvas* canvas_ = nullptr;
+    QComboBox* mode_ = nullptr;
+    QLineEdit* id_ = nullptr;
+    QLineEdit* title_ = nullptr;
+    QLineEdit* binding_ = nullptr;
+    QLineEdit* unit_ = nullptr;
+    QSpinBox* x_ = nullptr;
+    QSpinBox* y_ = nullptr;
+    QSpinBox* width_ = nullptr;
+    QSpinBox* height_ = nullptr;
+    QPushButton* apply_ = nullptr;
+    QPushButton* remove_ = nullptr;
+    QPushButton* export_ = nullptr;
+    QPushButton* import_ = nullptr;
+    QLabel* notice_ = nullptr;
+    QVector<QPair<QString, QPushButton*>> palette_;
+};
+
+class HmiReadOnlyPanel final : public QFrame {
+    Q_OBJECT
+public:
+    explicit HmiReadOnlyPanel(HmiDocument* document, QWidget* parent = nullptr);
+    HmiCanvas* canvas() const noexcept { return canvas_; }
+
+private:
+    HmiCanvas* canvas_ = nullptr;
+};
+
+} // namespace miltech::ui
