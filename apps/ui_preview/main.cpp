@@ -518,5 +518,20 @@ int main(int argc, char* argv[])
         app.setStyleSheet(QString::fromUtf8(file.readAll()));
     UiPreviewWindow window;
     window.show();
+
+    if (app.arguments().contains(QStringLiteral("--ui-smoke"))) {
+        auto* selector = window.findChild<QComboBox*>();
+        auto* stack = window.findChild<QStackedWidget*>();
+        if (!selector || !stack) return 2;
+        for (int index = 0; index < 3; ++index) {
+            selector->setCurrentIndex(index);
+            QApplication::processEvents();
+            if (stack->count() != (index == 2 ? 3 : 5)) return 3;
+        }
+        const auto docks = window.findChildren<QDockWidget*>();
+        if (docks.size() != 2 || !docks.at(0)->isHidden()
+                              || !docks.at(1)->isHidden()) return 4;
+        return 0;
+    }
     return app.exec();
 }
