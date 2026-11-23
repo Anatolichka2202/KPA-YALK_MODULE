@@ -1,4 +1,6 @@
 #include "components.h"
+#include "platform_pages.h"
+#include "ui_composition.h"
 
 #include <QAbstractItemView>
 #include <QApplication>
@@ -246,7 +248,7 @@ private:
 
     void saveWorkspace()
     {
-        if (modeIndex_ == 2 || currentPage_ != 1 || !dockHost_) return;
+        if (modeIndex_ == 2 || screenIds_.value(currentPage_) != QStringLiteral("workspace") || !dockHost_) return;
         QSettings settings(QStringLiteral("MilTechStation"),
                            QStringLiteral("UI-Preview"));
         settings.setValue(workspaceKey(), dockHost_->saveState(kLayoutVersion));
@@ -284,7 +286,7 @@ private:
 
     void setPage(int index)
     {
-        if (currentPage_ == 1 && modeIndex_ != 2) saveWorkspace();
+        if (screenIds_.value(currentPage_) == QStringLiteral("workspace") && modeIndex_ != 2) saveWorkspace();
         if (index < 0 || index >= stack_->count()) return;
         currentPage_ = index;
         stack_->setCurrentIndex(index);
@@ -294,7 +296,8 @@ private:
             navButtons_.at(n)->style()->unpolish(navButtons_.at(n));
             navButtons_.at(n)->style()->polish(navButtons_.at(n));
         }
-        const bool fullWorkspace = modeIndex_ != 2 && index == 1;
+        const bool fullWorkspace = modeIndex_ != 2
+            && screenIds_.value(index) == QStringLiteral("workspace");
         if (fullWorkspace) restoreWorkspace();
         else {
             if (parameterDock_) parameterDock_->hide();
@@ -305,7 +308,7 @@ private:
                 QStringLiteral("Раздел: %1").arg(navButtons_.at(index)->text()));
     }
 
-    void addNavigation(const QString& title, QWidget* screen)
+    void addNavigation(const QString& id, const QString& title, QWidget* screen)
     {
         const int index = stack_->count();
         auto* button = new QPushButton(title);
@@ -316,6 +319,7 @@ private:
         button->setProperty("navActive", false);
         navLayout_->addWidget(button);
         navButtons_.append(button);
+        screenIds_.append(id);
         stack_->addWidget(screen);
         connect(button, &QPushButton::clicked, this, [this, index] {
             setPage(index);
@@ -325,6 +329,7 @@ private:
     void resetNavigation()
     {
         navButtons_.clear();
+        screenIds_.clear();
         while (auto* item = navLayout_->takeAt(0)) {
             if (item->widget()) delete item->widget();
             delete item;
@@ -341,33 +346,68 @@ private:
         eventLog_ = nullptr;
     }
 
+    QWidget* createModuleScreen(const QString& id, const DeliveryFixture& delivery)
+    {
+        if (id == QStringLiteral("overview")) return makeOverview(delivery);
+        if (id == QStringLiteral("workspace")) return makeWorkspace(delivery);
+        if (id == QStringLiteral("equipment")) return makeEquipment(delivery);
+        if (id == QStringLiteral("scenarios")) return makeScenarios(delivery);
+        if (id == QStringLiteral("results")) return makeResults();
+        if (id == QStringLiteral("configurator"))
+            return new miltech::ui::TuConfiguratorPage(delivery.id);
+        if (id == QStringLiteral("administration"))
+            return new miltech::ui::StationAdministrationPage(delivery.name, delivery.equipment);
+        if (id == QStringLiteral("tu.prepare")) return makeTuPrepare();
+        if (id == QStringLiteral("tu.run")) return makeTuRun();
+        if (id == QStringLiteral("tu.result")) return makeTuResult();
+        Page error = page(QStringLiteral("МОДУЛЬ UI"), QStringLiteral("Экран недоступен"),
+                          QStringLiteral("Неизвестный идентификатор интерфейсного модуля: %1").arg(id));
+        error.body->addStretch();
+        return error.widget;
+    }
+
     void switchMode(int index)
     {
         saveWorkspace();
         modeIndex_ = index;
         currentPage_ = -1;
         resetNavigation();
-        const bool tu = modeIndex_ == 2;
-        const DeliveryFixture spec = fixture(index);
-        context_->setText(tu ? QStringLiteral("ТУ / УБСИ") : spec.name);
-        navLayout_->addWidget(label(tu ? QStringLiteral("ПРОЦЕДУРА")
-                                       : QStringLiteral("РАЗДЕЛЫ"), "eyebrow"));
-        if (tu) {
-            addNavigation(QStringLiteral("1  Подготовка"), makeTuPrepare());
-            addNavigation(QStringLiteral("2  Испытание"), makeTuRun());
-            addNavigation(QStringLiteral("3  Результат"), makeTuResult());
-        } else {
-            addNavigation(QStringLiteral("Обзор"), makeOverview(spec));
-            addNavigation(QStringLiteral("Рабочая область"), makeWorkspace(spec));
-            addNavigation(QStringLiteral("Оборудование"), makeEquipment(spec));
-            addNavigation(QStringLiteral("Сценарии"), makeScenarios(spec));
-            addNavigation(QStringLiteral("Результаты"), makeResults());
+
+        composition_ = miltech::ui::loadPreviewComposition(index);
+        const DeliveryFixture delivery = fixture(index);
+        context_->setText(composition_.valid() ? composition_.title
+                                               : QStringLiteral("Ошибка UI-композиции"));
+
+        navLayout_->addWidget(label(composition_.isTu()
+                                        ? QStringLiteral("ОПЕРАТОР")
+                                        : QStringLiteral("РАЗДЕЛЫ"),
+                                    "eyebrow"));
+
+        if (!composition_.valid()) {
+            Page error = page(QStringLiteral("UI-МАНИФЕСТ"),
+                              QStringLiteral("Конфигурация не загружена"),
+                              composition_.error);
+            error.body->addStretch();
+            addNavigation(QStringLiteral("error"),
+                          QStringLiteral("Ошибка конфигурации"), error.widget);
+            setPage(0);
+            return;
+        }
+
+        bool serviceSection = false;
+        for (const miltech::ui::ScreenSpec& screen : composition_.screens) {
+            if (screen.group == QStringLiteral("service") && !serviceSection) {
+                navLayout_->addSpacing(15);
+                navLayout_->addWidget(label(QStringLiteral("СЕРВИС"), "eyebrow"));
+                serviceSection = true;
+            }
+            addNavigation(screen.id, screen.title, createModuleScreen(screen.id, delivery));
         }
         navLayout_->addStretch();
-        navLayout_->addWidget(label(QStringLiteral("Alt+1…5 · навигация"), "muted"));
+        navLayout_->addWidget(label(QStringLiteral("Alt+1…9 · навигация"), "muted"));
         if (eventLog_)
             eventLog_->appendUiEvent(
-                QStringLiteral("Выбран интерфейс: %1").arg(spec.name));
+                QStringLiteral("Загружена UI-композиция: %1").arg(composition_.id));
         setPage(0);
     }
 
@@ -439,8 +479,9 @@ private:
                     : QStringLiteral("Выбран демонстрационный тренд"));
         });
 
-        p.body->addWidget(new miltech::ui::SignalTopology(
-            spec.id == QStringLiteral("reference_device")));
+        if (composition_.hasComponent(QStringLiteral("topology")))
+            p.body->addWidget(new miltech::ui::SignalTopology(
+                spec.id == QStringLiteral("reference_device")));
         p.body->addWidget(item(QStringLiteral("Док-панели"),
                                 QStringLiteral("Параметры и журнал можно закреплять, закрывать и переносить. "
                                                "«Исходная компоновка» возвращает обе панели.")));
@@ -557,6 +598,8 @@ private:
     miltech::ui::ParameterPanel* parameterPanel_ = nullptr;
     miltech::ui::EventLogPanel* eventLog_ = nullptr;
     QVector<QPushButton*> navButtons_;
+    QStringList screenIds_;
+    miltech::ui::UiComposition composition_;
     int modeIndex_ = -1;
     int currentPage_ = -1;
 };
