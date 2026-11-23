@@ -138,10 +138,12 @@ DesktopCore::DesktopCore(
 {
     if (project_.id.empty() || project_.version.empty() || profile_.id.empty())
         throw std::invalid_argument("Desktop core requires a project and stand profile identity");
-    if (policy_.edition == Edition::Tu &&
-        (policy_.tuWorkflowId.empty()
-         || !findWorkflow(project_, policy_.tuWorkflowId)))
-        throw std::invalid_argument("TU executable must bind one existing workflow");
+    if (policy_.edition == Edition::Tu) {
+        const auto* selected = findWorkflow(project_, policy_.tuWorkflowId);
+        if (!selected || selected->kind != "tu")
+            throw std::invalid_argument(
+                "TU executable must bind one existing workflow of kind tu");
+    }
 }
 
 Decision DesktopCore::check(
