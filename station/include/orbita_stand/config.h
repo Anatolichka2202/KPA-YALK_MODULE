@@ -73,6 +73,7 @@ struct StandProfile {
 
 StandProfile loadStandProfile(const std::string& path);
 ScenarioDefinition loadScenarioYaml(const std::string& path);
+ScenarioDefinition parseScenarioYaml(const std::string& document);
 
 const ComponentProfile* findComponentById(
     const StandProfile& profile, const std::string& id) noexcept;

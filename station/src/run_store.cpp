@@ -163,11 +163,12 @@ void saveStep(QSqlDatabase& database, const std::string& runId, const std::strin
 {
     QSqlQuery query(database);
     query.prepare(QStringLiteral(
-        "INSERT INTO run_steps(run_id,node_id,parent_node,sort_order,title,tu_requirement,verdict,message) VALUES(?,?,?,?,?,?,?,?)"));
+        "INSERT INTO run_steps(run_id,node_id,parent_node,sort_order,title,tu_requirement,verdict,message,definition_id) VALUES(?,?,?,?,?,?,?,?,?)"));
     query.addBindValue(QString::fromUtf8(runId)); query.addBindValue(QString::fromUtf8(step.nodeId));
     query.addBindValue(QString::fromUtf8(parent)); query.addBindValue(order);
     query.addBindValue(QString::fromUtf8(step.title)); query.addBindValue(QString::fromUtf8(step.tuRequirement));
     query.addBindValue(QString::fromLatin1(toString(step.verdict))); query.addBindValue(QString::fromUtf8(step.message));
+    query.addBindValue(QString::fromUtf8(step.definitionId));
     executePrepared(query);
     query.prepare(QStringLiteral(
         "INSERT INTO run_measurements(run_id,node_id,sort_order,parameter_key,title,reference,measured,lower_limit,upper_limit,unit,verdict,message,attributes,evidence_state,evidence_resource,evidence_device,evidence_quality) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"));
@@ -234,6 +235,8 @@ RunStore::RunStore(std::string sqlitePath) : impl_(std::make_unique<Impl>())
         addTextColumnIfMissing(impl_->database, QStringLiteral("test_runs"), column);
     }
 
+    addTextColumnIfMissing(
+        impl_->database, QStringLiteral("run_steps"), QStringLiteral("definition_id"));
     addTextColumnIfMissing(
         impl_->database, QStringLiteral("run_events"), QStringLiteral("attributes"));
     addTextColumnIfMissing(
@@ -516,7 +519,7 @@ std::optional<ScenarioRunResult> RunStore::load(const std::string& runId) const
     };
     std::map<std::string, std::vector<StoredStep>> children;
     query.prepare(QStringLiteral(
-        "SELECT node_id,parent_node,title,tu_requirement,verdict,message "
+        "SELECT node_id,parent_node,title,tu_requirement,verdict,message,definition_id "
         "FROM run_steps WHERE run_id=? ORDER BY parent_node,sort_order"));
     query.addBindValue(QString::fromUtf8(runId));
     executePrepared(query);
@@ -528,6 +531,7 @@ std::optional<ScenarioRunResult> RunStore::load(const std::string& runId) const
         stored.step.tuRequirement = query.value(3).toString().toUtf8().toStdString();
         stored.step.verdict = verdictFromText(query.value(4).toString());
         stored.step.message = query.value(5).toString().toUtf8().toStdString();
+        stored.step.definitionId = query.value(6).toString().toUtf8().toStdString();
         const auto found = measurements.find(stored.step.nodeId);
         if (found != measurements.end()) stored.step.measurements = found->second;
         children[stored.parent].push_back(std::move(stored));

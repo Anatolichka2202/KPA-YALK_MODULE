@@ -26,6 +26,7 @@ QJsonObject nodeSnapshot(const ScenarioNode& node)
     result.insert(QStringLiteral("tu"), QString::fromUtf8(node.tuRequirement));
     result.insert(QStringLiteral("procedure"), QString::fromUtf8(node.procedure));
     result.insert(QStringLiteral("technical_retries"), static_cast<int>(node.policy.technicalRetries));
+    if (node.repeatCount != 1) result.insert(QStringLiteral("repeat_count"), static_cast<int>(node.repeatCount));
     QJsonObject arguments;
     for (const auto& [key, value] : node.arguments)
         arguments.insert(QString::fromUtf8(key), QString::fromUtf8(value));

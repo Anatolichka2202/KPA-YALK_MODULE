@@ -1108,6 +1108,34 @@ int runChild(const QString& mode)
                     }
                 });
                 switchSettings->click();
+                add->click();
+                auto* tree = editor->findChild<QTreeWidget*>(QStringLiteral("scenarioVisualTree"));
+                auto* addChild = editor->findChild<QPushButton*>(QStringLiteral("addScenarioChildStep"));
+                auto* repeat = editor->findChild<QSpinBox*>(QStringLiteral("scenarioGroupRepeatCount"));
+                if (!tree || !addChild || !repeat || tree->topLevelItemCount() < 1) return;
+                auto* group = tree->topLevelItem(tree->topLevelItemCount() - 1);
+                tree->setCurrentItem(group);
+                addChild->click();
+                group = tree->topLevelItem(tree->topLevelItemCount() - 1);
+                if (!group || group->childCount() != 1) return;
+                tree->setCurrentItem(group->child(0));
+                tu->setText(QStringLiteral("test.repeat"));
+                QMetaObject::invokeMethod(actions, "activated", Q_ARG(int, delayIndex));
+                QTimer::singleShot(0, [] {
+                    auto* config = qobject_cast<QDialog*>(QApplication::activeModalWidget());
+                    if (!config) return;
+                    auto* duration = config->findChild<QSpinBox*>(QStringLiteral("scenarioDelayMilliseconds"));
+                    auto* buttons = config->findChild<QDialogButtonBox*>();
+                    if (duration && buttons) { duration->setValue(20); buttons->button(QDialogButtonBox::Ok)->click(); }
+                });
+                delaySettings->click();
+                auto* apply = editor->findChild<QPushButton*>(QStringLiteral("applyScenarioVisualStep"));
+                if (!apply) return;
+                apply->click();
+                group = tree->topLevelItem(tree->topLevelItemCount() - 1);
+                tree->setCurrentItem(group);
+                if (!repeat->isEnabled()) return;
+                repeat->setValue(2);
                 QTimer::singleShot(0, [] {
                     if (auto* versionInput = qobject_cast<QInputDialog*>(QApplication::activeModalWidget())) {
                         versionInput->setTextValue(QStringLiteral("2"));
@@ -1125,6 +1153,10 @@ int runChild(const QString& mode)
         require(edited && manualUnitResetVerified && run->isEnabled() && scenarios->currentData().toString() == createdVersion
                     && createdVersion.startsWith(QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation)),
                 "new scenario was not created in user storage and selected for execution");
+        QFile versionFile(createdVersion);
+        require(versionFile.open(QIODevice::ReadOnly) && versionFile.readAll().startsWith("schema: 2\n"),
+                "repeated scenario did not use a schema rejected by older stations");
+        versionFile.close();
         require(orbita::stand::loadScenarioYaml(createdVersion.toStdString()).monitorPageId == pageId.toStdString()
                     && pageList->currentData().toString() == pageId,
                 "created scenario did not save and select its monitoring page");
@@ -1276,7 +1308,7 @@ int runChild(const QString& mode)
                         persisted->contextAttributes.at("monitor_display_json"))).isObject(),
                 "default monitoring view was not captured");
     require(persisted && persisted->verdict == orbita::stand::RunVerdict::Ok
-                && persisted->steps.size() == (mode == "--create-new" ? 6u : 2u)
+                && persisted->steps.size() == (mode == "--create-new" ? 7u : 2u)
                 && (mode != "--new-version" || (persisted->scenarioVersion == "2"
                     && persisted->steps.front().title == "Изменённый шаг"))
                 && (mode != "--create-new" || (persisted->scenarioVersion == "2"
@@ -1302,6 +1334,14 @@ int runChild(const QString& mode)
                 && persisted->steps.front().measurements.size() == 1
                 && persisted->steps.front().measurements.front().measured == 42,
             "completed GUI run lost its persisted measurement");
+    if (mode == "--create-new") {
+        const auto group = std::find_if(persisted->steps.begin(), persisted->steps.end(), [](const auto& step) {
+            return step.children.size() == 2 && step.children.front().title == "Проход 1 из 2";
+        });
+        require(group != persisted->steps.end() && group->children[0].nodeId != group->children[1].nodeId
+                    && group->children[0].children.size() == 1 && group->children[1].children.size() == 1,
+                "repeated group was not executed and saved as distinct iterations");
+    }
     if (mode == "--create-new") {
         const auto waited = std::find_if(persisted->steps.begin(), persisted->steps.end(), [](const auto& step) {
             return !step.measurements.empty() && step.measurements.front().attributes.count("stable_ms");

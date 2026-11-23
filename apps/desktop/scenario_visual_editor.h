@@ -21,6 +21,7 @@
 class QLabel;
 class QLineEdit;
 class QComboBox;
+class QSpinBox;
 class QPlainTextEdit;
 class QPushButton;
 class QTreeWidget;
@@ -130,6 +131,7 @@ private:
     QLineEdit* procedure_ = nullptr;
     QComboBox* procedureChoice_ = nullptr;
     QComboBox* monitorPageChoice_ = nullptr;
+    QSpinBox* groupRepeatCount_ = nullptr;
     QPlainTextEdit* requires_ = nullptr;
     QPlainTextEdit* resources_ = nullptr;
     QPlainTextEdit* arguments_ = nullptr;

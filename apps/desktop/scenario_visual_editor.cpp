@@ -102,6 +102,16 @@ ScenarioVisualEditor::ScenarioVisualEditor(QString path, QWidget* parent)
     form->addRow(QStringLiteral("Идентификатор:"), id_);
     form->addRow(QStringLiteral("Название:"), title_);
     form->addRow(QStringLiteral("Требование ТУ:"), tu_);
+    groupRepeatCount_ = new QSpinBox(formHost);
+    groupRepeatCount_->setObjectName(QStringLiteral("scenarioGroupRepeatCount"));
+    groupRepeatCount_->setRange(1, 100);
+    groupRepeatCount_->setEnabled(false);
+    groupRepeatCount_->setToolTip(QStringLiteral("Одинаковые действия выполняются указанное число раз; результаты проходов сохраняются отдельно."));
+    form->addRow(QStringLiteral("Проходов группы:"), groupRepeatCount_);
+    connect(groupRepeatCount_, QOverload<int>::of(&QSpinBox::valueChanged), this, [this] {
+        if (!updatingFields_) setDirty(true);
+    });
+
     form->addRow(QStringLiteral("Идентификатор действия:"), procedure_);
     auto* currentProcedure = new QLabel(formHost);
     currentProcedure->setObjectName(QStringLiteral("currentScenarioAction"));
@@ -429,6 +439,8 @@ void ScenarioVisualEditor::setEditorEnabled(bool enabled)
     tu_->setEnabled(enabled);
     procedure_->setEnabled(enabled);
     procedureChoice_->setEnabled(enabled);
+    const auto* selected = findNode(selectedPath());
+    groupRepeatCount_->setEnabled(enabled && selected && (!selected->children.empty() || selected->repeatCount != 1));
     monitorPageChoice_->setEnabled(enabled);
     telemetrySettings_->setEnabled(enabled && procedure_->text() == QStringLiteral("telemetry.health"));
     measurementSettings_->setEnabled(enabled && (procedure_->text() == QStringLiteral("parameter.measure")
@@ -505,6 +517,8 @@ void ScenarioVisualEditor::showNode(const orbita::stand::ScenarioNode& node)
     healthConfigured_ = false;
     delayConfigured_ = false;
     switchConfigured_ = false;
+    groupRepeatCount_->setValue(static_cast<int>(node.repeatCount));
+    groupRepeatCount_->setEnabled(!published_ && (!node.children.empty() || node.repeatCount != 1));
     id_->setText(QString::fromStdString(node.id));
     title_->setText(QString::fromStdString(node.title));
     tu_->setText(QString::fromStdString(node.tuRequirement));
@@ -634,6 +648,7 @@ bool ScenarioVisualEditor::commitEditorToNode(const StepPath& path)
     // Поля формы являются временным состоянием Qt-редактора. Перед любой
     // перестановкой или изменением дерева сначала переносим их в модель
     // сценария, иначе rebuildTree() заменит форму данными до редактирования.
+    node->repeatCount = static_cast<unsigned>(groupRepeatCount_->value());
     node->id = id;
     node->title = trimmedUtf8(title_->text());
     node->tuRequirement = trimmedUtf8(tu_->text());
@@ -1421,7 +1436,13 @@ QString ScenarioVisualEditor::quote(const std::string& value)
 QString ScenarioVisualEditor::serialize() const
 {
     QString output;
-    output += QStringLiteral("schema: 1\n");
+    std::function<bool(const orbita::stand::ScenarioNode&)> hasRepeat;
+    hasRepeat = [&](const auto& node) {
+        if (node.repeatCount != 1) return true;
+        return std::any_of(node.children.begin(), node.children.end(), hasRepeat);
+    };
+    const bool repeated = std::any_of(scenario_.steps.begin(), scenario_.steps.end(), hasRepeat);
+    output += repeated ? QStringLiteral("schema: 2\n") : QStringLiteral("schema: 1\n");
     output += QStringLiteral("id: %1\n").arg(quote(scenario_.id));
     output += QStringLiteral("title: %1\n").arg(quote(scenario_.title));
     output += QStringLiteral("version: %1\n").arg(quote(scenario_.version));
@@ -1446,6 +1467,7 @@ void ScenarioVisualEditor::appendNodeYaml(QString& output, const orbita::stand::
     output += prefix + QStringLiteral("  title: %1\n").arg(quote(node.title));
     if (!node.tuRequirement.empty()) output += prefix + QStringLiteral("  tu: %1\n").arg(quote(node.tuRequirement));
     if (!node.procedure.empty()) output += prefix + QStringLiteral("  procedure: %1\n").arg(quote(node.procedure));
+    if (node.repeatCount != 1) output += prefix + QStringLiteral("  repeat_count: %1\n").arg(node.repeatCount);
     if (!node.requiredCapabilities.empty()) {
         output += prefix + QStringLiteral("  requires:\n");
         for (const auto& capability : node.requiredCapabilities)

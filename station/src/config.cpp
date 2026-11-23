@@ -173,7 +173,7 @@ bool hasComponentId(const std::vector<ComponentProfile>& components, const std::
         [&](const ComponentProfile& component) { return component.id == id; });
 }
 
-ScenarioNode scenarioNode(const yaml::Node& value)
+ScenarioNode scenarioNode(const yaml::Node& value, bool supportsRepeat)
 {
     if (!value.isMap()) throw yaml::Error("Scenario step must be a mapping");
     ScenarioNode node;
@@ -187,10 +187,25 @@ ScenarioNode scenarioNode(const yaml::Node& value)
     }
     node.arguments = stringMap(value.find("args"));
     node.policy.technicalRetries = consumeTechnicalRetries(node.arguments);
+    const auto* repeat = value.find("repeat_count");
+    if (repeat) {
+        if (!supportsRepeat) throw yaml::Error("repeat_count requires scenario schema 2");
+        if (!repeat->isScalar() || repeat->scalar.empty()
+            || repeat->scalar.find_first_not_of("0123456789") != std::string::npos)
+            throw yaml::Error("repeat_count must be an integer from 1 to 100");
+        try {
+            const auto count = std::stoul(repeat->scalar);
+            if (count < 1 || count > 100) throw std::out_of_range("repeat_count");
+            node.repeatCount = static_cast<unsigned>(count);
+        } catch (const std::exception&) {
+            throw yaml::Error("repeat_count must be an integer from 1 to 100");
+        }
+    }
+
     node.requiredResources = resourceRequirements(value.find("resources"));
     if (const auto* children = value.find("steps")) {
         if (!children->isSequence()) throw yaml::Error("Scenario steps must be a sequence");
-        for (const auto& child : children->sequence) node.children.push_back(scenarioNode(child));
+        for (const auto& child : children->sequence) node.children.push_back(scenarioNode(child, supportsRepeat));
     }
     return node;
 }
@@ -249,11 +264,11 @@ StandProfile loadStandProfile(const std::string& path)
     return profile;
 }
 
-ScenarioDefinition loadScenarioYaml(const std::string& path)
+static ScenarioDefinition parseScenarioRoot(const yaml::Node& root)
 {
-    const auto root = yaml::parseFile(path);
     if (!root.isMap()) throw yaml::Error("Scenario root must be a mapping");
-    if (root.value("schema") != "1") throw yaml::Error("Unsupported scenario schema");
+    const auto schema = root.value("schema");
+    if (schema != "1" && schema != "2") throw yaml::Error("Unsupported scenario schema");
     ScenarioDefinition scenario;
     scenario.id = root.value("id");
     scenario.title = root.value("title");
@@ -265,8 +280,18 @@ ScenarioDefinition loadScenarioYaml(const std::string& path)
         ? PublicationState::Published : PublicationState::Draft;
     const auto& steps = root.at("steps");
     if (!steps.isSequence()) throw yaml::Error("Scenario steps must be a sequence");
-    for (const auto& step : steps.sequence) scenario.steps.push_back(scenarioNode(step));
+    for (const auto& step : steps.sequence) scenario.steps.push_back(scenarioNode(step, schema == "2"));
     return scenario;
+}
+
+ScenarioDefinition loadScenarioYaml(const std::string& path)
+{
+    return parseScenarioRoot(yaml::parseFile(path));
+}
+
+ScenarioDefinition parseScenarioYaml(const std::string& document)
+{
+    return parseScenarioRoot(yaml::parse(document));
 }
 
 const ComponentProfile* findComponentById(

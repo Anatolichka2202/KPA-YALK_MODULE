@@ -194,6 +194,11 @@ void validateNode(
         errors.emplace_back("Шаг " + node.id + " не может одновременно быть процедурой и группой");
     }
 
+    if (node.repeatCount < 1 || node.repeatCount > 100)
+        errors.emplace_back("Число проходов группы должно быть от 1 до 100: " + node.id);
+    if (node.repeatCount != 1 && node.children.empty())
+        errors.emplace_back("Повтор можно задать только для группы: " + node.id);
+
     std::set<std::string> resources;
     for (const auto& requirement : node.requiredResources) {
         if (requirement.resource.empty() || requirement.capability.empty()) {
@@ -235,6 +240,50 @@ void validateNode(
     for (const auto& child : node.children) {
         validateNode(child, procedures, validators, ids, errors);
     }
+}
+
+// Разворачиваем повторы в обычное дерево до запуска: те же механизмы
+// событий и контрольных точек сохраняют отдельный результат каждого прохода.
+std::vector<ScenarioNode> expandRepeats(const std::vector<ScenarioNode>& roots)
+{
+    std::set<std::string> occupied;
+    std::function<void(const ScenarioNode&)> collect = [&](const ScenarioNode& node) {
+        occupied.insert(node.id);
+        for (const auto& child : node.children) collect(child);
+    };
+    for (const auto& root : roots) collect(root);
+    std::uint64_t sequence = 0;
+    std::size_t total = 0;
+    const auto nextId = [&] {
+        std::string id;
+        do { id = "__iteration_" + std::to_string(++sequence); } while (!occupied.insert(id).second);
+        return id;
+    };
+    std::function<ScenarioNode(const ScenarioNode&, bool)> expand;
+    expand = [&](const ScenarioNode& source, bool cloned) {
+        if (++total > 10000) throw std::invalid_argument("Слишком много шагов после раскрытия повторов");
+        ScenarioNode out = source;
+        if (cloned) { out.definitionId = source.id; out.id = nextId(); }
+        out.repeatCount = 1;
+        out.children.clear();
+        if (source.repeatCount > 1) {
+            for (unsigned pass = 1; pass <= source.repeatCount; ++pass) {
+                if (++total > 10000) throw std::invalid_argument("Слишком много шагов после раскрытия повторов");
+                ScenarioNode iteration;
+                iteration.id = nextId();
+                iteration.definitionId = source.id;
+                iteration.title = "Проход " + std::to_string(pass) + " из " + std::to_string(source.repeatCount);
+                for (const auto& child : source.children) iteration.children.push_back(expand(child, true));
+                out.children.push_back(std::move(iteration));
+            }
+        } else {
+            for (const auto& child : source.children) out.children.push_back(expand(child, cloned));
+        }
+        return out;
+    };
+    std::vector<ScenarioNode> result;
+    for (const auto& root : roots) result.push_back(expand(root, false));
+    return result;
 }
 
 } // namespace
@@ -302,6 +351,10 @@ std::vector<std::string> ScenarioEngine::validate(const ScenarioDefinition& scen
     for (const auto& node : scenario.steps) {
         validateNode(node, procedures_, validators_, ids, errors);
     }
+    if (errors.empty()) {
+        try { (void)expandRepeats(scenario.steps); }
+        catch (const std::exception& error) { errors.emplace_back(error.what()); }
+    }
     return errors;
 }
 
@@ -312,6 +365,7 @@ StepRunResult ScenarioEngine::runNode(
 {
     StepRunResult result;
     result.nodeId = node.id;
+    result.definitionId = node.definitionId;
     result.title = node.title;
     result.tuRequirement = node.tuRequirement;
 
@@ -353,19 +407,27 @@ StepRunResult ScenarioEngine::runNode(
                 result.message = "Процедура не зарегистрирована: " + node.procedure;
             } else {
                 StepEquipment scopedEquipment(context.equipment, node);
+                const auto publishProcedureEvent = [&context, &node](const RunEvent& event) {
+                    auto occurrenceEvent = event;
+                    if (!node.definitionId.empty() && occurrenceEvent.nodeId == node.definitionId)
+                        occurrenceEvent.nodeId = node.id;
+                    context.eventSink(occurrenceEvent);
+                };
                 ProcedureContext scopedContext{
                     scopedEquipment,
                     context.stopRequested,
-                    context.eventSink,
+                    publishProcedureEvent,
                     context.runId,
                     std::move(context.state),
                 };
+                auto procedureNode = node;
+                if (!node.definitionId.empty()) procedureNode.id = node.definitionId;
 
                 unsigned retries = 0;
                 retryLimit(node, retries); // validate() already checked it.
                 for (unsigned attempt = 0; attempt <= retries; ++attempt) {
                     try {
-                        auto procedureResult = procedure->second(node, scopedContext);
+                        auto procedureResult = procedure->second(procedureNode, scopedContext);
                         result.verdict = procedureResult.verdict;
                         result.message = std::move(procedureResult.message);
                         result.measurements = std::move(procedureResult.measurements);
@@ -612,6 +674,9 @@ ScenarioRunResult ScenarioEngine::run(
                 std::chrono::system_clock::now(), {}, "VALIDATION", error,
                 RunVerdict::Incomplete});
         }
+        // Прикладной слой мог подготовить оборудование до повторной
+        // проверки сценария. Не оставляем его в активном состоянии.
+        equipment.safeStopAll();
         finish();
         return run;
     }
@@ -622,6 +687,17 @@ ScenarioRunResult ScenarioEngine::run(
             std::chrono::system_clock::now(), {}, "VALIDATION",
             "Черновой сценарий нельзя использовать для приёмочного результата",
             RunVerdict::Incomplete});
+        equipment.safeStopAll();
+        finish();
+        return run;
+    }
+
+    std::vector<ScenarioNode> executionSteps;
+    try { executionSteps = expandRepeats(scenario.steps); }
+    catch (const std::exception& error) {
+        run.verdict = RunVerdict::Error;
+        run.events.push_back({std::chrono::system_clock::now(), {}, "ENGINE", error.what(), RunVerdict::Error});
+        equipment.safeStopAll();
         finish();
         return run;
     }
@@ -712,6 +788,7 @@ ScenarioRunResult ScenarioEngine::run(
         }
         StepRunResult group;
         group.nodeId = node.id;
+        group.definitionId = node.definitionId;
         group.title = node.title;
         group.tuRequirement = node.tuRequirement;
         group.verdict = RunVerdict::Incomplete;
@@ -739,7 +816,7 @@ ScenarioRunResult ScenarioEngine::run(
             // В промежуточном снимке сохраняем путь каждого законченного
             // шага, чтобы после прерывания восстановить его группу и порядок.
             partial.steps.clear();
-            for (const auto& root : scenario.steps) {
+            for (const auto& root : executionSteps) {
                 auto node = partialNode(root);
                 if (node) partial.steps.push_back(std::move(*node));
             }
@@ -756,7 +833,7 @@ ScenarioRunResult ScenarioEngine::run(
     run.verdict = RunVerdict::Ok;
     std::string operationFailureReason;
     try {
-        for (const auto& node : scenario.steps) {
+        for (const auto& node : executionSteps) {
             auto step = runNode(node, context, allowPartial);
             const auto stepVerdict = step.verdict;
             if (stepVerdict == RunVerdict::Error || stepVerdict == RunVerdict::Fail) {

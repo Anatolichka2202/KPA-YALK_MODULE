@@ -468,6 +468,28 @@ int main(int argc, char** argv)
                 "invalid scenario replaced original file");
     }
     {
+        const auto repeatPath = QDir(scenarioDirectory).filePath(QStringLiteral("repeat_invalid_draft.yaml"));
+        QFile file(repeatPath);
+        require(file.open(QIODevice::WriteOnly), "cannot write invalid repeat draft");
+        file.write("schema: 2\nid: repeat-draft\ntitle: Repeat\nversion: 1\ncatalog_version: 1\nstate: draft\nsteps:\n"
+                   "  - id: leaf\n    title: Leaf\n    tu: test\n    procedure: station.delay\n"
+                   "    repeat_count: 2\n    args:\n      duration_ms: 10\n");
+        file.close();
+        ScenarioVisualEditor editor(repeatPath);
+        auto* repeat = editor.findChild<QSpinBox*>(QStringLiteral("scenarioGroupRepeatCount"));
+        auto* save = editor.findChild<QPushButton*>(QStringLiteral("saveScenarioVisual"));
+        require(repeat && repeat->value() == 2 && repeat->isEnabled() && save,
+                "invalid leaf repeat was not exposed for correction");
+        save->click();
+        const auto saved = orbita::stand::loadScenarioYaml(repeatPath.toStdString());
+        require(saved.steps.size() == 1 && saved.steps[0].repeatCount == 2,
+                "editor silently removed invalid repeat from leaf");
+        repeat->setValue(1);
+        save->click();
+        require(orbita::stand::loadScenarioYaml(repeatPath.toStdString()).steps[0].repeatCount == 1,
+                "operator could not explicitly correct invalid repeat");
+    }
+    {
         const auto delayPath = QDir(scenarioDirectory).filePath(QStringLiteral("delay_draft.yaml"));
         QFile file(delayPath);
         require(file.open(QIODevice::WriteOnly), "cannot write delay draft");

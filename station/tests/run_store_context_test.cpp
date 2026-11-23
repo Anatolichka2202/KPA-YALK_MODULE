@@ -1,4 +1,5 @@
 #include "orbita_stand/run_store.h"
+#include "orbita_stand/config.h"
 #include "orbita_stand/report_writer.h"
 #include "orbita_stand/project.h"
 #include "orbita_stand/station_session.h"
@@ -566,6 +567,94 @@ int main(int argc, char** argv)
         require(lastPartial.steps.size() == 1 && lastPartial.steps[0].children.size() == 2
                     && lastPartial.steps[0].verdict == RunVerdict::Ok,
                 "completed group lost its verdict in a partial checkpoint");
+
+        auto repeatedScenario = groupedScenario;
+        repeatedScenario.steps[0].repeatCount = 2;
+        int repeatedCalls = 0;
+        ScenarioEngine repeatedEngine;
+        repeatedEngine.registerProcedure("test.live", [&](const ScenarioNode& node, ProcedureContext& context) {
+            const auto saved = store.load(context.runId);
+            require(saved.has_value(), "repeated run missing initial checkpoint");
+            if (repeatedCalls > 0) {
+                require(saved->steps.size() == 1 && !saved->steps.front().children.empty(),
+                    "previous iteration was not persisted before the next action");
+            }
+            if (repeatedCalls == 2) {
+                require(saved->steps.size() == 1 && saved->steps[0].children.size() == 1
+                    && saved->steps[0].children[0].children.size() == 2
+                    && saved->steps[0].children[0].children[1].measurements[0].measured == 2,
+                    "completed first iteration was not persisted before the second");
+            }
+            ++repeatedCalls;
+            MeasurementResult measurement;
+            measurement.title = "Повтор";
+            measurement.parameterKey = node.id;
+            measurement.measured = repeatedCalls;
+            measurement.verdict = RunVerdict::Ok;
+            return ProcedureResult{RunVerdict::Ok, "Измерено", {measurement}};
+        });
+        const auto repeated = runScenarioWithEvidence(repeatedEngine, simulatedEquipment, repeatedScenario,
+            "simulator", "SN", false, {}, nullptr, [&](const ScenarioRunResult& snapshot) {
+                if (snapshot.steps.empty()) store.save(snapshot); else store.saveCheckpoint(snapshot);
+            });
+        const auto savedRepeated = store.load(repeated.runId);
+        require(repeatedCalls == 4 && repeated.verdict == RunVerdict::Ok && savedRepeated
+                    && savedRepeated->steps.size() == 1 && savedRepeated->steps[0].children.size() == 2
+                    && savedRepeated->steps[0].children[0].nodeId != savedRepeated->steps[0].children[1].nodeId
+                    && savedRepeated->steps[0].children[0].children.size() == 2
+                    && savedRepeated->steps[0].children[1].children.size() == 2
+                    && savedRepeated->steps[0].children[0].children[0].measurements[0].measured == 1
+                    && savedRepeated->steps[0].children[1].children[0].measurements[0].measured == 3
+                    && savedRepeated->steps[0].children[0].children[0].definitionId == liveScenario.steps[0].id
+                    && savedRepeated->steps[0].children[1].children[0].definitionId == liveScenario.steps[0].id
+                    && savedRepeated->steps[0].children[0].children[0].measurements[0].parameterKey == liveScenario.steps[0].id
+                    && savedRepeated->steps[0].children[1].children[0].measurements[0].parameterKey == liveScenario.steps[0].id
+                    && savedRepeated->contextAttributes.at("scenario_definition_json").find("repeat_count") != std::string::npos,
+                "repeated iterations were not distinct or did not survive storage");
+        int interruptedCalls = 0;
+        ScenarioEngine interruptedRepeat;
+        interruptedRepeat.registerProcedure("test.live", [&](const ScenarioNode&, ProcedureContext& context) {
+            MeasurementResult measurement;
+            measurement.parameterKey = "partial";
+            measurement.measured = ++interruptedCalls;
+            measurement.verdict = RunVerdict::Ok;
+            if (interruptedCalls == 3) context.stopRequested.store(true);
+            return ProcedureResult{RunVerdict::Ok, "Измерено", {measurement}};
+        });
+        std::optional<ScenarioRunResult> interruptedCheckpoint;
+        const auto stoppedRepeat = runScenarioWithEvidence(interruptedRepeat, simulatedEquipment, repeatedScenario,
+            "simulator", "SN", false, {}, nullptr, [&](const ScenarioRunResult& snapshot) {
+                if (snapshot.steps.empty()) store.save(snapshot); else store.saveCheckpoint(snapshot);
+                if (interruptedCalls == 3 && snapshot.finishedAt == std::chrono::system_clock::time_point{})
+                    interruptedCheckpoint = store.load(snapshot.runId);
+            });
+        const auto savedStoppedRepeat = store.load(stoppedRepeat.runId);
+        require(interruptedCheckpoint && interruptedCheckpoint->finishedAt == std::chrono::system_clock::time_point{}
+                    && interruptedCheckpoint->steps.size() == 1
+                    && interruptedCheckpoint->steps[0].children.size() == 2
+                    && interruptedCheckpoint->steps[0].children[0].children.size() == 2
+                    && interruptedCheckpoint->steps[0].children[1].children.size() == 1
+                    && interruptedCheckpoint->steps[0].children[1].children[0].measurements[0].measured == 3,
+                "intermediate checkpoint lost a completed iteration or last measurement");
+        require(interruptedCalls == 3 && savedStoppedRepeat && savedStoppedRepeat->verdict == RunVerdict::Aborted
+                    && savedStoppedRepeat->steps[0].children.size() == 2
+                    && savedStoppedRepeat->steps[0].children[0].children.size() == 2
+                    && savedStoppedRepeat->steps[0].children[1].children.size() == 1
+                    && savedStoppedRepeat->steps[0].children[1].children[0].measurements[0].measured == 3,
+                "interruption lost completed repeated results or executed a later step");
+        bool legacyRepeatRejected = false;
+        try {
+            (void)parseScenarioYaml("schema: 1\nid: legacy-repeat\nversion: 1\nsteps:\n"
+                "  - id: group\n    repeat_count: 2\n    steps: []\n");
+        } catch (const std::exception&) { legacyRepeatRejected = true; }
+        require(legacyRepeatRejected, "schema 1 with repeat_count was accepted");
+
+        auto badRepeat = repeatedScenario;
+        badRepeat.steps[0].repeatCount = 0;
+        require(!repeatedEngine.validate(badRepeat).empty(), "zero repeat count accepted");
+        badRepeat = repeatedScenario;
+        badRepeat.steps[0].children.front().repeatCount = 2;
+        require(!repeatedEngine.validate(badRepeat).empty(), "leaf repeat accepted");
 
         StationSession station;
         int simulatedCommands = 0;

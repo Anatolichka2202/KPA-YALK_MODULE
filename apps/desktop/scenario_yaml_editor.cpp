@@ -2,6 +2,7 @@
 #include "scenario_visual_editor.h"
 
 #include "orbita_stand/yaml_lite.h"
+#include "orbita_stand/config.h"
 
 #include <QDialogButtonBox>
 #include <QDir>
@@ -125,11 +126,12 @@ bool ScenarioYamlEditor::validate()
 {
     try {
         const auto root = orbita::stand::yaml::parse(editor_->toPlainText().toStdString());
-        if (!root.isMap() || root.value("schema") != "1")
-            throw std::runtime_error("нужны корневой объект и schema: 1");
+        if (!root.isMap() || (root.value("schema") != "1" && !(scenario_ && root.value("schema") == "2")))
+            throw std::runtime_error("неподдерживаемая версия схемы");
         if (scenario_) {
             if (root.value("id").empty() || root.value("version").empty() || !root.find("steps"))
                 throw std::runtime_error("для сценария нужны id, version и steps");
+            (void)orbita::stand::parseScenarioYaml(editor_->toPlainText().toUtf8().toStdString());
         } else if (QFileInfo(path_).dir().dirName() == QStringLiteral("profiles")) {
             if (root.value("id").empty() || root.value("version").empty()
                 || !root.find("devices") || !root.find("routes"))

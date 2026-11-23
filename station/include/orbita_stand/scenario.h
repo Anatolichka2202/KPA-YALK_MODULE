@@ -95,6 +95,11 @@ struct ScenarioNode {
     // accepts technical_retries inside args for compatibility; the loader
     // consumes it into this typed policy before procedures see the arguments.
     StepExecutionPolicy policy;
+
+    // Повтор относится к группе; каждый проход получает отдельную запись.
+    unsigned repeatCount = 1;
+    // Заполняется только исполнителем для повторного вхождения.
+    std::string definitionId;
 };
 
 struct ScenarioDefinition {
@@ -160,6 +165,8 @@ struct StepRunResult {
     std::string message;
     std::vector<MeasurementResult> measurements;
     std::vector<StepRunResult> children;
+    // Исходный шаг методики, если nodeId обозначает отдельное вхождение.
+    std::string definitionId;
 };
 
 struct ScenarioRunResult {
