@@ -64,6 +64,8 @@ public:
     void setEditing(bool editing);
     bool editing() const noexcept { return editing_; }
     void setDemoValues(bool enabled);
+    void setZoom(double factor); // 0 = fit all, otherwise fixed scale (e.g. 1.0)
+    double zoomFactor() const noexcept { return zoomFactor_; }
     bool demoValues() const noexcept { return demoValues_; }
     void selectElement(const QString& id);
     QString selectedElement() const { return selectedId_; }
@@ -74,14 +76,17 @@ signals:
 
 protected:
     void mouseReleaseEvent(QMouseEvent* event) override;
+    void resizeEvent(QResizeEvent* event) override;
 
 private:
     void redraw();
     void onSelected();
+    void applyZoom();
     HmiDocument* document_ = nullptr;
     QGraphicsScene* scene_ = nullptr;
     bool editing_ = false;
     bool demoValues_ = false;
+    double zoomFactor_ = 0.0;
     QString selectedId_;
 };
 
@@ -91,6 +96,7 @@ public:
     explicit HmiDesignerPage(HmiDocument* document, QWidget* parent = nullptr);
     HmiCanvas* canvas() const noexcept { return canvas_; }
     QComboBox* previewMode() const noexcept { return mode_; }
+    QComboBox* zoomChoice() const noexcept { return zoom_; }
     QPushButton* addButton(const QString& type) const;
     QPushButton* exportButton() const noexcept { return export_; }
     QPushButton* importButton() const noexcept { return import_; }
@@ -104,6 +110,7 @@ private:
     HmiDocument* document_ = nullptr;
     HmiCanvas* canvas_ = nullptr;
     QComboBox* mode_ = nullptr;
+    QComboBox* zoom_ = nullptr;
     QLineEdit* id_ = nullptr;
     QLineEdit* title_ = nullptr;
     QLineEdit* binding_ = nullptr;
