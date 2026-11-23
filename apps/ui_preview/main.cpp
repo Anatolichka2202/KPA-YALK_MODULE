@@ -817,6 +817,7 @@ int main(int argc, char* argv[])
             if (events->entryCount() < 3) return 15;
             if (bool(window.findChild<miltech::ui::SignalTopology*>()) != composition.hasComponent(QStringLiteral("topology"))) return 24;
             if (composition.hasComponent(QStringLiteral("hmi"))) {
+                qWarning().noquote() << "UI SMOKE: start HMI" << composition.id;
                 auto* pages = window.findChild<miltech::ui::HmiDeliveryCollection*>();
                 auto* pageEditor = window.findChild<miltech::ui::HmiDeliveryEditor*>();
                 auto* pageViewer = window.findChild<miltech::ui::HmiDeliveryViewer*>();
@@ -896,13 +897,16 @@ int main(int argc, char* argv[])
                 const int beforeEditing = document->elements().size();
                 const QRect oldFirst = document->find(one)->geometry;
                 const QRect oldSecond = document->find(two)->geometry;
+                qWarning().noquote() << "UI SMOKE: multi-select";
                 designer->canvas()->selectElements({one, two});
                 if (designer->canvas()->selectedElements().size() != 2
                     || !groupButton->isEnabled()) return 77;
+                qWarning().noquote() << "UI SMOKE: group";
                 groupButton->click();
                 const QString grouped = document->find(one)->groupId;
                 if (grouped.isEmpty() || document->find(two)->groupId != grouped
                     || !ungroupButton->isEnabled()) return 78;
+                qWarning().noquote() << "UI SMOKE: align";
                 leftButton->click();
                 if (document->find(one)->geometry.left()
                     != document->find(two)->geometry.left()) return 79;
@@ -914,6 +918,7 @@ int main(int argc, char* argv[])
                 if (document->find(one)->geometry.left()
                     != document->find(two)->geometry.left()) return 81;
                 undoButton->click(); // undo alignment
+                qWarning().noquote() << "UI SMOKE: duplicate";
                 copyButton->click();
                 if (document->elements().size() != beforeEditing + 2) return 82;
                 const QString newGroupA = document->elements().at(beforeEditing).groupId;
@@ -926,21 +931,25 @@ int main(int argc, char* argv[])
                 if (document->elements().size() != beforeEditing + 2) return 85;
                 undoButton->click();
                 designer->canvas()->selectElements({one, two});
+                qWarning().noquote() << "UI SMOKE: ungroup";
                 ungroupButton->click();
                 if (!document->find(one)->groupId.isEmpty()
                     || !document->find(two)->groupId.isEmpty()) return 86;
                 undoButton->click();
                 if (document->find(one)->groupId != grouped) return 87;
                 if (!pageEditor->fullscreenButton()) return 88;
+                qWarning().noquote() << "UI SMOKE: fullscreen open";
                 pageEditor->fullscreenButton()->click();
                 QApplication::processEvents();
                 auto* fullScreen = pageEditor->fullscreenDialog();
                 if (!fullScreen || !fullScreen->isVisible()
                     || !fullScreen->findChild<miltech::ui::HmiDesignerPage*>()) return 89;
+                qWarning().noquote() << "UI SMOKE: fullscreen close";
                 fullScreen->close();
                 QApplication::processEvents();
 
                 if (pages->pageCount() != composition.hmiPages.size()) return 62;
+                qWarning().noquote() << "UI SMOKE: switch page";
                 if (!pages->setCurrentIndex(1)
                     || pageEditor->pageSelector()->currentIndex() != 1
                     || pageViewer->visiblePageIndex() != 1) return 63;
