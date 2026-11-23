@@ -1,5 +1,6 @@
 #include "components.h"
 #include "platform_pages.h"
+#include "hmi_presentation.h"
 #include "ui_composition.h"
 
 #include <QAbstractItemView>
@@ -413,12 +414,16 @@ private:
         eventDock_ = nullptr;
         parameterPanel_ = nullptr;
         eventLog_ = nullptr;
+        delete hmiDocument_;
+        hmiDocument_ = nullptr;
     }
 
     QWidget* createModuleScreen(const QString& id, const DeliveryFixture& delivery)
     {
         if (id == QStringLiteral("overview")) return makeOverview(delivery);
         if (id == QStringLiteral("workspace")) return makeWorkspace(delivery);
+        if (id == QStringLiteral("hmi") && hmiDocument_)
+            return new miltech::ui::HmiDesignerPage(hmiDocument_);
         if (id == QStringLiteral("equipment")) return makeEquipment(delivery);
         if (id == QStringLiteral("scenarios")) return makeScenarios(delivery);
         if (id == QStringLiteral("results")) return makeResults();
@@ -466,6 +471,19 @@ private:
             return;
         }
 
+        if (!composition_.isTu()
+            && (composition_.hasComponent(QStringLiteral("hmi"))
+                || composition_.indexOf(QStringLiteral("hmi")) >= 0)) {
+            hmiDocument_ = new miltech::ui::HmiDocument(composition_.id, this);
+            QFile templateFile(QStringLiteral(":/ui/hmi/%1.json").arg(composition_.id));
+            QString problem;
+            if (templateFile.open(QIODevice::ReadOnly)) {
+                if (!hmiDocument_->loadFromJson(templateFile.readAll(), &problem))
+                    hmiDocument_->add(QStringLiteral("label"));
+            } else {
+                hmiDocument_->add(QStringLiteral("label"));
+            }
+        }
         bool serviceSection = false;
         for (const miltech::ui::ScreenSpec& screen : composition_.screens) {
             if (screen.group == QStringLiteral("service") && !serviceSection) {
@@ -531,6 +549,9 @@ private:
         connect(reset, &QPushButton::clicked, this, [this] { resetWorkspaceLayout(); });
         topRow->row()->addWidget(reset);
         p.body->addWidget(topRow);
+
+        if (composition_.hasComponent(QStringLiteral("hmi")) && hmiDocument_)
+            p.body->addWidget(new miltech::ui::HmiReadOnlyPanel(hmiDocument_));
 
         if (composition_.hasComponent(QStringLiteral("trend"))) {
             auto* chart = new miltech::ui::TrendPanel;
@@ -673,6 +694,7 @@ private:
     QMainWindow* dockHost_ = nullptr;
     miltech::ui::ParameterPanel* parameterPanel_ = nullptr;
     miltech::ui::EventLogPanel* eventLog_ = nullptr;
+    miltech::ui::HmiDocument* hmiDocument_ = nullptr;
     QVector<QPushButton*> navButtons_;
     QStringList screenIds_;
     miltech::ui::UiComposition composition_;
