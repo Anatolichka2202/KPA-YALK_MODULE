@@ -9,6 +9,8 @@ find_package(Qt6 6.8 REQUIRED COMPONENTS Widgets)
 
 add_executable(MilTechStationUiPreview
     main.cpp
+    components.cpp
+    components.h
     resources.qrc
 )
 
