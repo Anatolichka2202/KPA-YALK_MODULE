@@ -8,6 +8,7 @@
 #include <QApplication>
 #include <QCheckBox>
 #include <QDir>
+#include <QDialog>
 #include <QDebug>
 #include <QCloseEvent>
 #include <QComboBox>
@@ -880,6 +881,64 @@ int main(int argc, char* argv[])
                 const auto* moved = document->find(addedId);
                 if (!moved || moved->geometry.right() >= 960
                     || moved->geometry.bottom() >= 540) return 59;
+
+                designer->previewMode()->setCurrentIndex(0);
+                auto* undoButton = designer->editCommand(QStringLiteral("undo"));
+                auto* redoButton = designer->editCommand(QStringLiteral("redo"));
+                auto* groupButton = designer->editCommand(QStringLiteral("group"));
+                auto* ungroupButton = designer->editCommand(QStringLiteral("ungroup"));
+                auto* copyButton = designer->editCommand(QStringLiteral("duplicate"));
+                auto* leftButton = designer->editCommand(QStringLiteral("align.left"));
+                if (!undoButton || !redoButton || !groupButton || !ungroupButton
+                    || !copyButton || !leftButton) return 76;
+                const QString one = document->elements().at(0).id;
+                const QString two = document->elements().at(1).id;
+                const int beforeEditing = document->elements().size();
+                const QRect oldFirst = document->find(one)->geometry;
+                const QRect oldSecond = document->find(two)->geometry;
+                designer->canvas()->selectElements({one, two});
+                if (designer->canvas()->selectedElements().size() != 2
+                    || !groupButton->isEnabled()) return 77;
+                groupButton->click();
+                const QString grouped = document->find(one)->groupId;
+                if (grouped.isEmpty() || document->find(two)->groupId != grouped
+                    || !ungroupButton->isEnabled()) return 78;
+                leftButton->click();
+                if (document->find(one)->geometry.left()
+                    != document->find(two)->geometry.left()) return 79;
+                undoButton->click();
+                if (document->find(one)->geometry != oldFirst
+                    || document->find(two)->geometry != oldSecond
+                    || !redoButton->isEnabled()) return 80;
+                redoButton->click();
+                if (document->find(one)->geometry.left()
+                    != document->find(two)->geometry.left()) return 81;
+                undoButton->click(); // undo alignment
+                copyButton->click();
+                if (document->elements().size() != beforeEditing + 2) return 82;
+                const QString newGroupA = document->elements().at(beforeEditing).groupId;
+                const QString newGroupB = document->elements().at(beforeEditing + 1).groupId;
+                if (newGroupA.isEmpty() || newGroupA == grouped || newGroupA != newGroupB)
+                    return 83;
+                undoButton->click();
+                if (document->elements().size() != beforeEditing) return 84;
+                redoButton->click();
+                if (document->elements().size() != beforeEditing + 2) return 85;
+                undoButton->click();
+                designer->canvas()->selectElements({one, two});
+                ungroupButton->click();
+                if (!document->find(one)->groupId.isEmpty()
+                    || !document->find(two)->groupId.isEmpty()) return 86;
+                undoButton->click();
+                if (document->find(one)->groupId != grouped) return 87;
+                if (!pageEditor->fullscreenButton()) return 88;
+                pageEditor->fullscreenButton()->click();
+                QApplication::processEvents();
+                auto* fullScreen = pageEditor->fullscreenDialog();
+                if (!fullScreen || !fullScreen->isVisible()
+                    || !fullScreen->findChild<miltech::ui::HmiDesignerPage*>()) return 89;
+                fullScreen->close();
+                QApplication::processEvents();
 
                 if (pages->pageCount() != composition.hmiPages.size()) return 62;
                 if (!pages->setCurrentIndex(1)
