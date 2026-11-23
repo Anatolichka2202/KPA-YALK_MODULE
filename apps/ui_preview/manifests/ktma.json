@@ -69,5 +69,17 @@
       "Редактирование сценариев"
     ],
     "sample": "ktma"
-  }
+  },
+  "hmiPages": [
+    {
+      "id": "main",
+      "title": "Изделие · обзор",
+      "source": ":/ui/hmi/ktma.json"
+    },
+    {
+      "id": "diagnostics",
+      "title": "Мониторинг · диагностика",
+      "source": ":/ui/hmi/ktma_diagnostics.json"
+    }
+  ]
 }
