@@ -1,0 +1,22 @@
+schema: 2
+version: reference-sim-1
+title: Каталог эталонного имитатора
+cell_types:
+  - id: REFERENCE
+    name: Эталонная ячейка
+block_types:
+  - id: REFERENCE_DEVICE
+    name: Эталонное устройство
+    designation: SIM-REFERENCE
+    slots:
+      - id: cell
+        cell_type: REFERENCE
+        order: 1
+parameter_groups:
+  - id: simulated_voltage
+    name: Напряжение имитатора
+    cell_type: REFERENCE
+    category: аналоговые
+    unit: В
+    count: 1
+bindings: []
