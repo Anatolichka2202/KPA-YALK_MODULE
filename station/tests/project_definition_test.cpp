@@ -1,5 +1,7 @@
 #include "orbita_stand/config.h"
 #include "orbita_stand/project.h"
+#include "orbita_stand/parameter_repository.h"
+#include "orbita_stand/parameter_procedures.h"
 
 #include <filesystem>
 #include <algorithm>
@@ -10,6 +12,9 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <thread>
+#include <chrono>
+#include <memory>
 
 using namespace orbita::stand;
 
@@ -52,6 +57,28 @@ public:
 
     bool invoked = false;
     bool stopped = false;
+};
+
+class ReferenceVoltageSource final : public IParameterSource {
+public:
+    std::string sourceId() const override { return "ref-sim"; }
+    std::string probe() override { return "ready"; }
+    ParameterSample read(const std::string& key) override
+    {
+        ParameterSample sample;
+        sample.parameterKey = key;
+        if (key != "voltage") return sample;
+        sample.timestamp = std::chrono::system_clock::now();
+        sample.sequence = ++sequence_;
+        sample.rawValue = 12.0;
+        sample.physicalValue = 12.0;
+        sample.unit = "В";
+        sample.quality = SampleQuality::Good;
+        return sample;
+    }
+    void safeStop() noexcept override {}
+private:
+    std::uint64_t sequence_ = 0;
 };
 
 ScenarioDefinition freeScenario()
@@ -260,6 +287,70 @@ int main()
         }
         require(productionRejected,
             "A registration-required workflow must reject an unresolved DUT before execution");
+
+        // Independent reference-device delivery: no UBSI procedures, registrar
+        // or product-specific equipment plugin is involved in the execution.
+        const auto reference = loadProjectPackage(
+            (sourceRoot / "projects/reference_device/project.yaml").string());
+        require(reference.id == "reference_device" && reference.dutTypes.size() == 1
+                && reference.dutTypes.front() == "REFERENCE_DEVICE",
+            "Independent reference-device project was not loaded");
+        require(filename(reference.catalogPath) == "catalog_reference.yaml",
+            "The reference project must select its own catalog");
+        require(filename(reference.equipmentProfilePath) == "stand_reference_simulator.yaml",
+            "The reference project must select its own station profile");
+        const auto referenceProfile = loadStandProfile(reference.equipmentProfilePath);
+        require(referenceProfile.id == "reference-simulator"
+                && !referenceProfile.activeOutputsConfirmed
+                && referenceProfile.components.size() == 1
+                && referenceProfile.components.front().kind == "parameter_source"
+                && referenceProfile.components.front().provider == "miltech.parameter.simulator",
+            "The independent project must contain only an inert parameter simulator");
+        const auto* referenceWorkflow = findWorkflow(reference, "generic");
+        require(referenceWorkflow && referenceWorkflow->operatorAction == "station.generic"
+                && referenceWorkflow->operatorAvailable && referenceWorkflow->allowDynamicScenario
+                && !referenceWorkflow->registration.required,
+            "The independent project must expose a generic operator workflow");
+        const auto referenceScenario = loadScenarioYaml(referenceWorkflow->scenarioPath);
+        require(referenceScenario.objectType == "REFERENCE_DEVICE"
+                && referenceScenario.steps.size() == 1
+                && referenceScenario.steps.front().procedure == "parameter.measure",
+            "The reference workflow must use a universal parameter measurement");
+
+        ParameterRepository referenceParameters;
+        referenceParameters.add(std::make_unique<ReferenceVoltageSource>());
+        ScenarioEngine referenceEngine;
+        registerParameterProcedures(referenceEngine, referenceParameters);
+        require(referenceEngine.validate(referenceScenario).empty(),
+            "Independent reference scenario did not validate with generic procedures");
+        AuditEquipment referenceEquipment;
+        ProjectRunContext referenceContext;
+        referenceContext.dutType = "REFERENCE_DEVICE";
+        referenceContext.operatorName = "simulator";
+        std::thread referencePoll([&] {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            (void)referenceParameters.refresh("ref-sim", "voltage");
+        });
+        ScenarioRunResult referenceRun;
+        try {
+            referenceRun = runProjectWorkflow(
+                reference, "generic", referenceEngine, referenceEquipment,
+                referenceProfile.version, "SIM-001", false, referenceContext);
+        } catch (...) {
+            referencePoll.join();
+            throw;
+        }
+        referencePoll.join();
+        require(referenceRun.verdict == RunVerdict::Ok
+                && referenceRun.projectId == "reference_device"
+                && referenceRun.workflowId == "generic"
+                && referenceRun.dutType == "REFERENCE_DEVICE"
+                && referenceRun.steps.size() == 1
+                && referenceRun.steps.front().measurements.size() == 1
+                && referenceRun.steps.front().measurements.front().measured == 12.0
+                && referenceRun.steps.front().measurements.front().unit == "В"
+                && referenceEquipment.stopped,
+            "Independent reference-device workflow did not execute and record evidence");
 
         std::cout << "Project package contract OK\n";
         return 0;
