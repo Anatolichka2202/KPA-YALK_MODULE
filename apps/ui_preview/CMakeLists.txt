@@ -12,6 +12,10 @@ add_executable(MilTechStationUiPreview
     main.cpp
     components.cpp
     components.h
+    ui_composition.cpp
+    ui_composition.h
+    platform_pages.cpp
+    platform_pages.h
     resources.qrc
 )
 
