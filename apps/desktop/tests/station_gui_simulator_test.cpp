@@ -827,6 +827,61 @@ int runChild(const QString& mode)
                     && monitor && monitor->bindings().size() == 1
                     && monitor->bindings().front().sourceId == QStringLiteral("ref-sim"),
                 "independent reference device could not open its scenario and parameter monitor");
+        auto* create = dialog->findChild<QPushButton*>(QStringLiteral("createGenericScenario"));
+        require(create && create->isEnabled(), "new reference-device check cannot be created");
+        QString draftPath;
+        QTimer::singleShot(0, [&] {
+            auto* prompt = qobject_cast<QInputDialog*>(QApplication::activeModalWidget());
+            if (!prompt) return;
+            prompt->setTextValue(QStringLiteral("Новая проверка имитатора"));
+            QTimer::singleShot(0, [&] {
+                auto* editor = qobject_cast<ScenarioVisualEditor*>(QApplication::activeModalWidget());
+                if (!editor) return;
+                draftPath = editor->currentPath();
+                editor->accept();
+            });
+            prompt->accept();
+        });
+        create->click();
+        require(!draftPath.isEmpty() && QFileInfo::exists(draftPath),
+            "reference project could not save a new scenario draft");
+        QFile draft(draftPath);
+        require(draft.open(QIODevice::ReadOnly), "new reference scenario cannot be inspected");
+        const auto contents = draft.readAll();
+        draft.close();
+        require(draftPath.contains(QStringLiteral("/by-project/"), Qt::CaseInsensitive)
+                    || draftPath.contains(QStringLiteral("\\by-project\\"), Qt::CaseInsensitive),
+                "reference-device drafts are not isolated from other deliveries");
+        require(contents.contains("catalog_version: reference-sim-1"),
+            "new scenario used the installed KTMA catalog instead of the active project catalog");
+        require(QFile::remove(draftPath), "test reference draft cleanup failed");
+        int publishedIndex = -1;
+        for (int i = 0; i < scenarios->count(); ++i)
+            if (scenarios->itemText(i).contains(QStringLiteral("эталонного имитатора")))
+                publishedIndex = i;
+        require(publishedIndex >= 0, "reference check disappeared after draft creation");
+        scenarios->setCurrentIndex(publishedIndex);
+        auto* run = dialog->findChild<QPushButton*>(QStringLiteral("runGeneric"));
+        auto* report = dialog->findChild<QTextBrowser*>(QStringLiteral("genericReportPreview"));
+        require(run && run->isEnabled() && report,
+            "reference-device check is not runnable from its own HMI");
+        run->click();
+        QEventLoop finished;
+        QTimer poll;
+        QTimer timeout;
+        timeout.setSingleShot(true);
+        QObject::connect(&poll, &QTimer::timeout, &finished, [&] {
+            if (run->isEnabled() && report->toPlainText().contains(QStringLiteral("Эталон")))
+                finished.quit();
+        });
+        QObject::connect(&timeout, &QTimer::timeout, &finished, &QEventLoop::quit);
+        poll.start(30); timeout.start(6000); finished.exec();
+        const auto resultText = report->toPlainText();
+        if (!run->isEnabled() || !resultText.contains(QStringLiteral("НОРМА"))
+            || !resultText.contains(QStringLiteral("12"))) {
+            std::cerr << "reference HMI run: " << resultText.toUtf8().constData() << std::endl;
+            require(false, "independent-device HMI did not execute and report a passing measurement");
+        }
         return 0;
     }
     if (mode == "--monitor-broken") {
