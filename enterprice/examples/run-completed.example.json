@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "run_id": "5f3783cc-eb9b-4a95-880c-ad6e5e359d55",
+  "source_run_id": "LOCAL-RUN-001",
+  "unit_serial": "DEMO-0001",
+  "unit_model": "DEMO-UNIT",
+  "scenario_id": "demo-check",
+  "scenario_version": "0.1",
+  "catalog_version": "0.1",
+  "profile_version": "0.1",
+  "software_release": "0.1.0",
+  "started_at": "2026-11-23T09:01:00Z",
+  "finished_at": "2026-11-23T09:01:05Z",
+  "verdict": "INCOMPLETE",
+  "composition_snapshot": [],
+  "artifacts": [],
+  "clock_status": "UNKNOWN"
+}

@@ -1,0 +1,3 @@
+{'version': 1, 'file': '001_edge_pilot_postgres.sql', 'sha256': '216e6a5b2e28b2b9fc7c4dea16608fa522cb32784e32db11c4db06d1a97e4af8'}
+{'version': 2, 'file': '002_enterprise_manufacturing.sql', 'sha256': '477237b3987815081d3d457d13b510a27b6a8d27c789329809503aca2690e0a9'}
+{'version': 3, 'file': '003_signed_delivery_postgres.sql', 'sha256': 'ef968630b3db2dfdc613cece3dbb73a2a653e8514b93a67bf3dc23a46fea9be2'}

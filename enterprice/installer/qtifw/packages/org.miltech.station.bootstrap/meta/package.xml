@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Package>
+  <DisplayName>MilTech Station Bootstrap</DisplayName>
+  <Description>Initial bootstrap and maintenance service. Payload intentionally absent in this template.</Description>
+  <Version>0.3.0-1</Version>
+  <ReleaseDate>2026-11-23</ReleaseDate>
+  <Name>org.miltech.station.bootstrap</Name>
+  <Default>true</Default>
+  <Essential>true</Essential>
+</Package>

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Installer>
+  <Name>MilTech Station</Name>
+  <Version>0.3.0</Version>
+  <Title>MilTech Station — первоначальная установка</Title>
+  <Publisher>MilTech (пример: заменить юридически утверждённым именем)</Publisher>
+  <StartMenuDir>MilTech Station</StartMenuDir>
+  <TargetDir>@ApplicationsDir@/MilTech/Station</TargetDir>
+</Installer>

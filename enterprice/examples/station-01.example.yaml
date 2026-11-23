@@ -1,0 +1,39 @@
+# ONLY A DEMONSTRATION. DO NOT APPLY ON A LIVE PRODUCTION PC.
+# Addresses are from an educational mock topology, NOT confirmed factory IP plan.
+schema_version: 1
+station_code: STAND-01
+interfaces:
+  - role: enterprise
+    alias: "Ethernet - MGMT VLAN 130"
+    vlan_id: 130
+    ipv4: "10.30.30.11/27"
+    gateway: "10.30.30.1"
+    default_route: true
+  - role: ot
+    alias: "Ethernet - STAND VLAN 2201"
+    vlan_id: 2201
+    ipv4: "192.168.10.10/24"
+    default_route: false
+    skip_as_source: true
+  - role: loopback
+    alias: "Loopback"
+    ipv4: "127.0.0.1/8"
+# Server HTTPS 443 is an OUTBOUND destination, not a local listener.
+sockets:
+  - name: enterprise-api
+    protocol: tcp
+    direction: connect
+    address: "10.30.50.10"
+    port: 443
+    interface_role: enterprise
+    owner: "miltech-edge"
+# Insert hardware socket reservations only after real TU/plugin settings are known.
+# Example: RS-485 binding; COM3 is illustrative and must be checked on site.
+resources:
+  - id: "COM3"
+    kind: rs485
+    owner: "tu-package-demo"
+    exclusive: true
+required_capabilities:
+  - core.run-store.v1
+  - edge.outbox.v1

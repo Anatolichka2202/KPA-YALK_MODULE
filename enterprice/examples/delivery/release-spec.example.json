@@ -1,0 +1,14 @@
+{
+  "release_id": "5ba5a7be-300f-4d3d-aa82-4587c6e819bf",
+  "version": "0.4.0",
+  "target_platform": "windows-x64",
+  "publisher_key_id": "miltech-ci-pilot",
+  "required_capabilities": ["qt-core"],
+  "components": [
+    {"id": "org.miltech.station.core", "kind": "core", "version": "0.4.0", "paths": ["application/MilTechStation.exe"]},
+    {"id": "org.miltech.station.ktma", "kind": "plugin", "version": "0.4.0", "paths": ["plugins/KTMA.dll"]},
+    {"id": "org.miltech.station.tu.ktma", "kind": "tu", "version": "0.4.0", "paths": ["tu/ktma/TU_KTMA.exe"]},
+    {"id": "org.miltech.station.scenarios.ktma", "kind": "scenario", "version": "0.4.0", "paths": ["scenarios/ktma/primary.json"]},
+    {"id": "org.miltech.station.catalog.ktma", "kind": "catalog", "version": "0.4.0", "paths": ["catalog/ktma/parameters.json"]}
+  ]
+}

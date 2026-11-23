@@ -1,0 +1,163 @@
+{
+  "$defs": {
+    "RunPayload": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "run_id": {
+          "format": "uuid",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "source_run_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Source Run Id",
+          "type": "string"
+        },
+        "unit_serial": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Unit Serial",
+          "type": "string"
+        },
+        "unit_model": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Unit Model",
+          "type": "string"
+        },
+        "scenario_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Scenario Id",
+          "type": "string"
+        },
+        "scenario_version": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Scenario Version",
+          "type": "string"
+        },
+        "catalog_version": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Catalog Version",
+          "type": "string"
+        },
+        "profile_version": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Profile Version",
+          "type": "string"
+        },
+        "software_release": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Software Release",
+          "type": "string"
+        },
+        "started_at": {
+          "format": "date-time",
+          "title": "Started At",
+          "type": "string"
+        },
+        "finished_at": {
+          "format": "date-time",
+          "title": "Finished At",
+          "type": "string"
+        },
+        "verdict": {
+          "enum": [
+            "NORM",
+            "NOT_NORM",
+            "STAND_ERROR",
+            "INCOMPLETE",
+            "STOPPED",
+            "NOT_EXECUTED"
+          ],
+          "title": "Verdict",
+          "type": "string"
+        },
+        "composition_snapshot": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "maxItems": 200,
+          "title": "Composition Snapshot",
+          "type": "array"
+        },
+        "artifacts": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "maxItems": 250,
+          "title": "Artifacts",
+          "type": "array"
+        },
+        "clock_status": {
+          "default": "UNKNOWN",
+          "enum": [
+            "SYNCED",
+            "UNSYNCED",
+            "UNKNOWN"
+          ],
+          "title": "Clock Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "source_run_id",
+        "unit_serial",
+        "unit_model",
+        "scenario_id",
+        "scenario_version",
+        "catalog_version",
+        "profile_version",
+        "software_release",
+        "started_at",
+        "finished_at",
+        "verdict"
+      ],
+      "title": "RunPayload",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "event_id": {
+      "format": "uuid",
+      "title": "Event Id",
+      "type": "string"
+    },
+    "stream_sequence": {
+      "minimum": 1,
+      "title": "Stream Sequence",
+      "type": "integer"
+    },
+    "event_type": {
+      "const": "RUN_COMPLETED",
+      "title": "Event Type",
+      "type": "string"
+    },
+    "payload": {
+      "$ref": "#/$defs/RunPayload"
+    }
+  },
+  "required": [
+    "event_id",
+    "stream_sequence",
+    "event_type",
+    "payload"
+  ],
+  "title": "SyncEvent",
+  "type": "object"
+}

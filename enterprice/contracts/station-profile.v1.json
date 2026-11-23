@@ -1,0 +1,236 @@
+{
+  "$defs": {
+    "InterfaceSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "role": {
+          "enum": [
+            "enterprise",
+            "ot",
+            "service",
+            "loopback"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "alias": {
+          "maxLength": 150,
+          "minLength": 1,
+          "title": "Alias",
+          "type": "string"
+        },
+        "vlan_id": {
+          "anyOf": [
+            {
+              "maximum": 4094,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Vlan Id"
+        },
+        "ipv4": {
+          "format": "ipv4interface",
+          "title": "Ipv4",
+          "type": "string"
+        },
+        "gateway": {
+          "anyOf": [
+            {
+              "format": "ipv4",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Gateway"
+        },
+        "default_route": {
+          "default": false,
+          "title": "Default Route",
+          "type": "boolean"
+        },
+        "skip_as_source": {
+          "default": false,
+          "title": "Skip As Source",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "role",
+        "alias",
+        "ipv4"
+      ],
+      "title": "InterfaceSpec",
+      "type": "object"
+    },
+    "ResourceSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "rs485",
+            "serial",
+            "usb",
+            "visa",
+            "can",
+            "ethernet",
+            "gpio",
+            "other"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "owner": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Owner",
+          "type": "string"
+        },
+        "exclusive": {
+          "default": true,
+          "title": "Exclusive",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "owner"
+      ],
+      "title": "ResourceSpec",
+      "type": "object"
+    },
+    "SocketSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "protocol": {
+          "enum": [
+            "tcp",
+            "udp"
+          ],
+          "title": "Protocol",
+          "type": "string"
+        },
+        "direction": {
+          "enum": [
+            "listen",
+            "connect"
+          ],
+          "title": "Direction",
+          "type": "string"
+        },
+        "address": {
+          "format": "ipv4",
+          "title": "Address",
+          "type": "string"
+        },
+        "port": {
+          "maximum": 65535,
+          "minimum": 1,
+          "title": "Port",
+          "type": "integer"
+        },
+        "interface_role": {
+          "enum": [
+            "enterprise",
+            "ot",
+            "service",
+            "loopback"
+          ],
+          "title": "Interface Role",
+          "type": "string"
+        },
+        "owner": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Owner",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "protocol",
+        "direction",
+        "address",
+        "port",
+        "interface_role",
+        "owner"
+      ],
+      "title": "SocketSpec",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "station_code": {
+      "maxLength": 120,
+      "minLength": 1,
+      "title": "Station Code",
+      "type": "string"
+    },
+    "interfaces": {
+      "items": {
+        "$ref": "#/$defs/InterfaceSpec"
+      },
+      "maxItems": 24,
+      "minItems": 1,
+      "title": "Interfaces",
+      "type": "array"
+    },
+    "sockets": {
+      "items": {
+        "$ref": "#/$defs/SocketSpec"
+      },
+      "maxItems": 200,
+      "title": "Sockets",
+      "type": "array"
+    },
+    "resources": {
+      "items": {
+        "$ref": "#/$defs/ResourceSpec"
+      },
+      "maxItems": 250,
+      "title": "Resources",
+      "type": "array"
+    },
+    "required_capabilities": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 200,
+      "title": "Required Capabilities",
+      "type": "array"
+    }
+  },
+  "required": [
+    "station_code",
+    "interfaces"
+  ],
+  "title": "Profile",
+  "type": "object"
+}
