@@ -539,18 +539,21 @@ void HmiCanvas::redraw()
     viewport()->update();
 }
 
-HmiDesignerPage::HmiDesignerPage(HmiDocument* document, QWidget* parent)
+HmiDesignerPage::HmiDesignerPage(HmiDocument* document, QWidget* parent, bool compact)
     : QWidget(parent), document_(document)
 {
     setObjectName(QStringLiteral("ui.hmi.designer"));
     auto* root = new QVBoxLayout(this);
-    root->setContentsMargins(18, 14, 18, 14);
-    root->setSpacing(10);
-    root->addWidget(label(QStringLiteral("HMI / ПРОЕКТИРОВАНИЕ"), "eyebrow"));
-    root->addWidget(label(QStringLiteral("HMI-представления"), "pageTitle"));
-    root->addWidget(label(QStringLiteral(
-        "Конструктор приборных экранов: элементы, положение, свойства и ключи данных. "
-        "Вся логика пока только визуальная."), "muted"));
+    root->setContentsMargins(compact ? 6 : 18, compact ? 5 : 14,
+                             compact ? 6 : 18, compact ? 5 : 14);
+    root->setSpacing(compact ? 6 : 10);
+    if (!compact) {
+        root->addWidget(label(QStringLiteral("HMI / ПРОЕКТИРОВАНИЕ"), "eyebrow"));
+        root->addWidget(label(QStringLiteral("HMI-представления"), "pageTitle"));
+        root->addWidget(label(QStringLiteral(
+            "Конструктор приборных экранов: элементы, положение, свойства и ключи данных. "
+            "Вся логика пока только визуальная."), "muted"));
+    }
 
     auto* toolbar = new QHBoxLayout;
     toolbar->addWidget(label(QStringLiteral("Режим"), "muted"));
@@ -571,12 +574,17 @@ HmiDesignerPage::HmiDesignerPage(HmiDocument* document, QWidget* parent)
     toolbar->addWidget(zoom_);
     toolbar->addStretch();
 
-    import_ = new QPushButton(QStringLiteral("Открыть JSON"));
+    import_ = new QPushButton(QStringLiteral("Открыть JSON"), this);
     import_->setObjectName(QStringLiteral("ui.hmi.import"));
-    toolbar->addWidget(import_);
-    export_ = new QPushButton(QStringLiteral("Сохранить JSON"));
+    export_ = new QPushButton(QStringLiteral("Сохранить JSON"), this);
     export_->setObjectName(QStringLiteral("ui.hmi.export"));
-    toolbar->addWidget(export_);
+    if (!compact) {
+        toolbar->addWidget(import_);
+        toolbar->addWidget(export_);
+    } else {
+        import_->hide();
+        export_->hide();
+    }
     root->addLayout(toolbar);
 
     auto* splitter = new QSplitter(Qt::Horizontal);
@@ -632,6 +640,8 @@ HmiDesignerPage::HmiDesignerPage(HmiDocument* document, QWidget* parent)
 
     auto* form = new QFormLayout;
     form->setLabelAlignment(Qt::AlignLeft);
+    form->setRowWrapPolicy(QFormLayout::WrapAllRows);
+    form->setVerticalSpacing(5);
     id_ = new QLineEdit;
     id_->setObjectName(QStringLiteral("ui.hmi.id"));
     id_->setReadOnly(true);
