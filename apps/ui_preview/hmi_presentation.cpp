@@ -21,6 +21,8 @@
 #include <QPainterPath>
 #include <QPushButton>
 #include <QRegularExpression>
+#include <QSet>
+#include <QFont>
 #include <QSaveFile>
 #include <QScrollArea>
 #include <QSignalBlocker>
@@ -695,8 +697,8 @@ void HmiDesignerPage::showSelected(const QString& id)
 {
     const HmiElement* item = document_->find(id);
     const bool exists = item != nullptr;
-    for (QWidget* field : {static_cast<QWidget*>(title_), binding_, unit_,
-                           x_, y_, width_, height_, apply_, remove_})
+    for (QWidget* field : QVector<QWidget*>{title_, binding_, unit_,
+                                            x_, y_, width_, height_, apply_, remove_})
         field->setEnabled(exists && mode_->currentIndex() == 0);
     if (!exists) {
         id_->clear();
