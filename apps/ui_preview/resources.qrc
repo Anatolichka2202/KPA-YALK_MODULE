@@ -2,6 +2,8 @@
   <qresource prefix="/ui">
     <file>theme.qss</file>
     <file>manifests/ktma.json</file>
+    <file>hmi/ktma.json</file>
+    <file>hmi/reference_device.json</file>
     <file>manifests/reference.json</file>
     <file>manifests/tu_ubsi.json</file>
   </qresource>
