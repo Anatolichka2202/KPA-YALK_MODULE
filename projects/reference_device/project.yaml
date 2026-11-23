@@ -1,0 +1,10 @@
+schema: 1
+id: reference_device
+title: Эталонный имитатор
+version: 1.0.0
+equipment_profile: ../../data/profiles/stand_reference_simulator.yaml
+catalog: ../../data/catalog/catalog_reference.yaml
+dut_types:
+  - REFERENCE_DEVICE
+workflows:
+  - workflows/generic.yaml
