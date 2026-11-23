@@ -773,6 +773,7 @@ int main(int argc, char* argv[])
         for (const QString& required : {QStringLiteral("ktma"), QStringLiteral("reference_device"), QStringLiteral("tu_ubsi")})
             if (selector->findData(required) < 0) return 25;
         for (int index = 0; index < selector->count(); ++index) {
+            trace(QStringLiteral("mode start=%1").arg(index));
             selector->setCurrentIndex(index);
             QApplication::processEvents();
             trace(QStringLiteral("mode=%1").arg(index));
@@ -1003,10 +1004,15 @@ int main(int argc, char* argv[])
                 trace(QStringLiteral("HMI delete page DONE"));
                 if (pageEditor->pageSelector()->count() != pages->pageCount()
                     || pageViewer->pageSelector()->count() != pages->pageCount()) return 70;
+                trace(QStringLiteral("HMI all checks completed"));
             }
+            trace(QStringLiteral("HMI switch main navigation BEGIN"));
             nav.at(0)->click();
+            trace(QStringLiteral("HMI switch main navigation DONE"));
             QApplication::processEvents();
+            trace(QStringLiteral("HMI processEvents DONE"));
         }
+        trace(QStringLiteral("HMI variants checks completed"));
         for (const QSize size : {QSize(800, 600), QSize(1024, 768), QSize(1366, 768), QSize(1600, 900)}) {
             window.resize(size);
             for (int variant = 0; variant < selector->count(); ++variant) {
