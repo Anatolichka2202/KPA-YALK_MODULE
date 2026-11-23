@@ -9,11 +9,13 @@
 #include <QByteArray>
 #include <QFrame>
 #include <QObject>
+#include <QPointer>
 #include <QString>
 #include <QVector>
 #include <QWidget>
 
 class QComboBox;
+class QDialog;
 class QLineEdit;
 class QLabel;
 class QPushButton;
@@ -70,6 +72,8 @@ public:
     QPushButton* duplicatePageButton() const noexcept { return duplicate_; }
     QPushButton* deletePageButton() const noexcept { return remove_; }
     QPushButton* renamePageButton() const noexcept { return rename_; }
+    QPushButton* fullscreenButton() const noexcept { return fullscreenButton_; }
+    QDialog* fullscreenDialog() const noexcept { return fullscreen_.data(); }
     QLineEdit* nameInput() const noexcept { return name_; }
     HmiDesignerPage* currentDesigner() const;
 
@@ -85,6 +89,8 @@ private:
     QPushButton* duplicate_ = nullptr;
     QPushButton* remove_ = nullptr;
     QPushButton* rename_ = nullptr;
+    QPushButton* fullscreenButton_ = nullptr;
+    QPointer<QDialog> fullscreen_;
     QPushButton* save_ = nullptr;
     QPushButton* load_ = nullptr;
     QStackedWidget* stack_ = nullptr;
