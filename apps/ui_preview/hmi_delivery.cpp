@@ -13,6 +13,7 @@
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QSaveFile>
+#include <QScrollArea>
 #include <QSet>
 #include <QSignalBlocker>
 #include <QStackedWidget>
@@ -271,16 +272,20 @@ HmiDeliveryEditor::HmiDeliveryEditor(HmiDeliveryCollection* pages, QWidget* pare
     pageSelector_->setObjectName(QStringLiteral("ui.hmi.pageSelector"));
     pageSelector_->setAccessibleName(QStringLiteral("Выбранное HMI-представление"));
     line->addWidget(pageSelector_, 1);
+    root->addLayout(line);
+
+    auto* pageActions = new QHBoxLayout;
     add_ = new QPushButton(QStringLiteral("Новый"));
     add_->setObjectName(QStringLiteral("ui.hmi.newPage"));
-    line->addWidget(add_);
+    pageActions->addWidget(add_);
     duplicate_ = new QPushButton(QStringLiteral("Дублировать"));
     duplicate_->setObjectName(QStringLiteral("ui.hmi.duplicatePage"));
-    line->addWidget(duplicate_);
+    pageActions->addWidget(duplicate_);
     remove_ = new QPushButton(QStringLiteral("Удалить"));
     remove_->setObjectName(QStringLiteral("ui.hmi.deletePage"));
-    line->addWidget(remove_);
-    root->addLayout(line);
+    pageActions->addWidget(remove_);
+    pageActions->addStretch();
+    root->addLayout(pageActions);
 
     auto* actions = new QHBoxLayout;
     actions->addWidget(new QLabel(QStringLiteral("Название:")));
@@ -291,13 +296,17 @@ HmiDeliveryEditor::HmiDeliveryEditor(HmiDeliveryCollection* pages, QWidget* pare
     rename_ = new QPushButton(QStringLiteral("Переименовать"));
     rename_->setObjectName(QStringLiteral("ui.hmi.renamePage"));
     actions->addWidget(rename_);
+    root->addLayout(actions);
+
+    auto* fileActions = new QHBoxLayout;
     load_ = new QPushButton(QStringLiteral("Открыть комплект"));
     load_->setObjectName(QStringLiteral("ui.hmi.loadCollection"));
-    actions->addWidget(load_);
+    fileActions->addWidget(load_);
     save_ = new QPushButton(QStringLiteral("Сохранить комплект"));
     save_->setObjectName(QStringLiteral("ui.hmi.saveCollection"));
-    actions->addWidget(save_);
-    root->addLayout(actions);
+    fileActions->addWidget(save_);
+    fileActions->addStretch();
+    root->addLayout(fileActions);
 
     stack_ = new QStackedWidget;
     stack_->setObjectName(QStringLiteral("ui.hmi.pageStack"));
@@ -381,7 +390,14 @@ void HmiDeliveryEditor::rebuild()
         for (int i = 0; i < pages_->pageCount(); ++i) {
             const auto record = pages_->pageAt(i);
             pageSelector_->addItem(record.title, record.id);
-            stack_->addWidget(new HmiDesignerPage(record.document));
+            auto* scroll = new QScrollArea;
+            scroll->setObjectName(QStringLiteral("ui.hmi.designerScroll"));
+            scroll->setWidgetResizable(true);
+            scroll->setFrameShape(QFrame::NoFrame);
+            auto* designer = new HmiDesignerPage(record.document);
+            designer->setMinimumWidth(920);
+            scroll->setWidget(designer);
+            stack_->addWidget(scroll);
         }
     }
     updateSelection();
