@@ -44,5 +44,18 @@
     "parameters",
     "events",
     "trend"
-  ]
+  ],
+  "demo": {
+    "selectorTitle": "Полная · эталонный имитатор",
+    "name": "Эталонный имитатор",
+    "dut": "REFERENCE_DEVICE",
+    "equipment": [
+      "ref-sim · источник параметров"
+    ],
+    "capabilities": [
+      "Просмотр параметров",
+      "Инженерная проверка на симуляторе"
+    ],
+    "sample": "reference"
+  }
 }

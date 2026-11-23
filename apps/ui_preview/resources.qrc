@@ -5,4 +5,7 @@
     <file>manifests/reference.json</file>
     <file>manifests/tu_ubsi.json</file>
   </qresource>
+  <qresource prefix="/ui-test">
+    <file alias="fourth.json">tests/fourth.json</file>
+  </qresource>
 </RCC>

@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "id": "test_delivery",
+  "title": "Тестовая поставка",
+  "kind": "full",
+  "screens": [
+    {
+      "id": "overview",
+      "title": "Обзор",
+      "group": "primary"
+    },
+    {
+      "id": "equipment",
+      "title": "Оборудование",
+      "group": "primary"
+    },
+    {
+      "id": "workspace",
+      "title": "Рабочая область",
+      "group": "primary"
+    }
+  ],
+  "workspaceComponents": [],
+  "demo": {
+    "selectorTitle": "Тестовая поставка",
+    "name": "Тестовая поставка",
+    "dut": "ТЕСТ",
+    "equipment": [
+      "ref-sim · источник параметров"
+    ],
+    "capabilities": [
+      "Просмотр параметров",
+      "Инженерная проверка на симуляторе"
+    ],
+    "sample": "reference"
+  }
+}

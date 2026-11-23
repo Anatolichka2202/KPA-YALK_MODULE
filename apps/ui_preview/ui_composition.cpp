@@ -1,10 +1,13 @@
 #include "ui_composition.h"
 
 #include <QFile>
+#include <QDir>
+#include <QDebug>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QSet>
+#include <QRegularExpression>
 
 namespace miltech::ui {
 namespace {
@@ -63,12 +66,35 @@ UiComposition parseComposition(const QByteArray& bytes)
     composition.id = object.value(QStringLiteral("id")).toString();
     composition.title = object.value(QStringLiteral("title")).toString();
     composition.kind = object.value(QStringLiteral("kind")).toString();
-    if (composition.id.isEmpty() || composition.title.isEmpty()
+    if (!QRegularExpression(QStringLiteral("^[A-Za-z0-9_-]+$")).match(composition.id).hasMatch() || composition.title.isEmpty()
         || (composition.kind != QStringLiteral("full")
             && composition.kind != QStringLiteral("tu"))) {
         composition.error = QStringLiteral("Не заданы идентификатор, тип или название UI-сборки");
         return composition;
     }
+
+    const auto demo = object.value(QStringLiteral("demo")).toObject();
+    composition.selectorTitle = demo.value(QStringLiteral("selectorTitle")).toString();
+    composition.demoName = demo.value(QStringLiteral("name")).toString();
+    composition.demoDut = demo.value(QStringLiteral("dut")).toString();
+    const QString sample = demo.value(QStringLiteral("sample")).toString();
+    const auto readStrings = [](const QJsonValue& value, QStringList& target) {
+        if (!value.isArray()) return false;
+        for (const auto& entry : value.toArray()) {
+            if (!entry.isString() || entry.toString().isEmpty()) return false;
+            target.append(entry.toString());
+        }
+        return true;
+    };
+    if (composition.selectorTitle.isEmpty() || composition.demoName.isEmpty()
+        || composition.demoDut.isEmpty()
+        || (sample != QStringLiteral("ktma") && sample != QStringLiteral("reference"))
+        || !readStrings(demo.value(QStringLiteral("equipment")), composition.demoEquipment)
+        || !readStrings(demo.value(QStringLiteral("capabilities")), composition.demoCapabilities)) {
+        composition.error = QStringLiteral("Некорректные демонстрационные данные UI-манифеста");
+        return composition;
+    }
+    composition.referenceSample = sample == QStringLiteral("reference");
 
     const auto screenArray = object.value(QStringLiteral("screens")).toArray();
     QSet<QString> seen;
@@ -110,6 +136,10 @@ UiComposition parseComposition(const QByteArray& bytes)
         return composition;
     }
 
+    if (!object.value(QStringLiteral("workspaceComponents")).isArray()) {
+        composition.error = QStringLiteral("Ожидался список компонентов UI");
+        return composition;
+    }
     QSet<QString> seenWidgets;
     for (const QJsonValue& value : object.value(QStringLiteral("workspaceComponents")).toArray()) {
         const QString component = value.toString();
@@ -126,21 +156,34 @@ UiComposition parseComposition(const QByteArray& bytes)
 
 } // namespace
 
-UiComposition loadPreviewComposition(int variant)
+UiComposition loadPreviewComposition(const QString& filename)
 {
-    QString filename;
-    switch (variant) {
-    case 0: filename = QStringLiteral(":/ui/manifests/ktma.json"); break;
-    case 1: filename = QStringLiteral(":/ui/manifests/reference.json"); break;
-    case 2: filename = QStringLiteral(":/ui/manifests/tu_ubsi.json"); break;
-    default: return UiComposition{{}, {}, {}, {}, {}, QStringLiteral("Неизвестный тип UI")};
-    }
-
     QFile file(filename);
-    if (!file.open(QFile::ReadOnly))
-        return UiComposition{{}, {}, {}, {}, {},
-                             QStringLiteral("Не удалось открыть UI-манифест: %1").arg(filename)};
+    if (!file.open(QFile::ReadOnly)) {
+        UiComposition composition;
+        composition.error = QStringLiteral("Не удалось открыть UI-манифест: %1").arg(filename);
+        return composition;
+    }
     return parseComposition(file.readAll());
+}
+
+QVector<UiComposition> loadPreviewCompositions(const QString& directory)
+{
+    QVector<UiComposition> compositions;
+    QSet<QString> ids;
+    const QDir dir(directory);
+    for (const QString& filename : dir.entryList({QStringLiteral("*.json")}, QDir::Files, QDir::Name)) {
+        UiComposition composition = loadPreviewComposition(dir.filePath(filename));
+        if (!composition.valid() || ids.contains(composition.id)) {
+            qWarning().noquote() << QStringLiteral("UI-манифест пропущен: %1 — %2")
+                .arg(dir.filePath(filename), composition.valid()
+                     ? QStringLiteral("повторяющийся идентификатор") : composition.error);
+            continue;
+        }
+        ids.insert(composition.id);
+        compositions.append(composition);
+    }
+    return compositions;
 }
 
 } // namespace miltech::ui

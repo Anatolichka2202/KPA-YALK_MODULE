@@ -29,6 +29,7 @@
 #include <QStringList>
 #include <QStyleFactory>
 #include <QTableWidget>
+#include <QTemporaryDir>
 #include <QVBoxLayout>
 #include <QVector>
 
@@ -45,33 +46,6 @@ struct DeliveryFixture {
     QStringList equipment;
     QStringList capabilities;
 };
-
-DeliveryFixture fixture(int mode)
-{
-    if (mode == 1) {
-        return {
-            QStringLiteral("reference_device"),
-            QStringLiteral("Эталонный имитатор"),
-            QStringLiteral("REFERENCE_DEVICE"),
-            {QStringLiteral("ref-sim · источник параметров")},
-            {QStringLiteral("Просмотр параметров"),
-             QStringLiteral("Инженерная проверка на симуляторе")}
-        };
-    }
-    return {
-        QStringLiteral("ktma"),
-        QStringLiteral("КТМА"),
-        QStringLiteral("УБСИ"),
-        {QStringLiteral("AKIP 1160 · питание"),
-         QStringLiteral("ISD HTTP · коммутация"),
-         QStringLiteral("V7 VISA · измерение"),
-         QStringLiteral("KTMA UDP · адаптер")},
-        {QStringLiteral("Мониторинг сигналов"),
-         QStringLiteral("Управление оборудованием"),
-         QStringLiteral("Производственные операции"),
-         QStringLiteral("Редактирование сценариев")}
-    };
-}
 
 QLabel* label(const QString& text, const char* role = "body")
 {
@@ -150,7 +124,7 @@ Page page(const QString& eyebrow, const QString& title, const QString& subtitle)
 class UiPreviewWindow final : public QMainWindow
 {
 public:
-    UiPreviewWindow()
+    explicit UiPreviewWindow(const QString& manifestDirectory = QStringLiteral(":/ui/manifests"))
     {
         setWindowTitle(QStringLiteral("MilTechStation · UI Preview"));
         setMinimumSize(1120, 720);
@@ -174,9 +148,9 @@ public:
         headerLayout->addWidget(context_);
         modeSelector_ = new QComboBox;
         modeSelector_->setObjectName(QStringLiteral("ui.variantSelector"));
-        modeSelector_->addItem(QStringLiteral("Полная · КТМА"));
-        modeSelector_->addItem(QStringLiteral("Полная · эталонный имитатор"));
-        modeSelector_->addItem(QStringLiteral("ТУ · УБСИ"));
+        compositions_ = miltech::ui::loadPreviewCompositions(manifestDirectory);
+        for (const auto& composition : compositions_)
+            modeSelector_->addItem(composition.selectorTitle, composition.id);
         modeSelector_->setAccessibleName(QStringLiteral("Вариант интерфейса"));
         headerLayout->addWidget(modeSelector_);
         headerLayout->addWidget(label(QStringLiteral("UI PREVIEW · БЕЗ ОБОРУДОВАНИЯ"), "demo"));
@@ -248,12 +222,12 @@ private:
 
     QString workspaceKey() const
     {
-        return QStringLiteral("layouts/%1/v2").arg(fixture(modeIndex_).id);
+        return QStringLiteral("layouts/%1/v2").arg(composition_.id);
     }
 
     void saveWorkspace()
     {
-        if (modeIndex_ == 2 || screenIds_.value(currentPage_) != QStringLiteral("workspace") || !dockHost_) return;
+        if (composition_.isTu() || screenIds_.value(currentPage_) != QStringLiteral("workspace") || !dockHost_) return;
         QSettings settings(QStringLiteral("MilTechStation"),
                            QStringLiteral("UI-Preview"));
         settings.setValue(workspaceKey(), dockHost_->saveState(kLayoutVersion));
@@ -296,7 +270,7 @@ private:
 
     void setPage(int index)
     {
-        if (screenIds_.value(currentPage_) == QStringLiteral("workspace") && modeIndex_ != 2) saveWorkspace();
+        if (screenIds_.value(currentPage_) == QStringLiteral("workspace") && !composition_.isTu()) saveWorkspace();
         if (index < 0 || index >= stack_->count()) return;
         currentPage_ = index;
         stack_->setCurrentIndex(index);
@@ -306,7 +280,7 @@ private:
             navButtons_.at(n)->style()->unpolish(navButtons_.at(n));
             navButtons_.at(n)->style()->polish(navButtons_.at(n));
         }
-        const bool fullWorkspace = modeIndex_ != 2
+        const bool fullWorkspace = !composition_.isTu()
             && screenIds_.value(index) == QStringLiteral("workspace");
         if (fullWorkspace) restoreWorkspace();
         else {
@@ -379,12 +353,15 @@ private:
     void switchMode(int index)
     {
         saveWorkspace();
-        modeIndex_ = index;
         currentPage_ = -1;
         resetNavigation();
 
-        composition_ = miltech::ui::loadPreviewComposition(index);
-        const DeliveryFixture delivery = fixture(index);
+        composition_ = index >= 0 && index < compositions_.size()
+            ? compositions_.at(index) : miltech::ui::UiComposition{};
+        if (!composition_.valid() && composition_.error.isEmpty())
+            composition_.error = QStringLiteral("Нет доступных UI-манифестов");
+        const DeliveryFixture delivery{composition_.id, composition_.demoName, composition_.demoDut,
+                                       composition_.demoEquipment, composition_.demoCapabilities};
         context_->setText(composition_.valid() ? composition_.title
                                                : QStringLiteral("Ошибка UI-композиции"));
 
@@ -440,7 +417,7 @@ private:
         }
         auto* open = new QPushButton(QStringLiteral("Открыть рабочую область  →"));
         open->setAccessibleName(QStringLiteral("Перейти в рабочую область"));
-        connect(open, &QPushButton::clicked, this, [this] { setPage(1); });
+        connect(open, &QPushButton::clicked, this, [this] { setPage(composition_.indexOf(QStringLiteral("workspace"))); });
         p.body->addWidget(open);
         p.body->addStretch();
         return p.widget;
@@ -453,7 +430,7 @@ private:
         dockHost_ = new QMainWindow;
         dockHost_->setObjectName(QStringLiteral("ui.workspaceHost"));
         dockHost_->setMinimumSize(520, 420);
-        createDocks(dockHost_, spec.id == QStringLiteral("reference_device"));
+        createDocks(dockHost_, composition_.referenceSample);
 
         Page p = page(QStringLiteral("ИНЖЕНЕРНАЯ СРЕДА"),
                       QStringLiteral("Рабочая область"),
@@ -495,7 +472,7 @@ private:
 
         if (composition_.hasComponent(QStringLiteral("topology")))
             p.body->addWidget(new miltech::ui::SignalTopology(
-                spec.id == QStringLiteral("reference_device")));
+                composition_.referenceSample));
         p.body->addWidget(item(QStringLiteral("Док-панели"),
                                 QStringLiteral("Параметры и журнал можно закреплять, закрывать и переносить. "
                                                "«Исходная компоновка» возвращает обе панели.")));
@@ -614,7 +591,7 @@ private:
     QVector<QPushButton*> navButtons_;
     QStringList screenIds_;
     miltech::ui::UiComposition composition_;
-    int modeIndex_ = -1;
+    QVector<miltech::ui::UiComposition> compositions_;
     int currentPage_ = -1;
 };
 
@@ -626,9 +603,6 @@ int main(int argc, char* argv[])
     QFile file(QStringLiteral(":/ui/theme.qss"));
     if (file.open(QIODevice::ReadOnly))
         app.setStyleSheet(QString::fromUtf8(file.readAll()));
-    UiPreviewWindow window;
-    window.show();
-
     const QStringList args = app.arguments();
     const bool automated = args.contains(QStringLiteral("--ui-smoke"))
                         || args.contains(QStringLiteral("--ui-snapshot-dir"));
@@ -639,17 +613,23 @@ int main(int argc, char* argv[])
                            QDir::tempPath() + QStringLiteral("/MilTechStationUiAutomation"));
     }
 
+    UiPreviewWindow window;
+    window.show();
+
     if (args.contains(QStringLiteral("--ui-smoke"))) {
         auto* selector = window.findChild<QComboBox*>(QStringLiteral("ui.variantSelector"));
         auto* stack = window.findChild<QStackedWidget*>();
         if (!selector || !stack) return 2;
-        for (int index = 0; index < 3; ++index) {
+        const auto compositions = miltech::ui::loadPreviewCompositions(QStringLiteral(":/ui/manifests"));
+        for (const QString& required : {QStringLiteral("ktma"), QStringLiteral("reference_device"), QStringLiteral("tu_ubsi")})
+            if (selector->findData(required) < 0) return 25;
+        for (int index = 0; index < selector->count(); ++index) {
             selector->setCurrentIndex(index);
             QApplication::processEvents();
-            const auto composition = miltech::ui::loadPreviewComposition(index);
+            const auto composition = compositions.at(index);
             if (!composition.valid() || stack->count() != composition.screens.size()) return 3;
             const auto docks = window.findChildren<QDockWidget*>();
-            if (index == 2) {
+            if (composition.isTu()) {
                 if (!docks.isEmpty()
                     || window.findChild<miltech::ui::ParameterPanel*>()
                     || window.findChild<miltech::ui::TrendPanel*>()
@@ -657,25 +637,33 @@ int main(int argc, char* argv[])
                     || window.findChild<miltech::ui::StationAdministrationPage*>()) return 4;
                 continue;
             }
-            if (docks.size() != 2) return 5;
+            const int expectedDocks = int(composition.hasComponent(QStringLiteral("parameters")))
+                                    + int(composition.hasComponent(QStringLiteral("events")));
+            if (docks.size() != expectedDocks) return 5;
             const auto nav = window.findChildren<QPushButton*>(QStringLiteral("navButton"));
             if (nav.size() != composition.screens.size()) return 6;
             auto* configurator = window.findChild<miltech::ui::TuConfiguratorPage*>();
             auto* administration = window.findChild<miltech::ui::StationAdministrationPage*>();
+            if (composition.indexOf(QStringLiteral("configurator")) < 0
+                || composition.indexOf(QStringLiteral("administration")) < 0
+                || !composition.hasComponent(QStringLiteral("parameters"))
+                || !composition.hasComponent(QStringLiteral("events"))
+                || !composition.hasComponent(QStringLiteral("trend"))
+                || composition.indexOf(QStringLiteral("equipment")) < 0) continue;
             if (!configurator || !administration || !administration->sections()
                 || administration->sections()->count() != 4) return 16;
             if (!configurator->packageButton() || configurator->packageButton()->isEnabled()) return 17;
             if (!configurator->draftPreview()->toPlainText().contains(QStringLiteral("backend_validated"))) return 18;
-            if (index == 0 && configurator->methodologyChoice()->count() != 3) return 19;
-            nav.at(1)->click(); // Engineering workspace.
+            if (composition.id == QStringLiteral("ktma") && configurator->methodologyChoice()->count() != 3) return 19;
+            nav.at(composition.indexOf(QStringLiteral("workspace")))->click();
             QApplication::processEvents();
             auto* params = window.findChild<miltech::ui::ParameterPanel*>();
             auto* chart = window.findChild<miltech::ui::TrendPanel*>();
             auto* equipment = window.findChild<miltech::ui::EquipmentOverview*>();
             auto* events = window.findChild<miltech::ui::EventLogPanel*>();
             if (!params || !chart || !equipment || !events) return 7;
-            if (equipment->equipmentCount() != (index == 0 ? 4 : 1)) return 8;
-            if (params->filteredRowCount() != (index == 0 ? 4 : 3)) return 9;
+            if (equipment->equipmentCount() != composition.demoEquipment.size()) return 8;
+            if (params->filteredRowCount() != (composition.referenceSample ? 3 : 4)) return 9;
             params->searchInput()->setText(QStringLiteral("UNMATCHED_UI_TEST"));
             if (params->filteredRowCount() != 0) return 10;
             params->searchInput()->clear();
@@ -687,9 +675,48 @@ int main(int argc, char* argv[])
             chart->syntheticToggle()->setChecked(true);
             if (!chart->canvas()->syntheticVisible()) return 14;
             if (events->entryCount() < 3) return 15;
-            if (bool(window.findChild<miltech::ui::SignalTopology*>()) != (index == 0)) return 24;
+            if (bool(window.findChild<miltech::ui::SignalTopology*>()) != composition.hasComponent(QStringLiteral("topology"))) return 24;
             nav.at(0)->click();
             QApplication::processEvents();
+        }
+        if (miltech::ui::loadPreviewComposition(QStringLiteral(":/missing.json")).valid()) return 26;
+        QTemporaryDir testDirectory;
+        if (!testDirectory.isValid()) return 27;
+        const QDir testDir(testDirectory.path());
+        for (const QString& name : QDir(QStringLiteral(":/ui/manifests")).entryList({QStringLiteral("*.json")}, QDir::Files)) {
+            if (!QFile::copy(QStringLiteral(":/ui/manifests/") + name, testDir.filePath(name))) return 28;
+        }
+        if (!QFile::copy(QStringLiteral(":/ui-test/fourth.json"), testDir.filePath(QStringLiteral("fourth.json")))) return 29;
+        QFile invalid(testDir.filePath(QStringLiteral("invalid.json")));
+        if (!invalid.open(QFile::WriteOnly) || invalid.write("{invalid") < 0) return 30;
+        invalid.close();
+        if (miltech::ui::loadPreviewComposition(invalid.fileName()).valid()) return 31;
+        QFile forbidden(testDir.filePath(QStringLiteral("forbidden.json")));
+        if (!forbidden.open(QFile::WriteOnly)) return 36;
+        forbidden.write(R"({"schema":1,"id":"bad_tu","title":"Bad TU","kind":"tu","demo":{"selectorTitle":"Bad","name":"Bad","dut":"Bad","sample":"reference","equipment":[],"capabilities":[]},"screens":[{"id":"tu.prepare","title":"Prepare","group":"primary"},{"id":"tu.run","title":"Run","group":"primary"},{"id":"tu.result","title":"Result","group":"primary"},{"id":"configurator","title":"Config","group":"service"}],"workspaceComponents":[]})");
+        forbidden.close();
+        if (miltech::ui::loadPreviewComposition(forbidden.fileName()).valid()) return 37;
+        UiPreviewWindow emptyWindow(testDir.filePath(QStringLiteral("missing-directory")));
+        auto* emptyStack = emptyWindow.findChild<QStackedWidget*>();
+        if (!emptyStack || emptyStack->count() != 1) return 38;
+        UiPreviewWindow testWindow(testDir.path());
+        auto* testSelector = testWindow.findChild<QComboBox*>(QStringLiteral("ui.variantSelector"));
+        auto* testStack = testWindow.findChild<QStackedWidget*>();
+        if (!testSelector || !testStack || testSelector->count() != selector->count() + 1) return 32;
+        const int fourth = testSelector->findData(QStringLiteral("test_delivery"));
+        if (fourth < 0) return 33;
+        testSelector->setCurrentIndex(fourth);
+        const auto testNav = testWindow.findChildren<QPushButton*>(QStringLiteral("navButton"));
+        if (testNav.size() != 3 || testStack->count() != 3) return 34;
+        QPushButton* openWorkspace = nullptr;
+        for (auto* button : testWindow.findChildren<QPushButton*>())
+            if (button->accessibleName() == QStringLiteral("Перейти в рабочую область")) openWorkspace = button;
+        if (!openWorkspace) return 39;
+        openWorkspace->click();
+        if (testStack->currentIndex() != 2) return 40;
+        for (int i = 0; i < testNav.size(); ++i) {
+            testNav.at(i)->click();
+            if (testStack->currentIndex() != i) return 35;
         }
         return 0;
     }
@@ -701,11 +728,9 @@ int main(int argc, char* argv[])
         if (!QDir().mkpath(target)) return 21;
         auto* selector = window.findChild<QComboBox*>(QStringLiteral("ui.variantSelector"));
         if (!selector) return 22;
-        for (int mode = 0; mode < 3; ++mode) {
+        for (int mode = 0; mode < selector->count(); ++mode) {
             selector->setCurrentIndex(mode);
-            const QString prefix = mode == 0 ? QStringLiteral("ktma")
-                                 : mode == 1 ? QStringLiteral("reference")
-                                             : QStringLiteral("tu");
+            const QString prefix = selector->itemData(mode).toString();
             auto nav = window.findChildren<QPushButton*>(QStringLiteral("navButton"));
             const int captured = nav.size();
             for (int page = 0; page < captured; ++page) {

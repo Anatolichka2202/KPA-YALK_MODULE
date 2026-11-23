@@ -20,5 +20,13 @@
       "group": "primary"
     }
   ],
-  "workspaceComponents": []
+  "workspaceComponents": [],
+  "demo": {
+    "selectorTitle": "ТУ · УБСИ",
+    "name": "УБСИ",
+    "dut": "УБСИ",
+    "equipment": [],
+    "capabilities": [],
+    "sample": "reference"
+  }
 }

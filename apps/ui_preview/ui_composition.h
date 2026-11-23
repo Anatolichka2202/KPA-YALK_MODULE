@@ -19,6 +19,12 @@ struct UiComposition {
     QString id;
     QString title;
     QString kind;
+    QString selectorTitle;
+    QString demoName;
+    QString demoDut;
+    QStringList demoEquipment;
+    QStringList demoCapabilities;
+    bool referenceSample = false;
     QVector<ScreenSpec> screens;
     QStringList workspaceComponents;
     QString error;
@@ -33,6 +39,7 @@ struct UiComposition {
     }
 };
 
-UiComposition loadPreviewComposition(int variant);
+UiComposition loadPreviewComposition(const QString& filename);
+QVector<UiComposition> loadPreviewCompositions(const QString& directory);
 
 } // namespace miltech::ui
