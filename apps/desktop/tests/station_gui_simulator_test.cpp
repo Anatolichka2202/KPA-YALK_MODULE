@@ -799,7 +799,7 @@ int runChild(const QString& mode)
     }
     if (mode == "--reference-project") {
         ProfileWindow window;
-        const auto* launch = window.findChild<QPushButton*>(QStringLiteral("openKtmaDelivery"));
+        auto* launch = window.findChild<QPushButton*>(QStringLiteral("openKtmaDelivery"));
         auto* workflow = window.findChild<QPushButton*>(QStringLiteral("projectWorkflow_generic"));
         require(launch && launch->text() == QStringLiteral("ОТКРЫТЬ ЭТАЛОННЫЙ ИМИТАТОР")
                     && workflow && workflow->text() == QStringLiteral("Проверка эталонного устройства"),
