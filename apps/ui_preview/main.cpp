@@ -740,6 +740,8 @@ int main(int argc, char* argv[])
                 if (!docks.isEmpty()
                     || window.findChild<miltech::ui::ParameterPanel*>()
                     || window.findChild<miltech::ui::TrendPanel*>()
+                    || window.findChild<miltech::ui::HmiDesignerPage*>()
+                    || window.findChild<miltech::ui::HmiReadOnlyPanel*>()
                     || window.findChild<miltech::ui::TuConfiguratorPage*>()
                     || window.findChild<miltech::ui::StationAdministrationPage*>()) return 4;
                 continue;
@@ -783,6 +785,39 @@ int main(int argc, char* argv[])
             if (!chart->canvas()->syntheticVisible()) return 14;
             if (events->entryCount() < 3) return 15;
             if (bool(window.findChild<miltech::ui::SignalTopology*>()) != composition.hasComponent(QStringLiteral("topology"))) return 24;
+            if (composition.hasComponent(QStringLiteral("hmi"))) {
+                auto* document = window.findChild<miltech::ui::HmiDocument*>();
+                auto* designer = window.findChild<miltech::ui::HmiDesignerPage*>();
+                auto* viewer = window.findChild<miltech::ui::HmiReadOnlyPanel*>();
+                if (!document || !designer || !viewer || document->elements().isEmpty())
+                    return 50;
+                if (designer->canvas()->renderedElementCount() != document->elements().size()
+                    || viewer->canvas()->renderedElementCount() != document->elements().size())
+                    return 51;
+                auto* button = designer->addButton(QStringLiteral("numeric"));
+                if (!button) return 52;
+                const int before = document->elements().size();
+                button->click();
+                if (document->elements().size() != before + 1
+                    || viewer->canvas()->renderedElementCount() != before + 1)
+                    return 53;
+                designer->previewMode()->setCurrentIndex(1);
+                if (designer->canvas()->editing() || designer->canvas()->demoValues()) return 54;
+                designer->previewMode()->setCurrentIndex(2);
+                if (designer->canvas()->editing() || !designer->canvas()->demoValues()
+                    || viewer->canvas()->demoValues()) return 55;
+                miltech::ui::HmiDocument restored(composition.id);
+                QString reason;
+                if (!restored.loadFromJson(document->toJson(), &reason)
+                    || restored.elements().size() != document->elements().size()) return 56;
+                miltech::ui::HmiDocument wrongProject(QStringLiteral("other_project"));
+                if (wrongProject.loadFromJson(document->toJson(), &reason)) return 57;
+                const QString addedId = document->elements().constLast().id;
+                if (!document->moveElement(addedId, 2000, 2000)) return 58;
+                const auto* moved = document->find(addedId);
+                if (!moved || moved->geometry.right() >= 960
+                    || moved->geometry.bottom() >= 540) return 59;
+            }
             nav.at(0)->click();
             QApplication::processEvents();
         }
