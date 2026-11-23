@@ -14,6 +14,7 @@
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QSaveFile>
+#include <QTemporaryFile>
 #include <QTextEdit>
 #include <QTextDocument>
 #include <QVBoxLayout>
@@ -126,19 +127,32 @@ bool ScenarioYamlEditor::validate()
 {
     try {
         const auto root = orbita::stand::yaml::parse(editor_->toPlainText().toStdString());
-        if (!root.isMap() || (root.value("schema") != "1" && !(scenario_ && (root.value("schema") == "2" || root.value("schema") == "3"))))
-            throw std::runtime_error("неподдерживаемая версия схемы");
+        if (!root.isMap())
+            throw std::runtime_error("корень YAML должен быть объектом");
+        const auto schema = root.value("schema");
         if (scenario_) {
+            if (schema != "1" && schema != "2" && schema != "3")
+                throw std::runtime_error("неподдерживаемая версия схемы сценария");
             if (root.value("id").empty() || root.value("version").empty() || !root.find("steps"))
                 throw std::runtime_error("для сценария нужны id, version и steps");
             (void)orbita::stand::parseScenarioYaml(editor_->toPlainText().toUtf8().toStdString());
         } else if (QFileInfo(path_).dir().dirName() == QStringLiteral("profiles")) {
-            if (root.value("id").empty() || root.value("version").empty()
-                || !root.find("devices") || !root.find("routes"))
-                throw std::runtime_error("для профиля нужны id, version, routes и devices");
-        } else if (root.value("version").empty() || !root.find("bindings")
-                   || !root.find("parameter_groups")) {
-            throw std::runtime_error("для каталога нужны version, parameter_groups и bindings");
+            if (schema != "1" || root.value("id").empty() || root.value("version").empty()
+                || !root.find("routes") || (!root.find("components") && !root.find("devices")))
+                throw std::runtime_error("для профиля нужны schema: 1, id, version, routes и components либо devices");
+            // Проверяем профиль тем же загрузчиком, что и runtime, прежде чем
+            // разрешить сохранение. Изменяемый исходный файл пока не трогаем.
+            QTemporaryFile candidate(QDir::tempPath() + QStringLiteral("/miltech_profile_XXXXXX.yaml"));
+            if (!candidate.open()) throw std::runtime_error("не удалось создать временный файл проверки");
+            const auto bytes = editor_->toPlainText().toUtf8();
+            if (candidate.write(bytes) != bytes.size())
+                throw std::runtime_error("не удалось записать временный профиль");
+            candidate.close();
+            (void)orbita::stand::loadStandProfile(candidate.fileName().toUtf8().toStdString());
+        } else {
+            if ((schema != "1" && schema != "2") || root.value("version").empty()
+                || !root.find("bindings") || !root.find("parameter_groups"))
+                throw std::runtime_error("для каталога нужны schema: 1/2, version, parameter_groups и bindings");
         }
         status_->setText(QStringLiteral("YAML корректен; обязательные разделы присутствуют"));
         status_->setStyleSheet(QStringLiteral("color:#70d79b"));
