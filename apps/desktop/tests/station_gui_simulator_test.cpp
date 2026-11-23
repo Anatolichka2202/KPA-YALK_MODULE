@@ -860,23 +860,27 @@ int runChild(const QString& mode)
         scenarios->setCurrentIndex(publishedIndex);
         auto* run = dialog->findChild<QPushButton*>(QStringLiteral("runGeneric"));
         auto* report = dialog->findChild<QTextBrowser*>(QStringLiteral("genericReportPreview"));
-        require(run && run->isEnabled() && report,
+        auto* status = dialog->findChild<QLabel*>(QStringLiteral("genericRunStatus"));
+        require(run && run->isEnabled() && report && status,
             "reference-device check is not runnable from its own HMI");
         run->click();
+        require(!run->isEnabled(), "reference-device check did not enter the running state");
         QEventLoop finished;
         QTimer poll;
         QTimer timeout;
         timeout.setSingleShot(true);
         QObject::connect(&poll, &QTimer::timeout, &finished, [&] {
-            if (run->isEnabled() && report->toPlainText().contains(QStringLiteral("reference_device")))
+            if (run->isEnabled())
                 finished.quit();
         });
         QObject::connect(&timeout, &QTimer::timeout, &finished, &QEventLoop::quit);
         poll.start(30); timeout.start(6000); finished.exec();
         const auto resultText = report->toPlainText();
-        if (!run->isEnabled() || !resultText.contains(QStringLiteral("reference_device"))
-            || !resultText.contains(QStringLiteral("НОРМА"))
-            || !resultText.contains(QStringLiteral("12"))) {
+        if (!run->isEnabled() || !status->text().contains(QStringLiteral("проверка завершена"))
+            || !resultText.contains(QStringLiteral("Проект: reference_device, версия 1.0.0"))
+            || !resultText.contains(QStringLiteral("Процесс: generic"))
+            || !resultText.contains(QStringLiteral("Результат: НОРМА"))
+            || !resultText.contains(QStringLiteral("12 В"))) {
             std::cerr << "reference HMI run: " << resultText.toUtf8().constData() << std::endl;
             require(false, "independent-device HMI did not execute and report a passing measurement");
         }

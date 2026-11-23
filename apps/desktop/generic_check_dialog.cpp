@@ -419,6 +419,8 @@ QString GenericCheckDialog::defaultReportTemplate() const
         "<p><b>Описание:</b> {{description}}</p>\n"
         "<p><b>Инженерное изменение / допуск:</b> {{engineering_override}}</p>\n"
         "<p><b>Снимок конфигурации SHA-256:</b> <code>{{scenario_config_sha256}}</code></p>\n"
+        "<p><b>Проект:</b> {{project_id}}, версия {{project_version}}</p>\n"
+        "<p><b>Процесс:</b> {{workflow_id}}</p>\n"
         "<p><b>Объект:</b> {{object_serial}}</p>\n"
         "<p><b>Сценарий:</b> {{scenario_title}} (<code>{{scenario_id}}</code>), версия {{scenario_version}}</p>\n"
         "<p><b>Профиль стенда:</b> {{profile_version}}</p>\n"
