@@ -28,6 +28,8 @@
 #include <QSaveFile>
 #include <QScrollArea>
 #include <QSignalBlocker>
+#include <QShortcut>
+#include <QKeySequence>
 #include <QSpinBox>
 #include <QSplitter>
 #include <QVBoxLayout>
@@ -35,6 +37,7 @@
 #include <algorithm>
 #include <cmath>
 #include <utility>
+#include <functional>
 
 namespace miltech::ui {
 namespace {
@@ -802,6 +805,48 @@ HmiDesignerPage::HmiDesignerPage(HmiDocument* document, QWidget* parent, bool co
     }
     root->addLayout(toolbar);
 
+    // Multi-object tools stay independent from the station's runtime capabilities.
+    auto* editRow = new QHBoxLayout;
+    editRow->setSpacing(6);
+    auto* alignmentRow = new QHBoxLayout;
+    alignmentRow->setSpacing(6);
+    auto edit = [this](QHBoxLayout* layout, const QString& id,
+                       const QString& caption, const QString& tip) {
+        auto* button = new QPushButton(caption);
+        button->setObjectName(QStringLiteral("ui.hmi.action.%1").arg(id));
+        button->setToolTip(tip);
+        layout->addWidget(button);
+        edits_.append({id, button});
+        return button;
+    };
+    auto* undoButton = edit(editRow, QStringLiteral("undo"), QStringLiteral("↶ Отменить"),
+                            QStringLiteral("Ctrl+Z · отменить изменение HMI"));
+    auto* redoButton = edit(editRow, QStringLiteral("redo"), QStringLiteral("↷ Повторить"),
+                            QStringLiteral("Ctrl+Shift+Z · повторить изменение HMI"));
+    auto* duplicateButton = edit(editRow, QStringLiteral("duplicate"), QStringLiteral("Копия"),
+                                 QStringLiteral("Ctrl+D · дублировать выбранные элементы"));
+    auto* groupButton = edit(editRow, QStringLiteral("group"), QStringLiteral("Группа"),
+                             QStringLiteral("Ctrl+G · объединить выделенные элементы"));
+    auto* ungroupButton = edit(editRow, QStringLiteral("ungroup"), QStringLiteral("Разгрупп."),
+                               QStringLiteral("Ctrl+Shift+G · разделить группу"));
+    editRow->addStretch(1);
+    root->addLayout(editRow);
+
+    auto* leftButton = edit(alignmentRow, QStringLiteral("align.left"),
+                            QStringLiteral("Лево"), QStringLiteral("По левому краю"));
+    auto* centerButton = edit(alignmentRow, QStringLiteral("align.hcenter"),
+                              QStringLiteral("Центр X"), QStringLiteral("По горизонтальному центру"));
+    auto* rightButton = edit(alignmentRow, QStringLiteral("align.right"),
+                             QStringLiteral("Право"), QStringLiteral("По правому краю"));
+    auto* topButton = edit(alignmentRow, QStringLiteral("align.top"),
+                           QStringLiteral("Верх"), QStringLiteral("По верхнему краю"));
+    auto* middleButton = edit(alignmentRow, QStringLiteral("align.vcenter"),
+                              QStringLiteral("Центр Y"), QStringLiteral("По вертикальному центру"));
+    auto* bottomButton = edit(alignmentRow, QStringLiteral("align.bottom"),
+                              QStringLiteral("Низ"), QStringLiteral("По нижнему краю"));
+    alignmentRow->addStretch(1);
+    root->addLayout(alignmentRow);
+
     auto* splitter = new QSplitter(Qt::Horizontal);
     splitter->setChildrenCollapsible(false);
     splitter->setObjectName(QStringLiteral("ui.hmi.splitter"));
@@ -852,6 +897,9 @@ HmiDesignerPage::HmiDesignerPage(HmiDocument* document, QWidget* parent, bool co
     inspectorLayout->setContentsMargins(13, 13, 13, 13);
     inspectorLayout->setSpacing(9);
     inspectorLayout->addWidget(label(QStringLiteral("СВОЙСТВА ЭЛЕМЕНТА"), "eyebrow"));
+    selectionInfo_ = label(QStringLiteral("Ctrl+Click · выбрать несколько элементов"), "muted");
+    selectionInfo_->setObjectName(QStringLiteral("ui.hmi.selectionCount"));
+    inspectorLayout->addWidget(selectionInfo_);
 
     auto* form = new QFormLayout;
     form->setLabelAlignment(Qt::AlignLeft);
@@ -921,6 +969,60 @@ HmiDesignerPage::HmiDesignerPage(HmiDocument* document, QWidget* parent, bool co
 
     connect(canvas_, &HmiCanvas::selectedElementChanged,
             this, &HmiDesignerPage::showSelected);
+    connect(canvas_, &HmiCanvas::selectionChanged,
+            this, &HmiDesignerPage::updateEditActions);
+    connect(document_, &HmiDocument::historyChanged,
+            this, &HmiDesignerPage::updateEditActions);
+
+    connect(undoButton, &QPushButton::clicked, document_, &HmiDocument::undo);
+    connect(redoButton, &QPushButton::clicked, document_, &HmiDocument::redo);
+    connect(duplicateButton, &QPushButton::clicked, this, [this] {
+        const QStringList created = document_->duplicateElements(canvas_->selectedElements());
+        if (!created.isEmpty()) {
+            canvas_->selectElements(created);
+            setNotice(QStringLiteral("Создано копий: %1").arg(created.size()));
+        }
+    });
+    connect(groupButton, &QPushButton::clicked, this, [this] {
+        if (document_->groupElements(canvas_->selectedElements()))
+            setNotice(QStringLiteral("Элементы объединены; перетаскивание группы — одним действием"));
+    });
+    connect(ungroupButton, &QPushButton::clicked, this, [this] {
+        if (document_->ungroupElements(canvas_->selectedElements()))
+            setNotice(QStringLiteral("Группа разделена"));
+    });
+    for (const auto& action : QVector<QPair<QPushButton*, QString>>{
+        {leftButton, QStringLiteral("left")}, {centerButton, QStringLiteral("hcenter")},
+        {rightButton, QStringLiteral("right")}, {topButton, QStringLiteral("top")},
+        {middleButton, QStringLiteral("vcenter")}, {bottomButton, QStringLiteral("bottom")}}) {
+        connect(action.first, &QPushButton::clicked, this, [this, edge = action.second] {
+            if (document_->alignElements(canvas_->selectedElements(), edge))
+                setNotice(QStringLiteral("Выравнивание применено к выбранным элементам"));
+        });
+    }
+    auto shortcut = [this](const QString& sequence, const std::function<void()>& handler) {
+        auto* key = new QShortcut(QKeySequence(sequence), canvas_);
+        key->setContext(Qt::WidgetWithChildrenShortcut);
+        connect(key, &QShortcut::activated, this, handler);
+    };
+    shortcut(QStringLiteral("Ctrl+Z"), [this] { if (canvas_->editing()) document_->undo(); });
+    shortcut(QStringLiteral("Ctrl+Shift+Z"), [this] { if (canvas_->editing()) document_->redo(); });
+    shortcut(QStringLiteral("Ctrl+D"), [duplicateButton] { if (duplicateButton->isEnabled()) duplicateButton->click(); });
+    shortcut(QStringLiteral("Ctrl+G"), [groupButton] { if (groupButton->isEnabled()) groupButton->click(); });
+    shortcut(QStringLiteral("Ctrl+Shift+G"), [ungroupButton] { if (ungroupButton->isEnabled()) ungroupButton->click(); });
+    shortcut(QStringLiteral("Ctrl+A"), [this] {
+        if (!canvas_->editing()) return;
+        QStringList ids;
+        for (const auto& element : document_->elements()) ids.append(element.id);
+        canvas_->selectElements(ids);
+    });
+    shortcut(QStringLiteral("Delete"), [this] {
+        if (canvas_->editing() && !canvas_->selectedElements().isEmpty()) {
+            const QStringList ids = canvas_->selectedElements();
+            canvas_->selectElements({});
+            document_->removeElements(ids);
+        }
+    });
     connect(document_, &HmiDocument::changed, this, [this] {
         showSelected(canvas_->selectedElement());
     });
@@ -940,10 +1042,10 @@ HmiDesignerPage::HmiDesignerPage(HmiDocument* document, QWidget* parent, bool co
     });
     connect(apply_, &QPushButton::clicked, this, &HmiDesignerPage::applySelected);
     connect(remove_, &QPushButton::clicked, this, [this] {
-        const QString id = id_->text();
-        canvas_->selectElement({});
-        if (document_->remove(id))
-            setNotice(QStringLiteral("Элемент удалён"));
+        const QStringList ids = canvas_->selectedElements();
+        canvas_->selectElements({});
+        if (document_->removeElements(ids))
+            setNotice(QStringLiteral("Удалено элементов: %1").arg(ids.size()));
     });
     connect(export_, &QPushButton::clicked, this, [this] {
         const QString filename = QFileDialog::getSaveFileName(
