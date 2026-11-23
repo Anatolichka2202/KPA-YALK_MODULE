@@ -138,6 +138,7 @@ void HomePage::setProjectWorkflows(const QVector<HomeWorkflowEntry>& workflows,
                                    const QString& projectTitle, bool ktmaMode)
 {
     if (!rootLayout_) return;
+    ktmaMode_ = ktmaMode;
     if (genericCard_) genericCard_->show();
     if (ktmaCard_) {
         ktmaCard_->show();
@@ -208,7 +209,9 @@ void HomePage::showKtmaMenu(bool visible)
     if (projectWorkflowCard_) projectWorkflowCard_->setVisible(visible);
     if (genericCard_) genericCard_->setVisible(!visible);
     if (ktmaCard_) ktmaCard_->setVisible(!visible);
-    if (stationAdminCard_) stationAdminCard_->setVisible(!visible);
+    // The UBSI HMI contract permits no standalone diagnostic card on its home.
+    // Station diagnostics remain available on the universal reference host.
+    if (stationAdminCard_) stationAdminCard_->setVisible(!visible && !ktmaMode_);
     if (auto* section = findChild<QLabel*>(QStringLiteral("legacyWorkflowSection")))
         section->setVisible(!visible);
 }
