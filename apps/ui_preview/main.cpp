@@ -801,6 +801,11 @@ int main(int argc, char* argv[])
                 if (document->elements().size() != before + 1
                     || viewer->canvas()->renderedElementCount() != before + 1)
                     return 53;
+                designer->zoomChoice()->setCurrentIndex(1); // 100%
+                if (qAbs(designer->canvas()->transform().m11() - 1.0) > 0.02) return 60;
+                designer->zoomChoice()->setCurrentIndex(0); // fit all
+                QApplication::processEvents();
+                if (designer->canvas()->transform().m11() <= 0.0) return 61;
                 designer->previewMode()->setCurrentIndex(1);
                 if (designer->canvas()->editing() || designer->canvas()->demoValues()) return 54;
                 designer->previewMode()->setCurrentIndex(2);
