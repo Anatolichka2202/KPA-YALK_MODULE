@@ -21,7 +21,9 @@ class HomePage final : public QWidget
 
 public:
     explicit HomePage(QWidget* parent = nullptr);
-    void setProjectWorkflows(const QVector<HomeWorkflowEntry>& workflows);
+    void setProjectWorkflows(const QVector<HomeWorkflowEntry>& workflows,
+                             const QString& projectTitle = QStringLiteral("КТМА"),
+                             bool ktmaMode = true);
 
 signals:
     // Универсальный контур не входит в маршруты КТМА и не запускает YAML-сценарии.
