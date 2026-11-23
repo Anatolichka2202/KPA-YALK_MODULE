@@ -562,17 +562,26 @@ void HmiCanvas::setDemoValues(bool enabled)
 
 void HmiCanvas::selectElement(const QString& id)
 {
-    selectedId_ = id;
+    selectElements(id.isEmpty() ? QStringList{} : QStringList{id});
+}
+
+void HmiCanvas::selectElements(const QStringList& ids)
+{
+    const QStringList next = editing_ ? document_->expandGroups(ids) : QStringList{};
+    const bool different = next != selectedIds_;
+    selectedIds_ = next;
+    selectedId_ = selectedIds_.isEmpty() ? QString() : selectedIds_.constFirst();
     {
         QSignalBlocker blocker(scene_);
         for (auto* item : scene_->items()) {
-            if (item->data(0).toString() == id && item->flags() & QGraphicsItem::ItemIsSelectable)
-                item->setSelected(true);
-            else if (item->flags() & QGraphicsItem::ItemIsSelectable)
-                item->setSelected(false);
+            if (item->flags() & QGraphicsItem::ItemIsSelectable)
+                item->setSelected(selectedIds_.contains(item->data(0).toString()));
         }
     }
-    emit selectedElementChanged(selectedId_);
+    if (different) {
+        emit selectedElementChanged(selectedId_);
+        emit selectionChanged();
+    }
 }
 
 int HmiCanvas::renderedElementCount() const
@@ -585,11 +594,15 @@ int HmiCanvas::renderedElementCount() const
 
 void HmiCanvas::onSelected()
 {
-    const auto selected = scene_->selectedItems();
-    const QString next = selected.isEmpty() ? QString() : selected.constFirst()->data(0).toString();
-    if (selectedId_ == next) return;
-    selectedId_ = next;
-    emit selectedElementChanged(selectedId_);
+    QSet<QString> raw;
+    for (auto* item : scene_->selectedItems()) {
+        const QString id = item->data(0).toString();
+        if (!id.isEmpty()) raw.insert(id);
+    }
+    QStringList requested;
+    for (const auto& element : document_->elements())
+        if (raw.contains(element.id)) requested.append(element.id);
+    selectElements(requested);
 }
 
 void HmiCanvas::mouseReleaseEvent(QMouseEvent* event)
@@ -598,19 +611,25 @@ void HmiCanvas::mouseReleaseEvent(QMouseEvent* event)
     if (!editing_) return;
     const auto selected = scene_->selectedItems();
     if (selected.isEmpty()) return;
-    QGraphicsItem* selectedItem = selected.constFirst();
-    const QString id = selectedItem->data(0).toString();
-    const HmiElement* element = document_->find(id);
-    if (id.isEmpty() || !element) return;
-    const QPointF position = selectedItem->pos();
-    const int x = qRound(position.x() / gridStep) * gridStep;
-    const int y = qRound(position.y() / gridStep) * gridStep;
-    document_->moveElement(id, x, y);
+    QGraphicsItem* item = selected.constFirst();
+    const QString id = item->data(0).toString();
+    const HmiElement* reference = document_->find(id);
+    if (!reference) return;
+    const QPointF position = item->pos();
+    const int nextX = qRound(position.x() / gridStep) * gridStep;
+    const int nextY = qRound(position.y() / gridStep) * gridStep;
+    // One history checkpoint per group drag, not one for each selected widget.
+    document_->translateElements(selectedIds_, nextX - reference->geometry.x(),
+                                 nextY - reference->geometry.y());
 }
 
 void HmiCanvas::redraw()
 {
     QSignalBlocker blocker(scene_);
+    const QStringList stillSelected = document_->expandGroups(selectedIds_);
+    const bool selectionLost = stillSelected != selectedIds_;
+    selectedIds_ = stillSelected;
+    selectedId_ = selectedIds_.isEmpty() ? QString() : selectedIds_.constFirst();
     scene_->clear();
     for (int x = 0; x <= canvasWidth; x += gridStep) {
         const bool major = x % 100 == 0;
@@ -629,7 +648,8 @@ void HmiCanvas::redraw()
         const int w = element.geometry.width();
         const int h = element.geometry.height();
         auto* root = scene_->addRect(QRectF(0, 0, w, h),
-            QPen(borderColor(element.type), 1.3),
+            QPen(element.groupId.isEmpty()
+                ? borderColor(element.type) : QColor(QStringLiteral("#67AFCB")), 1.3),
             QBrush(QColor(QStringLiteral("#162C3E"))));
         root->setData(0, element.id);
         root->setPos(element.geometry.topLeft());
@@ -644,7 +664,7 @@ void HmiCanvas::redraw()
         } else {
             root->setAcceptedMouseButtons(Qt::NoButton);
         }
-        if (editing_ && element.id == selectedId_) root->setSelected(true);
+        if (editing_ && selectedIds_.contains(element.id)) root->setSelected(true);
 
         const int availableWidth = w - 24;
         drawText(root, element.title, QPointF(12, 8), 10,
@@ -728,6 +748,10 @@ void HmiCanvas::redraw()
     }
     applyZoom();
     viewport()->update();
+    if (selectionLost) {
+        emit selectedElementChanged(selectedId_);
+        emit selectionChanged();
+    }
 }
 
 HmiDesignerPage::HmiDesignerPage(HmiDocument* document, QWidget* parent, bool compact)
