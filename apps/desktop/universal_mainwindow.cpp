@@ -179,10 +179,11 @@ void UniversalMainWindow::reloadGenericScenarios()
 
     genericDialog_->setCreationAvailable(true);
     const QString userRoot = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
-    // У другой поставки собственный каталог методик: сценарии УБСИ
-    // из установленного каталога КТМА не должны появляться в её HMI.
+    // У поставки с собственным корневым каталогом сценарии из установленной
+    // КТМА не подмешиваются. Сессии без каталога проекта (live/тесты)
+    // используют установленный каталог сценариев по прежнему контракту.
     QList<QDir> directories;
-    if (project->id == "ktma") {
+    if (project->id == "ktma" || project->rootDirectory.empty()) {
         directories.push_back(QDir(QDir(QCoreApplication::applicationDirPath())
             .filePath(QStringLiteral("scenarios"))));
     } else {
