@@ -98,7 +98,7 @@ bool HmiDeliveryCollection::initialize(const QVector<HmiPageSpec>& templates, QS
             return false;
         }
         QFile file(entry.source);
-        auto* document = new HmiDocument(deliveryId_);
+        auto* document = new HmiDocument(deliveryId_, this);
         QString issue;
         if (!file.open(QIODevice::ReadOnly)
             || !document->loadFromJson(file.readAll(), &issue)) {
@@ -121,7 +121,7 @@ QString HmiDeliveryCollection::addPage(QString title)
     if (pages_.size() >= 12 || !goodTitle(title)) return {};
     const QString id = uniqueId();
     if (id.isEmpty()) return {};
-    auto* document = new HmiDocument(deliveryId_);
+    auto* document = new HmiDocument(deliveryId_, this);
     document->add(QStringLiteral("label"));
     pages_.push_back({id, title.trimmed(), document});
     selectedIndex_ = pages_.size() - 1;
@@ -136,7 +136,7 @@ QString HmiDeliveryCollection::duplicatePage(int sourceIndex)
     const HmiPageRecord source = pages_.at(sourceIndex);
     const QString newId = uniqueId();
     if (newId.isEmpty()) return {};
-    auto* document = new HmiDocument(deliveryId_);
+    auto* document = new HmiDocument(deliveryId_, this);
     if (!document->loadFromJson(source.document->toJson())) {
         delete document;
         return {};
@@ -238,7 +238,7 @@ bool HmiDeliveryCollection::loadFromJson(const QByteArray& json, QString* error)
             for (const auto& page : next) delete page.document;
             return false;
         }
-        auto* document = new HmiDocument(deliveryId_);
+        auto* document = new HmiDocument(deliveryId_, this);
         QString description;
         if (!document->loadFromJson(QJsonDocument(record.value(QStringLiteral("document")).toObject())
                                         .toJson(), &description)) {
