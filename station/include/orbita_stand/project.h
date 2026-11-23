@@ -59,6 +59,8 @@ struct ProjectDefinition {
     std::string version;
     std::string rootDirectory;
     std::string equipmentProfilePath;
+    // Optional delivery-specific catalog. Empty keeps the legacy installed catalog.
+    std::string catalogPath;
 
     std::vector<std::string> dutTypes;
     std::vector<WorkflowDefinition> workflows;
