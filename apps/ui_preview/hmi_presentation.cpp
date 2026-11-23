@@ -1,5 +1,6 @@
 #include "hmi_presentation.h"
 
+#include <QApplication>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QFile>
@@ -553,6 +554,7 @@ void HmiCanvas::setEditing(bool editing)
 {
     if (editing_ == editing) return;
     editing_ = editing;
+    setDragMode(editing_ ? QGraphicsView::RubberBandDrag : QGraphicsView::NoDrag);
     redraw();
 }
 
@@ -608,10 +610,17 @@ void HmiCanvas::onSelected()
     selectElements(requested);
 }
 
+void HmiCanvas::mousePressEvent(QMouseEvent* event)
+{
+    dragStart_ = event->position().toPoint();
+    QGraphicsView::mousePressEvent(event);
+}
+
 void HmiCanvas::mouseReleaseEvent(QMouseEvent* event)
 {
     QGraphicsView::mouseReleaseEvent(event);
-    if (!editing_) return;
+    if (!editing_ || (event->position().toPoint() - dragStart_).manhattanLength()
+                       < QApplication::startDragDistance()) return;
     const auto selected = scene_->selectedItems();
     if (selected.isEmpty()) return;
     QGraphicsItem* item = selected.constFirst();
@@ -619,6 +628,7 @@ void HmiCanvas::mouseReleaseEvent(QMouseEvent* event)
     const HmiElement* reference = document_->find(id);
     if (!reference) return;
     const QPointF position = item->pos();
+    if ((position - reference->geometry.topLeft()).manhattanLength() < 1.0) return;
     const int nextX = qRound(position.x() / gridStep) * gridStep;
     const int nextY = qRound(position.y() / gridStep) * gridStep;
     // One history checkpoint per group drag, not one for each selected widget.
