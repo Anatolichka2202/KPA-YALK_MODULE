@@ -49,6 +49,19 @@ target_compile_features(orbita_stand_runtime PUBLIC cxx_std_17)
 target_link_libraries(orbita_stand_runtime PUBLIC
     orbita_stand_core orbita_stand_catalog Qt6::Core)
 
+# Presentation-facing composition and command preflight; no UI or hardware executor.
+add_library(orbita_stand_desktop_core STATIC
+    src/desktop_core.cpp
+)
+target_include_directories(orbita_stand_desktop_core
+    PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+target_compile_features(orbita_stand_desktop_core PUBLIC cxx_std_17)
+target_link_libraries(orbita_stand_desktop_core
+    PUBLIC orbita_stand_runtime
+)
+add_library(station_desktop_core ALIAS orbita_stand_desktop_core)
+
 # Hardware/protocol adapters are reusable station IO. Product procedures must
 # depend on these adapters when needed, never the other way around.
 add_library(orbita_stand_adapters STATIC
@@ -84,6 +97,12 @@ endif()
 add_library(stand_io ALIAS orbita_stand_adapters)
 
 if(BUILD_TESTING)
+    add_executable(desktop_core_test tests/desktop_core_test.cpp)
+    target_compile_definitions(desktop_core_test PRIVATE
+        ORBITA_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+    target_link_libraries(desktop_core_test PRIVATE orbita_stand_desktop_core)
+    add_test(NAME stand.desktop_core COMMAND desktop_core_test)
+
     add_executable(equipment_protocol_test
         tests/equipment_protocol_test.cpp
     )
@@ -146,6 +165,7 @@ if(BUILD_TESTING)
     if(WIN32)
         set(_orbita_qt_test_path "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
         set_tests_properties(
+            stand.desktop_core
             stand.equipment_protocol
             stand.isd_driver
             stand.isd_http_transport
@@ -194,6 +214,12 @@ add_dependencies(orbita_equipment_plugins orbita_plugin_tcp_scpi_bench)
 if(BUILD_TESTING)
     add_dependencies(station_session_test orbita_equipment_plugins)
 endif()
+
+# Safe, headless package inspection for CI/deployment and delivery authors.
+# Never instantiates StationSession or loads physical equipment plugins.
+add_executable(station_project_inspect tools/station_project_inspect.cpp)
+target_link_libraries(station_project_inspect PRIVATE
+    orbita_stand_desktop_core Qt6::Core)
 
 add_executable(catalog_import tools/catalog_import.cpp)
 target_link_libraries(catalog_import PRIVATE orbita_stand_runtime Qt6::Core)
