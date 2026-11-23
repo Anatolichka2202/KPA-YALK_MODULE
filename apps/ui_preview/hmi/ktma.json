@@ -1,0 +1,87 @@
+{
+  "schema": 1,
+  "format": "miltech.ui.hmi.preview",
+  "delivery_id": "ktma",
+  "canvas_width": 960,
+  "canvas_height": 540,
+  "runtime_binding_resolved": false,
+  "elements": [
+    {
+      "id": "heading",
+      "type": "label",
+      "title": "КТМА / УБСИ · макет HMI",
+      "binding": "",
+      "unit": "",
+      "x": 24,
+      "y": 24,
+      "width": 306,
+      "height": 100
+    },
+    {
+      "id": "voltage",
+      "type": "numeric",
+      "title": "Напряжение · пример",
+      "binding": "ui.demo.voltage",
+      "unit": "В",
+      "x": 348,
+      "y": 24,
+      "width": 250,
+      "height": 105
+    },
+    {
+      "id": "current",
+      "type": "numeric",
+      "title": "Ток · пример",
+      "binding": "ui.demo.current",
+      "unit": "А",
+      "x": 616,
+      "y": 24,
+      "width": 255,
+      "height": 105
+    },
+    {
+      "id": "state",
+      "type": "status",
+      "title": "Логическое состояние",
+      "binding": "ui.demo.flag",
+      "unit": "",
+      "x": 24,
+      "y": 164,
+      "width": 265,
+      "height": 105
+    },
+    {
+      "id": "load",
+      "type": "bar",
+      "title": "Уровень · образец",
+      "binding": "ui.demo.load",
+      "unit": "%",
+      "x": 305,
+      "y": 164,
+      "width": 266,
+      "height": 105
+    },
+    {
+      "id": "trend",
+      "type": "trend",
+      "title": "Синтетический сигнал",
+      "binding": "ui.demo.voltage",
+      "unit": "",
+      "x": 590,
+      "y": 164,
+      "width": 281,
+      "height": 170
+    },
+    {
+      "id": "command",
+      "type": "command",
+      "title": "Команда питания · заблокировано",
+      "binding": "capability.power.output",
+      "unit": "",
+      "x": 24,
+      "y": 364,
+      "width": 330,
+      "height": 105
+    }
+  ]
+}
