@@ -972,25 +972,35 @@ int main(int argc, char* argv[])
                 if (!pages->setCurrentIndex(1)
                     || pageEditor->pageSelector()->currentIndex() != 1
                     || pageViewer->visiblePageIndex() != 1) return 63;
+                trace(QStringLiteral("HMI switch page DONE"));
+                trace(QStringLiteral("HMI add page BEGIN"));
                 pageEditor->addPageButton()->click();
+                trace(QStringLiteral("HMI add page DONE"));
                 if (pages->pageCount() != composition.hmiPages.size() + 1
                     || pageViewer->visiblePageIndex() != pages->currentIndex()) return 64;
                 pageEditor->nameInput()->setText(QStringLiteral("Новый экран · проверка UX"));
+                trace(QStringLiteral("HMI rename BEGIN"));
                 pageEditor->renamePageButton()->click();
+                trace(QStringLiteral("HMI rename DONE"));
                 if (pages->pageAt(pages->currentIndex()).title
                     != QStringLiteral("Новый экран · проверка UX")) return 65;
+                trace(QStringLiteral("HMI duplicate page BEGIN"));
                 pageEditor->duplicatePageButton()->click();
+                trace(QStringLiteral("HMI duplicate page DONE"));
                 if (pages->pageCount() != composition.hmiPages.size() + 2
                     || !pages->pageAt(pages->currentIndex()).title.contains(QStringLiteral("копия")))
                     return 66;
                 miltech::ui::HmiDeliveryCollection restoredPages(composition.id);
+                trace(QStringLiteral("HMI collection JSON BEGIN"));
                 if (!restoredPages.loadFromJson(pages->toJson(), &reason)
                     || restoredPages.pageCount() != pages->pageCount()) return 67;
                 const QByteArray beforeInvalid = pages->toJson();
                 miltech::ui::HmiDeliveryCollection otherDelivery(QStringLiteral("another_delivery"));
                 if (otherDelivery.loadFromJson(beforeInvalid, &reason)) return 68;
+                trace(QStringLiteral("HMI delete page BEGIN"));
                 if (!pages->deletePage(pages->currentIndex())
                     || pages->pageCount() != composition.hmiPages.size() + 1) return 69;
+                trace(QStringLiteral("HMI delete page DONE"));
                 if (pageEditor->pageSelector()->count() != pages->pageCount()
                     || pageViewer->pageSelector()->count() != pages->pageCount()) return 70;
             }
