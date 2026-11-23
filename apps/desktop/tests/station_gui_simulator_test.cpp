@@ -806,6 +806,17 @@ int runChild(const QString& mode)
                 "foreign project did not replace KTMA labels in the shared HMI");
         const auto* orbita = window.findChild<QPushButton*>(QStringLiteral("projectWorkflow_production"));
         require(!orbita, "foreign project exposed KTMA production actions");
+        auto* diagnostics = window.findChild<QPushButton*>(QStringLiteral("stationAdminAction"));
+        require(diagnostics && diagnostics->isEnabled(), "station diagnostics action is unavailable");
+        bool diagnosticsOpened = false;
+        QTimer::singleShot(0, [&] {
+            auto* dialog = qobject_cast<QDialog*>(QApplication::activeModalWidget());
+            if (!dialog) return;
+            diagnosticsOpened = dialog->objectName() == QStringLiteral("stationAdminDialog");
+            dialog->accept();
+        });
+        diagnostics->click();
+        require(diagnosticsOpened, "read-only station diagnostics did not open");
         launch->click();
         workflow->click();
         auto* dialog = window.findChild<GenericCheckDialog*>();
