@@ -400,7 +400,7 @@ void HmiDeliveryEditor::rebuild()
             scroll->setObjectName(QStringLiteral("ui.hmi.designerScroll"));
             scroll->setWidgetResizable(true);
             scroll->setFrameShape(QFrame::NoFrame);
-            auto* designer = new HmiDesignerPage(record.document);
+            auto* designer = new HmiDesignerPage(record.document, nullptr, true);
             designer->setMinimumWidth(920);
             scroll->setWidget(designer);
             stack_->addWidget(scroll);
