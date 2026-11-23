@@ -34,6 +34,21 @@
 
 namespace {
 
+QString userScenarioDirectory(const orbita::stand::ProjectDefinition* project)
+{
+    const QString root = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
+    if (root.isEmpty()) return {};
+    // Existing KTMA and in-memory/legacy sessions retain the original location.
+    if (!project || project->id == "ktma" || project->catalogPath.empty())
+        return QDir(root).filePath(QStringLiteral("scenarios"));
+    // A stable, path-safe namespace prevents drafts from different deliveries
+    // appearing in one another's HMI even when scenario ids happen to coincide.
+    const auto id = QCryptographicHash::hash(
+        QByteArray::fromStdString(project->id), QCryptographicHash::Sha256).toHex();
+    return QDir(root).filePath(QStringLiteral("scenarios/by-project/")
+        + QString::fromLatin1(id));
+}
+
 QString verdictText(orbita::stand::RunVerdict verdict)
 {
     using V = orbita::stand::RunVerdict;
@@ -178,7 +193,7 @@ void UniversalMainWindow::reloadGenericScenarios()
     }
 
     genericDialog_->setCreationAvailable(true);
-    const QString userRoot = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
+    const QString userScenarios = userScenarioDirectory(project);
     // У поставки с собственным корневым каталогом сценарии из установленной
     // КТМА не подмешиваются. Сессии без каталога проекта (live/тесты)
     // используют установленный каталог сценариев по прежнему контракту.
@@ -190,8 +205,7 @@ void UniversalMainWindow::reloadGenericScenarios()
         directories.push_back(QDir(QDir(QString::fromStdString(project->rootDirectory))
             .filePath(QStringLiteral("scenarios"))));
     }
-    if (!userRoot.isEmpty())
-        directories.push_back(QDir(QDir(userRoot).filePath(QStringLiteral("scenarios"))));
+    if (!userScenarios.isEmpty()) directories.push_back(QDir(userScenarios));
     for (const auto& directory : directories) {
         for (const auto& file : directory.entryInfoList(
                  {QStringLiteral("*.yaml")}, QDir::Files, QDir::Name)) {
@@ -280,14 +294,16 @@ void UniversalMainWindow::createGenericScenario()
     const QString title = QInputDialog::getText(this, QStringLiteral("Новая проверка"),
         QStringLiteral("Название проверки:"), QLineEdit::Normal, {}, &accepted).trimmed();
     if (!accepted || title.isEmpty()) return;
-    const QString root = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
-    if (root.isEmpty() || !QDir().mkpath(QDir(root).filePath(QStringLiteral("scenarios")))) {
+    const QString directoryPath = userScenarioDirectory(project);
+    if (directoryPath.isEmpty() || !QDir().mkpath(directoryPath)) {
         QMessageBox::warning(this, QStringLiteral("Новая проверка"), QStringLiteral("Каталог пользовательских проверок недоступен."));
         return;
     }
-    const QDir directory(QDir(root).filePath(QStringLiteral("scenarios")));
+    const QDir directory(directoryPath);
     try {
-        const QString catalogPath = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("catalog/catalog.yaml"));
+        const QString catalogPath = !project->catalogPath.empty()
+            ? QString::fromStdString(project->catalogPath)
+            : QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("catalog/catalog.yaml"));
         const auto catalog = orbita::stand::yaml::parseFile(catalogPath.toUtf8().toStdString());
         const QString catalogVersion = QString::fromStdString(catalog.value("version"));
         if (catalogVersion.isEmpty()) throw std::runtime_error("Версия каталога не определена");
@@ -336,10 +352,15 @@ void UniversalMainWindow::editGenericScenario(const QString& path)
     }
     switchResources.removeDuplicates();
     editor.setSwitchResources(switchResources);
-    const QString userRoot = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
-    const QString userScenarios = userRoot.isEmpty() ? QString()
-        : QDir(userRoot).filePath(QStringLiteral("scenarios"));
-    QStringList versionDirectories{QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("scenarios"))};
+    const auto* project = integrationProject();
+    const QString userScenarios = userScenarioDirectory(project);
+    QStringList versionDirectories;
+    if (project && !project->rootDirectory.empty() && project->id != "ktma")
+        versionDirectories.push_back(QDir(QString::fromStdString(project->rootDirectory))
+            .filePath(QStringLiteral("scenarios")));
+    else
+        versionDirectories.push_back(QDir(QCoreApplication::applicationDirPath())
+            .filePath(QStringLiteral("scenarios")));
     if (!userScenarios.isEmpty()) versionDirectories.push_back(userScenarios);
     editor.setScenarioStorage(userScenarios, versionDirectories);
     if (auto* engine = integrationScenarioEngine()) {
