@@ -118,20 +118,20 @@ HomePage::HomePage(QWidget* parent)
     stationAdminCard_ = new QFrame(this);
     stationAdminCard_->setProperty("card", true);
     auto* adminLayout = new QVBoxLayout(stationAdminCard_);
-    auto* adminTitle = new QLabel(QStringLiteral("Администрирование"), stationAdminCard_);
+    auto* adminTitle = new QLabel(QStringLiteral("Состояние станции"), stationAdminCard_);
     adminTitle->setProperty("title", true);
     adminLayout->addWidget(adminTitle);
-    auto* adminAction = actionButton(QStringLiteral("НЕ РЕАЛИЗОВАНО"), stationAdminCard_);
+    auto* adminAction = actionButton(QStringLiteral("ОБОРУДОВАНИЕ И ДИАГНОСТИКА"), stationAdminCard_);
     adminAction->setObjectName(QStringLiteral("stationAdminAction"));
-    adminAction->setEnabled(false);
     adminAction->setAccessibleDescription(QStringLiteral(
-        "Администрирование станции пока не реализовано и не открывает технические настройки."));
+        "Просмотр компонентов, соединений и диагностики без отправки команд оборудованию."));
     adminLayout->addWidget(adminAction, 0, Qt::AlignLeft);
     root->addWidget(stationAdminCard_);
     root->addStretch(1);
 
     connect(openKtma, &QPushButton::clicked, this, [this] { showKtmaMenu(true); });
     connect(genericAction, &QPushButton::clicked, this, &HomePage::freeWorkspaceRequested);
+    connect(adminAction, &QPushButton::clicked, this, &HomePage::stationAdminRequested);
 }
 
 void HomePage::setProjectWorkflows(const QVector<HomeWorkflowEntry>& workflows,
