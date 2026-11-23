@@ -44,4 +44,5 @@ private:
     QFrame* ktmaCard_ = nullptr;
     QFrame* projectWorkflowCard_ = nullptr;
     QFrame* stationAdminCard_ = nullptr;
+    bool ktmaMode_ = true;
 };
