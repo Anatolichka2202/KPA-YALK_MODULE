@@ -16,6 +16,8 @@
 #include <QHeaderView>
 #include <QKeySequence>
 #include <QPixmap>
+#include <QPlainTextEdit>
+#include <QTabWidget>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMainWindow>
@@ -632,17 +634,27 @@ int main(int argc, char* argv[])
         for (int index = 0; index < 3; ++index) {
             selector->setCurrentIndex(index);
             QApplication::processEvents();
-            if (stack->count() != (index == 2 ? 3 : 5)) return 3;
+            const auto composition = miltech::ui::loadPreviewComposition(index);
+            if (!composition.valid() || stack->count() != composition.screens.size()) return 3;
             const auto docks = window.findChildren<QDockWidget*>();
             if (index == 2) {
                 if (!docks.isEmpty()
                     || window.findChild<miltech::ui::ParameterPanel*>()
-                    || window.findChild<miltech::ui::TrendPanel*>()) return 4;
+                    || window.findChild<miltech::ui::TrendPanel*>()
+                    || window.findChild<miltech::ui::TuConfiguratorPage*>()
+                    || window.findChild<miltech::ui::StationAdministrationPage*>()) return 4;
                 continue;
             }
             if (docks.size() != 2) return 5;
             const auto nav = window.findChildren<QPushButton*>(QStringLiteral("navButton"));
-            if (nav.size() != 5) return 6;
+            if (nav.size() != composition.screens.size()) return 6;
+            auto* configurator = window.findChild<miltech::ui::TuConfiguratorPage*>();
+            auto* administration = window.findChild<miltech::ui::StationAdministrationPage*>();
+            if (!configurator || !administration || !administration->sections()
+                || administration->sections()->count() != 4) return 16;
+            if (!configurator->packageButton() || configurator->packageButton()->isEnabled()) return 17;
+            if (!configurator->draftPreview()->toPlainText().contains(QStringLiteral("backend_validated"))) return 18;
+            if (index == 0 && configurator->methodologyChoice()->count() != 3) return 19;
             nav.at(1)->click(); // Engineering workspace.
             QApplication::processEvents();
             auto* params = window.findChild<miltech::ui::ParameterPanel*>();
@@ -663,6 +675,7 @@ int main(int argc, char* argv[])
             chart->syntheticToggle()->setChecked(true);
             if (!chart->canvas()->syntheticVisible()) return 14;
             if (events->entryCount() < 3) return 15;
+            if (bool(window.findChild<miltech::ui::SignalTopology*>()) != (index == 0)) return 24;
             nav.at(0)->click();
             QApplication::processEvents();
         }
@@ -682,7 +695,7 @@ int main(int argc, char* argv[])
                                  : mode == 1 ? QStringLiteral("reference")
                                              : QStringLiteral("tu");
             auto nav = window.findChildren<QPushButton*>(QStringLiteral("navButton"));
-            const int captured = mode == 2 ? 3 : 3;
+            const int captured = nav.size();
             for (int page = 0; page < captured; ++page) {
                 nav.at(page)->click();
                 for (const QSize size : {QSize(1366, 768), QSize(1600, 900)}) {
