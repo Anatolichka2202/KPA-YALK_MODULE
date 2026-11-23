@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "id": "tu_ubsi",
+  "title": "УБСИ · ТУ-проверка",
+  "kind": "tu",
+  "screens": [
+    {
+      "id": "tu.prepare",
+      "title": "Подготовка",
+      "group": "primary"
+    },
+    {
+      "id": "tu.run",
+      "title": "Испытание",
+      "group": "primary"
+    },
+    {
+      "id": "tu.result",
+      "title": "Результат",
+      "group": "primary"
+    }
+  ],
+  "workspaceComponents": []
+}
