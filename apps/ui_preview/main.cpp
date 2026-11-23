@@ -8,12 +8,15 @@
 #include <QGridLayout>
 #include <QHBoxLayout>
 #include <QHeaderView>
+#include <QKeySequence>
 #include <QLabel>
 #include <QMainWindow>
 #include <QPushButton>
 #include <QScrollArea>
+#include <QStyle>
 #include <QSettings>
 #include <QStackedWidget>
+#include <QStringList>
 #include <QStyleFactory>
 #include <QTableWidget>
 #include <QVBoxLayout>
@@ -151,7 +154,8 @@ QTableWidget* equipmentTable(const QStringList& names)
         table->setItem(row, 2, new QTableWidgetItem(QStringLiteral("Недоступно")));
         table->setRowHeight(row, 48);
     }
-    table->setMinimumHeight(qMax(190, names.size() * 48 + 42));
+    const int expectedHeight = static_cast<int>(names.size()) * 48 + 42;
+    table->setMinimumHeight(qMax(190, expectedHeight));
     table->setAccessibleName(QStringLiteral("Компоненты оборудования из макета поставки"));
     return table;
 }
