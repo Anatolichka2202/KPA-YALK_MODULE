@@ -1,0 +1,18 @@
+schema: 1
+id: reference-simulator
+version: 1.0.0
+title: Эталонный имитатор без физического оборудования
+active_outputs_confirmed: false
+components:
+  - id: ref-sim
+    kind: parameter_source
+    provider: miltech.parameter.simulator
+    config:
+      parameter: voltage
+      title: Напряжение имитатора
+      value: "12.0"
+      unit: В
+routes:
+  reference_disabled:
+    base: 0
+    safe: off
