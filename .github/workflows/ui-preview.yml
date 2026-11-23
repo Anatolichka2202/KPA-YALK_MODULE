@@ -1,0 +1,51 @@
+name: MilTechStation UI Preview
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'apps/ui_preview/**'
+      - 'docs/ui/**'
+      - '.github/workflows/ui-preview.yml'
+  pull_request:
+    branches: [master]
+    paths:
+      - 'apps/ui_preview/**'
+      - 'docs/ui/**'
+      - '.github/workflows/ui-preview.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ui-preview-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-ui-only:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up MSYS2 / Qt Widgets
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-qt6-base
+      - name: Configure UI preview
+        shell: msys2 {0}
+        run: cmake -S apps/ui_preview -B build-ui-preview -G Ninja -DCMAKE_BUILD_TYPE=Release
+      - name: Compile UI preview
+        shell: msys2 {0}
+        run: cmake --build build-ui-preview --parallel 2
+      - name: Offscreen UI shell smoke
+        shell: msys2 {0}
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ./build-ui-preview/MilTechStationUiPreview.exe --ui-smoke
