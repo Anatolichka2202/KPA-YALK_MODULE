@@ -104,7 +104,7 @@
 
 **Новый UI manifest** описывает *представления*, но не физическую безопасность:
 
-\`\`\`yaml
+```yaml
 ui_schema: 1
 identity:
   title: "КТМА"
@@ -121,7 +121,7 @@ views:
   - id: events
     type: event_log
     source: station_events
-\`\`\`
+```
 
 Этот YAML **иллюстративный**: его нет в существующем project loader, он не должен трактоваться как запущенная функция. В runtime уже есть ProjectDefinition::screenPaths для опциональных UI-ассетов; семантику, права и валидацию UI manifest придётся согласовать отдельным проектным решением.
 
@@ -173,7 +173,7 @@ views:
 
 Предлагаемая граница, **пока без реализации**:
 
-\`\`\`cpp
+```cpp
 struct UiStationSnapshot {
     QString projectId;
     QString projectTitle;
@@ -191,7 +191,7 @@ public:
     virtual ~IStationPresentationSource() = default;
     virtual UiStationSnapshot snapshot() const = 0;
 };
-\`\`\`
+```
 
 UI выбирает страницы и виджеты **по презентационным типам**, а не через касты к KtmaMainWindow. Внешний адаптер переводит runtime DTO в безопасные для GUI обновления. Если источник работает в другом потоке, Qt-модель обновляется исключительно в потоке GUI через queued signals/slots.
 
