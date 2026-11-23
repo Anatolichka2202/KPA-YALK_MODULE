@@ -2,6 +2,8 @@
 
 #include <QAbstractItemView>
 #include <QApplication>
+#include <QCheckBox>
+#include <QDir>
 #include <QCloseEvent>
 #include <QComboBox>
 #include <QDockWidget>
@@ -11,6 +13,7 @@
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QKeySequence>
+#include <QPixmap>
 #include <QLabel>
 #include <QMainWindow>
 #include <QPushButton>
@@ -165,6 +168,7 @@ public:
         context_ = label(QStringLiteral("КТМА"), "muted");
         headerLayout->addWidget(context_);
         modeSelector_ = new QComboBox;
+        modeSelector_->setObjectName(QStringLiteral("ui.variantSelector"));
         modeSelector_->addItem(QStringLiteral("Полная · КТМА"));
         modeSelector_->addItem(QStringLiteral("Полная · эталонный имитатор"));
         modeSelector_->addItem(QStringLiteral("ТУ · УБСИ"));
@@ -567,18 +571,88 @@ int main(int argc, char* argv[])
     UiPreviewWindow window;
     window.show();
 
-    if (app.arguments().contains(QStringLiteral("--ui-smoke"))) {
-        auto* selector = window.findChild<QComboBox*>();
+    const QStringList args = app.arguments();
+    const bool automated = args.contains(QStringLiteral("--ui-smoke"))
+                        || args.contains(QStringLiteral("--ui-snapshot-dir"));
+    if (automated) {
+        // Automated UI checks must not write to the operator's ordinary registry.
+        QSettings::setDefaultFormat(QSettings::IniFormat);
+        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope,
+                           QDir::tempPath() + QStringLiteral("/MilTechStationUiAutomation"));
+    }
+
+    if (args.contains(QStringLiteral("--ui-smoke"))) {
+        auto* selector = window.findChild<QComboBox*>(QStringLiteral("ui.variantSelector"));
         auto* stack = window.findChild<QStackedWidget*>();
         if (!selector || !stack) return 2;
         for (int index = 0; index < 3; ++index) {
             selector->setCurrentIndex(index);
             QApplication::processEvents();
             if (stack->count() != (index == 2 ? 3 : 5)) return 3;
+            const auto docks = window.findChildren<QDockWidget*>();
+            if (index == 2) {
+                if (!docks.isEmpty()
+                    || window.findChild<miltech::ui::ParameterPanel*>()
+                    || window.findChild<miltech::ui::TrendPanel*>()) return 4;
+                continue;
+            }
+            if (docks.size() != 2) return 5;
+            const auto nav = window.findChildren<QPushButton*>(QStringLiteral("navButton"));
+            if (nav.size() != 5) return 6;
+            nav.at(1)->click(); // Engineering workspace.
+            QApplication::processEvents();
+            auto* params = window.findChild<miltech::ui::ParameterPanel*>();
+            auto* chart = window.findChild<miltech::ui::TrendPanel*>();
+            auto* equipment = window.findChild<miltech::ui::EquipmentOverview*>();
+            auto* events = window.findChild<miltech::ui::EventLogPanel*>();
+            if (!params || !chart || !equipment || !events) return 7;
+            if (equipment->equipmentCount() != (index == 0 ? 4 : 1)) return 8;
+            if (params->filteredRowCount() != (index == 0 ? 4 : 3)) return 9;
+            params->searchInput()->setText(QStringLiteral("UNMATCHED_UI_TEST"));
+            if (params->filteredRowCount() != 0) return 10;
+            params->searchInput()->clear();
+            if (params->filteredRowCount() == 0) return 11;
+            chart->waveformSelector()->setCurrentIndex(1);
+            if (chart->canvas()->waveform() != 1) return 12;
+            chart->syntheticToggle()->setChecked(false);
+            if (chart->canvas()->syntheticVisible()) return 13;
+            chart->syntheticToggle()->setChecked(true);
+            if (!chart->canvas()->syntheticVisible()) return 14;
+            if (events->entryCount() < 3) return 15;
+            nav.at(0)->click();
+            QApplication::processEvents();
         }
-        const auto docks = window.findChildren<QDockWidget*>();
-        if (docks.size() != 2 || !docks.at(0)->isHidden()
-                              || !docks.at(1)->isHidden()) return 4;
+        return 0;
+    }
+
+    const int snapshotArg = args.indexOf(QStringLiteral("--ui-snapshot-dir"));
+    if (snapshotArg >= 0) {
+        if (snapshotArg + 1 >= args.size()) return 20;
+        const QString target = args.at(snapshotArg + 1);
+        if (!QDir().mkpath(target)) return 21;
+        auto* selector = window.findChild<QComboBox*>(QStringLiteral("ui.variantSelector"));
+        if (!selector) return 22;
+        for (int mode = 0; mode < 3; ++mode) {
+            selector->setCurrentIndex(mode);
+            const QString prefix = mode == 0 ? QStringLiteral("ktma")
+                                 : mode == 1 ? QStringLiteral("reference")
+                                             : QStringLiteral("tu");
+            auto nav = window.findChildren<QPushButton*>(QStringLiteral("navButton"));
+            const int captured = mode == 2 ? 3 : 3;
+            for (int page = 0; page < captured; ++page) {
+                nav.at(page)->click();
+                for (const QSize size : {QSize(1366, 768), QSize(1600, 900)}) {
+                    window.resize(size);
+                    QApplication::processEvents();
+                    const QString filename = QStringLiteral("%1/%2-page%3-%4x%5.png")
+                        .arg(target, prefix)
+                        .arg(page)
+                        .arg(size.width())
+                        .arg(size.height());
+                    if (!window.grab().save(filename, "PNG")) return 23;
+                }
+            }
+        }
         return 0;
     }
     return app.exec();
