@@ -1,6 +1,7 @@
 #include "components.h"
 #include "platform_pages.h"
 #include "hmi_presentation.h"
+#include "hmi_delivery.h"
 #include "ui_composition.h"
 
 #include <QAbstractItemView>
@@ -414,16 +415,16 @@ private:
         eventDock_ = nullptr;
         parameterPanel_ = nullptr;
         eventLog_ = nullptr;
-        delete hmiDocument_;
-        hmiDocument_ = nullptr;
+        delete hmiCollection_;
+        hmiCollection_ = nullptr;
     }
 
     QWidget* createModuleScreen(const QString& id, const DeliveryFixture& delivery)
     {
         if (id == QStringLiteral("overview")) return makeOverview(delivery);
         if (id == QStringLiteral("workspace")) return makeWorkspace(delivery);
-        if (id == QStringLiteral("hmi") && hmiDocument_)
-            return new miltech::ui::HmiDesignerPage(hmiDocument_);
+        if (id == QStringLiteral("hmi") && hmiCollection_)
+            return new miltech::ui::HmiDeliveryEditor(hmiCollection_);
         if (id == QStringLiteral("equipment")) return makeEquipment(delivery);
         if (id == QStringLiteral("scenarios")) return makeScenarios(delivery);
         if (id == QStringLiteral("results")) return makeResults();
@@ -474,15 +475,22 @@ private:
         if (!composition_.isTu()
             && (composition_.hasComponent(QStringLiteral("hmi"))
                 || composition_.indexOf(QStringLiteral("hmi")) >= 0)) {
-            hmiDocument_ = new miltech::ui::HmiDocument(composition_.id, this);
-            QFile templateFile(QStringLiteral(":/ui/hmi/%1.json").arg(composition_.id));
+            hmiCollection_ = new miltech::ui::HmiDeliveryCollection(composition_.id, this);
             QString problem;
-            if (templateFile.open(QIODevice::ReadOnly)) {
-                if (!hmiDocument_->loadFromJson(templateFile.readAll(), &problem))
-                    hmiDocument_->add(QStringLiteral("label"));
-            } else {
-                hmiDocument_->add(QStringLiteral("label"));
+            if (!hmiCollection_->initialize(composition_.hmiPages, &problem)) {
+                delete hmiCollection_;
+                hmiCollection_ = nullptr;
+                composition_.error = QStringLiteral("Не удалось загрузить HMI поставки: %1")
+                                         .arg(problem);
             }
+        }
+        if (!composition_.valid()) {
+            Page error = page(QStringLiteral("HMI-ПОСТАВКА"),
+                              QStringLiteral("Ошибка комплекта HMI"), composition_.error);
+            error.body->addStretch();
+            addNavigation(QStringLiteral("error"), QStringLiteral("Ошибка HMI"), error.widget);
+            setPage(0);
+            return;
         }
         bool serviceSection = false;
         for (const miltech::ui::ScreenSpec& screen : composition_.screens) {
@@ -550,8 +558,8 @@ private:
         topRow->row()->addWidget(reset);
         p.body->addWidget(topRow);
 
-        if (composition_.hasComponent(QStringLiteral("hmi")) && hmiDocument_)
-            p.body->addWidget(new miltech::ui::HmiReadOnlyPanel(hmiDocument_));
+        if (composition_.hasComponent(QStringLiteral("hmi")) && hmiCollection_)
+            p.body->addWidget(new miltech::ui::HmiDeliveryViewer(hmiCollection_));
 
         if (composition_.hasComponent(QStringLiteral("trend"))) {
             auto* chart = new miltech::ui::TrendPanel;
@@ -694,7 +702,7 @@ private:
     QMainWindow* dockHost_ = nullptr;
     miltech::ui::ParameterPanel* parameterPanel_ = nullptr;
     miltech::ui::EventLogPanel* eventLog_ = nullptr;
-    miltech::ui::HmiDocument* hmiDocument_ = nullptr;
+    miltech::ui::HmiDeliveryCollection* hmiCollection_ = nullptr;
     QVector<QPushButton*> navButtons_;
     QStringList screenIds_;
     miltech::ui::UiComposition composition_;
