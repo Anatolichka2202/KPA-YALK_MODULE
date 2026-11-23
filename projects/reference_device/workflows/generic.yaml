@@ -1,0 +1,11 @@
+schema: 1
+id: generic
+title: Проверка эталонного устройства
+kind: free
+operator_action: station.generic
+operator_available: true
+allow_dynamic_scenario: true
+allow_scenario_overrides: true
+registration:
+  required: false
+  attach_if_found: false
