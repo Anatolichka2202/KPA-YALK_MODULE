@@ -147,3 +147,58 @@ QSplitter::handle { background: #344A5D; }
 QScrollBar:vertical { background: #102132; width: 10px; }
 QScrollBar::handle:vertical { background: #47667E; border-radius: 4px; min-height: 28px; }
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
+
+/* Component library v0.2 */
+QLineEdit {
+    background: #13283A;
+    color: #EDF5FC;
+    border: 1px solid #395970;
+    border-radius: 8px;
+    min-height: 20px;
+    padding: 10px 12px;
+    selection-background-color: #285570;
+}
+QLineEdit:focus { border: 2px solid #83CFF0; }
+QLineEdit:disabled { color: #879EB1; background: #142230; }
+QListWidget {
+    background: #142638;
+    color: #DFEDF7;
+    border: 1px solid #345064;
+    border-radius: 8px;
+    outline: none;
+}
+QListWidget::item {
+    padding: 14px 12px;
+    border-bottom: 1px solid #2A4154;
+}
+QListWidget::item:selected {
+    background: #28516C;
+    color: #F0F8FF;
+}
+QListWidget::item:hover { background: #1E394D; }
+QCheckBox { color: #CFDEEB; spacing: 10px; }
+QCheckBox::indicator {
+    width: 17px;
+    height: 17px;
+    background: #14283A;
+    border: 1px solid #5C7B91;
+    border-radius: 4px;
+}
+QCheckBox::indicator:checked {
+    background: #6EC3EB;
+    border-color: #A1E3FF;
+}
+QCheckBox:focus { color: #EAF5FF; }
+QTableView::item { padding: 8px; }
+QTableView::item:selected {
+    background: #294D65;
+    color: #F3FAFF;
+}
+QScrollBar:horizontal { background: #102132; height: 10px; }
+QScrollBar::handle:horizontal {
+    background: #47667E;
+    border-radius: 4px;
+    min-width: 28px;
+}
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }
+QSplitter::handle:hover { background: #6B9EBF; }
