@@ -202,3 +202,35 @@ QScrollBar::handle:horizontal {
 }
 QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }
 QSplitter::handle:hover { background: #6B9EBF; }
+
+/* Composer / administration pages */
+QTabWidget::pane {
+    background: #152536;
+    border: 1px solid #30475C;
+    border-radius: 8px;
+    padding: 9px;
+}
+QTabBar::tab {
+    background: #172A3C;
+    border: 1px solid #344C60;
+    color: #B5CADB;
+    min-height: 18px;
+    padding: 10px 14px;
+}
+QTabBar::tab:selected {
+    background: #28506B;
+    border-color: #5986A4;
+    color: #F0F6FC;
+}
+QPlainTextEdit {
+    background: #0E1D2C;
+    border: 1px solid #365166;
+    border-radius: 8px;
+    padding: 12px;
+    color: #D5E5F2;
+    font-family: "Consolas", "Cascadia Mono", monospace;
+    font-size: 12px;
+}
+QPlainTextEdit:focus { border: 2px solid #80C8EA; }
+QFrame#card QCheckBox { background: transparent; }
+QWidget#uiConfigActions { background: transparent; }
