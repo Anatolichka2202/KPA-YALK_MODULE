@@ -66,21 +66,30 @@ QString typeTitle(const QString& type)
     return QStringLiteral("Неизвестный элемент");
 }
 
+bool demoBindingCompatible(const QString& binding, const QString& type)
+{
+    if (type == QStringLiteral("label")) return binding.isEmpty();
+    if (type == QStringLiteral("command")) return false;
+    if (type == QStringLiteral("status")) return binding == QStringLiteral("ui.demo.flag");
+    if (type == QStringLiteral("bar")) return binding == QStringLiteral("ui.demo.load");
+    if (type == QStringLiteral("trend"))
+        return binding == QStringLiteral("ui.demo.voltage")
+            || binding == QStringLiteral("ui.demo.current");
+    if (type == QStringLiteral("numeric"))
+        return binding == QStringLiteral("ui.demo.voltage")
+            || binding == QStringLiteral("ui.demo.current")
+            || binding == QStringLiteral("ui.demo.load");
+    return false;
+}
+
 QString sampleValue(const QString& binding, const QString& type)
 {
-    // Synthetic UI-only catalog. An arbitrary binding never becomes a real value.
-    if (binding == QStringLiteral("ui.demo.voltage"))
-        return type == QStringLiteral("status") ? QStringLiteral("ВКЛ · ДЕМО")
-                                                : QStringLiteral("12,40");
-    if (binding == QStringLiteral("ui.demo.current"))
-        return type == QStringLiteral("status") ? QStringLiteral("ВКЛ · ДЕМО")
-                                                : QStringLiteral("0,76");
-    if (binding == QStringLiteral("ui.demo.load"))
-        return type == QStringLiteral("status") ? QStringLiteral("ВКЛ · ДЕМО")
-                                                : QStringLiteral("63,0");
-    if (binding == QStringLiteral("ui.demo.flag"))
-        return type == QStringLiteral("numeric") ? QStringLiteral("1")
-                                                : QStringLiteral("ВКЛ · ДЕМО");
+    // UI fixture values only; typed compatibility is checked before display.
+    if (!demoBindingCompatible(binding, type)) return {};
+    if (binding == QStringLiteral("ui.demo.voltage")) return QStringLiteral("12,40");
+    if (binding == QStringLiteral("ui.demo.current")) return QStringLiteral("0,76");
+    if (binding == QStringLiteral("ui.demo.load")) return QStringLiteral("63,0");
+    if (binding == QStringLiteral("ui.demo.flag")) return QStringLiteral("ВКЛ · ДЕМО");
     return {};
 }
 
@@ -246,8 +255,11 @@ QString HmiDocument::add(const QString& type)
     const int x = 24 + (index % 4) * 225;
     const int y = 24 + ((index / 4) % 3) * 160;
     elements_.push_back(HmiElement{
-        id, type, typeTitle(type), type == QStringLiteral("label")
-            ? QString() : QStringLiteral("ui.demo.voltage"),
+        id, type, typeTitle(type),
+        type == QStringLiteral("label") || type == QStringLiteral("command")
+            ? QString() : type == QStringLiteral("status")
+                ? QStringLiteral("ui.demo.flag") : type == QStringLiteral("bar")
+                    ? QStringLiteral("ui.demo.load") : QStringLiteral("ui.demo.voltage"),
         type == QStringLiteral("numeric") ? QStringLiteral("В") : QString(),
         QRect(x, y, w, h)
     });
@@ -627,7 +639,17 @@ HmiDesignerPage::HmiDesignerPage(HmiDocument* document, QWidget* parent)
     title_->setObjectName(QStringLiteral("ui.hmi.title"));
     binding_ = new QLineEdit;
     binding_->setObjectName(QStringLiteral("ui.hmi.binding"));
-    binding_->setPlaceholderText(QStringLiteral("ui.demo.voltage"));
+    binding_->setPlaceholderText(QStringLiteral("Не выбрано"));
+    bindingChoice_ = new QComboBox;
+    bindingChoice_->setObjectName(QStringLiteral("ui.hmi.bindingChoice"));
+    bindingChoice_->setAccessibleName(QStringLiteral("Каталог демонстрационных источников для выбранного HMI-элемента"));
+    bindingChoice_->addItem(QStringLiteral("— Без источника —"), QString());
+    bindingChoice_->addItem(QStringLiteral("Напряжение · UI DEMO"), QStringLiteral("ui.demo.voltage"));
+    bindingChoice_->addItem(QStringLiteral("Ток · UI DEMO"), QStringLiteral("ui.demo.current"));
+    bindingChoice_->addItem(QStringLiteral("Уровень · UI DEMO"), QStringLiteral("ui.demo.load"));
+    bindingChoice_->addItem(QStringLiteral("Дискретный статус · UI DEMO"), QStringLiteral("ui.demo.flag"));
+    bindingHint_ = label(QStringLiteral("Выберите элемент"), "muted");
+    bindingHint_->setObjectName(QStringLiteral("ui.hmi.bindingHint"));
     unit_ = new QLineEdit;
     unit_->setObjectName(QStringLiteral("ui.hmi.unit"));
     x_ = new QSpinBox;
@@ -644,7 +666,9 @@ HmiDesignerPage::HmiDesignerPage(HmiDocument* document, QWidget* parent)
     height_->setRange(66, canvasHeight);
     form->addRow(QStringLiteral("ID"), id_);
     form->addRow(QStringLiteral("Подпись"), title_);
+    form->addRow(QStringLiteral("Источник"), bindingChoice_);
     form->addRow(QStringLiteral("Ключ данных"), binding_);
+    form->addRow(QStringLiteral("Качество"), bindingHint_);
     form->addRow(QStringLiteral("Единица"), unit_);
     form->addRow(QStringLiteral("X"), x_);
     form->addRow(QStringLiteral("Y"), y_);
@@ -679,6 +703,16 @@ HmiDesignerPage::HmiDesignerPage(HmiDocument* document, QWidget* parent)
             this, &HmiDesignerPage::updateMode);
     connect(zoom_, qOverload<int>(&QComboBox::currentIndexChanged), this,
             [this](int index) { canvas_->setZoom(zoom_->itemData(index).toDouble()); });
+    connect(bindingChoice_, qOverload<int>(&QComboBox::currentIndexChanged), this,
+            [this](int index) {
+        if (index >= 0) binding_->setText(bindingChoice_->itemData(index).toString());
+    });
+    connect(binding_, &QLineEdit::textChanged, this, [this] {
+        QSignalBlocker blocker(bindingChoice_);
+        const int index = bindingChoice_->findData(binding_->text());
+        bindingChoice_->setCurrentIndex(index >= 0 ? index : 0);
+        refreshBindingHint();
+    });
     connect(apply_, &QPushButton::clicked, this, &HmiDesignerPage::applySelected);
     connect(remove_, &QPushButton::clicked, this, [this] {
         const QString id = id_->text();
@@ -734,11 +768,34 @@ void HmiDesignerPage::setNotice(const QString& notice)
     notice_->setText(notice);
 }
 
+void HmiDesignerPage::refreshBindingHint()
+{
+    const auto* selected = document_->find(id_->text());
+    if (!selected) {
+        bindingHint_->setText(QStringLiteral("Элемент не выбран"));
+        return;
+    }
+    const QString binding = binding_->text();
+    if (selected->type == QStringLiteral("label")) {
+        bindingHint_->setText(QStringLiteral("Статический элемент"));
+    } else if (selected->type == QStringLiteral("command")) {
+        bindingHint_->setText(QStringLiteral("Команды заблокированы · нет API"));
+    } else if (binding.isEmpty()) {
+        bindingHint_->setText(QStringLiteral("Источник не выбран · нет данных"));
+    } else if (demoBindingCompatible(binding, selected->type)) {
+        bindingHint_->setText(QStringLiteral("Совместим · синтетический источник"));
+    } else if (binding.startsWith(QStringLiteral("ui.demo."))) {
+        bindingHint_->setText(QStringLiteral("Тип источника несовместим с виджетом"));
+    } else {
+        bindingHint_->setText(QStringLiteral("Источник не разрешён · нет данных"));
+    }
+}
+
 void HmiDesignerPage::showSelected(const QString& id)
 {
     const HmiElement* item = document_->find(id);
     const bool exists = item != nullptr;
-    for (QWidget* field : QVector<QWidget*>{title_, binding_, unit_,
+    for (QWidget* field : QVector<QWidget*>{title_, binding_, bindingChoice_, unit_,
                                             x_, y_, width_, height_, apply_, remove_})
         field->setEnabled(exists && mode_->currentIndex() == 0);
     if (!exists) {
@@ -750,6 +807,7 @@ void HmiDesignerPage::showSelected(const QString& id)
         y_->setValue(0);
         width_->setValue(100);
         height_->setValue(66);
+        refreshBindingHint();
         return;
     }
     id_->setText(item->id);
@@ -760,6 +818,7 @@ void HmiDesignerPage::showSelected(const QString& id)
     y_->setValue(item->geometry.y());
     width_->setValue(item->geometry.width());
     height_->setValue(item->geometry.height());
+    refreshBindingHint();
 }
 
 void HmiDesignerPage::applySelected()
