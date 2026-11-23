@@ -93,7 +93,8 @@ private:
 class HmiDesignerPage final : public QWidget {
     Q_OBJECT
 public:
-    explicit HmiDesignerPage(HmiDocument* document, QWidget* parent = nullptr);
+    explicit HmiDesignerPage(HmiDocument* document, QWidget* parent = nullptr,
+                             bool compact = false);
     HmiCanvas* canvas() const noexcept { return canvas_; }
     QComboBox* previewMode() const noexcept { return mode_; }
     QComboBox* zoomChoice() const noexcept { return zoom_; }
