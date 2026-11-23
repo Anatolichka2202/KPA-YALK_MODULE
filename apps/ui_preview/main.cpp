@@ -42,6 +42,17 @@ namespace {
 
 constexpr int kLayoutVersion = 2;
 
+void uiCleanupTrace(const QString& message)
+{
+    if (qEnvironmentVariable("QT_QPA_PLATFORM") != QStringLiteral("offscreen")) return;
+    QFile file(QStringLiteral("build-ui-preview/ui-smoke.trace"));
+    if (file.open(QIODevice::Append | QIODevice::WriteOnly)) {
+        file.write(message.toUtf8());
+        file.write("\n");
+        file.flush();
+    }
+}
+
 // UI preview deliberately has no dependency on StationSession, drivers or scenarios.
 // These are view-only fixtures, not station telemetry or hardware availability.
 struct DeliveryFixture {
@@ -419,6 +430,7 @@ private:
 
     void resetNavigation()
     {
+        uiCleanupTrace(QStringLiteral("resetNavigation begin"));
         navButtons_.clear();
         screenIds_.clear();
         while (auto* item = navLayout_->takeAt(0)) {
@@ -427,16 +439,21 @@ private:
         }
         while (stack_->count() > 0) {
             QWidget* widget = stack_->widget(0);
+            const QString kind = widget->metaObject()->className();
+            uiCleanupTrace(QStringLiteral("resetNavigation deleting widget: %1").arg(kind));
             stack_->removeWidget(widget);
             delete widget;
+            uiCleanupTrace(QStringLiteral("resetNavigation deleted widget: %1").arg(kind));
         }
         dockHost_ = nullptr;
         parameterDock_ = nullptr;
         eventDock_ = nullptr;
         parameterPanel_ = nullptr;
         eventLog_ = nullptr;
+        uiCleanupTrace(QStringLiteral("resetNavigation before HMI collection deletion"));
         delete hmiCollection_;
         hmiCollection_ = nullptr;
+        uiCleanupTrace(QStringLiteral("resetNavigation finished"));
     }
 
     QWidget* createModuleScreen(const QString& id, const DeliveryFixture& delivery)
@@ -463,9 +480,11 @@ private:
 
     void switchMode(int index)
     {
+        uiCleanupTrace(QStringLiteral("switchMode begin %1").arg(index));
         saveWorkspace();
         currentPage_ = -1;
         resetNavigation();
+        uiCleanupTrace(QStringLiteral("switchMode reset done %1").arg(index));
 
         composition_ = index >= 0 && index < compositions_.size()
             ? compositions_.at(index) : miltech::ui::UiComposition{};
