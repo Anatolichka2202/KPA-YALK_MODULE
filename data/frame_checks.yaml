@@ -20,6 +20,7 @@ checks:
   - number: 3
     title: ББ СУ
     tu: 3.2.1.7.1–3.2.1.7.3
+    voltage_point_tu: 3.2.1.7.3
     cell: ЯГР1
     addresses: [M16P1A10B60C11T01]
     scale: {min_v: 0, max_v: 40, min_code: 0, max_code: 1023, tolerance_percent: 1}
@@ -27,6 +28,7 @@ checks:
   - number: 4
     title: ББ ПР
     tu: 3.2.1.7.1–3.2.1.7.3
+    voltage_point_tu: 3.2.1.7.3
     cell: ЯГР1
     addresses: [M16P1A10B60C21T01]
     scale: {min_v: 0, max_v: 40, min_code: 0, max_code: 1023, tolerance_percent: 1}
@@ -34,6 +36,7 @@ checks:
   - number: 5
     title: Ептм
     tu: 3.2.1.7.1–3.2.1.7.3
+    voltage_point_tu: 3.2.1.7.3
     cell: ЯГР2
     addresses: [M16P1A10B60C31T01]
     scale: {min_v: 0, max_v: 40, min_code: 0, max_code: 1023, tolerance_percent: 1}

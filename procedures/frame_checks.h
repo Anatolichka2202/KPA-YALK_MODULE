@@ -77,6 +77,7 @@ struct FrameCheck {
     std::vector<unsigned> shifts;
     unsigned bits;
     std::optional<VoltageScale> scale;
+    std::string voltagePointRequirement;
 };
 
 std::vector<FrameCheck> loadFrameChecks(const std::string& yaml);

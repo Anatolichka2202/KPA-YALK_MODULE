@@ -161,6 +161,7 @@ std::vector<FrameCheck> loadFrameChecks(const std::string& yaml)
         check.number = node["number"].as<int>();
         check.title = node["title"].as<std::string>();
         check.requirement = node["tu"].as<std::string>();
+        check.voltagePointRequirement = node["voltage_point_tu"].as<std::string>("");
         check.cell = node["cell"].as<std::string>();
         check.note = node["note"].as<std::string>("");
         if (node["addresses"]) check.addresses = node["addresses"].as<std::vector<std::string>>();
@@ -187,6 +188,10 @@ std::vector<FrameCheck> loadFrameChecks(const std::string& yaml)
                 throw std::runtime_error("Неверная шкала строки № " + std::to_string(check.number));
             check.scale = scale;
         }
+        if (!check.voltagePointRequirement.empty()
+            && (!check.scale || !check.scale->tolerancePercent || check.addresses.empty()))
+            throw std::runtime_error("Для проверки точки нужны адрес, шкала и допуск строки № "
+                                     + std::to_string(check.number));
         std::set<std::string> addresses;
         for (const auto& address : check.addresses) {
             const auto layout = orbita::m16GroupChannel(address);

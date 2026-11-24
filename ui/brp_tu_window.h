@@ -8,6 +8,9 @@ public:
     explicit BrpTuWindow(bool simulation, QWidget* parent = nullptr);
     ~BrpTuWindow() override;
 
+protected:
+    void closeEvent(QCloseEvent* event) override;
+
 private:
     struct Impl;
     std::unique_ptr<Impl> impl_;
