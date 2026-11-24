@@ -1,0 +1,67 @@
+#include "../include/orbita.h"
+#include "orbita_core.h"
+#include "../address/address_parser.h"
+
+#include <cctype>
+
+namespace orbita {
+
+bool isValidChannelAddress(const std::string& address) noexcept {
+    // Не передаём заведомо короткую строку в разбор и не допускаем суффикс
+    // после пробела: парсер файла иначе сочтёт его текстовым комментарием.
+    if (address.size() < 4) return false;
+    for (const unsigned char c : address)
+        if (std::isspace(c)) return false;
+    try {
+        (void)AddressParser::parseLine(address);
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
+std::optional<M16GroupChannel> m16GroupChannel(const std::string& address) {
+    constexpr uint32_t groupWords = 2048;
+    if (address.rfind("M16P", 0) != 0 || !isValidChannelAddress(address))
+        return std::nullopt;
+    const auto channel = AddressParser::parseLine(address);
+    if (channel.numOutElemG == 0 || channel.numOutElemG > channel.stepOutG
+        || channel.stepOutG == 0 || groupWords % channel.stepOutG != 0)
+        return std::nullopt;
+    return M16GroupChannel{channel.numOutElemG - 1, channel.stepOutG};
+}
+
+Orbita::Orbita() : ctx_(std::make_unique<Context>()) {}
+Orbita::~Orbita() = default;
+Orbita::Orbita(Orbita&&) noexcept = default;
+Orbita& Orbita::operator=(Orbita&&) noexcept = default;
+
+void Orbita::pushSamples(const std::vector<int16_t>& samples) { ctx_->pushSamples(samples); }
+
+void Orbita::setChannels(const std::vector<ChannelSpec>& specs) { ctx_->setChannels(specs); }
+std::vector<ChannelSpec> Orbita::getChannels() const { return ctx_->getChannels(); }
+
+void Orbita::start()  { ctx_->start(); }
+void Orbita::stop()   { ctx_->stop(); }
+void Orbita::pause()  { ctx_->pause(); }
+void Orbita::resume() { ctx_->resume(); }
+bool Orbita::isRunning() const { return ctx_->isRunning(); }
+bool Orbita::isPaused()  const { return ctx_->isPaused(); }
+
+void Orbita::setInvertSignal(bool invert) { ctx_->setInvertSignal(invert); }
+
+void Orbita::startRecording(const std::string& filename) { ctx_->startRecording(filename); }
+void Orbita::stopRecording() { ctx_->stopRecording(); }
+bool Orbita::isRecording() const { return ctx_->isRecording(); }
+
+bool Orbita::waitForData(std::chrono::milliseconds timeout) { return ctx_->waitForData(timeout); }
+Snapshot Orbita::getSnapshot() const { return ctx_->getSnapshot(); }
+std::optional<double> Orbita::getValueByAddress(const std::string& address) const {
+    return ctx_->getValueByAddress(address);
+}
+Stats Orbita::getStats() const { return ctx_->getStats(); }
+uint32_t Orbita::getCurrentTimeSeconds() const { return ctx_->getCurrentTimeSeconds(); }
+void Orbita::setDataCallback(DataCallback cb) { ctx_->setDataCallback(std::move(cb)); }
+void Orbita::setGroupCallback(GroupCallback cb) { ctx_->setGroupCallback(std::move(cb)); }
+
+} // namespace orbita

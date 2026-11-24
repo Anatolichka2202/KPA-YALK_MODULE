@@ -1,20 +1,12 @@
-#include "app/tu_controller.h"
-#include "ui/test_page.h"
+#include "brp_tu_window.h"
 
 #include <QApplication>
 
 int main(int argc, char* argv[])
 {
     QApplication app(argc, argv);
-    QApplication::setApplicationName(QStringLiteral("УБСИ · проверка по ТУ"));
-    QApplication::setOrganizationName(QStringLiteral("MilTechStation"));
-
-    TestPage page;
-    TuController controller(&page);
-
-    page.setWindowTitle(QStringLiteral("КТМА · УБСИ · проверка по ТУ"));
-    page.resize(1440, 900);
-    page.show();
-
+    BrpTuWindow window(app.arguments().contains(QStringLiteral("--simulate")));
+    window.resize(1000, 720);
+    window.show();
     return app.exec();
 }

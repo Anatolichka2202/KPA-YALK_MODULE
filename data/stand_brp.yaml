@@ -1,0 +1,6 @@
+schema: 1
+e2010:
+  slot: 0
+  channel: 1
+  sample_rate_khz: 10000
+  buffer_words: 1048576
