@@ -4,7 +4,9 @@
 #include "orbita_stand/sample_source.h"
 
 #include <atomic>
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <fstream>
 #include <iostream>
 #include <iterator>
@@ -39,8 +41,14 @@ int main(int argc, char** argv)
         const auto checks = loadFrameChecks(yaml);
         require(checks.size() == 12, "unexpected table coverage");
         require(checks.front().layouts.size() == 4, "missing POS channels");
-        require(checks.front().layouts.front().firstWord == 256, "wrong address index");
-        require(checks.front().layouts.front().stride == 1024, "wrong address stride");
+        require(checks.front().layouts.front().firstWord == 16, "wrong 2026 address index");
+        require(checks.front().layouts.front().stride == 128, "wrong 2026 address stride");
+        const auto byNumber = [&](int number) -> const FrameCheck& {
+            const auto found = std::find_if(checks.begin(), checks.end(),
+                [number](const FrameCheck& check) { return check.number == number; });
+            require(found != checks.end(), "required row is missing");
+            return *found;
+        };
 
         unsigned next = 1023;
         const auto bytes = counterBytes(next, 2);
@@ -68,20 +76,68 @@ int main(int argc, char** argv)
         CodeRange codes;
         require(!codes.matches(0, 1023), "missing samples cannot pass");
         codes.consume(groupWordsAt(0), checks.front(), 0);
-        require(codes.count == 2 && codes.matches(512, 512) && !codes.matches(0, 511),
+        require(codes.count == 16 && codes.matches(512, 512) && !codes.matches(0, 511),
                 "wrong code range or count");
+
+        const auto point = compareVoltage(*byNumber(3).scale, codes, 20.10, 20.10);
+        require(point.toleranceVolts && std::abs(*point.toleranceVolts - 0.4) < 1e-9,
+                "1 percent of 40 V must be 0.4 V");
+        require(std::abs(point.maximumErrorVolts - (20.10 - 40.0 * 512 / 1023)) < 1e-9,
+                "V7 comparison uses the wrong conversion");
+        const auto drift = compareVoltage(*byNumber(3).scale, codes, 20.02, 20.51);
+        require(drift.maximumErrorVolts > *drift.toleranceVolts,
+                "V7 drift must affect the comparison");
+        require(!byNumber(1).scale->tolerancePercent, "POS scale conflict must remain diagnostic");
+
+        auto discrete = groupWordsAt(0);
+        const auto& contacts = byNumber(10);
+        const auto layout = contacts.layouts[0];
+        require(contacts.shifts == std::vector<unsigned>{3, 4, 5, 6}, "wrong dry contact bit order");
+        for (auto i = layout.firstWord; i < discrete.size(); i += layout.stride)
+            discrete[i] = (1u << 3) | (1u << 5) | (1u << 7);
+        for (unsigned channel = 0; channel < 4; ++channel) {
+            CodeRange state;
+            state.consume(discrete, contacts, channel);
+            require(state.matches(channel % 2 == 0, channel % 2 == 0), "wrong dry contact value");
+        }
+        CodeRange command;
+        command.consume(discrete, byNumber(6), 0);
+        require(command.matches(1, 1), "wrong Command 1 bit");
+        CodeRange fill;
+        fill.consume(std::vector<uint16_t>(groupWords, 0x2AA), byNumber(2), 0);
+        require(fill.count && fill.count == fill.fillCount, "missing FPGA fill detection");
+
+        YasmCheck absent({0x01, 0x02, 0x03});
+        absent.consume(groupWordsAt(0), 1, 1);
+        require(!absent.passed(), "YASM accepted unrelated stream");
+        auto busFixture = YasmCheck::fromBusWords({0x1234, 0x45AB});
+        std::vector<uint16_t> yasmSlots(groupWords, 0x2AA);
+        // Вставляем командный слот между двумя словами данных контроллера.
+        const std::vector<unsigned> yasmCodes{0x34 << 2, (0x12 << 2) | 2,
+                                               (0x20 << 2) | 1,
+                                               0xAB << 2, (0x45 << 2) | 2};
+        for (std::size_t i = 0; i < yasmCodes.size(); ++i)
+            yasmSlots[2 + 4 * i] = static_cast<uint16_t>(yasmCodes[i] << 1);
+        busFixture.consume(yasmSlots, 1, 1);
+        require(busFixture.passed(), "BC fixture did not match YASM payload");
+        auto corruptBus = YasmCheck::fromBusWords({0x1234, 0x45AB});
+        yasmSlots[14] ^= 1 << 3;
+        corruptBus.consume(yasmSlots, 1, 1);
+        require(!corruptBus.passed(), "BC fixture accepted a corrupted payload");
 
         // Сквозной прогон использует штатный тракт отсчёты → декодер M16.
         // Никакие COM-порты, источники питания и ИСД здесь не открываются.
         auto source = miltech::integration::createOrbitaSampleSimulator(simulatedWord);
         require(source->open(), "could not open simulator");
         CounterCheck decoded;
+        YasmCheck decodedYasm({simulatedYasmPattern.begin(), simulatedYasmPattern.end()});
         CodeRange decodedCodes;
         std::atomic_bool completed{false};
         std::atomic_uint groups{0};
         unsigned measuredGroups = 0;
         orbita::Orbita decoder;
         decoder.setGroupCallback([&](const auto& words, int group, int cycle) {
+            decodedYasm.consume(words, group, cycle);
             if (!decoded.passed()) {
                 decoded.consume(words, group, cycle);
             } else if (measuredGroups < 128) {
@@ -102,7 +158,8 @@ int main(int argc, char** argv)
                       << " bridge error=" << bridge.lastError() << '\n';
         }
         require(decoded.passed(), "synthetic M16 did not reproduce the counter");
-        require(completed && decodedCodes.count == 256 && decodedCodes.matches(512, 512),
+        require(decodedYasm.passed(), "synthetic M16 did not reproduce the YASM sequence");
+        require(completed && decodedCodes.count == 2048 && decodedCodes.matches(512, 512),
                 "addressed M16 samples changed after the interface gate");
         return 0;
     } catch (const std::exception& error) {

@@ -3,6 +3,7 @@
 #include "frame_checks.h"
 #include "hardware/akip1160.h"
 #include "hardware/isd_router.h"
+#include "hardware/v7_meter.h"
 #include "metadata_service.h"
 #include "miltech/orbita_sample_bridge.h"
 #include "miltech/orbita_sample_simulator.h"
@@ -13,6 +14,7 @@
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
+#include <QFileDialog>
 #include <QFileInfo>
 #include <QFutureWatcher>
 #include <QFormLayout>
@@ -22,14 +24,16 @@
 #include <QPainter>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QRegularExpression>
 #include <QSerialPort>
 #include <QSerialPortInfo>
-#include <QSpinBox>
 #include <QTimer>
+#include <QXmlStreamReader>
 #include <QtConcurrentRun>
 #include <yaml-cpp/yaml.h>
 
 #include <algorithm>
+#include <cmath>
 #include <mutex>
 #include <stdexcept>
 
@@ -40,6 +44,85 @@ using namespace orbita::stand;
 constexpr int groupsPerSecond = 128;
 constexpr int counterTimeoutMs = 5000;
 constexpr int captureTimeoutMs = 3000;
+
+YAML::Node loadStand(const QDir& root)
+{
+    QFile file(root.filePath(QStringLiteral("data/stand_brp.yaml")));
+    if (!file.open(QIODevice::ReadOnly)) throw std::runtime_error("Профиль стенда БРП не открыт");
+    const auto profile = YAML::Load(file.readAll().toStdString());
+    if (profile["schema"].as<int>() != 1) throw std::runtime_error("Неверная схема профиля стенда БРП");
+    return profile;
+}
+
+struct MeterReading {
+    double volts = 0;
+    QString error;
+};
+
+MeterReading readMeter(const QDir& root)
+{
+    try {
+        const auto v7 = loadStand(root)["v7"];
+        const tu::hardware::V7Config config{
+            {v7["resources"].as<std::vector<std::string>>(), v7["timeout_ms"].as<unsigned>()},
+            v7["voltage_command"].as<std::string>()};
+        if (config.visa.resources.empty() || !config.visa.timeoutMilliseconds || config.dcVoltageCommand.empty())
+            throw std::runtime_error("Не настроены адрес и команда В7");
+        return {tu::hardware::readV7Voltage(config), {}};
+    } catch (const std::exception& error) {
+        return {0, QString::fromUtf8(error.what())};
+    }
+}
+
+struct IsdPreparation {
+    unsigned acknowledged = 0;
+    QString error;
+};
+
+IsdPreparation prepareIsd(const QDir& root, const QString& host)
+{
+    try {
+        const auto baseline = loadStand(root)["isd_baseline"];
+        tu::hardware::IsdRouter isd({host.toStdString()});
+        return {isd.prepareYagr(baseline["type2_last"].as<unsigned>(),
+                    baseline["type3_last"].as<unsigned>(), baseline["dac_last"].as<unsigned>(),
+                    baseline["command_gap_ms"].as<unsigned>()), {}};
+    } catch (const std::exception& error) {
+        return {0, QString::fromUtf8(error.what())};
+    }
+}
+
+std::vector<uint16_t> readYasmFixture(const QString& path)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) throw std::runtime_error("Файл теста ЯСМ не открыт");
+    QXmlStreamReader xml(&file);
+    if (!xml.readNextStartElement() || xml.name() != QStringLiteral("FRAME")
+        || xml.attributes().value(QStringLiteral("TYPE")) != QStringLiteral("BC"))
+        throw std::runtime_error("Ожидается файл .bcfrm с кадром контроллера МКО");
+
+    std::vector<uint16_t> words;
+    while (!xml.atEnd()) {
+        xml.readNext();
+        if (!xml.isStartElement() || xml.name() != QStringLiteral("data")) continue;
+        while (xml.readNextStartElement()) {
+            if (xml.name() != QStringLiteral("sequence")) {
+                xml.skipCurrentElement();
+                continue;
+            }
+            for (const auto& token : xml.readElementText().split(
+                     QRegularExpression(QStringLiteral("\\s+")), Qt::SkipEmptyParts)) {
+                bool ok = false;
+                const auto word = token.toUInt(&ok, 16);
+                if (!ok || word > 0xFFFF || words.size() == groupWords / 2)
+                    throw std::runtime_error("Некорректные слова данных в файле .bcfrm");
+                words.push_back(static_cast<uint16_t>(word));
+            }
+        }
+    }
+    if (xml.hasError() || words.empty()) throw std::runtime_error("В файле .bcfrm отсутствует корректная последовательность данных");
+    return words;
+}
 
 class CounterPlot final : public QWidget {
 public:
@@ -117,9 +200,12 @@ struct BrpTuWindow::Impl {
         window.setWindowTitle(simulation ? QStringLiteral("БРП · имитация кадровой проверки")
                                          : QStringLiteral("БРП · кадровые проверки"));
         auto* layout = new QVBoxLayout(&window);
-        auto* interfaceBox = new QGroupBox(QStringLiteral("1. Интерфейс RS-485 → Орбита"), &window);
+        auto* interfaceBox = new QGroupBox(QStringLiteral("1. Интерфейс → Орбита"), &window);
         auto* interfaceLayout = new QVBoxLayout(interfaceBox);
         auto* interfaceControls = new QHBoxLayout;
+        interfaceMode = new QComboBox(interfaceBox);
+        interfaceMode->setObjectName(QStringLiteral("brpInterfaceMode"));
+        interfaceMode->addItems({QStringLiteral("RS-485 · счётчик"), QStringLiteral("ЯСМ · внешний тест")});
         port = new QComboBox(interfaceBox);
         port->setEditable(true);
         port->lineEdit()->setPlaceholderText(QStringLiteral("COM-порт RS-485"));
@@ -127,13 +213,44 @@ struct BrpTuWindow::Impl {
         port->setCurrentIndex(-1);
         port->setVisible(!simulation);
         start = new QPushButton(QStringLiteral("Проверить интерфейс"), interfaceBox);
+        start->setObjectName(QStringLiteral("brpInterfaceStart"));
         stop = new QPushButton(QStringLiteral("Остановить сбор"), interfaceBox);
         stop->setEnabled(false);
+        interfaceControls->addWidget(interfaceMode);
         interfaceControls->addWidget(port);
         interfaceControls->addWidget(start);
         interfaceControls->addWidget(stop);
         interfaceControls->addStretch();
         interfaceLayout->addLayout(interfaceControls);
+        yasmCodes = new QLineEdit(interfaceBox);
+        yasmCodes->setPlaceholderText(QStringLiteral("Коды M16 из внешнего теста ЯСМ, HEX через пробел"));
+        yasmCodes->setVisible(false);
+        yasmFile = new QPushButton(QStringLiteral("Открыть тест .bcfrm"), interfaceBox);
+        yasmFile->setVisible(false);
+        if (simulation) {
+            QStringList example;
+            for (auto code : simulatedYasmPattern) example.append(QString::number(code, 16));
+            yasmCodes->setText(example.join(QLatin1Char(' ')));
+        }
+        auto* yasmControls = new QHBoxLayout;
+        yasmControls->addWidget(yasmCodes, 1);
+        yasmControls->addWidget(yasmFile);
+        interfaceLayout->addLayout(yasmControls);
+        QObject::connect(yasmCodes, &QLineEdit::textEdited, &window, [this] { yasmFixture.clear(); });
+        QObject::connect(yasmFile, &QPushButton::clicked, &window, [this] {
+            const auto path = QFileDialog::getOpenFileName(&this->window, QStringLiteral("Тест ЯСМ"),
+                {}, QStringLiteral("Кадр контроллера МКО (*.bcfrm)"));
+            if (path.isEmpty()) return;
+            try {
+                auto words = readYasmFixture(path);
+                (void)YasmCheck::fromBusWords(words);
+                yasmFixture = std::move(words);
+                yasmCodes->setText(QFileInfo(path).fileName());
+                log->appendPlainText(QStringLiteral("ЯСМ: загружено %1 слов эталонных данных.").arg(yasmFixture.size()));
+            } catch (const std::exception& error) {
+                log->appendPlainText(QStringLiteral("Файл ЯСМ: %1").arg(QString::fromUtf8(error.what())));
+            }
+        });
 
         status = new QLabel(simulation
             ? QStringLiteral("Синтетические кадры M16. COM-порт и стендовые приборы отключены.")
@@ -142,45 +259,56 @@ struct BrpTuWindow::Impl {
         interfaceLayout->addWidget(status);
         graph = new CounterPlot(interfaceBox);
         interfaceLayout->addWidget(graph);
+        QObject::connect(interfaceMode, &QComboBox::currentIndexChanged, &window, [this](int index) {
+            port->setVisible(!this->simulation && index == 0);
+            yasmCodes->setVisible(index == 1);
+            yasmFile->setVisible(index == 1);
+            graph->setVisible(index == 0);
+        });
         layout->addWidget(interfaceBox, 1);
 
         auto* checksBox = new QGroupBox(QStringLiteral("2. Кадровой контроль, раздел 3.2"), &window);
         auto* checksLayout = new QFormLayout(checksBox);
         checkList = new QComboBox(checksBox);
+        checkList->setObjectName(QStringLiteral("brpCheckList"));
         channelList = new QComboBox(checksBox);
         details = new QLabel(checksBox);
         details->setWordWrap(true);
-        expectedMin = new QSpinBox(checksBox);
-        expectedMax = new QSpinBox(checksBox);
-        expectedMin->setSpecialValueText(QStringLiteral("Задать"));
-        expectedMax->setSpecialValueText(QStringLiteral("Задать"));
-        auto* expected = new QHBoxLayout;
-        expected->addWidget(expectedMin);
-        expected->addWidget(new QLabel(QStringLiteral("–"), checksBox));
-        expected->addWidget(expectedMax);
-        expected->addStretch();
-        capture = new QPushButton(QStringLiteral("Сравнить коды за 1 с кадра"), checksBox);
+        expectedState = new QComboBox(checksBox);
+        expectedState->addItems({QStringLiteral("Выбрать состояние"), QStringLiteral("0"), QStringLiteral("1")});
+        capture = new QPushButton(QStringLiteral("Сравнить с В7"), checksBox);
+        capture->setObjectName(QStringLiteral("brpCapture"));
         capture->setEnabled(false);
         checksLayout->addRow(QStringLiteral("Строка таблицы 1"), checkList);
         checksLayout->addRow(QStringLiteral("Адрес Орбита"), channelList);
         checksLayout->addRow(details);
-        checksLayout->addRow(QStringLiteral("Ожидаемый интервал кода"), expected);
+        checksLayout->addRow(QStringLiteral("Ожидаемый бит"), expectedState);
+        checksLayout->setRowVisible(expectedState, false);
+        checkForm = checksLayout;
         checksLayout->addRow(capture);
         layout->addWidget(checksBox);
 
         if (!simulation) {
             auto* instruments = new QGroupBox(QStringLiteral("Оборудование стенда"), &window);
             auto* instrumentsLayout = new QHBoxLayout(instruments);
-            auto* isdHost = new QLineEdit(instruments);
+            isdHost = new QLineEdit(instruments);
             auto* akipPort = new QLineEdit(instruments);
             isdHost->setPlaceholderText(QStringLiteral("Адрес ИСД"));
             akipPort->setPlaceholderText(QStringLiteral("COM-порт АКИП"));
             auto* probe = new QPushButton(QStringLiteral("Проверить ИСД и АКИП"), instruments);
+            prepare = new QPushButton(QStringLiteral("Подготовить ИСД · ЦАП OFF"), instruments);
             instrumentsLayout->addWidget(isdHost);
             instrumentsLayout->addWidget(akipPort);
             instrumentsLayout->addWidget(probe);
+            instrumentsLayout->addWidget(prepare);
             layout->addWidget(instruments);
-            QObject::connect(probe, &QPushButton::clicked, &window, [this, probe, isdHost, akipPort] {
+            QObject::connect(isdHost, &QLineEdit::textChanged, &window, [this] {
+                isdReady = false;
+                updateCaptureControls();
+            });
+            QObject::connect(prepare, &QPushButton::clicked, &window, [this] { startIsdPreparation(); });
+            QObject::connect(probe, &QPushButton::clicked, &window, [this, probe, akipPort] {
+                if (preparingIsd || pointActive) return;
                 const auto host = isdHost->text().trimmed();
                 const auto supplyPort = akipPort->text().trimmed();
                 if (host.isEmpty() && supplyPort.isEmpty()) return;
@@ -188,18 +316,23 @@ struct BrpTuWindow::Impl {
                     log->appendPlainText(QStringLiteral("АКИП и RS-485 требуют разных COM-портов."));
                     return;
                 }
+                probing = true;
                 probe->setEnabled(false);
+                updateCaptureControls();
                 auto* watcher = new QFutureWatcher<QString>(&this->window);
                 QObject::connect(watcher, &QFutureWatcherBase::finished, &this->window, [this, watcher, probe] {
                     log->appendPlainText(watcher->result());
                     watcher->deleteLater();
                     probe->setEnabled(true);
+                    probing = false;
+                    updateCaptureControls();
                 });
                 watcher->setFuture(QtConcurrent::run(readEquipment, host, supplyPort));
             });
         }
 
         log = new QPlainTextEdit(&window);
+        log->setObjectName(QStringLiteral("brpLog"));
         log->setReadOnly(true);
         log->setMaximumBlockCount(300);
         log->setMaximumHeight(125);
@@ -212,6 +345,8 @@ struct BrpTuWindow::Impl {
         QObject::connect(capture, &QPushButton::clicked, &window, [this] { startCapture(); });
         QObject::connect(checkList, &QComboBox::currentIndexChanged, &window,
             [this](int index) { displayCheck(index); });
+        QObject::connect(expectedState, &QComboBox::currentIndexChanged, &window,
+            [this] { updateCaptureControls(); });
         QObject::connect(&refresh, &QTimer::timeout, &window, [this] { update(); });
         QObject::connect(&send, &QTimer::timeout, &window, [this] { writeCounter(); });
 
@@ -236,6 +371,50 @@ struct BrpTuWindow::Impl {
 
     ~Impl() { shutdown(); }
 
+    void updateCaptureControls()
+    {
+        const int index = checkList->currentIndex();
+        bool ready = false;
+        if (index >= 0 && channelList->currentIndex() >= 0) {
+            const auto& check = checks.at(index);
+            ready = check.bits != 1 || expectedState->currentIndex() > 0;
+        }
+        capture->setEnabled(ready && gatePassed && (simulation || isdReady)
+            && !pointActive && !meterBusy && !preparingIsd && !probing);
+        capture->setToolTip(!simulation && gatePassed && !isdReady
+            ? QStringLiteral("Перед измерениями подтвердите адресные OFF ИСД и ЦАП.")
+            : QString());
+        if (prepare) {
+            prepare->setEnabled(!preparingIsd && !pointActive && !probing
+                && !isdHost->text().trimmed().isEmpty());
+            prepare->setText(isdReady ? QStringLiteral("ИСД подготовлен · повторить")
+                                      : QStringLiteral("Подготовить ИСД · ЦАП OFF"));
+            isdHost->setEnabled(!preparingIsd && !pointActive && !probing);
+        }
+    }
+
+    void startIsdPreparation()
+    {
+        const auto host = isdHost->text().trimmed();
+        if (preparingIsd || pointActive || probing || host.isEmpty()) return;
+        isdReady = false;
+        preparingIsd = true;
+        updateCaptureControls();
+        log->appendPlainText(QStringLiteral("ИСД: выполняются адресные OFF для реле и ЦАП."));
+        auto* watcher = new QFutureWatcher<IsdPreparation>(&window);
+        QObject::connect(watcher, &QFutureWatcherBase::finished, &window, [this, watcher] {
+            const auto result = watcher->result();
+            watcher->deleteLater();
+            preparingIsd = false;
+            isdReady = result.error.isEmpty() && result.acknowledged > 0;
+            log->appendPlainText(isdReady
+                ? QStringLiteral("ИСД: подтверждены %1 адресных OFF, включая ЦАП.").arg(result.acknowledged)
+                : QStringLiteral("ИСД не подготовлен. %1").arg(result.error));
+            updateCaptureControls();
+        });
+        watcher->setFuture(QtConcurrent::run(prepareIsd, root, host));
+    }
+
     void displayCheck(int index)
     {
         channelList->clear();
@@ -246,23 +425,38 @@ struct BrpTuWindow::Impl {
             const auto name = metadata.name(address);
             const auto rate = groupWords / check.layouts[i].stride * groupsPerSecond;
             auto label = QStringLiteral("%1 · %2 слотов/с").arg(address).arg(rate);
-            if (!name.isEmpty()) label += QStringLiteral(" · БД: %1").arg(name);
+            if (!check.channelNames.empty())
+                label.prepend(QString::fromStdString(check.channelNames[i]) + QStringLiteral(" · "));
+            else if (!name.isEmpty()) label += QStringLiteral(" · БД: %1").arg(name);
             channelList->addItem(label);
         }
         details->setText(QStringLiteral("%1. %2").arg(QString::fromStdString(check.requirement),
                                                          QString::fromStdString(check.note)));
-        const int maximumCode = (1 << check.bits) - 1;
-        expectedMin->setRange(-1, maximumCode);
-        expectedMax->setRange(-1, maximumCode);
-        expectedMin->setValue(simulation ? std::min(512, maximumCode) : -1);
-        expectedMax->setValue(simulation ? std::min(512, maximumCode) : -1);
-        capture->setEnabled(gatePassed && !check.addresses.empty());
+        const bool discrete = check.bits == 1;
+        checkForm->setRowVisible(expectedState, discrete);
+        expectedState->setCurrentIndex(simulation && discrete ? 1 : 0);
+        capture->setText(discrete ? QStringLiteral("Проверить состояние в кадре")
+            : check.scale ? QStringLiteral("Сравнить с В7") : QStringLiteral("Считать коды из кадра"));
+        updateCaptureControls();
     }
 
     void startInterface()
     {
         try {
-            if (!simulation) {
+            const bool yasmMode = interfaceMode->currentIndex() == 1;
+            if (yasmMode && !yasmFixture.empty()) {
+                yasm.emplace(YasmCheck::fromBusWords(yasmFixture));
+            } else if (yasmMode) {
+                std::vector<unsigned> expected;
+                for (const auto& item : yasmCodes->text().split(QRegularExpression(QStringLiteral("\\s+")),
+                                                              Qt::SkipEmptyParts)) {
+                    bool ok = false;
+                    const auto value = item.toUInt(&ok, 16);
+                    if (!ok) throw std::runtime_error("Коды внешнего теста ЯСМ задаются в HEX");
+                    expected.push_back(value);
+                }
+                yasm.emplace(std::move(expected));
+            } else if (!simulation) {
                 const auto portName = port->currentText().trimmed();
                 if (portName.isEmpty()) throw std::runtime_error("Выберите COM-порт RS-485");
                 serial.setPortName(portName);
@@ -276,10 +470,8 @@ struct BrpTuWindow::Impl {
                 source = miltech::integration::createOrbitaSampleSimulator(simulatedWord);
                 if (!source->open()) throw std::runtime_error("Имитатор Орбита не открылся");
             } else {
-                QFile file(root.filePath(QStringLiteral("data/stand_brp.yaml")));
-                if (!file.open(QIODevice::ReadOnly)) throw std::runtime_error("Профиль E20-10 не открыт");
-                const auto config = YAML::Load(file.readAll().toStdString());
-                if (config["schema"].as<int>() != 1 || !config["e2010"].IsMap())
+                const auto config = loadStand(root);
+                if (!config["e2010"].IsMap())
                     throw std::runtime_error("Неверная схема профиля E20-10");
                 source = createE2010SampleSource(config["e2010"].as<std::map<std::string, std::string>>());
             }
@@ -287,7 +479,7 @@ struct BrpTuWindow::Impl {
             // Состояние обнуляется до подключения callback. Перед любым следующим
             // запуском shutdown ждёт завершения потока, который изменяет эти поля.
             counter = {};
-            observeCounter = simulation;
+            observeCounter = simulation && !yasmMode;
             nextCounter = 0;
             gatePassed = false;
             decoder = std::make_unique<orbita::Orbita>();
@@ -299,11 +491,16 @@ struct BrpTuWindow::Impl {
             start->setEnabled(false);
             stop->setEnabled(true);
             port->setEnabled(false);
+            interfaceMode->setEnabled(false);
+            yasmCodes->setEnabled(false);
+            yasmFile->setEnabled(false);
             graph->setTrace({});
-            status->setText(QStringLiteral("Ожидание двух непрерывных периодов счётчика 0–1023"));
+            status->setText(yasmMode
+                ? QStringLiteral("Ожидание кодов внешнего теста ЯСМ в M16P1A22")
+                : QStringLiteral("Ожидание двух непрерывных периодов счётчика 0–1023"));
             gateClock.start();
             refresh.start(60);
-            if (!simulation) send.start(10);
+            if (!simulation && !yasmMode) send.start(10);
         } catch (const std::exception& error) {
             endSession(QStringLiteral("Запуск не выполнен: %1").arg(QString::fromUtf8(error.what())));
         }
@@ -331,6 +528,7 @@ struct BrpTuWindow::Impl {
     void consume(const std::vector<uint16_t>& words, int group, int cycle)
     {
         std::lock_guard<std::mutex> lock(dataMutex);
+        if (yasm) yasm->consume(words, group, cycle);
         if (observeCounter) counter.consume(words, group, cycle);
         if (!reading || groupCount == groupsPerSecond || groupGap) return;
         if (group < 1 || group > 32 || cycle < 1 || cycle > 4 || words.size() != groupWords) {
@@ -354,75 +552,158 @@ struct BrpTuWindow::Impl {
         }
 
         if (!gatePassed) {
+            const bool yasmMode = yasm.has_value();
             std::vector<unsigned> trace;
             {
                 std::lock_guard<std::mutex> lock(dataMutex);
-                gatePassed = counter.passed();
-                trace = counter.trace();
+                gatePassed = yasmMode ? yasm->passed() : counter.passed();
+                if (!yasmMode) trace = counter.trace();
             }
-            graph->setTrace(std::move(trace));
+            if (!yasmMode) graph->setTrace(std::move(trace));
             if (gatePassed) {
                 send.stop();
                 if (serial.isOpen()) serial.close();
-                status->setText(simulation
-                    ? QStringLiteral("Имитатор: приняты два непрерывных периода. Доступны кадровые сравнения.")
-                    : QStringLiteral("Интерфейс: приняты два непрерывных периода. Доступны кадровые сравнения."));
+                const auto result = yasmMode
+                    ? QStringLiteral("ЯСМ: ожидаемая последовательность получена в кадре.")
+                    : QStringLiteral("RS-485: получены два непрерывных периода счётчика.");
+                status->setText(simulation ? QStringLiteral("Имитатор. ") + result : result);
                 log->appendPlainText(status->text());
-                displayCheck(checkList->currentIndex());
+                updateCaptureControls();
             } else if (gateClock.elapsed() >= counterTimeoutMs) {
-                endSession(QStringLiteral("Интерфейс: за 5 с не получены два непрерывных периода."));
+                endSession(yasmMode ? QStringLiteral("Последовательность ЯСМ за 5 с не найдена.")
+                                    : QStringLiteral("RS-485: за 5 с не получены два непрерывных периода."));
             }
             return;
         }
 
-        std::lock_guard<std::mutex> lock(dataMutex);
-        if (!reading) return;
-        if (groupCount < groupsPerSecond && !groupGap && captureClock.elapsed() < captureTimeoutMs) return;
-        reading = false;
-        checkList->setEnabled(true);
-        channelList->setEnabled(true);
-        expectedMin->setEnabled(true);
-        expectedMax->setEnabled(true);
-        capture->setEnabled(true);
+        bool complete;
+        {
+            std::lock_guard<std::mutex> lock(dataMutex);
+            if (!reading) return;
+            if (groupCount < groupsPerSecond && !groupGap && captureClock.elapsed() < captureTimeoutMs) return;
+            reading = false;
+            complete = !groupGap && groupCount == groupsPerSecond && codes.count;
+        }
         const auto& check = checks.at(activeCheck);
-        const auto name = QString::fromStdString(check.addresses.at(activeChannel));
-        if (groupGap || groupCount < groupsPerSecond || !codes.count) {
-            log->appendPlainText(QStringLiteral("Строка %1, %2: полный набор последовательных групп не получен.")
-                .arg(check.number).arg(name));
+        if (!complete) {
+            finishPoint(pointName() + QStringLiteral(" Полный набор последовательных групп не получен."));
             return;
         }
-        log->appendPlainText(QStringLiteral("Строка %1, %2: %3 отсч., коды %4–%5, ожидание %6–%7. %8.")
-            .arg(check.number).arg(name).arg(codes.count).arg(codes.minimum).arg(codes.maximum)
-            .arg(low).arg(high).arg(codes.matches(low, high) ? QStringLiteral("Критерий выполнен")
-                                                           : QStringLiteral("Критерий не выполнен")));
+        if (codes.fillCount == codes.count || (check.bits == 1 && codes.fillCount)) {
+            finishPoint(pointName() + QStringLiteral(" В адресе обнаружено заполнение ЯФК 0x2AA. Точка не оценена."));
+            return;
+        }
+        if (check.scale) {
+            requestMeter(true);
+        } else if (check.bits == 1) {
+            finishPoint(pointName() + QStringLiteral(" %1 отсч., состояния %2–%3, ожидалось %4. %5.")
+                .arg(codes.count).arg(codes.minimum).arg(codes.maximum).arg(state)
+                .arg(codes.matches(state, state) ? QStringLiteral("Совпало") : QStringLiteral("Расхождение")));
+        } else {
+            finishPoint(pointName() + QStringLiteral(" %1 отсч., коды %2–%3. Шкала пересчёта в вольты не задана.")
+                .arg(codes.count).arg(codes.minimum).arg(codes.maximum));
+        }
     }
 
     void startCapture()
     {
-        if (!gatePassed || reading || checkList->currentIndex() < 0 || channelList->currentIndex() < 0) return;
-        if (expectedMin->value() < 0 || expectedMax->value() < 0) {
-            log->appendPlainText(QStringLiteral("Задайте нижнюю и верхнюю границы ожидаемого кода."));
-            return;
-        }
-        if (expectedMin->value() > expectedMax->value()) {
-            log->appendPlainText(QStringLiteral("Нижний предел превышает верхний."));
-            return;
-        }
-        std::lock_guard<std::mutex> lock(dataMutex);
+        if (!capture->isEnabled()) return;
         activeCheck = checkList->currentIndex();
         activeChannel = channelList->currentIndex();
-        low = expectedMin->value();
-        high = expectedMax->value();
+        pointActive = true;
+        ++pointId;
+        checkList->setEnabled(false);
+        channelList->setEnabled(false);
+        expectedState->setEnabled(false);
+        updateCaptureControls();
+        if (checks.at(activeCheck).scale) {
+            requestMeter(false);
+        } else {
+            if (checks.at(activeCheck).bits == 1)
+                state = static_cast<unsigned>(expectedState->currentIndex() - 1);
+            beginFrameCapture();
+        }
+    }
+
+    void beginFrameCapture()
+    {
+        std::lock_guard<std::mutex> lock(dataMutex);
         codes = {};
         groupCount = 0;
         groupGap = false;
         captureClock.start();
         reading = true;
-        checkList->setEnabled(false);
-        channelList->setEnabled(false);
-        expectedMin->setEnabled(false);
-        expectedMax->setEnabled(false);
-        capture->setEnabled(false);
+    }
+
+    QString pointName() const
+    {
+        const auto& check = checks.at(activeCheck);
+        return QStringLiteral("Строка %1 · %2 · %3.")
+            .arg(check.number).arg(QString::fromStdString(check.requirement),
+                                  QString::fromStdString(check.addresses.at(activeChannel)));
+    }
+
+    void finishPoint(const QString& message)
+    {
+        log->appendPlainText(message);
+        pointActive = false;
+        checkList->setEnabled(true);
+        channelList->setEnabled(true);
+        expectedState->setEnabled(true);
+        updateCaptureControls();
+    }
+
+    void requestMeter(bool after)
+    {
+        if (simulation) {
+            meterResult({checks.at(activeCheck).scale->volts(512), {}}, after);
+            return;
+        }
+        // В7 опрашивается вне GUI. Номер точки не даёт запоздалому ответу
+        // после остановки потока попасть в следующий запуск.
+        meterBusy = true;
+        const auto id = pointId;
+        auto* watcher = new QFutureWatcher<MeterReading>(&window);
+        QObject::connect(watcher, &QFutureWatcherBase::finished, &window, [this, watcher, id, after] {
+            const auto result = watcher->result();
+            watcher->deleteLater();
+            meterBusy = false;
+            if (pointActive && id == pointId) meterResult(result, after);
+            else updateCaptureControls();
+        });
+        watcher->setFuture(QtConcurrent::run(readMeter, root));
+    }
+
+    void meterResult(const MeterReading& result, bool after)
+    {
+        if (!result.error.isEmpty()) {
+            finishPoint(pointName() + QStringLiteral(" Ошибка В7. %1").arg(result.error));
+            return;
+        }
+        if (!after) {
+            referenceBefore = result.volts;
+            beginFrameCapture();
+            return;
+        }
+        const auto& scale = *checks.at(activeCheck).scale;
+        const auto compared = compareVoltage(scale, codes, referenceBefore, result.volts);
+        const auto format = [](double volts) { return QString::number(volts, 'f', 3); };
+        QString detail = QStringLiteral(" В7 до/после %1 / %2 В. Код %3–%4 (%5 отсч.), ЯГР %6–%7 В. Макс. |Δ| %8 В.")
+            .arg(format(referenceBefore), format(result.volts)).arg(codes.minimum).arg(codes.maximum).arg(codes.count)
+            .arg(format(compared.minimumVolts), format(compared.maximumVolts), format(compared.maximumErrorVolts));
+        if (compared.toleranceVolts) {
+            const auto limit = *compared.toleranceVolts;
+            if (std::abs(referenceBefore - result.volts) > limit) {
+                detail += QStringLiteral(" Уровень В7 изменился сильнее допуска %1 В. Точка не оценена.").arg(format(limit));
+            } else {
+                detail += QStringLiteral(" Допуск точки ±%1 В. %2.").arg(format(limit),
+                    compared.maximumErrorVolts <= limit ? QStringLiteral("Точка в допуске")
+                                                        : QStringLiteral("Точка вне допуска"));
+            }
+        } else {
+            detail += QStringLiteral(" Диагностическое сравнение.");
+        }
+        finishPoint(pointName() + detail);
     }
 
     void shutdown()
@@ -436,6 +717,9 @@ struct BrpTuWindow::Impl {
         bridge.reset();
         decoder.reset();
         source.reset();
+        yasm.reset();
+        pointActive = false;
+        ++pointId;
         reading = gatePassed = false;
     }
 
@@ -447,11 +731,14 @@ struct BrpTuWindow::Impl {
         start->setEnabled(true);
         stop->setEnabled(false);
         port->setEnabled(true);
+        interfaceMode->setEnabled(true);
+        yasmCodes->setEnabled(true);
+        yasmFile->setEnabled(true);
         checkList->setEnabled(true);
         channelList->setEnabled(true);
-        expectedMin->setEnabled(true);
-        expectedMax->setEnabled(true);
-        capture->setEnabled(false);
+        expectedState->setEnabled(true);
+        isdReady = false;
+        updateCaptureControls();
     }
 
     BrpTuWindow& window;
@@ -459,10 +746,12 @@ struct BrpTuWindow::Impl {
     const QDir root;
     MetadataService metadata;
     std::vector<FrameCheck> checks;
-    QComboBox *port = nullptr, *checkList = nullptr, *channelList = nullptr;
-    QPushButton *start = nullptr, *stop = nullptr, *capture = nullptr;
+    QComboBox *interfaceMode = nullptr, *port = nullptr, *checkList = nullptr,
+              *channelList = nullptr, *expectedState = nullptr;
+    QLineEdit *isdHost = nullptr, *yasmCodes = nullptr;
+    QPushButton *start = nullptr, *stop = nullptr, *capture = nullptr, *prepare = nullptr, *yasmFile = nullptr;
     QLabel *status = nullptr, *details = nullptr;
-    QSpinBox *expectedMin = nullptr, *expectedMax = nullptr;
+    QFormLayout* checkForm = nullptr;
     QPlainTextEdit* log = nullptr;
     CounterPlot* graph = nullptr;
     QSerialPort serial;
@@ -473,13 +762,20 @@ struct BrpTuWindow::Impl {
     std::unique_ptr<miltech::integration::OrbitaSampleBridge> bridge;
     std::mutex dataMutex;
     CounterCheck counter;
+    std::optional<YasmCheck> yasm;
+    std::vector<uint16_t> yasmFixture;
     bool observeCounter = false;
     unsigned nextCounter = 0;
     bool gatePassed = false;
     bool reading = false, groupGap = false;
     int groupCount = 0, lastOrdinal = 0;
     std::size_t activeCheck = 0, activeChannel = 0;
-    unsigned low = 0, high = 0;
+    unsigned state = 0;
+    unsigned pointId = 0;
+    bool isdReady = false, preparingIsd = false;
+    bool probing = false;
+    bool pointActive = false, meterBusy = false;
+    double referenceBefore = 0;
     CodeRange codes;
 };
 

@@ -4,3 +4,19 @@ e2010:
   channel: 1
   sample_rate_khz: 10000
   buffer_words: 1048576
+
+# Адресные OFF и пауза взяты из isd_startup_baseline в tu-minimal-clean.
+# Целевой ИСД оператор выбирает в окне БРП.
+isd_baseline:
+  type2_last: 40
+  type3_last: 96
+  dac_last: 96
+  command_gap_ms: 30
+
+# Ресурсы и DC-команда из профиля В7 в tu-minimal-clean.
+v7:
+  resources:
+    - USB[0-9]*::0x164E::0x0DAD::?*INSTR
+    - USB[0-9]*::5710::3501::?*INSTR
+  timeout_ms: 25000
+  voltage_command: MEAS:VOLT:DC?

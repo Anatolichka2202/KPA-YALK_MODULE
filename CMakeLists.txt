@@ -27,6 +27,8 @@ qt_add_library(tu_hardware STATIC
     hardware/akip1160.cpp
     hardware/isd_router.cpp
     hardware/e2010_sample_source.cpp
+    hardware/visa_instrument.cpp
+    hardware/v7_meter.cpp
 )
 target_include_directories(tu_hardware
     PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/hardware/include"
@@ -84,8 +86,15 @@ if(BUILD_TESTING)
     add_test(NAME brp.frame_checks COMMAND brp_frame_checks_test
         "${CMAKE_CURRENT_SOURCE_DIR}/data/frame_checks.yaml")
     set_tests_properties(brp.frame_checks PROPERTIES TIMEOUT 15)
+
+    qt_add_executable(brp_scenario_test tests/brp_scenario_test.cpp)
+    target_link_libraries(brp_scenario_test PRIVATE
+        brp_ui tu_hardware Qt6::Network Qt6::Concurrent)
+    add_dependencies(brp_scenario_test brp_runtime_data)
+    add_test(NAME brp.scenario COMMAND brp_scenario_test -platform offscreen)
+    set_tests_properties(brp.scenario PROPERTIES TIMEOUT 30)
     if(WIN32)
-        set_tests_properties(brp.frame_checks PROPERTIES ENVIRONMENT_MODIFICATION
+        set_tests_properties(brp.frame_checks brp.scenario PROPERTIES ENVIRONMENT_MODIFICATION
             "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
     endif()
 endif()

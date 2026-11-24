@@ -3,6 +3,7 @@
 #include "orbita.h"
 
 #include <cstdint>
+#include <array>
 #include <deque>
 #include <optional>
 #include <string>
@@ -13,6 +14,7 @@ namespace miltech::brp {
 constexpr unsigned counterLimit = 1023;
 constexpr int counterBaud = 500000;
 constexpr std::size_t groupWords = 2048;
+constexpr std::array<unsigned, 4> simulatedYasmPattern{0x12, 0x1B2, 0x15C, 0x67};
 
 // Два байта со взаимно исключающими признаками младшей и старшей частей.
 // Это шаблон стендового воздействия для прозрачного RS-485, а не протокол БРП.
@@ -36,6 +38,33 @@ private:
     std::deque<unsigned> trace_;
 };
 
+// Входной тест ЯСМ выполняется на внешнем источнике. Здесь сверяются
+// известные коды, уже принятые по адресу МКО в кадре M16.
+class YasmCheck {
+public:
+    explicit YasmCheck(std::vector<unsigned> expected);
+    static YasmCheck fromBusWords(const std::vector<uint16_t>& words);
+    void consume(const std::vector<uint16_t>& words, int group, int cycle);
+    bool passed() const { return passed_; }
+
+private:
+    std::vector<unsigned> expected_;
+    std::vector<unsigned> alternate_;
+    std::deque<unsigned> recent_;
+    int lastOrdinal_ = -1;
+    bool passed_ = false;
+};
+
+struct VoltageScale {
+    double minVolts;
+    double maxVolts;
+    unsigned minCode;
+    unsigned maxCode;
+    std::optional<double> tolerancePercent;
+
+    double volts(unsigned code) const;
+};
+
 struct FrameCheck {
     int number;
     std::string title;
@@ -43,9 +72,11 @@ struct FrameCheck {
     std::string cell;
     std::string note;
     std::vector<std::string> addresses;
+    std::vector<std::string> channelNames;
     std::vector<orbita::M16GroupChannel> layouts;
-    unsigned shift;
+    std::vector<unsigned> shifts;
     unsigned bits;
+    std::optional<VoltageScale> scale;
 };
 
 std::vector<FrameCheck> loadFrameChecks(const std::string& yaml);
@@ -54,8 +85,19 @@ struct CodeRange {
     unsigned count = 0;
     unsigned minimum = 0;
     unsigned maximum = 0;
+    unsigned fillCount = 0;
     void consume(const std::vector<uint16_t>& words, const FrameCheck& check, std::size_t channel);
     bool matches(unsigned expectedMin, unsigned expectedMax) const;
 };
+
+struct VoltageComparison {
+    double minimumVolts;
+    double maximumVolts;
+    double maximumErrorVolts;
+    std::optional<double> toleranceVolts;
+};
+
+VoltageComparison compareVoltage(const VoltageScale& scale, const CodeRange& codes,
+                                 double before, double after);
 
 } // namespace miltech::brp

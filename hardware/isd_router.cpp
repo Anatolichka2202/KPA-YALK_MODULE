@@ -383,6 +383,35 @@ std::string IsdRouter::probe()
     return impl_->get(QStringLiteral("/"), false).left(200).toStdString();
 }
 
+unsigned IsdRouter::prepareYagr(unsigned type2Last, unsigned type3Last, unsigned dacLast,
+                               unsigned commandGapMs)
+{
+    if (!type2Last || type2Last > 40 || !type3Last || type3Last > 96
+        || !dacLast || dacLast > 96 || commandGapMs < 20 || commandGapMs > 50)
+        throw std::invalid_argument("Некорректный диапазон адресной подготовки ИСД");
+    const std::lock_guard<std::recursive_mutex> lock(impl_->requestMutex);
+    const auto total = type2Last + type3Last + dacLast;
+    unsigned acknowledged = 0;
+    const auto gap = [&] {
+        if (++acknowledged < total) std::this_thread::sleep_for(std::chrono::milliseconds(commandGapMs));
+    };
+    // Последовательность адресных OFF из stand.addressed_baseline. Выходы
+    // ЦАП сбрасываем командой work=0, без краткого включения измерительной шины.
+    for (unsigned channel = 1; channel <= type3Last; ++channel) {
+        setSwitch(3, channel, false);
+        gap();
+    }
+    for (unsigned channel = 1; channel <= type2Last; ++channel) {
+        setSwitch(2, channel, false);
+        gap();
+    }
+    for (unsigned channel = 1; channel <= dacLast; ++channel) {
+        setAnalog(channel, 0, false);
+        gap();
+    }
+    return acknowledged;
+}
+
 void IsdRouter::setSwitch(unsigned type, unsigned channel, bool enabled)
 {
     const std::lock_guard<std::recursive_mutex> lock(impl_->requestMutex);

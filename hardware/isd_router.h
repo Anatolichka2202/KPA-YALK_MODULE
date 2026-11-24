@@ -35,6 +35,8 @@ public:
     IsdRouter& operator=(const IsdRouter&) = delete;
 
     std::string probe();
+    unsigned prepareYagr(unsigned type2Last, unsigned type3Last, unsigned dacLast,
+                         unsigned commandGapMs);
     void setSwitch(unsigned type, unsigned channel, bool enabled);
     void setAnalog(unsigned channel, unsigned value, bool enabled);
     void setYalkVoltage(unsigned channel, double volts);
