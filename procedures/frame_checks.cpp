@@ -233,6 +233,15 @@ void CodeRange::consume(const std::vector<uint16_t>& words,
     }
 }
 
+void CodeRange::merge(const CodeRange& group)
+{
+    if (!group.count) return;
+    minimum = count ? std::min(minimum, group.minimum) : group.minimum;
+    maximum = count ? std::max(maximum, group.maximum) : group.maximum;
+    count += group.count;
+    fillCount += group.fillCount;
+}
+
 bool CodeRange::matches(unsigned expectedMin, unsigned expectedMax) const
 {
     return count && minimum >= expectedMin && maximum <= expectedMax;

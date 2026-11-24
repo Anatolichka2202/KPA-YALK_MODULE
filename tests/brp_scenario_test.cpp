@@ -11,7 +11,6 @@
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QTableWidget>
-#include <QTabWidget>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTemporaryDir>
@@ -95,9 +94,9 @@ void testWindow()
     auto* capture = window.findChild<QPushButton*>("brpCapture");
     auto* log = window.findChild<QPlainTextEdit*>("brpLog");
     auto* status = window.findChild<QLabel*>("brpInterfaceStatus");
-    auto* tabs = window.findChild<QTabWidget*>();
-    require(mode && list && start && stop && capture && log && status && tabs, "BRP controls are missing");
-    tabs->setCurrentIndex(1);
+    auto* manual = window.findChild<QPushButton*>("brpManualOpen");
+    require(mode && list && start && stop && capture && log && status && manual, "BRP controls are missing");
+    manual->click();
     require(!capture->isEnabled(), "measurement was available before interface validation");
     mode->setCurrentIndex(1);
     start->click();
@@ -132,83 +131,141 @@ QString readText(const QString& path)
     return QString::fromUtf8(file.readAll());
 }
 
+QPushButton* action(BrpTuWindow& window, const char* property)
+{
+    for (auto* button : window.findChildren<QPushButton*>()) {
+        if (button->property(property).toBool()) return button;
+    }
+    throw std::runtime_error(property);
+}
+
 void testScenarioAndReport()
 {
     const QTemporaryDir reports;
     require(reports.isValid(), "report directory could not be created");
     qputenv("TU_REPORT_DIR", reports.path().toLocal8Bit());
     BrpTuWindow window(true);
-    window.resize(1000, 720);
+    window.resize(1440, 900);
     window.show();
     auto* mode = window.findChild<QComboBox*>("brpInterfaceMode");
-    auto* serial = window.findChild<QLineEdit*>("brpSerialNumber");
-    auto* name = window.findChild<QLineEdit*>("brpOperator");
+    auto* serial = window.findChild<QLineEdit*>("tuManualSerial");
+    auto* name = window.findChild<QLineEdit*>("tuCompletionOperator");
     auto* yasmCodes = window.findChild<QLineEdit*>("brpYasmCodes");
-    auto* start = window.findChild<QPushButton*>("brpScenarioStart");
-    auto* stop = window.findChild<QPushButton*>("brpScenarioStop");
-    auto* skip = window.findChild<QPushButton*>("brpScenarioSkip");
-    auto* measure = window.findChild<QPushButton*>("brpScenarioMeasure");
-    auto* rows = window.findChild<QTableWidget*>("brpStageTable");
-    auto* path = window.findChild<QLabel*>("brpReportLocation");
-    auto* manualStart = window.findChild<QPushButton*>("brpInterfaceStart");
-    require(mode && serial && name && yasmCodes && start && stop && skip && measure && rows && path && manualStart,
-        "scenario controls are missing");
-    require(!start->isEnabled(), "scenario started without run metadata");
+    auto* manual = window.findChild<QPushButton*>("brpManualOpen");
+    auto* back = window.findChild<QPushButton*>("brpManualBack");
+    auto* readiness = window.findChild<QLabel*>("tuReadyState");
+    auto* stop = action(window, "tuStopAction");
+    auto* check = action(window, "tuStandAction");
+    auto* start = action(window, "tuStartAction");
+    auto* buildReport = action(window, "tuReportAction");
+    auto* measure = action(window, "brpPointAction");
+    auto* skip = window.findChild<QPushButton*>("skipStage");
+    auto* revealSkip = window.findChild<QPushButton*>("tuSkipRevealHotspot");
+    auto* rows = window.findChild<QTableWidget*>("tuReportTable");
+    auto* graph = window.findChild<QWidget*>("tuStageHistory");
+    require(mode && serial && name && yasmCodes && manual && back && readiness
+        && skip && revealSkip && rows && graph, "TU screens are incomplete");
+
+    const auto selectInterface = [&](int index) {
+        require(manual->isVisible(), "manual controls are missing on the selection screen");
+        manual->click();
+        require(mode->isVisible() && back->isVisible(), "manual page did not open");
+        mode->setCurrentIndex(index);
+        back->click();
+    };
+    const auto newCheck = [&] {
+        for (auto* button : window.findChildren<QPushButton*>()) {
+            if (button->isVisible() && button->text() == QStringLiteral("Новая проверка")) {
+                button->click();
+                return;
+            }
+        }
+        throw std::runtime_error("report has no new check action");
+    };
+    const auto stageResult = [&](int index) { return rows->item(index, 1)->text(); };
+    const auto exportReport = [&]() {
+        require(name->isVisible() && !buildReport->isEnabled(), "operator entry was skipped");
+        name->setText(QStringLiteral("A < B; \"C\""));
+        buildReport->click();
+        require(rows->isVisible(), "report page did not open");
+        const auto path = window.findChild<QLabel*>("tuReportPath")->text();
+        const auto prefix = QStringLiteral("Протокол ТУ: ");
+        require(path.startsWith(prefix + reports.path()),
+                "report file was not written to the configured directory");
+        return path.mid(prefix.size());
+    };
+
+    require(!check->isEnabled(), "stand check started without a serial number");
     serial->setText(QStringLiteral("BRP-01"));
-    name->setText(QStringLiteral("A < B; \"C\""));
-    mode->setCurrentIndex(2);
-    require(!start->isEnabled(), "M8 diagnostics allowed a M16 scenario");
-    mode->setCurrentIndex(1);
-    require(start->isEnabled() && rows->rowCount() == 5, "M16 scenario plan is incomplete");
+    selectInterface(2);
+    check->click();
+    require(readiness->isVisible() && readiness->text() == QStringLiteral("СТЕНД НЕ ГОТОВ")
+        && !start->isVisible(), "M8 diagnostics allowed a M16 scenario");
+    for (auto* button : window.findChildren<QPushButton*>()) {
+        if (button->isVisible() && button->text() == QStringLiteral("Выбрать другой SN")) button->click();
+    }
+
+    selectInterface(1);
+    check->click();
+    require(start->isVisible() && readiness->text() == QStringLiteral("СТЕНД ГОТОВ"), "stand readiness screen is wrong");
     start->click();
-    require(stop->isEnabled() && !manualStart->isEnabled() && !measure->isEnabled(),
-        "active scenario did not lock manual control and unprepared measurements");
-    require(waitUntil([&] { return measure->isEnabled(); }), "scenario did not reach operator confirmation");
-    require(rows->item(0, 0)->text() == QStringLiteral("13")
-        && rows->item(0, 3)->text() == QStringLiteral("Пройдено")
-        && rows->item(1, 3)->text() == QStringLiteral("Пройдено")
-        && rows->item(2, 1)->text() == QStringLiteral("3.2.1.7.3"), "interface or preparation result is wrong");
+    require(stop->isVisible() && graph->isVisible() && !manual->isVisible() && !measure->isVisible(),
+        "runtime did not show the interface graph and lock unattended measurements");
+    require(waitUntil([&] { return measure->isVisible(); }), "scenario did not reach operator confirmation");
+    auto* interfaceStage = window.findChild<QLabel*>("tuRequirementStatus_yasm");
+    auto* isdStage = window.findChild<QLabel*>("tuRequirementStatus_isd_off");
+    require(interfaceStage && isdStage && interfaceStage->text() == QStringLiteral("НОРМА")
+        && isdStage->text() == QStringLiteral("НОРМА"), "interface or preparation stage is wrong");
+    require(window.findChild<QLabel*>("brpStageHeading")->text() == QStringLiteral("M16P1A10B60C11T01"),
+        "active stage is missing its address");
 
     measure->click();
-    require(!measure->isEnabled() && !skip->isEnabled(), "a running measurement could be restarted or skipped");
-    require(waitUntil([&] { return measure->isEnabled(); }), "scenario did not advance after first V7 comparison");
-    require(rows->item(2, 3)->text() == QStringLiteral("Пройдено"), "V7 result is wrong");
+    require(!measure->isVisible() && !skip->isEnabled(), "a running measurement could be restarted or skipped");
+    require(waitUntil([&] { return measure->isVisible(); }), "scenario did not advance after first V7 comparison");
+    revealSkip->click();
+    require(skip->isVisible(), "skip action did not reveal");
     skip->click();
-    require(rows->item(3, 3)->text() == QStringLiteral("Пропущено"), "operator skip was not recorded");
     measure->click();
-    require(waitUntil([&] { return start->isEnabled(); }), "scenario did not finish after last measurement");
-    const auto completeHtml = path->text();
-    if (!completeHtml.endsWith(QStringLiteral(".html")))
-        std::cerr << completeHtml.toStdString() << '\n';
-    require(completeHtml.endsWith(QStringLiteral(".html")) && manualStart->isEnabled(),
-        "completed scenario did not save report or release controls");
+    require(waitUntil([&] { return name->isVisible(); }), "scenario did not finish after last measurement");
+
+    const auto completeHtml = exportReport();
     const auto base = completeHtml.chopped(5);
+    require(rows->rowCount() == 5 && stageResult(2) == QStringLiteral("НОРМА")
+        && stageResult(3) == QStringLiteral("ПРОПУЩЕНО") && stageResult(4) == QStringLiteral("НОРМА"),
+        "report summary did not preserve the stage verdicts");
     const auto html = readText(completeHtml);
     const auto txt = readText(base + QStringLiteral(".txt"));
     const auto csv = readText(base + QStringLiteral(".csv"));
-    require(html.contains(QStringLiteral("A &lt; B; &quot;C&quot;"))
-        && txt.contains(QStringLiteral("ИМИТАЦИЯ")) && txt.contains(QStringLiteral("Пропущено"))
-        && csv.contains(QStringLiteral("\"В7 до\";\"20.020\";\"В\""))
-        && csv.contains(QStringLiteral("M16P1A10B60C31T01")), "protocol did not preserve results and measurements");
+    require(html.contains(QStringLiteral("@page{size:A4;margin:16mm}"))
+        && html.contains(QStringLiteral("A &lt; B; &quot;C&quot;"))
+        && txt.contains(QStringLiteral("РЕЗУЛЬТАТЫ КАДРОВЫХ ПРОВЕРОК БРП №BRP-01"))
+        && txt.contains(QStringLiteral("Имитация")) && txt.contains(QStringLiteral("ПРОПУЩЕНО"))
+        && csv.contains(QStringLiteral("v7_before_v=20.020"))
+        && csv.contains(QStringLiteral("M16P1A10B60C31T01")), "reference report lost the BRP results or print layout");
 
-    mode->setCurrentIndex(0);
+    newCheck();
+    selectInterface(0);
+    check->click();
     start->click();
     stop->click();
-    require(start->isEnabled() && !stop->isEnabled() && !measure->isEnabled()
-        && rows->item(0, 0)->text() == QStringLiteral("12")
-        && rows->item(0, 3)->text() == QStringLiteral("Остановлено")
-        && rows->item(2, 3)->text() == QStringLiteral("Не выполнено"), "cancelled run left a stale result or control");
-    require(path->text() != completeHtml && readText(path->text()).contains(QStringLiteral("Остановлено")),
-        "cancelled run did not produce its own report");
+    const auto cancelledHtml = exportReport();
+    require(cancelledHtml != completeHtml
+        && stageResult(0) == QStringLiteral("ОСТАНОВЛЕНО") && stageResult(2) == QStringLiteral("НЕ ВЫПОЛНЕНО"),
+        "cancelled run left a stale result");
 
+    newCheck();
+    manual->click();
     mode->setCurrentIndex(1);
     yasmCodes->setText(QStringLiteral("1 2"));
+    back->click();
+    check->click();
     start->click();
-    require(waitUntil([&] { return start->isEnabled(); }), "YASM timeout did not end the scenario");
-    require(!measure->isEnabled() && rows->item(0, 3)->text() == QStringLiteral("Не пройдено")
-        && rows->item(1, 3)->text() == QStringLiteral("Не выполнено")
-        && rows->item(2, 3)->text() == QStringLiteral("Не выполнено"), "failed interface let the scenario progress");
-    require(readText(path->text()).contains(QStringLiteral("за 5 с не найдена")), "interface failure is missing from report");
+    require(waitUntil([&] { return name->isVisible(); }), "YASM timeout did not end the scenario");
+    const auto failureHtml = exportReport();
+    require(stageResult(0) == QStringLiteral("НЕ НОРМА")
+        && stageResult(1) == QStringLiteral("НЕ ВЫПОЛНЕНО")
+        && stageResult(2) == QStringLiteral("НЕ ВЫПОЛНЕНО"), "failed interface let the scenario progress");
+    require(readText(failureHtml).contains(QStringLiteral("за 5 с не найдена")), "interface failure is missing from report");
 }
 
 } // namespace

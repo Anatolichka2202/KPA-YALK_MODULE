@@ -49,8 +49,12 @@ target_include_directories(brp_frames
 target_link_libraries(brp_frames PUBLIC orbita PRIVATE yaml-cpp)
 
 qt_add_library(brp_ui STATIC
-    app/brp_run_report.cpp
+    app/tu_report_writer.cpp
+    model/run_types.cpp
     ui/brp_tu_window.cpp
+    ui/test_page.cpp
+    ui/tu_flow_widget.cpp
+    ui/run_journal_overlay.cpp
     ui/metadata_service.cpp
     ui/metadata_service.h
     ui/encoding_utils.cpp

@@ -1,6 +1,8 @@
 #include "brp_tu_window.h"
 
-#include "app/brp_run_report.h"
+#include "history_plot.h"
+#include "test_page.h"
+#include "tu_flow_widget.h"
 #include "frame_checks.h"
 #include "encoding_utils.h"
 #include "hardware/akip1160.h"
@@ -14,7 +16,7 @@
 #include <QComboBox>
 #include <QCheckBox>
 #include <QCoreApplication>
-#include <QDesktopServices>
+#include <QDateTime>
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
@@ -23,20 +25,14 @@
 #include <QFutureWatcher>
 #include <QFormLayout>
 #include <QGroupBox>
-#include <QHeaderView>
 #include <QLabel>
 #include <QLineEdit>
-#include <QPainter>
 #include <QPlainTextEdit>
-#include <QProgressBar>
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QSerialPort>
 #include <QSerialPortInfo>
-#include <QTableWidget>
-#include <QTabWidget>
 #include <QTimer>
-#include <QUrl>
 #include <QUuid>
 #include <QXmlStreamReader>
 #include <QtConcurrentRun>
@@ -50,36 +46,11 @@
 namespace {
 using namespace miltech::brp;
 using namespace orbita::stand;
+using tu::RunVerdict;
 
 constexpr int groupsPerSecond = 128;
 constexpr int counterTimeoutMs = 5000;
 constexpr int captureTimeoutMs = 3000;
-
-QString tuStyle()
-{
-    return QStringLiteral(R"QSS(
-QWidget { background:#08131d; color:#eaf4fb; }
-QLabel[muted="true"] { color:#9cb1c0; }
-QLabel[title="true"] { font-size:22px; font-weight:700; }
-QGroupBox { background:#0e1e2c; border:1px solid #264257; border-radius:8px; margin-top:13px; }
-QGroupBox::title { subcontrol-origin:margin; left:10px; color:#a8c4d8; }
-QPushButton { background:#132a3d; border:1px solid #264257; border-radius:7px; padding:8px 13px; }
-QPushButton:hover { border-color:#58a5ff; background:#17334a; }
-QPushButton[primary="true"] { background:#2e7de9; color:#061522; border-color:#58a5ff; font-weight:700; }
-QPushButton[danger="true"] { background:#3a1d24; border-color:#7e3340; color:#ffd8dc; }
-QPushButton:disabled { color:#728b9e; background:#0e1e2c; border-color:#1a3346; }
-QLineEdit,QComboBox,QPlainTextEdit { background:#0e1e2c; border:1px solid #264257; border-radius:6px; padding:6px; }
-QTabWidget::pane { border:1px solid #264257; }
-QTabBar::tab { background:#0e1e2c; color:#a8c4d8; padding:9px 15px; }
-QTabBar::tab:selected { background:#17334a; color:#eaf4fb; border-bottom:2px solid #58a5ff; }
-QTableWidget { background:#0e1e2c; alternate-background-color:#102333; border:1px solid #264257;
-    gridline-color:#1a3346; selection-background-color:#123b58; selection-color:#eaf4fb; }
-QHeaderView::section { background:#102333; color:#a8c4d8; border:0; padding:8px; font-weight:700; }
-QProgressBar { background:#0e1e2c; border:1px solid #264257; border-radius:5px; text-align:center; }
-QProgressBar::chunk { background:#1b4f85; }
-QWidget :focus { border-color:#58a5ff; }
-)QSS");
-}
 
 YAML::Node loadStand(const QDir& root)
 {
@@ -95,16 +66,21 @@ struct MeterReading {
     QString error;
 };
 
+tu::hardware::V7Config loadV7(const QDir& root)
+{
+    const auto v7 = loadStand(root)["v7"];
+    const tu::hardware::V7Config config{
+        {v7["resources"].as<std::vector<std::string>>(), v7["timeout_ms"].as<unsigned>()},
+        v7["voltage_command"].as<std::string>()};
+    if (config.visa.resources.empty() || !config.visa.timeoutMilliseconds || config.dcVoltageCommand.empty())
+        throw std::runtime_error("Не настроены адрес и команда В7");
+    return config;
+}
+
 MeterReading readMeter(const QDir& root)
 {
     try {
-        const auto v7 = loadStand(root)["v7"];
-        const tu::hardware::V7Config config{
-            {v7["resources"].as<std::vector<std::string>>(), v7["timeout_ms"].as<unsigned>()},
-            v7["voltage_command"].as<std::string>()};
-        if (config.visa.resources.empty() || !config.visa.timeoutMilliseconds || config.dcVoltageCommand.empty())
-            throw std::runtime_error("Не настроены адрес и команда В7");
-        return {tu::hardware::readV7Voltage(config), {}};
+        return {tu::hardware::readV7Voltage(loadV7(root)), {}};
     } catch (const std::exception& error) {
         return {0, QString::fromUtf8(error.what())};
     }
@@ -160,45 +136,6 @@ std::vector<uint16_t> readYasmFixture(const QString& path)
     return words;
 }
 
-class CounterPlot final : public QWidget {
-public:
-    explicit CounterPlot(QWidget* parent) : QWidget(parent) { setMinimumHeight(220); }
-
-    void setTrace(std::vector<unsigned> trace)
-    {
-        trace_ = std::move(trace);
-        update();
-    }
-
-protected:
-    void paintEvent(QPaintEvent*) override
-    {
-        QPainter painter(this);
-        painter.fillRect(rect(), palette().base());
-        const QRectF area = QRectF(rect()).adjusted(42, 16, -12, -31);
-        if (area.isEmpty()) return;
-        painter.setPen(palette().mid().color());
-        painter.drawRect(area);
-        painter.setPen(palette().text().color());
-        painter.drawText(QPointF(6, area.top() + 6), QStringLiteral("1023"));
-        painter.drawText(QPointF(20, area.bottom() + 4), QStringLiteral("0"));
-        painter.drawText(QRectF(area.left(), area.bottom(), area.width(), 30),
-                         Qt::AlignCenter, QStringLiteral("Номер принятого отсчёта"));
-        QPolygonF line;
-        line.reserve(trace_.size());
-        for (std::size_t i = 0; i < trace_.size(); ++i) {
-            line.append(QPointF(area.left() + area.width() * i / (2 * (counterLimit + 1)),
-                area.bottom() - area.height() * trace_[i] / counterLimit));
-        }
-        painter.setRenderHint(QPainter::Antialiasing);
-        painter.setPen(QPen(QColor(QStringLiteral("#227fc1")), 2));
-        painter.drawPolyline(line);
-    }
-
-private:
-    std::vector<unsigned> trace_;
-};
-
 QString readEquipment(QString host, QString akipPort)
 {
     QStringList results;
@@ -234,21 +171,38 @@ struct BrpTuWindow::Impl {
         : window(window), simulation(simulation), root(QCoreApplication::applicationDirPath())
     {
         window.setWindowTitle(QStringLiteral("БРП · проверка ТУ"));
-        window.setStyleSheet(tuStyle());
         auto* rootLayout = new QVBoxLayout(&window);
-        auto* title = new QLabel(simulation ? QStringLiteral("БРП · проверка ТУ · имитация")
-                                            : QStringLiteral("БРП · проверка ТУ"), &window);
-        title->setProperty("title", true);
-        rootLayout->addWidget(title);
-        auto* tabs = new QTabWidget(&window);
-        rootLayout->addWidget(tabs, 1);
-        auto* scenario = new QWidget(tabs);
-        manual = new QWidget(tabs);
-        tabs->addTab(scenario, QStringLiteral("Испытание"));
-        tabs->addTab(manual, QStringLiteral("Ручное управление"));
-        buildScenario(scenario);
+        rootLayout->setContentsMargins(0, 0, 0, 0);
+        page = new TestPage(&window);
+        rootLayout->addWidget(page);
+        auto* flow = page->flow();
+        QObject::connect(flow, &TuFlowWidget::readinessRequested, &window,
+            [this](const QString& serial) { checkStand(serial); });
+        QObject::connect(flow, &TuFlowWidget::startRequested, &window,
+            [this](const QString& serial) { startScenario(serial); });
+        QObject::connect(page, &TestPage::pointReady, &window, [this] { measureStage(); });
+        QObject::connect(page, &TestPage::skipCurrentStepRequested, &window, [this] {
+            if (pointCanStart())
+                completeStage(tu::RunVerdict::Incomplete, QStringLiteral("Пропущено оператором."), {}, true);
+        });
+        QObject::connect(page, &TestPage::stopRequested, &window, [this] {
+            if (currentStage < 0) return;
+            const auto message = preparingIsd
+                ? QStringLiteral("Испытание остановлено. ИСД завершает начатую последовательность OFF.")
+                : QStringLiteral("Испытание остановлено оператором.");
+            endSession(message, tu::RunVerdict::Aborted);
+        });
 
+        auto* manual = page->manualPage();
         auto* layout = new QVBoxLayout(manual);
+        auto* back = new QPushButton(QStringLiteral("← Сессия"), manual);
+        back->setObjectName(QStringLiteral("brpManualBack"));
+        layout->addWidget(back, 0, Qt::AlignLeft);
+        QObject::connect(back, &QPushButton::clicked, &window, [this] {
+            if (bridge) endSession(QStringLiteral("Сбор остановлен при выходе из ручного режима."));
+            page->showFlow();
+        });
+
         auto* interfaceBox = new QGroupBox(QStringLiteral("Интерфейс и монитор Орбита"), manual);
         auto* interfaceLayout = new QVBoxLayout(interfaceBox);
         auto* interfaceControls = new QHBoxLayout;
@@ -321,8 +275,9 @@ struct BrpTuWindow::Impl {
         status->setWordWrap(true);
         status->setObjectName(QStringLiteral("brpInterfaceStatus"));
         interfaceLayout->addWidget(status);
-        graph = new CounterPlot(interfaceBox);
-        interfaceLayout->addWidget(graph);
+        graph = new brp::ui::HistoryPlot(interfaceBox);
+        graph->configure(QStringLiteral("Счётчик RS-485"), QStringLiteral("код"), QStringLiteral("Орбита M16"));
+        interfaceLayout->addWidget(graph, 1);
         QObject::connect(interfaceMode, &QComboBox::currentIndexChanged, &window, [this](int index) {
             port->setVisible(!this->simulation && index == 0);
             yasmCodes->setVisible(index == 1);
@@ -411,10 +366,10 @@ struct BrpTuWindow::Impl {
         log->setReadOnly(true);
         log->setMaximumBlockCount(300);
         log->setMaximumHeight(125);
-        auto* journal = new QGroupBox(QStringLiteral("Журнал испытания"), &window);
+        auto* journal = new QGroupBox(QStringLiteral("Журнал стенда"), manual);
         auto* journalLayout = new QVBoxLayout(journal);
         journalLayout->addWidget(log);
-        rootLayout->addWidget(journal);
+        layout->addWidget(journal);
 
         QObject::connect(start, &QPushButton::clicked, &window, [this] { startInterface(); });
         QObject::connect(stop, &QPushButton::clicked, &window, [this] {
@@ -443,6 +398,7 @@ struct BrpTuWindow::Impl {
             }
         } catch (const std::exception& error) {
             start->setEnabled(false);
+            page->flow()->setScenarioAvailable(false, QString::fromUtf8(error.what()));
             log->appendPlainText(QString::fromUtf8(error.what()));
         }
         updateScenario();
@@ -450,270 +406,200 @@ struct BrpTuWindow::Impl {
 
     ~Impl() { shutdown(); }
 
-    void buildScenario(QWidget* page)
+    void checkStand(const QString& serialNumber)
     {
-        auto* layout = new QVBoxLayout(page);
-        auto* setup = new QGroupBox(QStringLiteral("Подготовка"), page);
-        auto* form = new QFormLayout(setup);
-        serialNumber = new QLineEdit(setup);
-        serialNumber->setObjectName(QStringLiteral("brpSerialNumber"));
-        operatorName = new QLineEdit(setup);
-        operatorName->setObjectName(QStringLiteral("brpOperator"));
-        scenarioMode = new QLabel(setup);
-        scenarioMode->setTextFormat(Qt::PlainText);
-        scenarioMode->setWordWrap(true);
-        scenarioMode->setProperty("muted", true);
-        form->addRow(QStringLiteral("Серийный номер"), serialNumber);
-        form->addRow(QStringLiteral("Оператор"), operatorName);
-        form->addRow(QStringLiteral("Подключение"), scenarioMode);
-        layout->addWidget(setup);
+        auto* flow = page->flow();
+        const auto connection = QStringLiteral("Подключение");
+        const auto isd = QStringLiteral("ИСД");
+        const auto meter = QStringLiteral("В7");
+        flow->beginStandCheck(serialNumber, {connection, isd, meter});
+        QString error;
+        const int mode = interfaceMode->currentIndex();
+        if (mode == 2)
+            error = QStringLiteral("Выберите RS-485 или ЯСМ в ручном управлении.");
+        else if (!simulation && mode == 0 && port->currentText().trimmed().isEmpty())
+            error = QStringLiteral("Укажите COM-порт RS-485 в ручном управлении.");
+        else if (mode == 1 && yasmFixture.empty() && yasmCodes->text().trimmed().isEmpty())
+            error = QStringLiteral("Загрузите тест ЯСМ или укажите ожидаемые коды.");
+        else if (!simulation && isdHost->text().trimmed().isEmpty())
+            error = QStringLiteral("Укажите адрес ИСД в ручном управлении.");
+        else if (bridge || preparingIsd || probing || meterBusy)
+            error = QStringLiteral("Дождитесь завершения обращения к оборудованию.");
+        if (!error.isEmpty()) {
+            flow->setEquipmentStatus(connection, false, error);
+            return;
+        }
+        flow->setEquipmentStatus(connection, true);
+        if (simulation) {
+            flow->setEquipmentStatus(isd, true);
+            flow->setEquipmentStatus(meter, true);
+            return;
+        }
 
-        stageTable = new QTableWidget(0, 4, page);
-        stageTable->setObjectName(QStringLiteral("brpStageTable"));
-        stageTable->setHorizontalHeaderLabels({QStringLiteral("Строка"), QStringLiteral("Пункт ТУ"),
-            QStringLiteral("Этап"), QStringLiteral("Результат")});
-        stageTable->setAlternatingRowColors(true);
-        stageTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
-        stageTable->setSelectionMode(QAbstractItemView::NoSelection);
-        stageTable->verticalHeader()->hide();
-        auto* header = stageTable->horizontalHeader();
-        header->setSectionResizeMode(QHeaderView::ResizeToContents);
-        header->setSectionResizeMode(2, QHeaderView::Stretch);
-        header->resizeSection(3, 170);
-        header->setSectionResizeMode(3, QHeaderView::Fixed);
-        stageTable->setMinimumHeight(182);
-        layout->addWidget(stageTable, 1);
-
-        progress = new QProgressBar(page);
-        progress->setFormat(QStringLiteral("Этапы %v из %m"));
-        layout->addWidget(progress);
-        scenarioStatus = new QLabel(page);
-        scenarioStatus->setTextFormat(Qt::PlainText);
-        scenarioStatus->setObjectName(QStringLiteral("brpScenarioStatus"));
-        scenarioStatus->setWordWrap(true);
-        scenarioStatus->setMinimumHeight(40);
-        layout->addWidget(scenarioStatus);
-
-        auto* actions = new QHBoxLayout;
-        scenarioStart = new QPushButton(QStringLiteral("Начать испытание"), page);
-        scenarioStart->setObjectName(QStringLiteral("brpScenarioStart"));
-        scenarioStart->setProperty("primary", true);
-        scenarioMeasure = new QPushButton(QStringLiteral("Точка готова · измерить"), page);
-        scenarioMeasure->setObjectName(QStringLiteral("brpScenarioMeasure"));
-        scenarioMeasure->setProperty("primary", true);
-        scenarioSkip = new QPushButton(QStringLiteral("Пропустить этап"), page);
-        scenarioSkip->setObjectName(QStringLiteral("brpScenarioSkip"));
-        scenarioStop = new QPushButton(QStringLiteral("Остановить"), page);
-        scenarioStop->setObjectName(QStringLiteral("brpScenarioStop"));
-        scenarioStop->setProperty("danger", true);
-        actions->addWidget(scenarioStart);
-        actions->addWidget(scenarioMeasure);
-        actions->addWidget(scenarioSkip);
-        actions->addWidget(scenarioStop);
-        actions->addStretch();
-        layout->addLayout(actions);
-
-        auto* reportControls = new QHBoxLayout;
-        reportButton = new QPushButton(QStringLiteral("Сформировать отчёт"), page);
-        printButton = new QPushButton(QStringLiteral("Печать"), page);
-        reportLocation = new QLabel(page);
-        reportLocation->setTextFormat(Qt::PlainText);
-        reportLocation->setObjectName(QStringLiteral("brpReportLocation"));
-        reportLocation->setWordWrap(true);
-        reportLocation->setTextInteractionFlags(Qt::TextSelectableByMouse);
-        reportControls->addWidget(reportButton);
-        reportControls->addWidget(printButton);
-        reportControls->addWidget(reportLocation, 1);
-        layout->addLayout(reportControls);
-
-        QObject::connect(serialNumber, &QLineEdit::textChanged, &window, [this] { updateScenario(); });
-        QObject::connect(operatorName, &QLineEdit::textChanged, &window, [this] { updateScenario(); });
-        QObject::connect(scenarioStart, &QPushButton::clicked, &window, [this] { startScenario(); });
-        QObject::connect(scenarioMeasure, &QPushButton::clicked, &window, [this] { measureStage(); });
-        QObject::connect(scenarioSkip, &QPushButton::clicked, &window, [this] {
-            if (scenarioSkip->isEnabled()) completeStage(BrpResult::Skipped, QStringLiteral("Пропущено оператором."));
+        // Проверка доступности только читает приборы. Адресные команды OFF
+        // посылаются после проверки интерфейса в самом испытании.
+        const auto host = isdHost->text().trimmed();
+        using Readiness = std::pair<QString, QString>;
+        probing = true;
+        updateCaptureControls();
+        auto* watcher = new QFutureWatcher<Readiness>(&window);
+        QObject::connect(watcher, &QFutureWatcherBase::finished, &window, [this, watcher, isd, meter] {
+            const auto result = watcher->result();
+            watcher->deleteLater();
+            probing = false;
+            page->flow()->setEquipmentStatus(isd, result.first.isEmpty(), result.first);
+            page->flow()->setEquipmentStatus(meter, result.second.isEmpty(), result.second);
+            updateCaptureControls();
         });
-        QObject::connect(scenarioStop, &QPushButton::clicked, &window, [this] {
-            if (currentStage < 0) return;
-            const auto message = preparingIsd
-                ? QStringLiteral("Испытание остановлено. ИСД завершает начатую последовательность OFF.")
-                : QStringLiteral("Испытание остановлено оператором.");
-            endSession(message, BrpResult::Interrupted);
-        });
-        QObject::connect(reportButton, &QPushButton::clicked, &window, [this] { saveReport(); });
-        QObject::connect(printButton, &QPushButton::clicked, &window, [this] {
-            if (!QDesktopServices::openUrl(QUrl::fromLocalFile(reportPath)))
-                reportLocation->setText(QStringLiteral("Не удалось открыть %1").arg(reportPath));
-        });
+        watcher->setFuture(QtConcurrent::run([host, root = root] {
+            Readiness result;
+            try {
+                tu::hardware::IsdRouter router({host.toStdString()});
+                router.probe();
+            } catch (const std::exception& exception) {
+                result.first = QString::fromUtf8(exception.what());
+            }
+            try {
+                tu::hardware::VisaInstrument meter(loadV7(root).visa);
+                const auto identity = meter.query("*IDN?");
+                if (identity.find_first_not_of(" \t\r\n") == std::string::npos)
+                    throw std::runtime_error("Пустой ответ на *IDN?");
+            } catch (const std::exception& exception) {
+                result.second = QString::fromUtf8(exception.what());
+            }
+            return result;
+        }));
     }
 
-    QVector<BrpRunStep> scenarioSteps() const
+    void startScenario(const QString& serialNumber)
     {
-        const int mode = interfaceMode->currentIndex();
-        if (mode == 2) return {};
-        const int interfaceRow = mode == 1 ? 13 : 12;
-        QVector<BrpRunStep> steps;
-        for (const auto& check : checks) {
-            if (check.number != interfaceRow) continue;
-            steps.append({check.number, QString::fromStdString(check.requirement),
-                mode == 1 ? QStringLiteral("ЯСМ · сверка внешнего теста") : QStringLiteral("RS-485 · счётчик 0–1023"), {}});
-            break;
+        if (currentStage >= 0 || bridge || preparingIsd || probing || meterBusy) return;
+        const bool yasmMode = interfaceMode->currentIndex() == 1;
+        const int interfaceRow = yasmMode ? 13 : 12;
+        const auto input = std::find_if(checks.begin(), checks.end(), [interfaceRow](const auto& check) {
+            return check.number == interfaceRow;
+        });
+        if (input == checks.end()) {
+            page->flow()->setEquipmentStatus(QStringLiteral("Подключение"), false,
+                QStringLiteral("В настройках отсутствует строка %1.").arg(interfaceRow));
+            return;
         }
-        if (steps.isEmpty()) return steps;
-        steps.append({0, {}, QStringLiteral("Сброс ИСД · ЦАП OFF"), {}});
-        for (const auto& check : checks) {
+
+        run = {};
+        run.objectSerial = serialNumber.toStdString();
+        run.scenarioId = simulation ? "brp.m16.sim" : "brp.m16";
+        run.scenarioTitle = simulation ? "Имитация · кадровые проверки" : "Кадровые проверки";
+        run.startedAt = std::chrono::system_clock::now();
+        run.runId = (QStringLiteral("BRP_") + (simulation ? QStringLiteral("SIM_") : QString())
+            + QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_HHmmss_zzz_"))
+            + QUuid::createUuid().toString(QUuid::Id128).left(8)).toStdString();
+        run.steps.push_back({yasmMode ? "yasm" : "rs485",
+            yasmMode ? "ЯСМ · сверка внешнего теста" : "RS-485 · счётчик 0–1023", input->requirement});
+        run.steps.push_back({"isd_off", "Сброс ИСД · ЦАП OFF", {}});
+        voltagePoints.clear();
+        for (std::size_t index = 0; index < checks.size(); ++index) {
+            const auto& check = checks[index];
             if (check.voltagePointRequirement.empty()) continue;
             for (std::size_t channel = 0; channel < check.addresses.size(); ++channel) {
-                const auto name = check.channelNames.empty() ? check.title : check.channelNames[channel];
-                steps.append({check.number, QString::fromStdString(check.voltagePointRequirement),
-                    QString::fromStdString(name) + QStringLiteral(" · одна точка с В7"),
-                    QString::fromStdString(check.addresses[channel])});
+                const auto& name = check.channelNames.empty() ? check.title : check.channelNames[channel];
+                run.steps.push_back({
+                    QStringLiteral("row_%1_%2").arg(check.number).arg(channel + 1).toStdString(),
+                    QStringLiteral("Строка %1 · %2 · одна точка с В7").arg(check.number)
+                        .arg(QString::fromStdString(name)).toStdString(),
+                    check.voltagePointRequirement});
+                voltagePoints.emplace_back(index, channel);
             }
         }
-        return steps;
+
+        currentStage = 0;
+        waitingForPoint = false;
+        page->beginRun(run);
+        page->setStage(0, QString::fromStdString(run.steps.front().title),
+            yasmMode ? QStringLiteral("Последовательность ЯСМ в M16P1A22")
+                     : QStringLiteral("Счётчик RS-485 · два периода 0–1023"),
+            QStringLiteral("код"), QStringLiteral("Орбита M16"));
+        setProgress(QStringLiteral("Ожидание тестовой последовательности в кадре M16."));
+        startInterface();
+    }
+
+    bool pointCanStart() const
+    {
+        return waitingForPoint && gatePassed && (simulation || isdReady)
+            && !pointActive && !meterBusy && !preparingIsd && !probing;
+    }
+
+    void setProgress(const QString& detail)
+    {
+        stageProgress = detail;
+        updateScenario();
     }
 
     void updateScenario()
     {
-        const bool active = currentStage >= 0;
-        const auto plan = scenarioSteps();
-        const auto& steps = run.started.isValid() ? run.steps : plan;
-        const bool preparingPoint = active && steps[currentStage].result == BrpResult::Waiting;
-        const bool hostMissing = isdHost && isdHost->text().trimmed().isEmpty();
-        manual->setEnabled(!active);
-        serialNumber->setEnabled(!active);
-        operatorName->setEnabled(!active);
-        scenarioStart->setEnabled(!active && !bridge && !meterBusy && !preparingIsd && !probing
-            && !hostMissing && start->isEnabled() && !plan.isEmpty()
-            && !serialNumber->text().trimmed().isEmpty() && !operatorName->text().trimmed().isEmpty());
-        scenarioMeasure->setEnabled(preparingPoint && gatePassed && (simulation || isdReady));
-        scenarioSkip->setEnabled(preparingPoint);
-        scenarioStop->setEnabled(active);
-        reportButton->setEnabled(run.finished.isValid());
-        printButton->setEnabled(!reportPath.isEmpty() && QFileInfo::exists(reportPath));
-        scenarioMode->setText(QStringLiteral("%1 · настройки на вкладке «Ручное управление»")
-            .arg(interfaceMode->currentText()));
-        if (active) {
-            scenarioStatus->setText(steps[currentStage].detail);
-        } else if (!run.finished.isValid()) {
-            scenarioStatus->setText(interfaceMode->currentIndex() == 2
-                ? QStringLiteral("Выберите RS-485 или ЯСМ для испытания M16.")
-                : hostMissing ? QStringLiteral("Укажите адрес ИСД на вкладке «Ручное управление».")
-                              : QStringLiteral("Укажите серийный номер и оператора перед запуском."));
-        }
-
-        int completed = 0;
-        stageTable->setRowCount(steps.size());
-        for (int row = 0; row < steps.size(); ++row) {
-            const auto& step = steps[row];
-            const QStringList cells{step.row ? QString::number(step.row) : QStringLiteral("—"),
-                step.requirement, step.name, brpResultText(step.result)};
-            for (int column = 0; column < cells.size(); ++column) {
-                auto* cell = stageTable->item(row, column);
-                if (!cell) {
-                    cell = new QTableWidgetItem;
-                    stageTable->setItem(row, column, cell);
-                }
-                cell->setText(cells[column]);
-                cell->setToolTip(step.detail);
-                cell->setBackground(QBrush(row == currentStage ? QColor(QStringLiteral("#102c46")) : QColor()));
-            }
-            if (step.result != BrpResult::Pending && step.result != BrpResult::Waiting
-                && step.result != BrpResult::Running) ++completed;
-        }
-        progress->setRange(0, std::max(1, static_cast<int>(steps.size())));
-        progress->setValue(completed);
+        if (currentStage >= 0) page->setProgress(stageProgress, pointCanStart());
     }
 
-    void startScenario()
+    void recordStage(RunVerdict result, const QString& detail,
+                     std::vector<tu::MeasurementResult> measurements = {}, bool skipped = false)
     {
-        if (!scenarioStart->isEnabled()) return;
-        run = {};
-        run.serial = serialNumber->text().trimmed();
-        run.operatorName = operatorName->text().trimmed();
-        run.simulation = simulation;
-        run.started = QDateTime::currentDateTime();
-        run.id = run.started.toString(QStringLiteral("yyyyMMdd_HHmmss_zzz_"))
-            + QUuid::createUuid().toString(QUuid::Id128).left(8);
-        run.steps = scenarioSteps();
-        reportPath.clear();
-        reportLocation->clear();
-        currentStage = 0;
-        run.steps[0].result = BrpResult::Running;
-        run.steps[0].detail = QStringLiteral("Проверяется приём тестовой последовательности в кадре M16.");
-        log->appendPlainText(QStringLiteral("Испытание БРП %1 · %2").arg(run.serial, run.operatorName));
-        updateScenario();
-        startInterface();
+        auto& step = run.steps[currentStage];
+        step.verdict = result;
+        step.message = detail.toStdString();
+        step.measurements = std::move(measurements);
+        step.operatorSkipped = skipped;
+        page->setStageResult(currentStage, step);
+        page->appendRunEvent({std::chrono::system_clock::now(), step.nodeId, "FINISH", step.message, result});
     }
 
-    void completeStage(BrpResult result, const QString& detail, QVector<BrpMeasurement> measurements = {})
+    void completeStage(RunVerdict result, const QString& detail,
+                       std::vector<tu::MeasurementResult> measurements = {}, bool skipped = false)
     {
-        // Без проверенного потока и подтверждённых OFF показания ЯГР не запрашиваются.
-        if (currentStage < 2 && result != BrpResult::Passed) {
+        if (currentStage < 2 && result != RunVerdict::Ok) {
             endSession(detail, result);
             return;
         }
-        auto& step = run.steps[currentStage];
-        step.result = result;
-        step.detail = detail;
-        step.measurements = std::move(measurements);
+        recordStage(result, detail, std::move(measurements), skipped);
         ++currentStage;
-        if (currentStage == run.steps.size()) {
-            finishScenario(QStringLiteral("Испытание завершено. Результаты приведены по этапам."));
-            endSession(QStringLiteral("Сбор завершён."));
+        if (static_cast<std::size_t>(currentStage) == run.steps.size()) {
+            currentStage = -1;
+            endSession(QStringLiteral("Сбор кадров завершён."));
+            finishScenario();
         } else if (currentStage == 1) {
-            auto& prep = run.steps[currentStage];
-            prep.result = BrpResult::Running;
-            prep.detail = QStringLiteral("Подготовка ИСД. Ожидание подтверждений OFF реле и ЦАП.");
-            updateScenario();
-            if (simulation) {
-                completeStage(BrpResult::Passed, QStringLiteral("Имитация подготовки. ИСД не опрашивался."));
-            } else {
+            page->setStage(currentStage, QString::fromStdString(run.steps[currentStage].title), {});
+            setProgress(QStringLiteral("Ожидание подтверждений OFF реле и ЦАП."));
+            if (simulation)
+                completeStage(RunVerdict::Ok, QStringLiteral("Имитация подготовки ИСД."));
+            else
                 startIsdPreparation();
-            }
         } else {
-            auto& next = run.steps[currentStage];
-            next.result = BrpResult::Waiting;
-            next.detail = QStringLiteral("%1 · %2. Подайте стабильное напряжение, подключите В7 к этой же точке и подтвердите готовность.")
-                .arg(next.name, next.address);
-            updateScenario();
+            const auto [check, channel] = voltagePoints[currentStage - 2];
+            const auto address = QString::fromStdString(checks[check].addresses[channel]);
+            page->setStage(currentStage, QString::fromStdString(run.steps[currentStage].title),
+                address, QStringLiteral("В"), QStringLiteral("ЯГР мин., В"), QStringLiteral("ЯГР макс., В"));
+            waitingForPoint = true;
+            setProgress(QStringLiteral("Подайте стабильное напряжение и подключите В7 к той же точке."));
         }
     }
 
     void measureStage()
     {
-        if (!scenarioMeasure->isEnabled()) return;
-        auto& step = run.steps[currentStage];
-        const auto check = std::find_if(checks.begin(), checks.end(), [&step](const auto& item) {
-            return item.number == step.row;
-        });
-        const auto channel = std::find(check->addresses.begin(), check->addresses.end(), step.address.toStdString());
-        step.result = BrpResult::Running;
-        step.detail = QStringLiteral("%1. Считываются В7 и кадр M16.").arg(step.name);
-        beginPoint(std::distance(checks.begin(), check), std::distance(check->addresses.begin(), channel), 0);
+        if (!pointCanStart()) return;
+        const auto [check, channel] = voltagePoints[currentStage - 2];
+        waitingForPoint = false;
+        setProgress(QStringLiteral("Считываются В7 и кадр M16."));
+        beginPoint(check, channel, 0);
     }
 
-    void finishScenario(const QString& message)
+    void finishScenario()
     {
         currentStage = -1;
-        run.finished = QDateTime::currentDateTime();
-        scenarioStatus->setText(message);
-        saveReport();
-    }
-
-    void saveReport()
-    {
-        if (!run.finished.isValid()) return;
-        try {
-            reportPath = writeBrpRunReport(run);
-            reportLocation->setText(reportPath);
-            log->appendPlainText(QStringLiteral("Протокол сохранён: %1").arg(reportPath));
-        } catch (const std::exception& error) {
-            reportPath.clear();
-            reportLocation->setText(QString::fromUtf8(error.what()));
-            log->appendPlainText(reportLocation->text());
-        }
-        updateScenario();
+        waitingForPoint = false;
+        run.finishedAt = std::chrono::system_clock::now();
+        run.verdict = RunVerdict::Ok;
+        for (const auto& step : run.steps)
+            run.verdict = tu::combineVerdicts(run.verdict,
+                step.verdict == RunVerdict::NotRun ? RunVerdict::Incomplete : step.verdict);
+        page->finishRun(run);
     }
 
     void updateCaptureControls()
@@ -760,7 +646,7 @@ struct BrpTuWindow::Impl {
                 : QStringLiteral("ИСД не подготовлен. %1").arg(result.error);
             log->appendPlainText(message);
             if (session == interfaceSessionId && currentStage == 1)
-                completeStage(confirmed ? BrpResult::Passed : BrpResult::Unavailable, message);
+                completeStage(confirmed ? RunVerdict::Ok : RunVerdict::Error, message);
             updateCaptureControls();
         });
         watcher->setFuture(QtConcurrent::run(prepareIsd, root, host));
@@ -873,7 +759,7 @@ struct BrpTuWindow::Impl {
             yasmFile->setEnabled(false);
             m8Addresses->setEnabled(false);
             m8Invert->setEnabled(false);
-            graph->setTrace({});
+            graph->clear();
             status->setText(m8Mode ? QStringLiteral("M8: поиск маркеров фразы и цикла") : yasmMode
                 ? QStringLiteral("Ожидание кодов внешнего теста ЯСМ в M16P1A22")
                 : QStringLiteral("Ожидание двух непрерывных периодов счётчика 0–1023"));
@@ -920,7 +806,16 @@ struct BrpTuWindow::Impl {
         if (groupGap) return;
         lastOrdinal = ordinal;
         ++groupCount;
-        codes.consume(words, checks.at(activeCheck), activeChannel);
+        const auto& check = checks.at(activeCheck);
+        CodeRange groupCodes;
+        groupCodes.consume(words, check, activeChannel);
+        codes.merge(groupCodes);
+        // Один элемент на группу. Кривые показывают реальные крайние
+        // отсчёты этого адреса, а В7 остаётся двумя отдельными показаниями.
+        if (check.scale && groupCodes.count) {
+            minimumTrace.append(check.scale->volts(groupCodes.minimum));
+            maximumTrace.append(check.scale->volts(groupCodes.maximum));
+        }
     }
 
     void update()
@@ -954,9 +849,11 @@ struct BrpTuWindow::Impl {
             {
                 std::lock_guard<std::mutex> lock(dataMutex);
                 gatePassed = yasmMode ? yasm->passed() : counter.passed();
-                if (!yasmMode) trace = counter.trace();
+                trace = yasmMode ? yasm->trace() : counter.trace();
             }
-            if (!yasmMode) graph->setTrace(std::move(trace));
+            const QVector<double> series(trace.begin(), trace.end());
+            if (currentStage == 0) page->setSeries(series);
+            if (!yasmMode) graph->setSeries(series);
             if (gatePassed) {
                 send.stop();
                 if (serial.isOpen()) serial.close();
@@ -965,24 +862,38 @@ struct BrpTuWindow::Impl {
                     : QStringLiteral("RS-485: получены два непрерывных периода счётчика.");
                 status->setText(simulation ? QStringLiteral("Имитатор. ") + result : result);
                 log->appendPlainText(status->text());
-                if (currentStage == 0) completeStage(BrpResult::Passed, status->text());
+                if (currentStage == 0) completeStage(RunVerdict::Ok, status->text());
                 updateCaptureControls();
             } else if (gateClock.elapsed() >= counterTimeoutMs) {
                 endSession(yasmMode ? QStringLiteral("Последовательность ЯСМ за 5 с не найдена.")
                                     : QStringLiteral("RS-485: за 5 с не получены два непрерывных периода."),
-                    BrpResult::Failed);
+                    RunVerdict::Fail);
             }
             return;
         }
 
         bool complete;
+        bool finished;
+        int groups;
+        QVector<double> minimum, maximum;
         {
             std::lock_guard<std::mutex> lock(dataMutex);
             if (!reading) return;
-            if (groupCount < groupsPerSecond && !groupGap && captureClock.elapsed() < captureTimeoutMs) return;
-            reading = false;
+            groups = groupCount;
+            finished = groupCount >= groupsPerSecond || groupGap || captureClock.elapsed() >= captureTimeoutMs;
+            if (finished) reading = false;
             complete = !groupGap && groupCount == groupsPerSecond && codes.count;
+            if (currentStage >= 2) {
+                minimum = minimumTrace;
+                maximum = maximumTrace;
+            }
         }
+        if (currentStage >= 2) {
+            page->setSeries(minimum, maximum);
+            setProgress(finished ? QStringLiteral("Считывается второе показание В7.")
+                                 : QStringLiteral("Группы M16: %1 из %2").arg(groups).arg(groupsPerSecond));
+        }
+        if (!finished) return;
         const auto& check = checks.at(activeCheck);
         if (!complete) {
             finishPoint(pointName() + QStringLiteral(" Полный набор последовательных групп не получен."));
@@ -1031,6 +942,8 @@ struct BrpTuWindow::Impl {
     {
         std::lock_guard<std::mutex> lock(dataMutex);
         codes = {};
+        minimumTrace.clear();
+        maximumTrace.clear();
         groupCount = 0;
         groupGap = false;
         captureClock.start();
@@ -1046,8 +959,8 @@ struct BrpTuWindow::Impl {
                                   QString::fromStdString(check.addresses.at(activeChannel)));
     }
 
-    void finishPoint(const QString& message, BrpResult result = BrpResult::Unavailable,
-                     QVector<BrpMeasurement> measurements = {})
+    void finishPoint(const QString& message, RunVerdict result = RunVerdict::Incomplete,
+                     std::vector<tu::MeasurementResult> measurements = {})
     {
         log->appendPlainText(message);
         pointActive = false;
@@ -1087,30 +1000,19 @@ struct BrpTuWindow::Impl {
         }
         if (!after) {
             referenceBefore = result.volts;
+            if (currentStage >= 2) page->setVoltage(QStringLiteral("%1 В").arg(result.volts, 0, 'f', 3), {}, {});
             beginFrameCapture();
             return;
         }
         const auto& scale = *checks.at(activeCheck).scale;
         const auto compared = compareVoltage(scale, codes, referenceBefore, result.volts);
         const auto format = [](double volts) { return QString::number(volts, 'f', 3); };
-        const auto v = QStringLiteral("В");
-        QVector<BrpMeasurement> measurements{
-            {QStringLiteral("В7 до"), format(referenceBefore), v},
-            {QStringLiteral("В7 после"), format(result.volts), v},
-            {QStringLiteral("Код мин."), QString::number(codes.minimum), {}},
-            {QStringLiteral("Код макс."), QString::number(codes.maximum), {}},
-            {QStringLiteral("Отсчёты"), QString::number(codes.count), {}},
-            {QStringLiteral("ЯГР мин."), format(compared.minimumVolts), v},
-            {QStringLiteral("ЯГР макс."), format(compared.maximumVolts), v},
-            {QStringLiteral("Макс. |Δ|"), format(compared.maximumErrorVolts), v}
-        };
         QString detail = QStringLiteral(" В7 до/после %1 / %2 В. Код %3–%4 (%5 отсч.), ЯГР %6–%7 В. Макс. |Δ| %8 В.")
             .arg(format(referenceBefore), format(result.volts)).arg(codes.minimum).arg(codes.maximum).arg(codes.count)
             .arg(format(compared.minimumVolts), format(compared.maximumVolts), format(compared.maximumErrorVolts));
-        auto verdict = BrpResult::Unavailable;
+        auto verdict = RunVerdict::Incomplete;
         if (compared.toleranceVolts) {
             const auto limit = *compared.toleranceVolts;
-            measurements.append({QStringLiteral("Допуск |Δ|"), format(limit), v});
             if (currentStage >= 2 && (std::min(referenceBefore, result.volts) < scale.minVolts
                     || std::max(referenceBefore, result.volts) > scale.maxVolts)) {
                 detail += QStringLiteral(" Показания В7 за пределами шкалы. Точка не оценена.");
@@ -1118,12 +1020,35 @@ struct BrpTuWindow::Impl {
                 detail += QStringLiteral(" Уровень В7 изменился сильнее допуска %1 В. Точка не оценена.").arg(format(limit));
             } else {
                 const bool passed = compared.maximumErrorVolts <= limit;
-                verdict = passed ? BrpResult::Passed : BrpResult::Failed;
+                verdict = passed ? RunVerdict::Ok : RunVerdict::Fail;
                 detail += QStringLiteral(" Допуск точки ±%1 В. %2.").arg(format(limit),
                     passed ? QStringLiteral("Точка в допуске") : QStringLiteral("Точка вне допуска"));
             }
         } else {
             detail += QStringLiteral(" Диагностическое сравнение.");
+        }
+        std::vector<tu::MeasurementResult> measurements;
+        if (currentStage >= 2) {
+            const auto voltage = [](const QString& value) { return value + QStringLiteral(" В"); };
+            page->setVoltage(voltage(format(referenceBefore)), voltage(format(result.volts)),
+                             voltage(format(compared.maximumErrorVolts)));
+            const auto& address = checks.at(activeCheck).addresses.at(activeChannel);
+            tu::MeasurementResult value;
+            value.parameterKey = address;
+            value.title = "Максимальное расхождение ЯГР и В7";
+            value.measured = compared.maximumErrorVolts;
+            value.upperLimit = *compared.toleranceVolts;
+            value.unit = "В";
+            value.verdict = verdict;
+            value.attributes = {
+                {"v7_before_v", format(referenceBefore).toStdString()},
+                {"v7_after_v", format(result.volts).toStdString()},
+                {"code_min", std::to_string(codes.minimum)}, {"code_max", std::to_string(codes.maximum)},
+                {"samples", std::to_string(codes.count)},
+                {"yagr_min_v", format(compared.minimumVolts).toStdString()},
+                {"yagr_max_v", format(compared.maximumVolts).toStdString()}
+            };
+            measurements.push_back(std::move(value));
         }
         finishPoint(pointName() + detail, verdict, std::move(measurements));
     }
@@ -1146,7 +1071,7 @@ struct BrpTuWindow::Impl {
         reading = gatePassed = false;
     }
 
-    void endSession(const QString& message, BrpResult result = BrpResult::Unavailable)
+    void endSession(const QString& message, RunVerdict result = RunVerdict::Error)
     {
         shutdown();
         status->setText(message);
@@ -1164,9 +1089,8 @@ struct BrpTuWindow::Impl {
         expectedState->setEnabled(true);
         isdReady = false;
         if (currentStage >= 0) {
-            run.steps[currentStage].result = result;
-            run.steps[currentStage].detail = message;
-            finishScenario(message);
+            recordStage(result, message);
+            finishScenario();
         }
         updateCaptureControls();
     }
@@ -1174,16 +1098,13 @@ struct BrpTuWindow::Impl {
     BrpTuWindow& window;
     const bool simulation;
     const QDir root;
-    QWidget* manual = nullptr;
-    QLineEdit *serialNumber = nullptr, *operatorName = nullptr;
-    QLabel *scenarioMode = nullptr, *scenarioStatus = nullptr, *reportLocation = nullptr;
-    QPushButton *scenarioStart = nullptr, *scenarioMeasure = nullptr, *scenarioSkip = nullptr,
-                *scenarioStop = nullptr, *reportButton = nullptr, *printButton = nullptr;
-    QTableWidget* stageTable = nullptr;
-    QProgressBar* progress = nullptr;
-    BrpRunReport run;
-    QString reportPath;
+    TestPage* page = nullptr;
+    tu::ScenarioRunResult run;
+    std::vector<std::pair<std::size_t, std::size_t>> voltagePoints;
+    QVector<double> minimumTrace, maximumTrace;
     int currentStage = -1;
+    bool waitingForPoint = false;
+    QString stageProgress;
     MetadataService metadata;
     std::vector<FrameCheck> checks;
     QComboBox *interfaceMode = nullptr, *port = nullptr, *checkList = nullptr,
@@ -1195,7 +1116,7 @@ struct BrpTuWindow::Impl {
     QLabel *status = nullptr, *details = nullptr;
     QFormLayout* checkForm = nullptr;
     QPlainTextEdit* log = nullptr;
-    CounterPlot* graph = nullptr;
+    brp::ui::HistoryPlot* graph = nullptr;
     QSerialPort serial;
     QTimer send, refresh;
     QElapsedTimer gateClock, captureClock;
@@ -1231,6 +1152,6 @@ BrpTuWindow::~BrpTuWindow() = default;
 void BrpTuWindow::closeEvent(QCloseEvent* event)
 {
     if (impl_->currentStage >= 0)
-        impl_->endSession(QStringLiteral("Окно закрыто во время испытания."), BrpResult::Interrupted);
+        impl_->endSession(QStringLiteral("Окно закрыто во время испытания."), RunVerdict::Aborted);
     QWidget::closeEvent(event);
 }

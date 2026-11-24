@@ -46,6 +46,7 @@ public:
     static YasmCheck fromBusWords(const std::vector<uint16_t>& words);
     void consume(const std::vector<uint16_t>& words, int group, int cycle);
     bool passed() const { return passed_; }
+    std::vector<unsigned> trace() const { return {recent_.begin(), recent_.end()}; }
 
 private:
     std::vector<unsigned> expected_;
@@ -88,6 +89,7 @@ struct CodeRange {
     unsigned maximum = 0;
     unsigned fillCount = 0;
     void consume(const std::vector<uint16_t>& words, const FrameCheck& check, std::size_t channel);
+    void merge(const CodeRange& group);
     bool matches(unsigned expectedMin, unsigned expectedMax) const;
 };
 
