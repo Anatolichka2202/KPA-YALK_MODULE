@@ -113,40 +113,54 @@ TuFlowWidget::TuFlowWidget(QWidget* parent) : QWidget(parent)
     selection->setSpacing(14);
     selection->addLayout(topBar(QStringLiteral("проверка изделия"), selectionPage_));
 
-    selection->addWidget(title(QStringLiteral("ПРОВЕРКА БРП ПО ТУ"), 18, selectionPage_));
-    selection->addWidget(muted(QStringLiteral("Введите заводской номер БРП и проверьте готовность стенда."),
-                                selectionPage_));
+    selection->addStretch(2);
 
     auto* serialCard = panel(selectionPage_);
     serialCard->setObjectName(QStringLiteral("tuSerialEntry"));
-    serialCard->setMaximumWidth(620);
+    serialCard->setMaximumWidth(640);
     auto* serialLayout = new QVBoxLayout(serialCard);
-    serialLayout->setContentsMargins(16, 16, 16, 16);
-    serialLayout->setSpacing(12);
-    serialLayout->addWidget(title(QStringLiteral("Заводской номер"), 14, serialCard));
+    serialLayout->setContentsMargins(30, 28, 30, 28);
+    serialLayout->setSpacing(14);
+    serialLayout->addWidget(title(QStringLiteral("Проверка БРП по ТУ"), 24, serialCard));
+    serialLayout->addWidget(muted(QStringLiteral("Перед испытанием программа проверит готовность стенда."), serialCard));
+    serialLayout->addSpacing(6);
+    auto* serialLabel = new QLabel(QStringLiteral("Заводской номер"), serialCard);
+    serialLayout->addWidget(serialLabel);
     manualSerial_ = new QLineEdit(serialCard);
     manualSerial_->setObjectName(QStringLiteral("tuManualSerial"));
     manualSerial_->setPlaceholderText(QStringLiteral("Номер БРП"));
     manualSerial_->setClearButtonEnabled(true);
+    serialLabel->setBuddy(manualSerial_);
     serialLayout->addWidget(manualSerial_);
-    selection->addWidget(serialCard, 0, Qt::AlignLeft);
-    selection->addStretch();
+    serialCard->setStyleSheet(QStringLiteral(
+        "#tuSerialEntry QPushButton#primary:disabled{background:#0e1e2c;color:#8ea6b7;border-color:#264257;}"
+        "#tuSerialEntry QLineEdit:focus{border-color:#58a5ff;}"));
 
     auto* footer = new QHBoxLayout;
-    auto* manual = new QPushButton(QStringLiteral("Ручное управление"), selectionPage_);
+    auto* manual = new QPushButton(QStringLiteral("Ручное управление"), serialCard);
     manual->setObjectName(QStringLiteral("brpManualOpen"));
     connect(manual, &QPushButton::clicked, this, &TuFlowWidget::manualRequested);
     footer->addWidget(manual);
-    scenarioState_ = muted(QString(), selectionPage_);
+    footer->addStretch();
+    scenarioState_ = muted(QString(), serialCard);
     scenarioState_->setObjectName(QStringLiteral("tuScenarioState"));
-    footer->addWidget(scenarioState_, 1);
-    check_ = new QPushButton(QStringLiteral("Проверить стенд"), selectionPage_);
+    serialLayout->addWidget(scenarioState_);
+    scenarioState_->hide();
+    check_ = new QPushButton(QStringLiteral("Проверить стенд"), serialCard);
     check_->setObjectName(QStringLiteral("primary"));
     check_->setProperty("tuStandAction", true);
     check_->setMinimumWidth(190);
     check_->setMinimumHeight(42);
+    manual->setMinimumHeight(42);
     footer->addWidget(check_);
-    selection->addLayout(footer);
+    serialLayout->addLayout(footer);
+    auto* cardRow = new QHBoxLayout;
+    cardRow->addStretch();
+    cardRow->addWidget(serialCard, 4);
+    cardRow->addStretch();
+    selection->addLayout(cardRow);
+    selection->addStretch(3);
+    connect(manualSerial_, &QLineEdit::returnPressed, check_, &QPushButton::click);
     pages_->addWidget(selectionPage_);
 
     // TU v0.5 READY: just the serial, stand state and start action.
@@ -376,6 +390,7 @@ void TuFlowWidget::setScenarioAvailable(bool available, const QString& detail)
     manualSerial_->setEnabled(available);
     scenarioState_->setText(available ? QString()
                                       : detail.isEmpty() ? QStringLiteral("Проверка по ТУ недоступна") : detail);
+    scenarioState_->setVisible(!available);
     scenarioState_->setStyleSheet(available ? QString()
                                             : QStringLiteral("color:#ef5a5a;font-weight:700;"));
     updateSelectionAvailability();

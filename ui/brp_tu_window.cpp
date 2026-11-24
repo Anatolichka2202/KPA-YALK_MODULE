@@ -30,6 +30,7 @@
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QRegularExpression>
+#include <QScrollArea>
 #include <QSerialPort>
 #include <QSerialPortInfo>
 #include <QTimer>
@@ -194,10 +195,55 @@ struct BrpTuWindow::Impl {
         });
 
         auto* manual = page->manualPage();
-        auto* layout = new QVBoxLayout(manual);
-        auto* back = new QPushButton(QStringLiteral("← Сессия"), manual);
+        manual->setObjectName(QStringLiteral("brpManualPage"));
+        manual->setStyleSheet(QStringLiteral(R"QSS(
+#brpManualPage QGroupBox { background:#102333; border:1px solid #264257; border-radius:8px;
+    margin-top:14px; padding-top:4px; font-weight:600; }
+#brpManualPage QGroupBox::title { subcontrol-origin:margin; left:13px; padding:0 5px; color:#c5d8e7; }
+#brpManualPage QScrollArea { border:0; background:#08131d; }
+#brpManualBody { background:#08131d; }
+#brpManualPage QComboBox QAbstractItemView { background:#102333; color:#eaf4fb;
+    selection-background-color:#245379; selection-color:#fff; border:1px solid #264257; }
+#brpManualPage QPlainTextEdit { background:#0a1722; border:1px solid #264257;
+    border-radius:6px; padding:6px; font-family:Consolas; }
+#brpManualPage QLineEdit:focus, #brpManualPage QComboBox:focus { border-color:#58a5ff; }
+#brpManualPage QPushButton[accent="true"]:enabled { background:#1b5086; border-color:#427cb5; }
+#brpManualPage QPushButton[accent="true"]:hover:enabled { background:#23619b; }
+#brpManualPage QPushButton[stop="true"]:enabled { background:#3a1d24; border-color:#7e3340; }
+)QSS"));
+        auto* outer = new QVBoxLayout(manual);
+        outer->setContentsMargins(18, 14, 18, 18);
+        outer->setSpacing(10);
+        auto* header = new QHBoxLayout;
+        auto* back = new QPushButton(QStringLiteral("← К проверке ТУ"), manual);
         back->setObjectName(QStringLiteral("brpManualBack"));
-        layout->addWidget(back, 0, Qt::AlignLeft);
+        header->addWidget(back);
+        auto* manualTitle = new QLabel(QStringLiteral("Ручное управление БРП"), manual);
+        QFont manualFont = manualTitle->font();
+        manualFont.setPointSize(17);
+        manualFont.setBold(true);
+        manualTitle->setFont(manualFont);
+        header->addWidget(manualTitle);
+        header->addStretch();
+        if (simulation) {
+            auto* modeLabel = new QLabel(QStringLiteral("Имитация"), manual);
+            modeLabel->setProperty("muted", true);
+            header->addWidget(modeLabel);
+        }
+        outer->addLayout(header);
+
+        auto* scroll = new QScrollArea(manual);
+        scroll->setWidgetResizable(true);
+        auto* body = new QWidget(scroll);
+        body->setObjectName(QStringLiteral("brpManualBody"));
+        body->setAttribute(Qt::WA_StyledBackground);
+        scroll->setWidget(body);
+        outer->addWidget(scroll, 1);
+        auto* columns = new QHBoxLayout(body);
+        columns->setContentsMargins(0, 0, 0, 0);
+        columns->setSpacing(14);
+        auto* side = new QVBoxLayout;
+        side->setSpacing(10);
         QObject::connect(back, &QPushButton::clicked, &window, [this] {
             if (bridge) endSession(QStringLiteral("Сбор остановлен при выходе из ручного режима."));
             page->showFlow();
@@ -212,20 +258,21 @@ struct BrpTuWindow::Impl {
                                  QStringLiteral("M8 · приём кадра")});
         port = new QComboBox(interfaceBox);
         port->setEditable(true);
+        port->setMinimumContentsLength(14);
+        port->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
         port->lineEdit()->setPlaceholderText(QStringLiteral("COM-порт RS-485"));
         for (const auto& entry : QSerialPortInfo::availablePorts()) port->addItem(entry.portName());
         port->setCurrentIndex(-1);
         port->setVisible(!simulation);
         start = new QPushButton(QStringLiteral("Проверить интерфейс"), interfaceBox);
         start->setObjectName(QStringLiteral("brpInterfaceStart"));
+        start->setProperty("accent", true);
         stop = new QPushButton(QStringLiteral("Остановить сбор"), interfaceBox);
         stop->setObjectName(QStringLiteral("brpInterfaceStop"));
+        stop->setProperty("stop", true);
         stop->setEnabled(false);
-        interfaceControls->addWidget(interfaceMode);
-        interfaceControls->addWidget(port);
-        interfaceControls->addWidget(start);
-        interfaceControls->addWidget(stop);
-        interfaceControls->addStretch();
+        interfaceControls->addWidget(interfaceMode, 1);
+        interfaceControls->addWidget(port, 1);
         interfaceLayout->addLayout(interfaceControls);
         yasmCodes = new QLineEdit(interfaceBox);
         yasmCodes->setObjectName(QStringLiteral("brpYasmCodes"));
@@ -253,6 +300,11 @@ struct BrpTuWindow::Impl {
         m8Controls->addWidget(m8Addresses, 1);
         m8Controls->addWidget(m8Invert);
         interfaceLayout->addLayout(m8Controls);
+        auto* interfaceActions = new QHBoxLayout;
+        interfaceActions->addWidget(start);
+        interfaceActions->addWidget(stop);
+        interfaceActions->addStretch();
+        interfaceLayout->addLayout(interfaceActions);
         QObject::connect(yasmCodes, &QLineEdit::textEdited, &window, [this] { yasmFixture.clear(); });
         QObject::connect(yasmFile, &QPushButton::clicked, &window, [this] {
             const auto path = QFileDialog::getOpenFileName(&this->window, QStringLiteral("Тест ЯСМ"),
@@ -273,16 +325,21 @@ struct BrpTuWindow::Impl {
             ? QStringLiteral("Синтетические кадры M16. COM-порт и стендовые приборы отключены.")
             : QStringLiteral("Подготовьте питание и подключите RS-485 и вход декодера Орбита."), interfaceBox);
         status->setWordWrap(true);
+        status->setTextFormat(Qt::PlainText);
+        status->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        status->setProperty("muted", true);
         status->setObjectName(QStringLiteral("brpInterfaceStatus"));
         interfaceLayout->addWidget(status);
         graph = new brp::ui::HistoryPlot(interfaceBox);
         graph->configure(QStringLiteral("Счётчик RS-485"), QStringLiteral("код"), QStringLiteral("Орбита M16"));
         interfaceLayout->addWidget(graph, 1);
-        QObject::connect(interfaceMode, &QComboBox::currentIndexChanged, &window, [this](int index) {
+        interfaceLayout->addStretch();
+        QObject::connect(interfaceMode, &QComboBox::currentIndexChanged, &window, [this, columns, interfaceBox](int index) {
             port->setVisible(!this->simulation && index == 0);
             yasmCodes->setVisible(index == 1);
             yasmFile->setVisible(index == 1);
             graph->setVisible(index == 0);
+            columns->setAlignment(interfaceBox, index == 0 ? Qt::Alignment{} : Qt::AlignTop);
             m8Addresses->setVisible(index == 2);
             m8Invert->setVisible(index == 2);
             checksPanel->setVisible(index != 2);
@@ -294,20 +351,29 @@ struct BrpTuWindow::Impl {
                 status->setText(QStringLiteral("Готово к запуску проверки M16."));
             updateScenario();
         });
-        layout->addWidget(interfaceBox, 1);
+        columns->addWidget(interfaceBox, 5);
+        columns->addLayout(side, 4);
 
         auto* checksBox = new QGroupBox(QStringLiteral("Кадровый контроль · раздел 3.2"), manual);
         checksPanel = checksBox;
         auto* checksLayout = new QFormLayout(checksBox);
+        checksLayout->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
         checkList = new QComboBox(checksBox);
         checkList->setObjectName(QStringLiteral("brpCheckList"));
         channelList = new QComboBox(checksBox);
+        for (auto* combo : {checkList, channelList}) {
+            combo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+            combo->setMinimumContentsLength(16);
+            QObject::connect(combo, &QComboBox::currentTextChanged, combo, &QWidget::setToolTip);
+        }
         details = new QLabel(checksBox);
         details->setWordWrap(true);
+        details->setProperty("muted", true);
         expectedState = new QComboBox(checksBox);
         expectedState->addItems({QStringLiteral("Выбрать состояние"), QStringLiteral("0"), QStringLiteral("1")});
         capture = new QPushButton(QStringLiteral("Сравнить с В7"), checksBox);
         capture->setObjectName(QStringLiteral("brpCapture"));
+        capture->setProperty("accent", true);
         capture->setEnabled(false);
         checksLayout->addRow(QStringLiteral("Строка таблицы 1"), checkList);
         checksLayout->addRow(QStringLiteral("Адрес Орбита"), channelList);
@@ -316,22 +382,23 @@ struct BrpTuWindow::Impl {
         checksLayout->setRowVisible(expectedState, false);
         checkForm = checksLayout;
         checksLayout->addRow(capture);
-        layout->addWidget(checksBox);
+        side->addWidget(checksBox);
 
         if (!simulation) {
             auto* instruments = new QGroupBox(QStringLiteral("Оборудование стенда"), manual);
-            auto* instrumentsLayout = new QHBoxLayout(instruments);
+            auto* instrumentsLayout = new QFormLayout(instruments);
+            instrumentsLayout->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
             isdHost = new QLineEdit(instruments);
             auto* akipPort = new QLineEdit(instruments);
             isdHost->setPlaceholderText(QStringLiteral("Адрес ИСД"));
             akipPort->setPlaceholderText(QStringLiteral("COM-порт АКИП"));
             auto* probe = new QPushButton(QStringLiteral("Проверить ИСД и АКИП"), instruments);
             prepare = new QPushButton(QStringLiteral("Подготовить ИСД · ЦАП OFF"), instruments);
-            instrumentsLayout->addWidget(isdHost);
-            instrumentsLayout->addWidget(akipPort);
-            instrumentsLayout->addWidget(probe);
-            instrumentsLayout->addWidget(prepare);
-            layout->addWidget(instruments);
+            instrumentsLayout->addRow(QStringLiteral("ИСД"), isdHost);
+            instrumentsLayout->addRow(QStringLiteral("АКИП"), akipPort);
+            instrumentsLayout->addRow(probe);
+            instrumentsLayout->addRow(prepare);
+            side->addWidget(instruments);
             QObject::connect(isdHost, &QLineEdit::textChanged, &window, [this] {
                 isdReady = false;
                 updateCaptureControls();
@@ -365,11 +432,12 @@ struct BrpTuWindow::Impl {
         log->setObjectName(QStringLiteral("brpLog"));
         log->setReadOnly(true);
         log->setMaximumBlockCount(300);
-        log->setMaximumHeight(125);
+        log->setMinimumHeight(110);
+        log->setPlaceholderText(QStringLiteral("Здесь появятся результаты ручных проверок."));
         auto* journal = new QGroupBox(QStringLiteral("Журнал стенда"), manual);
         auto* journalLayout = new QVBoxLayout(journal);
         journalLayout->addWidget(log);
-        layout->addWidget(journal);
+        side->addWidget(journal, 1);
 
         QObject::connect(start, &QPushButton::clicked, &window, [this] { startInterface(); });
         QObject::connect(stop, &QPushButton::clicked, &window, [this] {
