@@ -13,5 +13,7 @@ namespace miltech::integration {
 // отсчёты по-прежнему формирует существующий имитатор.
 std::unique_ptr<orbita::stand::ISampleSource> createOrbitaSampleSimulator(
     std::function<uint16_t(std::size_t)> word);
+std::unique_ptr<orbita::stand::ISampleSource> createOrbitaM8SampleSimulator(
+    std::function<uint16_t(std::size_t)> word);
 
 } // namespace miltech::integration

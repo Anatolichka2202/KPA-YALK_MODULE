@@ -280,7 +280,7 @@ void FrameDecoderM16::WordProcessing() {
         }
 
         if (groupWordCount == GROUP_SIZE + 1) {
-            if (groupCallback) groupCallback(masGroup, masGroupAll, groupNum, ciklNum);
+            if (groupCallback) groupCallback(masGroupAll, groupNum, ciklNum);
             hasNewGroup = true;
             groupWordCount = 1;
         }

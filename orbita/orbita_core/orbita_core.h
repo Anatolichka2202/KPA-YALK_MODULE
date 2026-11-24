@@ -13,6 +13,7 @@
 
 #include "../include/orbita.h"           // ChannelSpec, Snapshot, Stats, DataCallback
 #include "../decoder/frame_decoder_m16.h"
+#include "../decoder/frame_decoder_m8.h"
 #include "../decoder/bitstream_recover.h"
 #include "../decoder/fifo_buffer.h"
 #include "channel_registry.h"
@@ -21,7 +22,7 @@ namespace orbita {
 
 class Context {
 public:
-    Context();
+    Context(Informativity format, double samplesPerSecond);
     ~Context();
 
     Context(const Context&) = delete;
@@ -60,7 +61,8 @@ public:
     void setGroupCallback(GroupCallback cb);
 
 private:
-    std::unique_ptr<FrameDecoderM16> decoder_;
+    std::unique_ptr<FrameDecoder> decoder_;
+    FrameDecoderM8* m8Decoder_ = nullptr;
     // Доступ к записи и декодеру синхронизируется с рабочим потоком.
     mutable std::recursive_mutex decoder_mutex_;
 
@@ -78,8 +80,8 @@ private:
     std::vector<std::chrono::steady_clock::time_point> updatedAt_;
 
     // Параметры
-    bool invert_signal_  = false;
-    int  informativnost_ = 16;
+    std::atomic<bool> invert_signal_{false};
+    const int informativnost_;
     std::atomic<bool> is_running_{false};
     std::atomic<bool> paused_{false};
 
@@ -113,7 +115,6 @@ private:
     std::mutex   callback_mutex_;
 
     // Приватные методы
-    void ensureDecoder();
     void pushToQueue(const std::vector<int16_t>& samples);
     void decoderLoop();
     void onDecoderGroup(const std::vector<uint16_t>& group12, int groupNum, int ciklNum);

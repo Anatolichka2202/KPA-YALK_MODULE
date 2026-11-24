@@ -59,9 +59,49 @@ std::vector<int16_t> makeSyntheticSamples(const WordGenerator& wordGenerator)
     return samples;
 }
 
+std::vector<int16_t> makeSyntheticM8Samples(const WordGenerator& wordGenerator)
+{
+    // Формируем именно отсчёты АЦП. Полубитный импульс — в старшем бите
+    // первого слова нечётной фразы. В чётных фразах там биты МГ и МЦ.
+    constexpr double samplesPerHalfBit = 10'000'000.0 / (2 * 1'572'864);
+    constexpr std::size_t groupCount = 4 * 32;
+    constexpr std::size_t phrasesPerGroup = 128;
+    constexpr std::size_t wordsPerPhrase = 8;
+    std::vector<int16_t> samples;
+    samples.reserve(10'000'000);
+    std::size_t halfBits = 0;
+    const auto append = [&](bool high, unsigned width) {
+        halfBits += width;
+        const auto end = static_cast<std::size_t>(std::llround(halfBits * samplesPerHalfBit));
+        samples.resize(end, high ? 1000 : -1000);
+    };
+    for (std::size_t group = 0; group < groupCount; ++group) {
+        const int groupMarker = group % 32 == 31 ? 0x8D : 0x72;
+        for (std::size_t phrase = 0; phrase < phrasesPerGroup; ++phrase) {
+            const auto pair = phrase / 2;
+            const bool evenPhrase = phrase % 2 != 0;
+            for (std::size_t word = 0; word < wordsPerPhrase; ++word) {
+                const auto index = (group * phrasesPerGroup + phrase) * wordsPerPhrase + word;
+                auto value = wordGenerator(index) & 0x7FF;
+                if (word == 0 && evenPhrase && pair >= 56)
+                    value |= ((groupMarker >> (63 - pair)) & 1) << 11;
+                for (int bit = 11; bit >= 0; --bit) {
+                    if (word == 0 && bit == 11 && !evenPhrase) {
+                        append(true, 1);
+                        append(false, 1);
+                    } else {
+                        append((value >> bit) & 1, 2);
+                    }
+                }
+            }
+        }
+    }
+    return samples;
+}
+
 class OrbitaSampleSimulator final : public orbita::stand::ISampleSource {
 public:
-    explicit OrbitaSampleSimulator(WordGenerator word) : word_(std::move(word)) {}
+    OrbitaSampleSimulator(WordGenerator word, bool m8) : word_(std::move(word)), m8_(m8) {}
     ~OrbitaSampleSimulator() override { close(); }
     bool open() override { open_ = true; return true; }
     void close() noexcept override { stop(); open_ = false; }
@@ -103,7 +143,7 @@ private:
     void produce() noexcept
     {
         try {
-            const auto samples = makeSyntheticSamples(word_);
+            const auto samples = m8_ ? makeSyntheticM8Samples(word_) : makeSyntheticSamples(word_);
             constexpr std::size_t chunkSize = 160000;
             std::size_t offset = 0;
             while (running_) {
@@ -132,6 +172,7 @@ private:
     }
 
     const WordGenerator word_;
+    const bool m8_;
     std::atomic_bool open_{false};
     std::atomic_bool running_{false};
     std::mutex callbackMutex_;
@@ -146,7 +187,12 @@ private:
 
 std::unique_ptr<orbita::stand::ISampleSource> createOrbitaSampleSimulator(WordGenerator word)
 {
-    return std::make_unique<OrbitaSampleSimulator>(std::move(word));
+    return std::make_unique<OrbitaSampleSimulator>(std::move(word), false);
+}
+
+std::unique_ptr<orbita::stand::ISampleSource> createOrbitaM8SampleSimulator(WordGenerator word)
+{
+    return std::make_unique<OrbitaSampleSimulator>(std::move(word), true);
 }
 
 } // namespace miltech::integration

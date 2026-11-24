@@ -23,7 +23,7 @@ ChannelDesc AddressParser::parseLine(const std::string& line) {
     // удаляем пробелы/табуляции в конце
     size_t end = s.find_first_of(" \t");
     if (end != std::string::npos) s = s.substr(0, end);
-    if (s.empty()) throw std::runtime_error("Empty line");
+    if (s.size() < 3) throw std::runtime_error("Missing address informativity");
 
     size_t i = 0;
     if (s[i] != 'M' && s[i] != 'm') throw std::runtime_error("Invalid address: missing 'M'");

@@ -5,6 +5,7 @@
 #include <QComboBox>
 #include <QElapsedTimer>
 #include <QHostAddress>
+#include <QLabel>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QTcpServer>
@@ -85,9 +86,11 @@ void testWindow()
     auto* mode = window.findChild<QComboBox*>("brpInterfaceMode");
     auto* list = window.findChild<QComboBox*>("brpCheckList");
     auto* start = window.findChild<QPushButton*>("brpInterfaceStart");
+    auto* stop = window.findChild<QPushButton*>("brpInterfaceStop");
     auto* capture = window.findChild<QPushButton*>("brpCapture");
     auto* log = window.findChild<QPlainTextEdit*>("brpLog");
-    require(mode && list && start && capture && log, "BRP controls are missing");
+    auto* status = window.findChild<QLabel*>("brpInterfaceStatus");
+    require(mode && list && start && stop && capture && log && status, "BRP controls are missing");
     require(!capture->isEnabled(), "measurement was available before interface validation");
     mode->setCurrentIndex(1);
     start->click();
@@ -103,6 +106,16 @@ void testWindow()
     capture->click();
     require(waitUntil([&] { return log->toPlainText().contains(QStringLiteral("Совпало")); }),
             "simulated contact state did not match");
+
+    stop->click();
+    mode->setCurrentIndex(2);
+    start->click();
+    require(waitUntil([&] {
+        const auto text = status->text();
+        return text.contains(QStringLiteral("M08A10T01 = "))
+            && !text.contains(QStringLiteral("нет отсчёта"));
+    }), "M8 monitor did not display decoded channels");
+    require(!capture->isEnabled(), "M16 acceptance was enabled from the M8 monitor");
 }
 
 } // namespace

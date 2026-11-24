@@ -87,6 +87,11 @@ if(BUILD_TESTING)
         "${CMAKE_CURRENT_SOURCE_DIR}/data/frame_checks.yaml")
     set_tests_properties(brp.frame_checks PROPERTIES TIMEOUT 15)
 
+    qt_add_executable(orbita_m8_test tests/orbita_m8_test.cpp)
+    target_link_libraries(orbita_m8_test PRIVATE brp_frames Qt6::Core)
+    add_test(NAME orbita.m8 COMMAND orbita_m8_test)
+    set_tests_properties(orbita.m8 PROPERTIES TIMEOUT 15)
+
     qt_add_executable(brp_scenario_test tests/brp_scenario_test.cpp)
     target_link_libraries(brp_scenario_test PRIVATE
         brp_ui tu_hardware Qt6::Network Qt6::Concurrent)
@@ -94,7 +99,7 @@ if(BUILD_TESTING)
     add_test(NAME brp.scenario COMMAND brp_scenario_test -platform offscreen)
     set_tests_properties(brp.scenario PROPERTIES TIMEOUT 30)
     if(WIN32)
-        set_tests_properties(brp.frame_checks brp.scenario PROPERTIES ENVIRONMENT_MODIFICATION
+        set_tests_properties(brp.frame_checks brp.scenario orbita.m8 PROPERTIES ENVIRONMENT_MODIFICATION
             "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
     endif()
 endif()

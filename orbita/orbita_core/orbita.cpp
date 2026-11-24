@@ -31,7 +31,20 @@ std::optional<M16GroupChannel> m16GroupChannel(const std::string& address) {
     return M16GroupChannel{channel.numOutElemG - 1, channel.stepOutG};
 }
 
-Orbita::Orbita() : ctx_(std::make_unique<Context>()) {}
+std::optional<GroupChannelLayout> m8GroupChannel(const std::string& address) {
+    constexpr uint32_t groupWords = 1024;
+    if (address.rfind("M08", 0) != 0 || !isValidChannelAddress(address))
+        return std::nullopt;
+    const auto channel = AddressParser::parseLine(address);
+    if (channel.numOutElemG == 0 || channel.numOutElemG > channel.stepOutG
+        || channel.stepOutG == 0 || groupWords % channel.stepOutG != 0)
+        return std::nullopt;
+    return GroupChannelLayout{channel.numOutElemG - 1, channel.stepOutG};
+}
+
+Orbita::Orbita() : Orbita(Informativity::M16) {}
+Orbita::Orbita(Informativity format, double samplesPerSecond)
+    : ctx_(std::make_unique<Context>(format, samplesPerSecond)) {}
 Orbita::~Orbita() = default;
 Orbita::Orbita(Orbita&&) noexcept = default;
 Orbita& Orbita::operator=(Orbita&&) noexcept = default;

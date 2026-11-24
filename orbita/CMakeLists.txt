@@ -11,6 +11,7 @@ add_library(orbita STATIC
     orbita_core/channel_registry.cpp
     orbita_core/logger.cpp
     decoder/frame_decoder_m16.cpp
+    decoder/frame_decoder_m8.cpp
     decoder/bitstream_recover.cpp
     decoder/fifo_buffer.cpp
     address/address_parser.cpp

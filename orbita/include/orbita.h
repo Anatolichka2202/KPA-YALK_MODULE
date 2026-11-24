@@ -76,18 +76,24 @@ struct Snapshot {
 /// Колбэк новых данных. Вызывается из декодерного потока (push-модель).
 using DataCallback = std::function<void(const Snapshot&)>;
 
-/// Слова M16 в порядке передачи, со служебными битами. Ссылка действует до
+/// Слова группы в порядке передачи, со служебными битами. Ссылка действует до
 /// возврата из колбэка, который вызывается в потоке декодера.
+/// В M8 номер цикла отсчитывается от первого захваченного маркера цикла.
 using GroupCallback = std::function<void(const std::vector<uint16_t>& words,
                                          int group, int cycle)>;
 
-struct M16GroupChannel {
+struct GroupChannelLayout {
     std::size_t firstWord; ///< Индекс от нуля в каждой группе.
     std::size_t stride;    ///< Шаг в словах; все повторения до конца группы.
 };
+using M16GroupChannel = GroupChannelLayout;
 
 /// Раскладка адреса, который повторяется в каждой группе M16.
 std::optional<M16GroupChannel> m16GroupChannel(const std::string& address);
+/// Раскладка адреса M08..., который повторяется в каждой группе M8.
+std::optional<GroupChannelLayout> m8GroupChannel(const std::string& address);
+
+enum class Informativity { M8 = 8, M16 = 16 };
 
 // -----------------------------------------------------------------
 //  Скрытая реализация
@@ -100,6 +106,8 @@ class Context;
 class Orbita {
 public:
     Orbita();
+    /// M8 использует частоту АЦП для поиска полубитного маркера фразы.
+    explicit Orbita(Informativity format, double samplesPerSecond = 10'000'000);
     ~Orbita();
 
     Orbita(const Orbita&) = delete;

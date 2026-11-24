@@ -53,16 +53,29 @@ void TlmWriter::writeBlock(uint32_t blockNum, uint32_t elapsedMs,
 {
     if (!file_.is_open()) return;
 
-    // Блок дополняется порциями; заголовок обновляется после каждой
-    // выгрузки, а полный цикл сохраняет прежнюю границу в 65536 слов.
+    // Заголовок обновляется после каждой порции. У M8 префикс блока
+    // занимает 32 байта по WriteTLMBlockM08_04_02_01, у M16 — 24.
     if (currentBlock_ != blockNum) {
         currentBlock_ = blockNum;
         currentWords_ = 0;
         headerPosition_ = file_.tellp();
-        char blockHeader[24] = {};
+        char blockHeader[32] = {};
         std::memcpy(blockHeader, &blockNum, 4);
         std::memcpy(blockHeader + 8, &elapsedMs, 4);
-        file_.write(blockHeader, sizeof(blockHeader));
+        if (informativnost_ == 8) {
+            const auto now = std::chrono::system_clock::now();
+            const auto time = std::chrono::system_clock::to_time_t(now);
+            if (const auto* calendar = std::localtime(&time)) {
+                blockHeader[20] = static_cast<char>(calendar->tm_hour);
+                blockHeader[21] = static_cast<char>(calendar->tm_min);
+                blockHeader[22] = static_cast<char>(calendar->tm_sec);
+            }
+            const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                now.time_since_epoch()).count() % 1000;
+            const auto milliseconds = static_cast<uint16_t>(ms);
+            std::memcpy(blockHeader + 23, &milliseconds, sizeof(milliseconds));
+        }
+        file_.write(blockHeader, informativnost_ == 8 ? 32 : 24);
     }
     const auto wordCount = static_cast<uint32_t>(data.size());
     file_.write(reinterpret_cast<const char*>(data.data()),

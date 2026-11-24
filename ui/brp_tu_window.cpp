@@ -1,6 +1,7 @@
 #include "brp_tu_window.h"
 
 #include "frame_checks.h"
+#include "encoding_utils.h"
 #include "hardware/akip1160.h"
 #include "hardware/isd_router.h"
 #include "hardware/v7_meter.h"
@@ -10,6 +11,7 @@
 #include "orbita_stand/sample_source.h"
 
 #include <QComboBox>
+#include <QCheckBox>
 #include <QCoreApplication>
 #include <QDir>
 #include <QElapsedTimer>
@@ -205,7 +207,8 @@ struct BrpTuWindow::Impl {
         auto* interfaceControls = new QHBoxLayout;
         interfaceMode = new QComboBox(interfaceBox);
         interfaceMode->setObjectName(QStringLiteral("brpInterfaceMode"));
-        interfaceMode->addItems({QStringLiteral("RS-485 · счётчик"), QStringLiteral("ЯСМ · внешний тест")});
+        interfaceMode->addItems({QStringLiteral("RS-485 · счётчик"), QStringLiteral("ЯСМ · внешний тест"),
+                                 QStringLiteral("M8 · приём кадра")});
         port = new QComboBox(interfaceBox);
         port->setEditable(true);
         port->lineEdit()->setPlaceholderText(QStringLiteral("COM-порт RS-485"));
@@ -215,6 +218,7 @@ struct BrpTuWindow::Impl {
         start = new QPushButton(QStringLiteral("Проверить интерфейс"), interfaceBox);
         start->setObjectName(QStringLiteral("brpInterfaceStart"));
         stop = new QPushButton(QStringLiteral("Остановить сбор"), interfaceBox);
+        stop->setObjectName(QStringLiteral("brpInterfaceStop"));
         stop->setEnabled(false);
         interfaceControls->addWidget(interfaceMode);
         interfaceControls->addWidget(port);
@@ -236,6 +240,17 @@ struct BrpTuWindow::Impl {
         yasmControls->addWidget(yasmCodes, 1);
         yasmControls->addWidget(yasmFile);
         interfaceLayout->addLayout(yasmControls);
+        m8Addresses = new QLineEdit(interfaceBox);
+        m8Addresses->setObjectName(QStringLiteral("brpM8Addresses"));
+        m8Addresses->setPlaceholderText(QStringLiteral("Адреса M08… через пробел"));
+        if (simulation) m8Addresses->setText(QStringLiteral("M08A10T01 M08A20T01"));
+        m8Invert = new QCheckBox(QStringLiteral("Инверсия сигнала"), interfaceBox);
+        m8Addresses->hide();
+        m8Invert->hide();
+        auto* m8Controls = new QHBoxLayout;
+        m8Controls->addWidget(m8Addresses, 1);
+        m8Controls->addWidget(m8Invert);
+        interfaceLayout->addLayout(m8Controls);
         QObject::connect(yasmCodes, &QLineEdit::textEdited, &window, [this] { yasmFixture.clear(); });
         QObject::connect(yasmFile, &QPushButton::clicked, &window, [this] {
             const auto path = QFileDialog::getOpenFileName(&this->window, QStringLiteral("Тест ЯСМ"),
@@ -256,6 +271,7 @@ struct BrpTuWindow::Impl {
             ? QStringLiteral("Синтетические кадры M16. COM-порт и стендовые приборы отключены.")
             : QStringLiteral("Подготовьте питание и подключите RS-485 и вход декодера Орбита."), interfaceBox);
         status->setWordWrap(true);
+        status->setObjectName(QStringLiteral("brpInterfaceStatus"));
         interfaceLayout->addWidget(status);
         graph = new CounterPlot(interfaceBox);
         interfaceLayout->addWidget(graph);
@@ -264,10 +280,20 @@ struct BrpTuWindow::Impl {
             yasmCodes->setVisible(index == 1);
             yasmFile->setVisible(index == 1);
             graph->setVisible(index == 0);
+            m8Addresses->setVisible(index == 2);
+            m8Invert->setVisible(index == 2);
+            checksPanel->setVisible(index != 2);
+            start->setText(index == 2 ? QStringLiteral("Начать приём M8")
+                                     : QStringLiteral("Проверить интерфейс"));
+            if (index == 2)
+                status->setText(QStringLiteral("Приём M8 через вход АЦП. Укажите адреса M08."));
+            else
+                status->setText(QStringLiteral("Готово к запуску проверки M16."));
         });
         layout->addWidget(interfaceBox, 1);
 
         auto* checksBox = new QGroupBox(QStringLiteral("2. Кадровой контроль, раздел 3.2"), &window);
+        checksPanel = checksBox;
         auto* checksLayout = new QFormLayout(checksBox);
         checkList = new QComboBox(checksBox);
         checkList->setObjectName(QStringLiteral("brpCheckList"));
@@ -444,6 +470,8 @@ struct BrpTuWindow::Impl {
     {
         try {
             const bool yasmMode = interfaceMode->currentIndex() == 1;
+            const bool m8Mode = interfaceMode->currentIndex() == 2;
+            double sampleRate = 10'000'000;
             if (yasmMode && !yasmFixture.empty()) {
                 yasm.emplace(YasmCheck::fromBusWords(yasmFixture));
             } else if (yasmMode) {
@@ -456,7 +484,7 @@ struct BrpTuWindow::Impl {
                     expected.push_back(value);
                 }
                 yasm.emplace(std::move(expected));
-            } else if (!simulation) {
+            } else if (!simulation && !m8Mode) {
                 const auto portName = port->currentText().trimmed();
                 if (portName.isEmpty()) throw std::runtime_error("Выберите COM-порт RS-485");
                 serial.setPortName(portName);
@@ -467,25 +495,49 @@ struct BrpTuWindow::Impl {
                     throw std::runtime_error(serial.errorString().toStdString());
             }
             if (simulation) {
-                source = miltech::integration::createOrbitaSampleSimulator(simulatedWord);
+                if (m8Mode) {
+                    source = miltech::integration::createOrbitaM8SampleSimulator([](std::size_t word) {
+                        return static_cast<uint16_t>(((word / 1024 + word % 1024) & 1023) << 1);
+                    });
+                } else {
+                    source = miltech::integration::createOrbitaSampleSimulator(simulatedWord);
+                }
                 if (!source->open()) throw std::runtime_error("Имитатор Орбита не открылся");
             } else {
                 const auto config = loadStand(root);
                 if (!config["e2010"].IsMap())
                     throw std::runtime_error("Неверная схема профиля E20-10");
+                if (m8Mode) sampleRate = config["e2010"]["sample_rate_khz"].as<double>() * 1000;
                 source = createE2010SampleSource(config["e2010"].as<std::map<std::string, std::string>>());
             }
 
             // Состояние обнуляется до подключения callback. Перед любым следующим
             // запуском shutdown ждёт завершения потока, который изменяет эти поля.
             counter = {};
-            observeCounter = simulation && !yasmMode;
+            observeCounter = simulation && !yasmMode && !m8Mode;
             nextCounter = 0;
             gatePassed = false;
-            decoder = std::make_unique<orbita::Orbita>();
-            decoder->setGroupCallback([this](const auto& words, int group, int cycle) {
-                consume(words, group, cycle);
-            });
+            if (m8Mode) {
+                decoder = std::make_unique<orbita::Orbita>(orbita::Informativity::M8, sampleRate);
+                std::vector<orbita::ChannelSpec> channels;
+                for (const auto& item : m8Addresses->text().split(
+                        QRegularExpression(QStringLiteral("[\\s,]+")), Qt::SkipEmptyParts)) {
+                    const auto address = encoding::normalizeAddress(item.toStdString());
+                    if (address.rfind("M08", 0) != 0 || !orbita::isValidChannelAddress(address))
+                        throw std::invalid_argument("Неверный адрес M08: " + address);
+                    channels.push_back({address, {}, {}});
+                }
+                if (channels.empty()) throw std::invalid_argument("Задайте хотя бы один адрес M08");
+                decoder->setChannels(channels);
+                if (decoder->getChannels().size() != channels.size())
+                    throw std::invalid_argument("В списке есть адреса за пределами цикла M8");
+                decoder->setInvertSignal(m8Invert->isChecked());
+            } else {
+                decoder = std::make_unique<orbita::Orbita>();
+                decoder->setGroupCallback([this](const auto& words, int group, int cycle) {
+                    consume(words, group, cycle);
+                });
+            }
             bridge = std::make_unique<miltech::integration::OrbitaSampleBridge>(*source, *decoder);
             if (!bridge->start()) throw std::runtime_error(bridge->lastError());
             start->setEnabled(false);
@@ -494,13 +546,15 @@ struct BrpTuWindow::Impl {
             interfaceMode->setEnabled(false);
             yasmCodes->setEnabled(false);
             yasmFile->setEnabled(false);
+            m8Addresses->setEnabled(false);
+            m8Invert->setEnabled(false);
             graph->setTrace({});
-            status->setText(yasmMode
+            status->setText(m8Mode ? QStringLiteral("M8: поиск маркеров фразы и цикла") : yasmMode
                 ? QStringLiteral("Ожидание кодов внешнего теста ЯСМ в M16P1A22")
                 : QStringLiteral("Ожидание двух непрерывных периодов счётчика 0–1023"));
             gateClock.start();
             refresh.start(60);
-            if (!simulation && !yasmMode) send.start(10);
+            if (!simulation && !yasmMode && !m8Mode) send.start(10);
         } catch (const std::exception& error) {
             endSession(QStringLiteral("Запуск не выполнен: %1").arg(QString::fromUtf8(error.what())));
         }
@@ -548,6 +602,23 @@ struct BrpTuWindow::Impl {
         const auto sourceError = bridge->lastError();
         if (!sourceError.empty() || !bridge->isRunning()) {
             endSession(QStringLiteral("Ошибка потока Орбита: %1").arg(QString::fromStdString(sourceError)));
+            return;
+        }
+
+        if (interfaceMode->currentIndex() == 2) {
+            const auto snapshot = decoder->getSnapshot();
+            const auto now = std::chrono::steady_clock::now();
+            QStringList values;
+            for (const auto& channel : snapshot.values) {
+                // Поддерживаемые адреса обновляются хотя бы раз за цикл.
+                // После паузы длиннее кадра старый код скрываем.
+                const bool fresh = channel.valid && now - channel.updatedAt < std::chrono::seconds(1);
+                values.append(QStringLiteral("%1 = %2").arg(QString::fromStdString(channel.address),
+                    fresh ? QString::number(channel.value) : QStringLiteral("нет отсчёта")));
+            }
+            status->setText(QStringLiteral("M8 · групп %1 · ошибки фраз %2 % · ошибки групп %3 %\n%4")
+                .arg(snapshot.stats.frames_processed).arg(snapshot.stats.phrase_error_percent)
+                .arg(snapshot.stats.group_error_percent).arg(values.join(QLatin1Char('\n'))));
             return;
         }
 
@@ -734,6 +805,8 @@ struct BrpTuWindow::Impl {
         interfaceMode->setEnabled(true);
         yasmCodes->setEnabled(true);
         yasmFile->setEnabled(true);
+        m8Addresses->setEnabled(true);
+        m8Invert->setEnabled(true);
         checkList->setEnabled(true);
         channelList->setEnabled(true);
         expectedState->setEnabled(true);
@@ -748,7 +821,9 @@ struct BrpTuWindow::Impl {
     std::vector<FrameCheck> checks;
     QComboBox *interfaceMode = nullptr, *port = nullptr, *checkList = nullptr,
               *channelList = nullptr, *expectedState = nullptr;
-    QLineEdit *isdHost = nullptr, *yasmCodes = nullptr;
+    QLineEdit *isdHost = nullptr, *yasmCodes = nullptr, *m8Addresses = nullptr;
+    QCheckBox* m8Invert = nullptr;
+    QGroupBox* checksPanel = nullptr;
     QPushButton *start = nullptr, *stop = nullptr, *capture = nullptr, *prepare = nullptr, *yasmFile = nullptr;
     QLabel *status = nullptr, *details = nullptr;
     QFormLayout* checkForm = nullptr;

@@ -136,6 +136,8 @@ int main(int argc, char** argv)
         std::atomic_uint groups{0};
         unsigned measuredGroups = 0;
         orbita::Orbita decoder;
+        const auto& m16Address = checks.front().addresses.front();
+        decoder.setChannels({{m16Address, {}, {}}});
         decoder.setGroupCallback([&](const auto& words, int group, int cycle) {
             decodedYasm.consume(words, group, cycle);
             if (!decoded.passed()) {
@@ -161,6 +163,7 @@ int main(int argc, char** argv)
         require(decodedYasm.passed(), "synthetic M16 did not reproduce the YASM sequence");
         require(completed && decodedCodes.count == 2048 && decodedCodes.matches(512, 512),
                 "addressed M16 samples changed after the interface gate");
+        require(decoder.getValueByAddress(m16Address) == 512, "M16 channel snapshot changed");
         return 0;
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';

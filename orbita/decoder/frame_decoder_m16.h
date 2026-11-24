@@ -22,23 +22,19 @@ public:
     // Сброс состояния (как при reinit)
     void reset() override;
 
-    // Callback при заполнении группы (2048 слов)
-    using GroupCallback = std::function<void(const std::vector<uint16_t>& group_11bit,
-                                             const std::vector<uint16_t>& group_12bit,
-                                             int groupNum,  // 1..32
-                                             int ciklNum)>; //..4
-    void setGroupCallback(GroupCallback cb);
+    // Callback при заполнении группы (2048 слов).
+    void setGroupCallback(GroupCallback cb) override;
 
     // Статистика ошибок (количество ошибок, проценты можно вычислить отдельно)
     int getPhraseErrors() const { return countErrorMF; }
     int getGroupErrors() const { return countErrorMG; }
     int getTotalPhrases() const { return totalPhrases; }
-    int getTotalGroups() const { return totalGroups; }
+    uint64_t getTotalGroups() const override { return totalGroups; }
 
     //Управление записью tlm
-    void startTlm(const std::string& filename);
-    void stopTlm();
-    bool isTlmActive() const;
+    void startTlm(const std::string& filename) override;
+    void stopTlm() override;
+    bool isTlmActive() const override;
 
     //полчуение бортового времени
     uint32_t getCurrentTimeSeconds() const { return current_time_seconds_; }
@@ -101,7 +97,7 @@ private:
     void FillArrayGroup();
     void CollectMarkNumGroup();
     void CollectMarkGroup();
-    bool hasGroup() const override;
+    bool hasGroup() const;
 
     //TLM-связные полня
     std::unique_ptr<TlmWriter> tlmWriter_; // tlm писатель
@@ -117,7 +113,7 @@ private:
        // bool needFlBeg;
 
     // Получить последнюю готовую группу (11-битные слова)
-    std::vector<uint16_t> getGroup() override;
+    std::vector<uint16_t> getGroup();
 
 
 

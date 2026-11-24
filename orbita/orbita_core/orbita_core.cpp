@@ -47,9 +47,22 @@ static uint32_t extractSecondsFromGroup(const std::vector<uint16_t>& g) {
 // ------------------------------------------------------------------
 //  Конструктор / деструктор
 // ------------------------------------------------------------------
-Context::Context()
-    : recoverer_(bitFifo_, BitstreamRecoverer::NORMAL)
+Context::Context(Informativity format, double samplesPerSecond)
+    : recoverer_(bitFifo_, BitstreamRecoverer::NORMAL),
+      informativnost_(static_cast<int>(format))
 {
+    if (format == Informativity::M8) {
+        auto decoder = std::make_unique<FrameDecoderM8>(samplesPerSecond);
+        m8Decoder_ = decoder.get();
+        decoder_ = std::move(decoder);
+    } else if (format == Informativity::M16) {
+        decoder_ = std::make_unique<FrameDecoderM16>(bitFifo_);
+    } else {
+        throw orbita_error("Неподдерживаемая информативность Орбита");
+    }
+    decoder_->setGroupCallback([this](const auto& words, int group, int cycle) {
+        onDecoderGroup(words, group, cycle);
+    });
     start_time_ = std::chrono::steady_clock::now();
     LOG_INFO("Orbita context created");
 }
@@ -57,20 +70,6 @@ Context::Context()
 Context::~Context() {
     stop();
     LOG_INFO("Orbita context destroyed");
-}
-
-// ------------------------------------------------------------------
-//  Декодер
-// ------------------------------------------------------------------
-void Context::ensureDecoder() {
-    if (decoder_) return;
-    decoder_ = std::make_unique<FrameDecoderM16>(bitFifo_);
-    decoder_->setGroupCallback(
-        [this](const std::vector<uint16_t>& /*group11*/,
-               const std::vector<uint16_t>& group12,
-               int groupNum, int ciklNum) {
-            onDecoderGroup(group12, groupNum, ciklNum);
-        });
 }
 
 // ------------------------------------------------------------------
@@ -84,6 +83,15 @@ void Context::setChannels(const std::vector<ChannelSpec>& specs) {
     for (const auto& s : specs) {
         try {
             ChannelDesc d = AddressParser::parseLine(s.address);
+            const std::string prefix = m8Decoder_ ? "08" : "16";
+            if (s.address.substr(1, 2) != prefix)
+                throw std::invalid_argument("Информативность адреса отличается от режима декодера");
+            // В UnitMoth нет работающей привязки к абсолютному номеру
+            // цикла кадра. Адрес с периодом больше цикла нельзя читать по
+            // относительному номеру, иначе можно выдать значение чужого канала.
+            if (m8Decoder_ && (d.numOutElemG == 0 || d.numOutElemG > d.stepOutG
+                || d.stepOutG > 32 * 1024))
+                throw std::invalid_argument("Адрес M8 выходит за подтверждённую адресацию цикла");
             d.userName = s.name;
             d.category = s.category;
             descs.push_back(std::move(d));
@@ -101,7 +109,6 @@ void Context::setChannels(const std::vector<ChannelSpec>& specs) {
     mgr.addChannels(descs);
     mgr.finalize();
 
-    ensureDecoder();
     auto snap = registry_.update(mgr.getChannels(), addrs, names, cats);
 
     {
@@ -136,7 +143,6 @@ void Context::start() {
             throw orbita_error("No channels or group callback configured.");
     }
 
-    ensureDecoder();
     // Новый сеанс не должен декодировать очередь, незавершённый кадр или
     // последнее значение от предыдущего источника.
     {
@@ -251,13 +257,19 @@ void Context::decoderLoop() {
             sample_queue_.pop();
         }
 
-        if (!threshold_computed && samples.size() >= 100000) {
-            recoverer_.computeThreshold(samples.data(), samples.size(), 100000);
-            threshold_computed = true;
+        if (m8Decoder_) {
+            std::lock_guard<std::recursive_mutex> lock(decoder_mutex_);
+            m8Decoder_->appendSamples(samples, invert_signal_.load());
+            decoder_->process();
+        } else {
+            if (!threshold_computed && samples.size() >= 100000) {
+                recoverer_.computeThreshold(samples.data(), samples.size(), 100000);
+                threshold_computed = true;
+            }
+            recoverer_.processSamples(samples.data(), samples.size());
+            std::lock_guard<std::recursive_mutex> lock(decoder_mutex_);
+            decoder_->process();
         }
-
-        recoverer_.processSamples(samples.data(), samples.size());
-        { std::lock_guard<std::recursive_mutex> lock(decoder_mutex_); decoder_->process(); }
 
         samples_processed_ += samples.size();
         {
@@ -267,8 +279,11 @@ void Context::decoderLoop() {
         processed_cv_.notify_all();
     }
 
-    recoverer_.flush();
-    { std::lock_guard<std::recursive_mutex> lock(decoder_mutex_); if (decoder_) decoder_->process(); }
+    if (!m8Decoder_) {
+        recoverer_.flush();
+        std::lock_guard<std::recursive_mutex> lock(decoder_mutex_);
+        decoder_->process();
+    }
     LOG_INFO("Decoder thread finished. Total: %llu samples",
              (unsigned long long)samples_processed_.load());
 }
@@ -282,8 +297,10 @@ void Context::onDecoderGroup(const std::vector<uint16_t>& group12,
     if (paused_.load()) return;
 
     // 1) Бортовое время — независимо от наличия каналов
-    const uint32_t sec = extractSecondsFromGroup(group12);
-    if (sec != 0xFFFFFFFF) current_mtv_.store(sec);
+    if (!m8Decoder_) {
+        const uint32_t sec = extractSecondsFromGroup(group12);
+        if (sec != 0xFFFFFFFF) current_mtv_.store(sec);
+    }
 
     // 2) Каналы (если заданы)
     auto cfg = registry_.get();

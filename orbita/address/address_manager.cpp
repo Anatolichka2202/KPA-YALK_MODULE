@@ -43,6 +43,21 @@ void AddressManager::loadFromLines(const std::vector<std::string>& lines) {
 
 void AddressManager::finalize() {
     for (auto& desc : channels_) {
+        if (informativnost_ == 8) {
+            // Индекс внутри группы и шаг в группах вычисляются отдельно.
+            // При большем шаге слот встречается только в указанных группах
+            // каждого цикла, в остальных группах значение не обновляем.
+            const auto slot = desc.numOutElemG - 1;
+            desc.wordIndex = slot % group_size_;
+            desc.groups.clear();
+            desc.cycles.clear();
+            if (desc.stepOutG > static_cast<unsigned>(group_size_)) {
+                const auto step = desc.stepOutG / group_size_;
+                for (auto group = slot / group_size_ + 1; group <= 32; group += step)
+                    desc.groups.push_back(static_cast<uint16_t>(group));
+            }
+            continue;
+        }
         finalizeChannel(desc);
         // Вычисляем wordIndex (предполагаем, что numOutElemG уже содержит правильный номер элемента в группе, начиная с 1)
         desc.wordIndex = desc.numOutElemG - 1; // 0-based
