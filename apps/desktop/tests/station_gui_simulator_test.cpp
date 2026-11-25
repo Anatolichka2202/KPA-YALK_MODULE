@@ -208,6 +208,15 @@ public:
             && integrationStandRuntimeReady() && source
             && source->provider == "miltech.orbita.simulator";
     }
+    bool localConnectionApplied()
+    {
+        const auto& profile = integrationStandProfile();
+        const auto* device = orbita::stand::findComponentById(profile, "local-scpi");
+        const auto legacy = std::find_if(profile.devices.begin(), profile.devices.end(),
+            [](const auto& item) { return item.id == "local-scpi"; });
+        return device && device->configuration.at("host") == "127.0.0.9"
+            && legacy != profile.devices.end() && legacy->configuration.at("host") == "127.0.0.9";
+    }
 };
 
 int runMonitorChild(bool silent)
@@ -796,7 +805,8 @@ int runChild(const QString& mode)
     }
     if (mode == "--profile-selection") {
         ProfileWindow window;
-        require(window.simulatorSelected(), "simulator profile did not override project profile");
+        require(window.simulatorSelected() && window.localConnectionApplied(),
+                "profile precedence or local connection override failed");
         return 0;
     }
     if (mode == "--reference-project") {
@@ -1704,6 +1714,10 @@ int runParent()
     project.write("schema: 1\nid: gui-project\ntitle: GUI project\nversion: 1\n"
                   "equipment_profile: profiles/stand_ktma.yaml\nworkflows:\n  - workflow.yaml\n");
     project.close();
+    QFile overrides(root.filePath("local-connections.yaml"));
+    require(overrides.open(QIODevice::WriteOnly), "cannot create local connection fixture");
+    overrides.write("schema: 1\ncomponents:\n  local-scpi:\n    host: 127.0.0.9\n");
+    overrides.close();
     QFile workflow(root.filePath("workflow.yaml"));
     require(workflow.open(QIODevice::WriteOnly), "cannot create test workflow");
     workflow.write("schema: 1\nid: free\ntitle: Free\nkind: free\nallow_dynamic_scenario: true\n");
@@ -1727,6 +1741,8 @@ int runParent()
         env.insert("MILTECH_STAND_PROFILE", mode == "--reference-project" ? QString()
             : mode == "--profile-selection" ? QStringLiteral("stand_ktma_simulator.yaml")
                                             : QStringLiteral("absent-profile.yaml"));
+        env.insert("MILTECH_STAND_OVERRIDES", mode == "--profile-selection"
+            ? root.filePath("local-connections.yaml") : QString());
         child.setProcessEnvironment(env);
         child.start(executable, {mode});
         require(child.waitForStarted(5000), "GUI child did not start");

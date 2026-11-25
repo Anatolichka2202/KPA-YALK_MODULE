@@ -1,4 +1,5 @@
 #include "ktma_mainwindow.h"
+#include <QFileInfo>
 
 #include "ktma/ubsi/equipment_readiness.h"
 #include "ktma/ubsi/production_ledger.h"
@@ -175,9 +176,17 @@ KtmaMainWindow::KtmaMainWindow(QWidget* parent)
         } else {
             profilePath = root.filePath(QStringLiteral("profiles/stand_ktma.yaml"));
         }
+        auto physicalProfile = orbita::stand::loadStandProfile(profilePath.toUtf8().toStdString());
+        orbita::stand::ConnectionOverrides overrides;
+        const auto overridePath = qEnvironmentVariable("MILTECH_STAND_OVERRIDES");
+        if (!overridePath.isEmpty()) {
+            const auto resolvedPath = QFileInfo(overridePath).isAbsolute()
+                ? overridePath : root.filePath(overridePath);
+            overrides = orbita::stand::loadConnectionOverrides(resolvedPath.toUtf8().toStdString());
+            integrationLog(QStringLiteral("Локальные соединения: %1").arg(resolvedPath));
+        }
         integrationConfigureStandProfile(
-            orbita::stand::loadStandProfile(profilePath.toUtf8().toStdString()),
-            profilePath);
+            orbita::stand::resolvePhysicalProfile(physicalProfile, std::nullopt, overrides), profilePath);
     } catch (const std::exception& error) {
         integrationLog(QStringLiteral("Профиль КТМА не загружен: %1")
             .arg(QString::fromUtf8(error.what())));

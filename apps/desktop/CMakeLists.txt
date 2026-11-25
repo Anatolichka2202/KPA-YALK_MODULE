@@ -250,6 +250,9 @@ if(BUILD_TESTING)
         orbita_stand_runtime
         Qt6::Core
         Qt6::Widgets
+        Qt6::Network
+        Qt6::SerialPort
+        Qt6::Concurrent
     )
 
     add_test(NAME desktop.test_page_smoke COMMAND test_page_smoke_test -platform offscreen)

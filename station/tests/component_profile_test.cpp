@@ -42,6 +42,69 @@ int main(int argc, char** argv)
 {
     QCoreApplication app(argc, argv);
     try {
+        {
+            // Профиль стенда заменяет встроенный, локальные настройки меняют
+            // только соединение, а не допуски и не порядок операций методики.
+            StandProfile embedded; embedded.id = "embedded"; embedded.activeOutputsConfirmed = false;
+            ComponentProfile device; device.id = "supply"; device.kind = "equipment";
+            device.provider = "test"; device.bindings = {"power.dut"};
+            device.capabilities = {"power.dc_supply"};
+            device.configuration = {{"host", "192.0.2.1"}, {"local_address", "192.0.2.10"},
+                                    {"port", "COM1"}, {"device.active_commands_confirmed", "false"}};
+            embedded.components.push_back(device);
+            embedded.devices.push_back({"supply", "test", true, {"power.dc_supply"}, device.configuration});
+            auto shared = embedded; shared.id = "bench";
+            shared.components[0].configuration["host"] = "192.0.2.2";
+            shared.devices[0].configuration["host"] = "192.0.2.2";
+            const auto local = parseConnectionOverrides(
+                "schema: 1\ncomponents:\n  supply:\n    host: 192.0.2.3\n    port: COM7\n");
+            const auto resolved = resolvePhysicalProfile(embedded, shared, local);
+            require(resolved.id == "bench" && resolved.components[0].configuration.at("host") == "192.0.2.3"
+                        && resolved.devices[0].configuration.at("port") == "COM7"
+                        && !resolved.activeOutputsConfirmed
+                        && resolved.components[0].configuration.at("device.active_commands_confirmed") == "false"
+                        && embedded.components[0].configuration.at("host") == "192.0.2.1",
+                    "profile precedence changed safety fields or failed to update legacy view");
+            bool unsafeOverrideRejected = false;
+            try { (void)resolvePhysicalProfile(embedded, shared,
+                {{"supply", {{"device.active_commands_confirmed", "true"}}}}); }
+            catch (const std::invalid_argument&) { unsafeOverrideRejected = true; }
+            require(unsafeOverrideRejected, "connection override changed safety authorization");
+            EnvironmentInventory found{{"192.0.2.10"}, {"com7"}};
+            const auto plan = planEnvironment(resolved, {{"power.dut", "power.dc_supply"}}, found);
+            require(plan.issues.empty() && plan.requiredComponents == std::vector<std::string>{"supply"},
+                    "available configured interfaces or logical resource were rejected");
+            const auto missing = planEnvironment(resolved,
+                {{"power.dut", "power.dc_supply"}, {"missing.role", "missing.capability"}}, {});
+            const auto hasIssue = [&](EnvironmentIssueCode code) {
+                return std::any_of(missing.issues.begin(), missing.issues.end(),
+                    [code](const auto& issue) { return issue.code == code; });
+            };
+            require(hasIssue(EnvironmentIssueCode::MissingResource)
+                        && hasIssue(EnvironmentIssueCode::MissingLocalAddress)
+                        && hasIssue(EnvironmentIssueCode::MissingSerialPort),
+                    "missing resources or interfaces were not distinguished");
+            const auto reordered = planEnvironment(resolved,
+                {{"missing.role", "missing.capability"}, {"power.dut", "power.dc_supply"}}, {});
+            require(reordered.issues.size() == missing.issues.size(), "environment plan changed with request order");
+            for (std::size_t index = 0; index < missing.issues.size(); ++index)
+                require(reordered.issues[index].code == missing.issues[index].code
+                            && reordered.issues[index].component == missing.issues[index].component
+                            && reordered.issues[index].subject == missing.issues[index].subject,
+                        "environment plan order is nondeterministic");
+            auto ambiguous = resolved;
+            auto secondDevice = ambiguous.components.front(); secondDevice.id = "supply2";
+            ambiguous.components.push_back(secondDevice);
+            const auto conflict = planEnvironment(ambiguous, {{"power.dut", "power.dc_supply"}}, found);
+            require(conflict.issues.size() == 1
+                        && conflict.issues[0].code == EnvironmentIssueCode::AmbiguousResource,
+                    "ambiguous resource was silently assigned to one device");
+            auto unresolved = resolved;
+            unresolved.components[0].configuration["port"] = "custom-port";
+            const auto unchecked = planEnvironment(unresolved, {{"power.dut", "power.dc_supply"}}, found);
+            require(unchecked.issues.size() == 1 && unchecked.issues[0].code == EnvironmentIssueCode::UncheckedPort,
+                    "unrecognized port was incorrectly treated as checked");
+        }
         const QDir sourceRoot(QString::fromUtf8(ORBITA_SOURCE_DIR));
         const auto profilePath = sourceRoot.filePath(QStringLiteral("data/profiles/stand_ktma.yaml"));
         const auto profile = loadStandProfile(profilePath.toStdString());

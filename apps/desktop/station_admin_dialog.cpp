@@ -4,12 +4,16 @@
 #include "orbita_stand/station_session.h"
 
 #include <QDialogButtonBox>
+#include <QFutureWatcher>
 #include <QHeaderView>
 #include <QLabel>
+#include <QNetworkInterface>
 #include <QPlainTextEdit>
+#include <QSerialPortInfo>
 #include <QTabWidget>
 #include <QTableWidget>
 #include <QVBoxLayout>
+#include <QtConcurrentRun>
 
 #include <set>
 
@@ -85,6 +89,53 @@ StationAdminDialog::StationAdminDialog(
     if (!row) setRow(components, row, {QStringLiteral("—"), QStringLiteral("—"),
         QStringLiteral("—"), QStringLiteral("—"), QStringLiteral("Компоненты не заданы")});
     tabs->addTab(components, QStringLiteral("Оборудование и ресурсы"));
+
+    // Читаем только сведения ОС об интерфейсах. Эта проверка не открывает
+    // приборы и не предлагает менять адреса адаптеров без явного назначения.
+    auto* environmentTable = table({QStringLiteral("Компонент"), QStringLiteral("Проверка"),
+        QStringLiteral("Значение")}, tabs);
+    environmentTable->setObjectName(QStringLiteral("stationEnvironmentPlan"));
+    setRow(environmentTable, 0, {QStringLiteral("—"), QStringLiteral("Проверка интерфейсов…"), QStringLiteral("—")});
+    tabs->addTab(environmentTable, QStringLiteral("Окружение"));
+    auto* environmentWatcher = new QFutureWatcher<orbita::stand::EnvironmentPlan>(this);
+    connect(environmentWatcher, &QFutureWatcher<orbita::stand::EnvironmentPlan>::finished, this,
+        [environmentWatcher, environmentTable] {
+            environmentTable->setRowCount(0);
+            int environmentRow = 0;
+            try {
+                const auto environment = environmentWatcher->result();
+                for (const auto& issue : environment.issues) {
+                    QString reason;
+                    switch (issue.code) {
+                    case orbita::stand::EnvironmentIssueCode::MissingResource: reason = QStringLiteral("Ресурс не объявлен в профиле"); break;
+                    case orbita::stand::EnvironmentIssueCode::AmbiguousResource: reason = QStringLiteral("Несколько компонентов для ресурса"); break;
+                    case orbita::stand::EnvironmentIssueCode::DisabledResource: reason = QStringLiteral("Компонент отключён"); break;
+                    case orbita::stand::EnvironmentIssueCode::CapabilityMismatch: reason = QStringLiteral("Возможность не объявлена"); break;
+                    case orbita::stand::EnvironmentIssueCode::MissingLocalAddress: reason = QStringLiteral("Локальный адрес не найден среди активных интерфейсов"); break;
+                    case orbita::stand::EnvironmentIssueCode::MissingSerialPort: reason = QStringLiteral("Последовательный порт не обнаружен"); break;
+                    case orbita::stand::EnvironmentIssueCode::UncheckedPort: reason = QStringLiteral("Тип порта не распознан; требуется ручная проверка"); break;
+                    }
+                    setRow(environmentTable, environmentRow++, {QString::fromStdString(issue.component), reason,
+                                                                QString::fromStdString(issue.subject)});
+                }
+                if (!environmentRow) setRow(environmentTable, 0, {QStringLiteral("—"),
+                    QStringLiteral("Замечаний к объявленным интерфейсам нет; связь с приборами не проверялась"), QStringLiteral("—")});
+            } catch (const std::exception& error) {
+                setRow(environmentTable, 0, {QStringLiteral("—"), QStringLiteral("Не удалось проверить интерфейсы"),
+                                              QString::fromUtf8(error.what())});
+            }
+        });
+    environmentWatcher->setFuture(QtConcurrent::run([profile = session.profile()] {
+        orbita::stand::EnvironmentInventory inventory;
+        for (const auto& interface : QNetworkInterface::allInterfaces()) {
+            if (!(interface.flags() & QNetworkInterface::IsUp)) continue;
+            for (const auto& entry : interface.addressEntries())
+                inventory.localAddresses.insert(entry.ip().toString().toUtf8().toStdString());
+        }
+        for (const auto& port : QSerialPortInfo::availablePorts())
+            inventory.serialPorts.insert(port.portName().toUtf8().toStdString());
+        return orbita::stand::planEnvironment(profile, {}, inventory);
+    }));
 
     auto* diagnostics = new QPlainTextEdit(tabs);
     diagnostics->setObjectName(QStringLiteral("stationAdminDiagnostics"));

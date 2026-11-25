@@ -15,6 +15,7 @@
 #include <QApplication>
 #include <QComboBox>
 #include <QDoubleSpinBox>
+#include <QElapsedTimer>
 #include <QSpinBox>
 #include <QDialogButtonBox>
 #include <QLabel>
@@ -30,6 +31,7 @@
 #include <QTreeWidget>
 #include <QTemporaryDir>
 #include <QTimer>
+#include <QThread>
 #include <QTextEdit>
 
 #include <cstdlib>
@@ -229,9 +231,18 @@ int main(int argc, char** argv)
     auto* adminTabs = adminDialog.findChild<QTabWidget*>();
     auto* adminDiagnostics = adminDialog.findChild<QPlainTextEdit*>(
         QStringLiteral("stationAdminDiagnostics"));
-    require(adminTabs && adminTabs->count() == 3 && adminDiagnostics
-                && adminDiagnostics->isReadOnly(),
-            "station admin must expose read-only connections, resources, diagnostics tabs");
+    auto* environmentPlan = adminDialog.findChild<QTableWidget*>(QStringLiteral("stationEnvironmentPlan"));
+    QElapsedTimer environmentWait; environmentWait.start();
+    while (environmentPlan && environmentPlan->item(0, 1)
+            && environmentPlan->item(0, 1)->text().contains(QStringLiteral("Проверка интерфейсов"))
+            && environmentWait.elapsed() < 5000) {
+        QApplication::processEvents();
+        QThread::msleep(10);
+    }
+    require(adminTabs && adminTabs->count() == 4 && adminDiagnostics
+                && adminDiagnostics->isReadOnly() && environmentPlan && environmentPlan->rowCount() == 1
+                && environmentPlan->item(0, 1)->text().contains(QStringLiteral("не проверялась")),
+            "station admin must expose read-only environment without claiming device readiness");
 
     QTemporaryDir editorFixture;
     require(editorFixture.isValid(), "cannot create editor fixture directory");

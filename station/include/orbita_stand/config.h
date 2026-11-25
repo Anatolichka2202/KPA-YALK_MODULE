@@ -4,6 +4,8 @@
 #include "orbita_stand/scenario.h"
 
 #include <map>
+#include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -70,6 +72,36 @@ struct StandProfile {
     // а connections нужны инженеру для проверки кабелей перед запуском.
     std::map<std::string, std::string> connections;
 };
+
+// Локально разрешено переопределять только объявленные параметры подключения;
+// разрешения воздействий, методика, роли и маршруты не меняются.
+using ConnectionOverrides = std::map<std::string, std::map<std::string, std::string>>;
+ConnectionOverrides parseConnectionOverrides(const std::string& document);
+ConnectionOverrides loadConnectionOverrides(const std::string& path);
+StandProfile resolvePhysicalProfile(const StandProfile& embedded,
+    const std::optional<StandProfile>& shared, const ConnectionOverrides& local);
+
+enum class EnvironmentIssueCode {
+    MissingResource, AmbiguousResource, DisabledResource, CapabilityMismatch,
+    MissingLocalAddress, MissingSerialPort, UncheckedPort
+};
+struct EnvironmentIssue {
+    EnvironmentIssueCode code;
+    std::string component;
+    std::string subject;
+};
+struct EnvironmentInventory {
+    std::set<std::string> localAddresses;
+    std::set<std::string> serialPorts;
+};
+struct EnvironmentPlan {
+    std::vector<std::string> requiredComponents;
+    std::vector<EnvironmentIssue> issues;
+};
+// Чистая проверка профиля и заранее обнаруженных интерфейсов: не создаёт
+// приборов и не меняет системные настройки. Пустой список — все компоненты.
+EnvironmentPlan planEnvironment(const StandProfile& profile,
+    const std::vector<ResourceRequirement>& requirements, const EnvironmentInventory& inventory);
 
 StandProfile loadStandProfile(const std::string& path);
 ScenarioDefinition loadScenarioYaml(const std::string& path);

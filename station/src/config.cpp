@@ -330,6 +330,134 @@ const ComponentProfile* findComponentByBinding(
     return iterator == profile.components.end() ? nullptr : &*iterator;
 }
 
+namespace {
+ConnectionOverrides parseOverridesRoot(const yaml::Node& root)
+{
+    if (!root.isMap() || root.value("schema") != "1")
+        throw yaml::Error("Неподдерживаемая схема локальных соединений");
+    for (const auto& [key, value] : root.map) {
+        (void)value;
+        if (key != "schema" && key != "components")
+            throw yaml::Error("Неизвестное поле локальных соединений: " + key);
+    }
+    const auto& components = root.at("components");
+    if (!components.isMap()) throw yaml::Error("Компоненты локальных соединений должны быть отображением");
+    ConnectionOverrides result;
+    for (const auto& [id, values] : components.map) {
+        if (id.empty() || !values.isMap()) throw yaml::Error("Некорректный компонент локальных соединений");
+        result[id] = stringMap(&values);
+    }
+    return result;
+}
+}
+
+ConnectionOverrides parseConnectionOverrides(const std::string& document)
+{
+    return parseOverridesRoot(yaml::parse(document));
+}
+
+ConnectionOverrides loadConnectionOverrides(const std::string& path)
+{
+    return parseOverridesRoot(yaml::parseFile(path));
+}
+
+StandProfile resolvePhysicalProfile(const StandProfile& embedded,
+    const std::optional<StandProfile>& shared, const ConnectionOverrides& local)
+{
+    auto result = shared ? *shared : embedded;
+    const std::set<std::string> allowed{
+        "host", "local_address", "port", "port_bi", "data_port", "resource", "fallback_resource"};
+    for (const auto& [id, values] : local) {
+        auto component = std::find_if(result.components.begin(), result.components.end(),
+            [&](const ComponentProfile& value) { return value.id == id; });
+        if (component == result.components.end())
+            throw std::invalid_argument("Неизвестный компонент переопределения: " + id);
+        for (const auto& [key, value] : values) {
+            if (!allowed.count(key) || !component->configuration.count(key) || value.empty())
+                throw std::invalid_argument("Недопустимое переопределение соединения: " + id + "." + key);
+            component->configuration[key] = value;
+            // Старый runtime читает параллельное представление devices.
+            for (auto& device : result.devices)
+                if (device.id == id) device.configuration[key] = value;
+        }
+    }
+    return result;
+}
+
+EnvironmentPlan planEnvironment(const StandProfile& profile,
+    const std::vector<ResourceRequirement>& requirements, const EnvironmentInventory& inventory)
+{
+    EnvironmentPlan result;
+    std::set<std::string> selected;
+    std::set<std::pair<std::string, std::string>> requested;
+    for (const auto& requirement : requirements)
+        requested.emplace(requirement.resource, requirement.capability);
+    if (requested.empty()) {
+        for (const auto& component : profile.components)
+            if (component.enabled) selected.insert(component.id);
+    }
+    for (const auto& [resource, capability] : requested) {
+        std::vector<const ComponentProfile*> candidates;
+        for (const auto& component : profile.components)
+            if (component.id == resource || std::find(component.bindings.begin(), component.bindings.end(), resource)
+                    != component.bindings.end()) candidates.push_back(&component);
+        if (candidates.empty()) {
+            result.issues.push_back({EnvironmentIssueCode::MissingResource, {}, resource});
+            continue;
+        }
+        if (candidates.size() != 1) {
+            result.issues.push_back({EnvironmentIssueCode::AmbiguousResource, {}, resource});
+            continue;
+        }
+        const auto& component = *candidates.front();
+        if (!component.enabled) {
+            result.issues.push_back({EnvironmentIssueCode::DisabledResource, component.id, resource});
+            continue;
+        }
+        selected.insert(component.id);
+        const auto& capabilities = component.capabilities.empty() ? component.bindings : component.capabilities;
+        if (std::find(capabilities.begin(), capabilities.end(), capability) == capabilities.end())
+            result.issues.push_back({EnvironmentIssueCode::CapabilityMismatch, component.id, capability});
+    }
+    result.requiredComponents.assign(selected.begin(), selected.end());
+    const auto lower = [](std::string value) {
+        std::transform(value.begin(), value.end(), value.begin(),
+            [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        return value;
+    };
+    std::set<std::string> addresses, ports;
+    for (const auto& address : inventory.localAddresses) addresses.insert(lower(address));
+    for (const auto& port : inventory.serialPorts) ports.insert(lower(port));
+    for (const auto& id : selected) {
+        const auto* component = findComponentById(profile, id);
+        if (!component) continue;
+        const auto address = component->configuration.find("local_address");
+        if (address != component->configuration.end() && !address->second.empty()
+            && address->second != "0.0.0.0" && address->second != "::"
+            && !addresses.count(lower(address->second)))
+            result.issues.push_back({EnvironmentIssueCode::MissingLocalAddress, id, address->second});
+        for (const auto* key : {"port", "port_bi"}) {
+            const auto found = component->configuration.find(key);
+            if (found == component->configuration.end()) continue;
+            const auto port = lower(found->second);
+            const bool isCom = port.size() > 3 && port.compare(0, 3, "com") == 0
+                && std::all_of(port.begin() + 3, port.end(), [](unsigned char c) { return std::isdigit(c); });
+            if (isCom && !ports.count(port))
+                result.issues.push_back({EnvironmentIssueCode::MissingSerialPort, id, found->second});
+            const bool numeric = !port.empty() && std::all_of(port.begin(), port.end(),
+                [](unsigned char c) { return std::isdigit(c); });
+            if (!port.empty() && !isCom && !numeric)
+                result.issues.push_back({EnvironmentIssueCode::UncheckedPort, id, found->second});
+        }
+    }
+    std::sort(result.issues.begin(), result.issues.end(), [](const auto& a, const auto& b) {
+        if (a.code != b.code) return a.code < b.code;
+        if (a.component != b.component) return a.component < b.component;
+        return a.subject < b.subject;
+    });
+    return result;
+}
+
 void instantiateProfile(
     const StandProfile& profile,
     EquipmentPluginManager& manager,
