@@ -1568,6 +1568,18 @@ int runParent()
         require(source && start && stop && status && source->count() == 2 && start->isEnabled(),
                 "recording controls are unavailable");
         source->setCurrentIndex(source->findData(QStringLiteral("ui-one")));
+        const auto cancelledPath = directory.filePath(QStringLiteral("changed-source.jsonl"));
+        QTimer::singleShot(0, [&] {
+            auto* dialog = qobject_cast<QFileDialog*>(QApplication::activeModalWidget());
+            if (!dialog) return;
+            monitor.setRepository(nullptr);
+            monitor.setRepository(&repository);
+            dialog->selectFile(cancelledPath);
+            QMetaObject::invokeMethod(dialog, "accept", Qt::DirectConnection);
+        });
+        start->click();
+        require(!QFileInfo::exists(cancelledPath) && status->text().contains(QStringLiteral("Источник изменился")),
+                "recording started after repository changed during file selection");
         QTimer::singleShot(0, [&] {
             auto* dialog = qobject_cast<QFileDialog*>(QApplication::activeModalWidget());
             if (!dialog) return;

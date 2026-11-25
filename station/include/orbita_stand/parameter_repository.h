@@ -25,8 +25,13 @@ struct ParameterObservationBatch {
     bool overflow = false;
 };
 
+struct ParameterStreamSample {
+    ParameterSample sample;
+    std::chrono::system_clock::time_point receivedAt;
+    std::chrono::steady_clock::duration unchangedFor{};
+};
 struct ParameterStreamBatch {
-    std::vector<ParameterSample> samples;
+    std::vector<ParameterStreamSample> samples;
     bool overflow = false;
     bool closed = false;
     bool sourceStopped = false;
@@ -44,14 +49,17 @@ public:
     ParameterProvenance provenance() const noexcept { return provenance_; }
 private:
     friend class ParameterRepository;
-    void append(const ParameterSample& sample);
+    bool beginRead();
+    void finishRead(const std::vector<ParameterStreamSample>& samples, bool failed = false) noexcept;
     void closeFromSource() noexcept;
     std::mutex mutex_;
-    std::vector<ParameterSample> queue_;
+    std::vector<ParameterStreamSample> queue_;
     std::size_t capacity_;
     ParameterProvenance provenance_;
     bool overflow_ = false;
     bool closed_ = false;
+    bool closing_ = false;
+    std::size_t pendingReads_ = 0;
     bool sourceStopped_ = false;
 };
 

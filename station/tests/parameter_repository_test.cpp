@@ -2,6 +2,7 @@
 #include "orbita_stand/parameter_procedures.h"
 #include <chrono>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 #include <thread>
 #include <future>
@@ -86,6 +87,26 @@ int main()
             auto active = subscription.get();
             require(returned && active && active->provenance() == ParameterProvenance::Unknown,
                     "subscription blocked or invented the source provenance");
+            require(active->take().samples.empty(), "subscription included a read started before it existed");
+        }
+        {
+            // Остановка не ждёт прибор в GUI, но уже начатый опрос должен
+            // попасть в очередь до финальной отметки полного файла.
+            ParameterRepository repository;
+            auto source = std::make_unique<SlowSimulator>();
+            auto* slow = source.get();
+            repository.add(std::move(source));
+            auto subscription = repository.subscribeStream("slow");
+            std::thread reader([&] { repository.refresh("slow", "value"); });
+            while (!slow->entered.load()) std::this_thread::yield();
+            subscription->close();
+            const bool closedEarly = subscription->take().closed;
+            slow->release = true;
+            reader.join();
+            const auto finalBatch = subscription->take();
+            require(!closedEarly && finalBatch.closed && !finalBatch.overflow && finalBatch.samples.size() == 1
+                        && finalBatch.samples[0].sample.parameterKey == "value",
+                    "in-flight read was lost when recording stopped");
         }
         {
             // Файл содержит фактические результаты выбранного источника и
@@ -121,9 +142,11 @@ int main()
                         && recording.status().provenance == ParameterProvenance::Simulated
                         && QJsonDocument::fromJson(partial[1]).object().value("value").toDouble() == 12,
                     "partial file lost source or observed value");
+            repository.refresh("one", "current");
+            require(wait([&] { return recording.status().samplesWritten == 2; }), "second parameter was not recorded");
             firstSource.fail = true;
             repository.refresh("one", "voltage");
-            require(wait([&] { return recording.status().samplesWritten == 2; }),
+            require(wait([&] { return recording.status().samplesWritten == 4; }),
                     "disconnection was not recorded");
             recording.requestStop();
             require(wait([&] { return recording.status().state == ParameterRecordingState::Completed; }),
@@ -131,11 +154,14 @@ int main()
             require(file.open(QIODevice::ReadOnly), "completed recording unavailable");
             const auto complete = file.readAll().split('\n');
             file.close();
-            require(complete.size() == 5, "unexpected number of recording lines");
-            const auto disconnected = QJsonDocument::fromJson(complete[2]).object();
-            require(disconnected.value("quality").toString() == "disconnected"
+            require(complete.size() == 7, "unexpected number of recording lines");
+            const auto disconnectedOther = QJsonDocument::fromJson(complete[3]).object();
+            const auto disconnected = QJsonDocument::fromJson(complete[4]).object();
+            require(disconnectedOther.value("parameter").toString() == "current"
+                        && disconnectedOther.value("quality").toString() == "disconnected"
+                        && disconnected.value("quality").toString() == "disconnected"
                         && disconnected.value("value").isNull()
-                        && QJsonDocument::fromJson(complete[3]).object().value("complete").toBool(),
+                        && QJsonDocument::fromJson(complete[5]).object().value("complete").toBool(),
                     "recording did not retain its final marker or included another source");
             ParameterStreamRecording badPath(repository, "one",
                 directory.filePath(QStringLiteral("missing/output.jsonl")).toUtf8().toStdString());
@@ -154,6 +180,55 @@ int main()
                     "source shutdown was incorrectly reported as a complete recording");
         }
         {
+            QTemporaryDir directory;
+            State state;
+            ParameterRepository repository;
+            repository.add(std::make_unique<Simulator>("validity", 12, state));
+            const auto path = directory.filePath(QStringLiteral("validity.jsonl"));
+            ParameterStreamRecording recording(repository, "validity", path.toUtf8().toStdString());
+            const auto wait = [](const auto& predicate) {
+                const auto deadline = std::chrono::steady_clock::now() + 3s;
+                while (!predicate() && std::chrono::steady_clock::now() < deadline)
+                    std::this_thread::sleep_for(10ms);
+                return predicate();
+            };
+            require(wait([&] { return recording.status().state == ParameterRecordingState::Recording; }),
+                    "validity recording did not start");
+            state.timestampOffsetMs = 60000;
+            repository.refresh("validity", "value");
+            state.timestampOffsetMs = -60000;
+            repository.refresh("validity", "value");
+            state.timestampOffsetMs = 0;
+            state.nextValue = std::numeric_limits<double>::quiet_NaN(); state.advance = true;
+            repository.refresh("validity", "value");
+            // Будущее время первой копии через пять секунд станет свежим по
+            // системным часам, но повтор всё равно должен устареть по steady_clock.
+            state.timestampOffsetMs = 3000;
+            state.nextValue = 12; state.advance = true;
+            repository.refresh("validity", "repeat");
+            std::this_thread::sleep_for(5100ms);
+            repository.refresh("validity", "repeat");
+            recording.requestStop();
+            require(wait([&] { return recording.status().state == ParameterRecordingState::Completed; }),
+                    "validity recording did not finish");
+            QFile file(path);
+            require(file.open(QIODevice::ReadOnly), "validity recording unavailable");
+            const auto lines = file.readAll().split('\n');
+            require(lines.size() == 8, "validity recording lost an observation");
+            const auto future = QJsonDocument::fromJson(lines[1]).object();
+            const auto stale = QJsonDocument::fromJson(lines[2]).object();
+            const auto nonFinite = QJsonDocument::fromJson(lines[3]).object();
+            const auto repeated = QJsonDocument::fromJson(lines[5]).object();
+            require(future.value("quality").toString() == "invalid"
+                        && future.value("source_quality").toString() == "good"
+                        && stale.value("quality").toString() == "stale"
+                        && nonFinite.value("quality").toString() == "invalid"
+                        && nonFinite.value("value").isNull()
+                        && repeated.value("quality").toString() == "stale"
+                        && repeated.value("validity_reason").toString() == "unchanged_sample",
+                    "recording accepted future, stale or non-finite samples as valid");
+        }
+        {
             // Два источника продолжают опрашиваться независимо; подписка
             // получает только выбранный источник и не теряет очередь при остановке.
             State recordedState, otherState;
@@ -168,9 +243,9 @@ int main()
             repository.refresh("recorded", "voltage");
             const auto saved = stream->take();
             require(saved.closed && !saved.overflow && saved.samples.size() == 2
-                        && saved.samples[0].parameterKey == "voltage"
-                        && saved.samples[1].parameterKey == "current"
-                        && saved.samples[0].timestamp != std::chrono::system_clock::time_point{}
+                        && saved.samples[0].sample.parameterKey == "voltage"
+                        && saved.samples[1].sample.parameterKey == "current"
+                        && saved.samples[0].sample.timestamp != std::chrono::system_clock::time_point{}
                         && otherState.reads == 1, "selected source stream lost identity or final samples");
             auto limited = repository.subscribeStream("recorded", 1);
             repository.refresh("recorded", "voltage");
@@ -184,8 +259,12 @@ int main()
             repository.refresh("other", "voltage");
             const auto failed = failedStream->take();
             const auto other = repository.latest("other", "voltage", 1s);
-            require(failed.samples.size() == 1 && failed.samples[0].quality == SampleQuality::Disconnected
-                        && !failed.samples[0].diagnostic.empty() && other
+            require(failed.samples.size() == 2
+                        && failed.samples[0].sample.parameterKey == "current"
+                        && failed.samples[0].sample.quality == SampleQuality::Disconnected
+                        && failed.samples[1].sample.parameterKey == "voltage"
+                        && failed.samples[1].sample.quality == SampleQuality::Disconnected
+                        && !failed.samples[1].sample.diagnostic.empty() && other
                         && other->quality == SampleQuality::Good && other->physicalValue == 34,
                     "source failure was not captured independently from the second source");
             auto shutdown = repository.subscribeStream("other");

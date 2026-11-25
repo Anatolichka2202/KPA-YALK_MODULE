@@ -26,6 +26,7 @@
 #include <QLineEdit>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QPointer>
 #include <QSaveFile>
 #include <QStandardPaths>
 #include <QUuid>
@@ -161,6 +162,7 @@ MultiSourceMonitor::~MultiSourceMonitor()
 void MultiSourceMonitor::setRepository(orbita::stand::ParameterRepository* repository)
 {
     if (repository_ != repository) {
+        ++repositoryGeneration_;
         if (recording_) { recording_->requestStop(); recordingStopping_ = true; }
         // Одинаковое имя источника в другом профиле не доказывает, что это
         // тот же прибор. История и диапазоны предыдущей сессии не переносятся.
@@ -205,13 +207,24 @@ void MultiSourceMonitor::refreshRecordingSources()
 void MultiSourceMonitor::startRecording()
 {
     if (!repository_ || recording_ || recordingSource_->currentIndex() < 0) return;
+    QPointer<MultiSourceMonitor> guard(this);
+    auto* expectedRepository = repository_;
+    const auto expectedGeneration = repositoryGeneration_;
+    const auto expectedSource = recordingSource_->currentData().toString();
     const auto path = QFileDialog::getSaveFileName(this, QStringLiteral("Записать отсчёты источника"), {},
         QStringLiteral("JSON Lines (*.jsonl)"), nullptr,
         QFileDialog::DontUseNativeDialog | QFileDialog::DontConfirmOverwrite);
-    if (path.isEmpty()) return;
+    if (!guard || path.isEmpty()) return;
+    // Во вложенном цикле диалога профиль или окно могли быть пересозданы.
+    // Старый указатель и выбранный до диалога источник нельзя использовать.
+    if (repository_ != expectedRepository || repositoryGeneration_ != expectedGeneration
+        || recording_ || recordingSource_->currentData().toString() != expectedSource) {
+        recordingStatus_->setText(QStringLiteral("Источник изменился; выберите его и запустите запись снова"));
+        return;
+    }
     try {
         recording_ = std::make_unique<orbita::stand::ParameterStreamRecording>(
-            *repository_, recordingSource_->currentData().toString().toUtf8().toStdString(),
+            *expectedRepository, expectedSource.toUtf8().toStdString(),
             path.toUtf8().toStdString());
         recordingStopping_ = false;
         recordingStatus_->setText(QStringLiteral("Подготовка записи: %1").arg(path));

@@ -18,24 +18,27 @@ ParameterStreamSubscription::ParameterStreamSubscription(std::size_t capacity, P
     if (!capacity_) throw std::invalid_argument("Размер очереди записи должен быть больше нуля");
 }
 
-void ParameterStreamSubscription::append(const ParameterSample& sample)
+bool ParameterStreamSubscription::beginRead()
 {
     std::lock_guard<std::mutex> lock(mutex_);
-    if (closed_) return;
-    if (queue_.size() >= capacity_) {
-        // Не перезаписываем уже принятые данные и явно завершаем неполный поток.
-        overflow_ = true;
-        closed_ = true;
-        return;
+    if (closed_ || closing_) return false;
+    ++pendingReads_;
+    return true;
+}
+
+void ParameterStreamSubscription::finishRead(const std::vector<ParameterStreamSample>& samples, bool failed) noexcept
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (failed) { overflow_ = true; closing_ = true; }
+    if (!overflow_) {
+        for (const auto& sample : samples) {
+            if (queue_.size() >= capacity_) { overflow_ = true; closing_ = true; break; }
+            try { queue_.push_back(sample); }
+            catch (...) { overflow_ = true; closing_ = true; break; }
+        }
     }
-    try {
-        queue_.push_back(sample);
-    } catch (...) {
-        // Потеря возможности сохранить отсчёт завершает только подписку;
-        // опрос источника и другие потребители продолжаются.
-        overflow_ = true;
-        closed_ = true;
-    }
+    if (pendingReads_ > 0) --pendingReads_;
+    if (closing_ && pendingReads_ == 0) closed_ = true;
 }
 
 ParameterStreamBatch ParameterStreamSubscription::take()
@@ -52,14 +55,16 @@ ParameterStreamBatch ParameterStreamSubscription::take()
 void ParameterStreamSubscription::close() noexcept
 {
     std::lock_guard<std::mutex> lock(mutex_);
-    closed_ = true;
+    closing_ = true;
+    if (pendingReads_ == 0) closed_ = true;
 }
 
 void ParameterStreamSubscription::closeFromSource() noexcept
 {
     std::lock_guard<std::mutex> lock(mutex_);
-    if (!closed_) sourceStopped_ = true;
-    closed_ = true;
+    if (!closed_ && !closing_) sourceStopped_ = true;
+    closing_ = true;
+    if (pendingReads_ == 0) closed_ = true;
 }
 
 struct ParameterRepository::Source {
@@ -114,6 +119,20 @@ ParameterSample ParameterRepository::refresh(const std::string& id, const std::s
     const auto source = find(id);
     std::lock_guard<std::mutex> ioLock(source->io);
     if (source->closed) throw std::runtime_error("Источник параметров закрыт");
+    std::vector<std::shared_ptr<ParameterStreamSubscription>> active;
+    try {
+        {
+            std::lock_guard<std::mutex> lock(source->subscribersMutex);
+            for (auto it = source->subscribers.begin(); it != source->subscribers.end();) {
+                if (auto subscriber = it->lock()) {
+                    active.push_back(subscriber);
+                    if (!subscriber->beginRead()) active.pop_back();
+                    ++it;
+                } else {
+                    it = source->subscribers.erase(it);
+                }
+            }
+        }
     ParameterSample result;
     bool failed = false;
     try {
@@ -126,6 +145,9 @@ ParameterSample ParameterRepository::refresh(const std::string& id, const std::s
         result.diagnostic = error.what();
         failed = true;
     }
+    const auto receivedAt = std::chrono::system_clock::now();
+    const auto receivedSteady = std::chrono::steady_clock::now();
+    std::vector<ParameterStreamSample> streamEvents;
     {
         std::lock_guard<std::mutex> lock(source->cacheMutex);
         // Отказ опроса трактуется как отключение источника; его остальные
@@ -134,7 +156,10 @@ ParameterSample ParameterRepository::refresh(const std::string& id, const std::s
             for (auto& item : source->cache) {
                 item.second.sample.quality = SampleQuality::Disconnected;
                 item.second.sample.diagnostic = result.diagnostic;
-                if (item.first != key) item.second.append(item.second.sample);
+                if (item.first != key) {
+                    item.second.append(item.second.sample);
+                    streamEvents.push_back({item.second.sample, receivedAt, {}});
+                }
             }
         }
         auto& entry = source->cache[key];
@@ -142,26 +167,25 @@ ParameterSample ParameterRepository::refresh(const std::string& id, const std::s
             // Повтор старого отсчёта не продлевает свежесть даже после сбоя.
             if (!entry.lastGood || result.sequence != entry.lastGood->sequence
                 || result.timestamp != entry.lastGood->timestamp)
-                entry.received = std::chrono::steady_clock::now();
+                entry.received = receivedSteady;
             entry.lastGood = result;
         }
         entry.sample = result;
         entry.append(result);
+        streamEvents.push_back({result, receivedAt,
+            result.quality == SampleQuality::Good ? receivedSteady - entry.received
+                                                   : std::chrono::steady_clock::duration{}});
     }
     // Подписчики получают тот же результат, что и остальные потребители;
     // накопление не обращается к источнику повторно и не выполняет файловый IO.
-    {
-        std::lock_guard<std::mutex> lock(source->subscribersMutex);
-        for (auto it = source->subscribers.begin(); it != source->subscribers.end();) {
-            if (auto subscriber = it->lock()) {
-                subscriber->append(result);
-                ++it;
-            } else {
-                it = source->subscribers.erase(it);
-            }
-        }
-    }
+    for (const auto& subscriber : active) subscriber->finishRead(streamEvents);
     return result;
+    } catch (...) {
+        // Если публикация не состоялась, файл не должен выглядеть полным.
+        for (const auto& subscriber : active)
+            subscriber->finishRead({}, true);
+        throw;
+    }
 }
 
 std::shared_ptr<ParameterStreamSubscription> ParameterRepository::subscribeStream(
@@ -283,16 +307,36 @@ struct ParameterStreamRecording::Impl {
             setStatus(ParameterRecordingState::Recording);
             for (;;) {
                 auto batch = subscription->take();
-                for (const auto& sample : batch.samples) {
+                for (const auto& observation : batch.samples) {
+                    const auto& sample = observation.sample;
                     const auto nanos = std::chrono::duration_cast<std::chrono::nanoseconds>(
                         sample.timestamp.time_since_epoch()).count();
-                    const char* quality = sample.quality == SampleQuality::Good ? "good"
+                    const auto receivedNanos = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                        observation.receivedAt.time_since_epoch()).count();
+                    const char* sourceQuality = sample.quality == SampleQuality::Good ? "good"
                         : sample.quality == SampleQuality::Stale ? "stale"
                         : sample.quality == SampleQuality::Disconnected ? "disconnected" : "invalid";
+                    const char* quality = sourceQuality;
+                    const char* validityReason = "";
+                    if (sample.quality == SampleQuality::Good) {
+                        // Используем тот же пятисекундный предел, что и монитор;
+                        // время сравниваем с получением, а не с задержкой записи.
+                        if (sample.timestamp == std::chrono::system_clock::time_point{}
+                            || sample.timestamp > observation.receivedAt) {
+                            quality = "invalid"; validityReason = "invalid_timestamp";
+                        } else if (observation.receivedAt - sample.timestamp > std::chrono::seconds(5)) {
+                            quality = "stale"; validityReason = "stale_timestamp";
+                        } else if (observation.unchangedFor > std::chrono::seconds(5)) {
+                            quality = "stale"; validityReason = "unchanged_sample";
+                        } else if (!std::isfinite(sample.rawValue) || !std::isfinite(sample.physicalValue)) {
+                            quality = "invalid"; validityReason = "non_finite_value";
+                        }
+                    }
                     QJsonObject object{{"type", "sample"},
                         {"parameter", QString::fromUtf8(sample.parameterKey.data(), static_cast<int>(sample.parameterKey.size()))},
                         {"timestamp_ns", sample.timestamp == std::chrono::system_clock::time_point{}
                             ? QJsonValue(QJsonValue::Null) : QJsonValue(QString::number(nanos))},
+                        {"received_ns", QString::number(receivedNanos)},
                         {"sequence", QString::number(sample.sequence)},
                         {"raw", sample.quality == SampleQuality::Good && std::isfinite(sample.rawValue)
                             ? QJsonValue(sample.rawValue) : QJsonValue(QJsonValue::Null)},
@@ -300,6 +344,7 @@ struct ParameterStreamRecording::Impl {
                             ? QJsonValue(sample.physicalValue) : QJsonValue(QJsonValue::Null)},
                         {"unit", QString::fromUtf8(sample.unit.data(), static_cast<int>(sample.unit.size()))},
                         {"quality", quality},
+                        {"source_quality", sourceQuality}, {"validity_reason", validityReason},
                         {"diagnostic", QString::fromUtf8(sample.diagnostic.data(), static_cast<int>(sample.diagnostic.size()))}};
                     write(object);
                 }

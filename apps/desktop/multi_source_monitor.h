@@ -69,6 +69,7 @@ private:
     QLabel* recordingStatus_ = nullptr;
     std::unique_ptr<orbita::stand::ParameterStreamRecording> recording_;
     bool recordingStopping_ = false;
+    std::uint64_t repositoryGeneration_ = 0;
     QSplitter* splitter_ = nullptr;
     QWidget* graphPanel_ = nullptr;
     struct Series {
