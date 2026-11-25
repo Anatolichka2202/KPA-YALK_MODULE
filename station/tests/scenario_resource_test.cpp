@@ -591,6 +591,32 @@ int main(int argc, char** argv)
         } catch (const std::exception&) { oldTableRejected = true; }
         require(oldTableRejected, "repeat table accepted by old schema");
 
+        // Три разных прохода и остановка во втором проверяют, что сценарий
+        // не выполняет следующее воздействие после запроса оператора.
+        auto threePasses = tableScenario;
+        threePasses.steps[0].repeatCount = 3;
+        threePasses.steps[0].repeatRows.push_back({{"delay", "duration_ms", "60"}});
+        require(timing.validate(threePasses).empty(), "three-pass table rejected");
+        const auto completedPasses = timing.run(threePasses, equipment, "profile", "SN", false);
+        const auto& passes = completedPasses.steps.at(0).children;
+        require(completedPasses.verdict == RunVerdict::Ok && passes.size() == 3
+                    && passes[0].children.at(0).appliedOverrides.at("duration_ms") == "20"
+                    && passes[1].children.at(0).appliedOverrides.at("duration_ms") == "40"
+                    && passes[2].children.at(0).appliedOverrides.at("duration_ms") == "60"
+                    && passes[0].nodeId != passes[1].nodeId && passes[1].nodeId != passes[2].nodeId
+                    && passes[0].nodeId != passes[2].nodeId,
+                "three passes lost their values or occurrence identities");
+        const auto stoppedPasses = timing.run(threePasses, equipment, "profile", "SN", false,
+            [&timing](const RunEvent& event) {
+                if (event.stage == "START" && event.message == "Проход 2 из 3") timing.requestStop();
+            });
+        require(stoppedPasses.verdict == RunVerdict::Aborted
+                    && stoppedPasses.steps.at(0).children.size() == 2
+                    && stoppedPasses.steps.at(0).children.at(1).verdict == RunVerdict::Aborted
+                    && stoppedPasses.steps.at(0).children.at(0).nodeId == passes[0].nodeId
+                    && stoppedPasses.steps.at(0).children.at(1).nodeId == passes[1].nodeId,
+                "stopping the second pass allowed a third pass");
+
         ScenarioEngine switching;
         registerSwitchProcedures(switching);
         auto switchScenario = scenario;

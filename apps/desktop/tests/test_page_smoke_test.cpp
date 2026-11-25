@@ -490,6 +490,59 @@ int main(int argc, char** argv)
                 "operator could not explicitly correct invalid repeat");
     }
     {
+        // Проверяем полный путь через редактор: значения трёх проходов должны
+        // пережить запись на диск и повторное открытие оператором.
+        const auto path = QDir(scenarioDirectory).filePath(QStringLiteral("repeat_table_roundtrip.yaml"));
+        QFile file(path);
+        require(file.open(QIODevice::WriteOnly), "cannot write repeat table draft");
+        file.write("schema: 2\nid: repeat-table\ntitle: Repeat\nversion: 1\ncatalog_version: 1\nstate: draft\nsteps:\n"
+                   "  - id: group\n    title: Group\n    repeat_count: 3\n    steps:\n"
+                   "      - id: delay\n        title: Delay\n        tu: test\n        procedure: station.delay\n"
+                   "        args:\n          duration_ms: 10\n");
+        file.close();
+        ScenarioVisualEditor editor(path);
+        auto* configure = editor.findChild<QPushButton*>(QStringLiteral("configureRepeatTable"));
+        auto* save = editor.findChild<QPushButton*>(QStringLiteral("saveScenarioVisual"));
+        require(configure && configure->isEnabled() && save, "repeat table controls unavailable");
+        QTimer::singleShot(0, [] {
+            auto* dialog = qobject_cast<QDialog*>(QApplication::activeModalWidget());
+            auto* table = dialog ? dialog->findChild<QTableWidget*>(QStringLiteral("repeatValuesTable")) : nullptr;
+            auto* buttons = dialog ? dialog->findChild<QDialogButtonBox*>() : nullptr;
+            require(table && buttons && table->rowCount() == 3 && table->columnCount() == 1,
+                    "three-pass table not displayed");
+            for (int row = 0; row < 3; ++row) table->item(row, 0)->setText(QString::number((row + 1) * 20));
+            buttons->button(QDialogButtonBox::Ok)->click();
+        });
+        configure->click();
+        save->click();
+        const auto saved = orbita::stand::loadScenarioYaml(path.toStdString());
+        require(saved.steps.size() == 1 && saved.steps[0].repeatCount == 3
+                    && saved.steps[0].repeatRows.size() == 3,
+                "three-pass table was not saved and loaded");
+        for (std::size_t row = 0; row < 3; ++row) {
+            const auto& values = saved.steps[0].repeatRows[row];
+            require(values.size() == 1 && values[0].stepId == "delay"
+                        && values[0].argument == "duration_ms"
+                        && values[0].value == std::to_string((row + 1) * 20),
+                    "repeat table roundtrip changed a target or value");
+        }
+        ScenarioVisualEditor reopened(path);
+        auto* reopenTable = reopened.findChild<QPushButton*>(QStringLiteral("configureRepeatTable"));
+        require(reopenTable && reopenTable->isEnabled(), "saved repeat table cannot be reopened");
+        QTimer::singleShot(0, [] {
+            auto* dialog = qobject_cast<QDialog*>(QApplication::activeModalWidget());
+            auto* table = dialog ? dialog->findChild<QTableWidget*>(QStringLiteral("repeatValuesTable")) : nullptr;
+            auto* buttons = dialog ? dialog->findChild<QDialogButtonBox*>() : nullptr;
+            require(table && buttons && table->rowCount() == 3 && table->columnCount() == 1,
+                    "saved repeat table not displayed");
+            for (int row = 0; row < 3; ++row)
+                require(table->item(row, 0)->text() == QString::number((row + 1) * 20),
+                        "reopened repeat table lost a value");
+            buttons->button(QDialogButtonBox::Cancel)->click();
+        });
+        reopenTable->click();
+    }
+    {
         const auto delayPath = QDir(scenarioDirectory).filePath(QStringLiteral("delay_draft.yaml"));
         QFile file(delayPath);
         require(file.open(QIODevice::WriteOnly), "cannot write delay draft");
