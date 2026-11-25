@@ -159,7 +159,7 @@ if(BUILD_TESTING)
     add_test(NAME stand.parameter_repository COMMAND parameter_repository_test)
 
     add_executable(station_session_test tests/station_session_test.cpp)
-    target_link_libraries(station_session_test PRIVATE orbita_stand_runtime Qt6::Core)
+    target_link_libraries(station_session_test PRIVATE orbita_stand_runtime Qt6::Core Qt6::Network)
     add_test(NAME stand.station_session COMMAND station_session_test)
 
     if(WIN32)

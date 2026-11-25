@@ -3,9 +3,15 @@
 
 #include <QCoreApplication>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QTemporaryDir>
+#include <QTcpServer>
+#include <QTcpSocket>
 
+#include <algorithm>
+#include <atomic>
 #include <future>
+#include <mutex>
 #include <thread>
 #include <iostream>
 #include <stdexcept>
@@ -18,6 +24,55 @@ void require(bool condition, const char* message)
 {
     if (!condition) throw std::runtime_error(message);
 }
+
+class FakeScpiServer {
+public:
+    FakeScpiServer()
+    {
+        auto ready = port_.get_future();
+        worker_ = std::thread([this] {
+            QTcpServer server;
+            if (!server.listen(QHostAddress::LocalHost, 0)) {
+                port_.set_value(0);
+                return;
+            }
+            port_.set_value(server.serverPort());
+            while (!stopping_) {
+                if (!server.waitForNewConnection(50)) continue;
+                std::unique_ptr<QTcpSocket> socket(server.nextPendingConnection());
+                if (!socket) continue;
+                QElapsedTimer deadline;
+                deadline.start();
+                while (!socket->canReadLine() && deadline.elapsed() < 1000) {
+                    if (!socket->waitForReadyRead(static_cast<int>(1000 - deadline.elapsed()))) break;
+                }
+                if (!socket->canReadLine()) continue;
+                const auto command = socket->readLine().trimmed();
+                {
+                    std::lock_guard<std::mutex> lock(mutex_);
+                    commands_.push_back(command);
+                }
+                socket->write("OK\n");
+                socket->waitForBytesWritten(1000);
+            }
+        });
+        portNumber_ = ready.get();
+    }
+    ~FakeScpiServer() { stopping_ = true; worker_.join(); }
+    quint16 port() const { return portNumber_; }
+    int count(const QByteArray& command) const
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return static_cast<int>(std::count(commands_.begin(), commands_.end(), command));
+    }
+private:
+    std::promise<quint16> port_;
+    quint16 portNumber_ = 0;
+    std::atomic_bool stopping_{false};
+    mutable std::mutex mutex_;
+    std::vector<QByteArray> commands_;
+    std::thread worker_;
+};
 
 } // namespace
 
@@ -268,6 +323,8 @@ int main(int argc, char** argv)
         const QDir executableDirectory(QCoreApplication::applicationDirPath());
         const QString builtPluginDirectory = QDir(
             executableDirectory.filePath(QStringLiteral("../plugins"))).absolutePath();
+        FakeScpiServer scpi;
+        require(scpi.port() != 0, "fake SCPI server unavailable");
         StandProfile readinessProfile;
         readinessProfile.id = "readiness-session-test";
         readinessProfile.version = "1";
@@ -278,7 +335,7 @@ int main(int argc, char** argv)
             "orbita.tcp_scpi_bench",
             true,
             {"power.dut"},
-            {{"host", "127.0.0.1"}, {"port", "9"}, {"timeout_ms", "1"}},
+            {{"host", "127.0.0.1"}, {"port", std::to_string(scpi.port())}, {"timeout_ms", "1000"}},
             {"power.dc_supply"},
         });
 
@@ -297,6 +354,24 @@ int main(int argc, char** argv)
                 "deferred readiness did not retain the created equipment instance");
         require(readiness.equipment().resources().empty(),
                 "unprobed deferred equipment was exported prematurely");
+
+        // Внешний владелец сохраняет прибор, ещё не добавленный в registry:
+        // остановка сессии обязана выключить его до освобождения владения.
+        device->invoke("power.dc_supply", "output", {{"enabled", "true"}});
+        readiness.safeStopAll(readinessActivity);
+        require(scpi.count("OUTP OFF") == 1, "session safe stop missed unbound equipment");
+        device->invoke("power.dc_supply", "output", {{"enabled", "true"}});
+        readiness.scenarioEngine().registerProcedure("test.measure", [](const auto&, auto&) {
+            return ProcedureResult{RunVerdict::Ok, "done", {}};
+        });
+        const auto failedCheckpoint = readiness.runScenario(scenario, "profile", "SN", false,
+            {}, readinessActivity, [](const ScenarioRunResult&) { throw std::runtime_error("checkpoint unavailable"); });
+        require(failedCheckpoint.persistenceFailed && scpi.count("OUTP OFF") == 2,
+                "early checkpoint failure missed unbound prepared equipment");
+        device->invoke("power.dc_supply", "output", {{"enabled", "true"}});
+        readiness.clearPhysicalEquipment(readinessActivity);
+        require(scpi.count("OUTP OFF") == 3, "physical clear missed unbound equipment");
+        device = readiness.createEquipmentComponent("bench-power", readinessActivity);
 
         readiness.bindEquipmentComponent("bench-power", device, false, readinessActivity);
         require(readiness.equipment().hasResource("bench-power")
@@ -330,6 +405,12 @@ int main(int argc, char** argv)
                 "physical equipment reset removed an application built-in service");
 
         readiness.clearEquipment(readinessActivity);
+        auto unbound = readiness.createEquipmentComponent("bench-power", readinessActivity);
+        unbound->invoke("power.dc_supply", "output", {{"enabled", "true"}});
+        const int stopsBeforeClear = scpi.count("OUTP OFF");
+        readiness.clearEquipment(readinessActivity);
+        require(scpi.count("OUTP OFF") == stopsBeforeClear + 1,
+                "full clear missed unbound equipment");
         readinessActivity.reset();
         require(!readiness.equipment().hasCapability("test.scenario_service"),
                 "full equipment reset preserved a built-in service unexpectedly");

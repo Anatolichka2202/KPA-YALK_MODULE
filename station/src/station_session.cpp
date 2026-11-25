@@ -34,6 +34,43 @@ ScenarioRunResult rejectedRun()
                              busyReason, RunVerdict::Incomplete});
     return result;
 }
+
+// Реестр маршрутизирует вызовы, но подготовка может удерживать прибор ещё
+// до регистрации маршрута. Завершение сценария должно охватывать оба набора.
+class SessionEquipmentProvider final : public ICapabilityProvider {
+public:
+    SessionEquipmentProvider(EquipmentRegistry& registry,
+        const std::vector<std::shared_ptr<EquipmentDevice>>& devices)
+        : registry_(registry), devices_(devices) {}
+    bool hasCapability(const std::string& capability) const override
+    { return registry_.hasCapability(capability); }
+    std::string invoke(const std::string& capability, const std::string& operation,
+        const std::map<std::string, std::string>& arguments) override
+    { return registry_.invoke(capability, operation, arguments); }
+    bool resourceHasCapability(const std::string& resource, const std::string& capability) const override
+    { return registry_.resourceHasCapability(resource, capability); }
+    std::string invokeResource(const std::string& resource, const std::string& capability,
+        const std::string& operation, const std::map<std::string, std::string>& arguments) override
+    { return registry_.invokeResource(resource, capability, operation, arguments); }
+    void safeStopAll() noexcept override
+    {
+        registry_.safeStopAll();
+        stopRetained();
+    }
+    std::map<std::string, SafeStopResult> safeStopResources(const std::set<std::string>& resources) noexcept override
+    {
+        auto result = registry_.safeStopResources(resources);
+        stopRetained();
+        return result;
+    }
+private:
+    void stopRetained() noexcept
+    {
+        for (const auto& device : devices_) if (device) device->safeStop();
+    }
+    EquipmentRegistry& registry_;
+    const std::vector<std::shared_ptr<EquipmentDevice>>& devices_;
+};
 }
 
 StationSession::Activity::~Activity()
@@ -120,7 +157,8 @@ ScenarioRunResult StationSession::runScenario(const ScenarioDefinition& scenario
         std::atomic_bool& executing;
         ~ExecutionGuard() { executing.store(false); }
     } guard{activity->executing_};
-    return runScenarioWithEvidence(*scenarioEngine_, equipment_, scenario,
+    SessionEquipmentProvider equipment(equipment_, equipmentDevices_);
+    return runScenarioWithEvidence(*scenarioEngine_, equipment, scenario,
         std::move(profileVersion), std::move(objectSerial), allowPartial,
         std::move(progressSink), &leases_, std::move(checkpointSink));
 }
@@ -140,7 +178,8 @@ ScenarioRunResult StationSession::runWorkflow(const ProjectDefinition& project,
         std::atomic_bool& executing;
         ~ExecutionGuard() { executing.store(false); }
     } guard{activity->executing_};
-    return runProjectWorkflow(project, workflowId, *scenarioEngine_, equipment_,
+    SessionEquipmentProvider equipment(equipment_, equipmentDevices_);
+    return runProjectWorkflow(project, workflowId, *scenarioEngine_, equipment,
         std::move(profileVersion), std::move(objectSerial), allowPartial,
         std::move(context), scenarioOverride, std::move(progressSink), &leases_,
         std::move(checkpointSink), initialRun);
@@ -337,6 +376,10 @@ void StationSession::clearPhysicalEquipment(std::shared_ptr<Activity> activity)
 void StationSession::clearPhysicalEquipmentUnchecked() noexcept
 {
     equipment_.clearPhysical();
+    // Созданный при подготовке прибор может ещё не иметь маршрута в registry.
+    // Останавливаем его до снятия владения даже при внешней shared_ptr.
+    for (const auto& device : equipmentDevices_)
+        if (device) device->safeStop();
     equipmentDevices_.erase(std::remove_if(equipmentDevices_.begin(), equipmentDevices_.end(),
         [this](const auto& device) {
             return std::none_of(sessionEquipment_.begin(), sessionEquipment_.end(),
@@ -353,6 +396,8 @@ void StationSession::clearEquipment(std::shared_ptr<Activity> activity)
 void StationSession::clearEquipmentUnchecked() noexcept
 {
     equipment_.clear();
+    for (const auto& device : equipmentDevices_)
+        if (device) device->safeStop();
     equipmentDevices_.clear();
     sessionEquipment_.clear();
 }
@@ -362,6 +407,8 @@ void StationSession::safeStopAll(std::shared_ptr<Activity> activity)
     ActivityUse use(*this, std::move(activity));
     components_.safeStopAll();
     equipment_.safeStopAll();
+    for (const auto& device : equipmentDevices_)
+        if (device) device->safeStop();
 }
 
 void StationSession::clear()
