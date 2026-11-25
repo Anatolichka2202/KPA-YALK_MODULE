@@ -714,43 +714,6 @@ ScenarioRunResult ScenarioEngine::run(
         run.finishedAt = std::chrono::system_clock::now();
     };
 
-    // Подготовка могла выполняться до повторной валидации. Получаем резерв
-    // заявленных ресурсов перед сбросом; при чужом резерве или требовании
-    // восстановления этот запуск не имеет права обращаться к оборудованию.
-    const auto stopAfterRejectedScenario = [&] {
-        std::set<std::string> resources;
-        collectRequiredResources(scenario.steps, resources);
-        if (!resourceLeases || resources.empty()) {
-            equipment.safeStopAll();
-            return;
-        }
-        ResourceLeaseManager::Lease cleanupLease;
-        try {
-            cleanupLease = resourceLeases->acquire(run.runId, resources);
-        } catch (const ResourceBusyError& error) {
-            run.events.push_back({std::chrono::system_clock::now(), {}, "RESOURCE_LEASE",
-                "Сброс не выполнен: ресурс занят другим запуском", RunVerdict::Incomplete,
-                {{"resource", error.resource()}, {"owner", error.owner()}}});
-            return;
-        } catch (const ResourceRecoveryRequiredError& error) {
-            run.events.push_back({std::chrono::system_clock::now(), {}, "RESOURCE_RECOVERY",
-                "Сброс не выполнен: ресурс требует восстановления", RunVerdict::Incomplete,
-                {{"resource", error.resource()}, {"reason", error.record().reason}}});
-            return;
-        }
-        const auto results = equipment.safeStopResources(resources);
-        for (const auto& resource : resources) {
-            const auto result = results.find(resource);
-            const bool confirmed = result != results.end() && result->second.confirmed;
-            const auto reason = result == results.end()
-                ? std::string("provider returned no safe-stop result for resource") : result->second.reason;
-            // Отклонённая до исполнения методика не является аппаратным
-            // отказом; при подтверждённом сбросе ресурс остаётся доступен.
-            resourceLeases->recordSafeStop(resource, run.runId, confirmed, false,
-                "scenario rejected; cleanup: " + reason);
-        }
-    };
-
     const auto validationErrors = validate(scenario);
     if (!validationErrors.empty()) {
         run.verdict = RunVerdict::Incomplete;
@@ -761,7 +724,7 @@ ScenarioRunResult ScenarioEngine::run(
         }
         // Прикладной слой мог подготовить оборудование до повторной
         // проверки сценария. Не оставляем его в активном состоянии.
-        stopAfterRejectedScenario();
+        equipment.safeStopAll();
         finish();
         return run;
     }
@@ -772,7 +735,7 @@ ScenarioRunResult ScenarioEngine::run(
             std::chrono::system_clock::now(), {}, "VALIDATION",
             "Черновой сценарий нельзя использовать для приёмочного результата",
             RunVerdict::Incomplete});
-        stopAfterRejectedScenario();
+        equipment.safeStopAll();
         finish();
         return run;
     }
@@ -782,7 +745,7 @@ ScenarioRunResult ScenarioEngine::run(
     catch (const std::exception& error) {
         run.verdict = RunVerdict::Error;
         run.events.push_back({std::chrono::system_clock::now(), {}, "ENGINE", error.what(), RunVerdict::Error});
-        stopAfterRejectedScenario();
+        equipment.safeStopAll();
         finish();
         return run;
     }
@@ -803,10 +766,8 @@ ScenarioRunResult ScenarioEngine::run(
         }
         return false;
     };
-    // A delivery declares its logical resources in ScenarioNode::requiredResources.
-    // Claim the complete set once, before the first physical procedure. Keeping
-    // the lease alive through engine.run() also keeps it alive through the
-    // cleanup and resource-state recording at the end of this function.
+    // Все заявленные логические ресурсы закрепляются до первого воздействия.
+    // Резерв удерживается до защитного сброса и записи состояния ресурсов.
     ResourceLeaseManager::Lease lease;
     std::set<std::string> leasedResources;
     if (resourceLeases) {

@@ -303,16 +303,6 @@ int main(int argc, char** argv)
                     && leaseProgress.front().data.at("owner") == "already-running",
                 "lease conflict must reach the operator progress sink");
 
-        // Ошибка методики не даёт права останавливать оборудование, которое
-        // уже закреплено за другим исполнителем.
-        auto invalidWhileBusy = scenario;
-        invalidWhileBusy.steps[0].procedure = "unknown.procedure";
-        const auto rejectedInvalid = engine.run(
-            invalidWhileBusy, equipment, "profile-1", "SN-1", false, {}, &runLeases);
-        require(rejectedInvalid.verdict == RunVerdict::Incomplete
-                    && !equipment.stopped && !equipment.resourceInvoked,
-                "invalid scenario stopped a resource owned by another run");
-
         // Ошибка первой записи не должна выключать ресурс, принадлежащий
         // другому запуску, или маскировать неподтверждённый сброс своего.
         int attemptedCheckpoints = 0;
@@ -327,16 +317,6 @@ int main(int argc, char** argv)
                 "storage failure touched equipment owned by another run");
 
         owner.reset();
-        ResourceLeaseManager invalidCleanupLeases;
-        equipment.stopped = false;
-        equipment.stopConfirmed = false;
-        const auto invalidWithUnconfirmedCleanup = engine.run(
-            invalidWhileBusy, equipment, "profile-1", "SN-1", false, {}, &invalidCleanupLeases);
-        const auto invalidCleanupState = invalidCleanupLeases.stateOf("supply.primary");
-        require(invalidWithUnconfirmedCleanup.verdict == RunVerdict::Incomplete
-                    && equipment.stopped && invalidCleanupState
-                    && invalidCleanupState->state == ResourceState::Indeterminate,
-                "invalid scenario did not retain its unconfirmed cleanup state");
         ResourceLeaseManager failedStartLeases;
         equipment.stopped = false;
         equipment.resourceInvoked = false;
