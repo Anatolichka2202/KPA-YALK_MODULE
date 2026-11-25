@@ -44,8 +44,8 @@ public:
         const std::string& capability) const override
     {
         return resourceReady
-            && resource == "supply.primary"
-            && capability == "power.dc_supply";
+            && ((resource == "supply.primary" && capability == "power.dc_supply")
+                || (resource == "supply.secondary" && capability == "power.secondary"));
     }
 
     std::string invokeResource(
@@ -351,6 +351,67 @@ int main(int argc, char** argv)
         const auto stateTrace = runLeases.stateTrace();
         require(stateTrace.size() >= 8,
                 "resource lifecycle changes must leave a state trace");
+
+        // Сбой подписчика не должен помешать отметить результат остановки
+        // каждого ресурса или скрыть более раннюю ошибку записи результата.
+        auto twoResources = scenario;
+        twoResources.steps[0].requiredResources.push_back({"supply.secondary", "power.secondary"});
+        ResourceLeaseManager failingLeases;
+        equipment.stopConfirmed = false;
+        equipment.resourceInvoked = false;
+        int checkpoints = 0;
+        const auto failedNotification = engine.run(twoResources, equipment, "profile-1", "SN-1", false,
+            [](const RunEvent& event) {
+                if (event.stage == "RESOURCE_SAFE_STOP") throw std::runtime_error("progress sink failed");
+            }, &failingLeases, [&checkpoints](const ScenarioRunResult&) {
+                if (++checkpoints == 2) throw std::runtime_error("checkpoint failed");
+            });
+        require(equipment.resourceInvoked && failedNotification.persistenceFailed && failedNotification.persistenceError == "checkpoint failed"
+                    && failedNotification.verdict == RunVerdict::Error
+                    && failingLeases.stateOf("supply.primary")->state == ResourceState::Indeterminate
+                    && failingLeases.stateOf("supply.secondary")->state == ResourceState::Indeterminate,
+                "cleanup callback failure hid persistence failure or lost a resource state");
+        equipment.stopConfirmed = true;
+        ResourceLeaseManager notifiedLeases;
+        ScenarioRunResult finalSnapshot;
+        const auto notificationFailure = engine.run(twoResources, equipment, "profile-1", "SN-1", false,
+            [](const RunEvent& event) {
+                if (event.stage == "RESOURCE_SAFE_STOP") throw std::runtime_error("progress sink failed");
+            }, &notifiedLeases, [&finalSnapshot](const ScenarioRunResult& snapshot) { finalSnapshot = snapshot; });
+        require(notificationFailure.verdict == RunVerdict::Error && !notificationFailure.persistenceFailed
+                    && finalSnapshot.verdict == RunVerdict::Error
+                    && notifiedLeases.stateOf("supply.primary")->state == ResourceState::Safe
+                    && notifiedLeases.stateOf("supply.secondary")->state == ResourceState::Safe,
+                "notification failure was not retained after confirmed cleanup");
+        ResourceLeaseManager acquireNotifyLeases;
+        equipment.resourceInvoked = false;
+        equipment.stopped = false;
+        equipment.stopConfirmed = false;
+        const auto acquireNotificationFailure = engine.run(twoResources, equipment, "profile-1", "SN-1", false,
+            [](const RunEvent& event) {
+                if (event.stage == "RESOURCE_LEASE") throw std::runtime_error("lease notification failed");
+            }, &acquireNotifyLeases);
+        require(acquireNotificationFailure.verdict == RunVerdict::Error && equipment.stopped
+                    && !equipment.resourceInvoked
+                    && acquireNotifyLeases.stateOf("supply.primary")->state == ResourceState::Indeterminate
+                    && acquireNotifyLeases.stateOf("supply.secondary")->state == ResourceState::Indeterminate,
+                "failed lease notification bypassed cleanup or allowed the procedure");
+        equipment.stopConfirmed = true;
+
+        auto noResources = singleStepScenario("no-resources", "test.no-resource");
+        bool noResourceProcedureRan = false;
+        engine.registerProcedure("test.no-resource", [&noResourceProcedureRan](const auto&, auto&) {
+            noResourceProcedureRan = true;
+            return ProcedureResult{RunVerdict::Ok, "done", {}};
+        });
+        ResourceLeaseManager emptyLeases;
+        equipment.stopped = false;
+        const auto emptyNotifyFailure = engine.run(noResources, equipment, "profile-1", "SN-1", false,
+            [](const RunEvent& event) {
+                if (event.stage == "RESOURCE_LEASE") throw std::runtime_error("no-resource notification failed");
+            }, &emptyLeases);
+        require(emptyNotifyFailure.verdict == RunVerdict::Error && equipment.stopped && !noResourceProcedureRan,
+                "notification failure for an unleased scenario bypassed cleanup");
 
         verifyLeaseContract();
         verifyScenarioEngineRejectsNestedRun();

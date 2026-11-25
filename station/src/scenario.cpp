@@ -787,16 +787,13 @@ ScenarioRunResult ScenarioEngine::run(
     // unconditional safeStopAll() at the end of this function.
     ResourceLeaseManager::Lease lease;
     std::set<std::string> leasedResources;
+    std::string leaseNotificationError;
+    bool leaseNotificationFailed = false;
     if (resourceLeases) {
         collectRequiredResources(scenario.steps, leasedResources);
         if (!leasedResources.empty()) {
             try {
                 lease = resourceLeases->acquire(run.runId, leasedResources);
-                publish({
-                    std::chrono::system_clock::now(), {}, "RESOURCE_LEASE",
-                    "Ресурсы станции закреплены за запуском", RunVerdict::NotRun,
-                    {{"owner", lease.owner()},
-                     {"resource_count", std::to_string(lease.resources().size())}}});
             } catch (const ResourceBusyError& error) {
                 run.verdict = RunVerdict::Incomplete;
                 publish({
@@ -818,11 +815,32 @@ ScenarioRunResult ScenarioEngine::run(
                 finish();
                 return run;
             }
+            try {
+                publish({
+                    std::chrono::system_clock::now(), {}, "RESOURCE_LEASE",
+                    "Ресурсы станции закреплены за запуском", RunVerdict::NotRun,
+                    {{"owner", lease.owner()},
+                     {"resource_count", std::to_string(lease.resources().size())}}});
+            } catch (const std::exception& error) {
+                leaseNotificationFailed = true;
+                leaseNotificationError = error.what();
+            } catch (...) {
+                leaseNotificationFailed = true;
+                leaseNotificationError = "Неизвестная ошибка уведомления о резервировании";
+            }
         } else {
-            publish({
-                std::chrono::system_clock::now(), {}, "RESOURCE_LEASE",
-                "Сценарий не объявляет логические ресурсы; межзапусковая блокировка не применена",
-                RunVerdict::NotRun});
+            try {
+                publish({
+                    std::chrono::system_clock::now(), {}, "RESOURCE_LEASE",
+                    "Сценарий не объявляет логические ресурсы; межзапусковая блокировка не применена",
+                    RunVerdict::NotRun});
+            } catch (const std::exception& error) {
+                leaseNotificationFailed = true;
+                leaseNotificationError = error.what();
+            } catch (...) {
+                leaseNotificationFailed = true;
+                leaseNotificationError = "Неизвестная ошибка уведомления о резервировании";
+            }
         }
     }
 
@@ -878,10 +896,17 @@ ScenarioRunResult ScenarioEngine::run(
         };
     }
 
-    run.verdict = RunVerdict::Ok;
-    std::string operationFailureReason;
+    run.verdict = leaseNotificationFailed ? RunVerdict::Error : RunVerdict::Ok;
+    std::string operationFailureReason = leaseNotificationError;
+    if (leaseNotificationFailed) {
+        // После сбоя уведомления шаги не запускаются; если резерв получен,
+        // он сохраняется до завершения и регистрации состояния ресурсов.
+        run.events.push_back({std::chrono::system_clock::now(), {}, "ENGINE",
+            "Ошибка уведомления о резервировании: " + leaseNotificationError, RunVerdict::Error});
+    }
     try {
         for (const auto& node : executionSteps) {
+            if (leaseNotificationFailed) break;
             auto step = runNode(node, context, allowPartial);
             const auto stepVerdict = step.verdict;
             if (stepVerdict == RunVerdict::Error || stepVerdict == RunVerdict::Fail) {
@@ -909,6 +934,7 @@ ScenarioRunResult ScenarioEngine::run(
     if (resourceLeases && lease) {
         const auto stopResults = equipment.safeStopResources(leasedResources);
         bool allConfirmed = true;
+        std::vector<RunEvent> stopEvents;
         for (const auto& resource : leasedResources) {
             const auto result = stopResults.find(resource);
             const bool confirmed = result != stopResults.end() && result->second.confirmed;
@@ -921,7 +947,7 @@ ScenarioRunResult ScenarioEngine::run(
                 resource, run.runId, confirmed, run.verdict == RunVerdict::Error, reason);
             const auto state = !confirmed ? "INDETERMINATE"
                 : run.verdict == RunVerdict::Error ? "ERROR" : "SAFE";
-            publish({
+            stopEvents.push_back({
                 std::chrono::system_clock::now(), {}, "RESOURCE_SAFE_STOP",
                 confirmed ? "Безопасная остановка ресурса подтверждена"
                           : "Безопасная остановка ресурса не подтверждена",
@@ -931,6 +957,22 @@ ScenarioRunResult ScenarioEngine::run(
         }
         if (!allConfirmed && run.verdict == RunVerdict::Ok)
             run.verdict = RunVerdict::Error;
+        // Сначала фиксируем состояние всех ресурсов под резервом: ошибка
+        // внешнего подписчика не должна оставить часть ресурсов в ACTIVE.
+        // Ошибка уведомления остаётся в результате и не скрывает отказ записи.
+        for (const auto& event : stopEvents) {
+            try {
+                publish(event);
+            } catch (const std::exception& error) {
+                run.verdict = RunVerdict::Error;
+                run.events.push_back({std::chrono::system_clock::now(), {}, "ENGINE",
+                    std::string("Ошибка уведомления о завершении ресурса: ") + error.what(), RunVerdict::Error});
+            } catch (...) {
+                run.verdict = RunVerdict::Error;
+                run.events.push_back({std::chrono::system_clock::now(), {}, "ENGINE",
+                    "Неизвестная ошибка уведомления о завершении ресурса", RunVerdict::Error});
+            }
+        }
     } else {
         equipment.safeStopAll();
     }
