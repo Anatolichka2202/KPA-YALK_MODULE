@@ -766,8 +766,25 @@ ScenarioRunResult ScenarioEngine::run(
         }
         return false;
     };
-    // Все заявленные логические ресурсы закрепляются до первого воздействия.
-    // Резерв удерживается до защитного сброса и записи состояния ресурсов.
+    auto initial = run;
+    initial.verdict = RunVerdict::Incomplete;
+    if (!checkpoint(initial)) {
+        run.verdict = RunVerdict::Error;
+        run.events.push_back({std::chrono::system_clock::now(), {}, "PERSISTENCE_ERROR",
+                              run.persistenceError, RunVerdict::Error});
+        // Подготовка могла быть выполнена до запуска сценария. Даже если
+        // начало проверки не удалось записать, ранее созданные приборы
+        // должны получить команду завершения.
+        equipment.safeStopAll();
+        finish();
+        return run;
+    }
+    run.persistenceStarted = static_cast<bool>(checkpointSink);
+
+    // A delivery declares its logical resources in ScenarioNode::requiredResources.
+    // Claim the complete set once, before the first physical procedure. Keeping
+    // the lease alive through engine.run() also keeps it alive through the
+    // unconditional safeStopAll() at the end of this function.
     ResourceLeaseManager::Lease lease;
     std::set<std::string> leasedResources;
     if (resourceLeases) {
@@ -775,6 +792,11 @@ ScenarioRunResult ScenarioEngine::run(
         if (!leasedResources.empty()) {
             try {
                 lease = resourceLeases->acquire(run.runId, leasedResources);
+                publish({
+                    std::chrono::system_clock::now(), {}, "RESOURCE_LEASE",
+                    "Ресурсы станции закреплены за запуском", RunVerdict::NotRun,
+                    {{"owner", lease.owner()},
+                     {"resource_count", std::to_string(lease.resources().size())}}});
             } catch (const ResourceBusyError& error) {
                 run.verdict = RunVerdict::Incomplete;
                 publish({
@@ -796,29 +818,6 @@ ScenarioRunResult ScenarioEngine::run(
                 finish();
                 return run;
             }
-            try {
-                publish({
-                    std::chrono::system_clock::now(), {}, "RESOURCE_LEASE",
-                    "Ресурсы станции закреплены за запуском", RunVerdict::NotRun,
-                    {{"owner", lease.owner()},
-                     {"resource_count", std::to_string(lease.resources().size())}}});
-            } catch (...) {
-                // Подготовка могла включить оборудование до вызова движка.
-                // Даже ошибка подписчика не должна освободить резерв без сброса
-                // и фиксации неподтверждённого состояния всех его ресурсов.
-                const auto results = equipment.safeStopResources(leasedResources);
-                for (const auto& resource : leasedResources) {
-                    const auto result = results.find(resource);
-                    const bool confirmed = result != results.end() && result->second.confirmed;
-                    const std::string reason = result == results.end()
-                        ? "provider returned no safe-stop result for resource" : result->second.reason;
-                    // Сбой подписчика не свидетельствует об отказе прибора;
-                    // неподтверждённый сброс всё равно остаётся Indeterminate.
-                    resourceLeases->recordSafeStop(resource, run.runId, confirmed, false,
-                        "progress observer failed; cleanup: " + reason);
-                }
-                throw;
-            }
         } else {
             publish({
                 std::chrono::system_clock::now(), {}, "RESOURCE_LEASE",
@@ -826,49 +825,6 @@ ScenarioRunResult ScenarioEngine::run(
                 RunVerdict::NotRun});
         }
     }
-
-    // Ресурс сначала закрепляется за запуском: ошибка записи не должна
-    // останавливать прибор, который уже занят другим владельцем. Резерв
-    // удерживается до сброса и регистрации фактического состояния ресурса.
-    const auto stopLeasedResources = [&](bool operationFailed, const std::string& failureReason) {
-        const auto stopResults = equipment.safeStopResources(leasedResources);
-        bool allConfirmed = true;
-        std::vector<RunEvent> stopEvents;
-        for (const auto& resource : leasedResources) {
-            const auto result = stopResults.find(resource);
-            const bool confirmed = result != stopResults.end() && result->second.confirmed;
-            std::string reason = result == stopResults.end()
-                ? "provider returned no safe-stop result for resource" : result->second.reason;
-            if (!failureReason.empty()) reason = "run failure: " + failureReason + "; cleanup: " + reason;
-            resourceLeases->recordSafeStop(resource, run.runId, confirmed, operationFailed, reason);
-            const auto state = !confirmed ? "INDETERMINATE" : operationFailed ? "ERROR" : "SAFE";
-            stopEvents.push_back({std::chrono::system_clock::now(), {}, "RESOURCE_SAFE_STOP",
-                confirmed ? "Безопасная остановка ресурса подтверждена"
-                          : "Безопасная остановка ресурса не подтверждена",
-                confirmed ? RunVerdict::NotRun : RunVerdict::Error,
-                {{"resource", resource}, {"state", state}, {"reason", reason}}});
-            allConfirmed = allConfirmed && confirmed;
-        }
-        // Сначала сохраняем состояние всех ресурсов, затем уведомляем UI:
-        // исключение обработчика события не должно оставить часть записей ACTIVE.
-        for (auto& event : stopEvents) publish(std::move(event));
-        return allConfirmed;
-    };
-
-    auto initial = run;
-    initial.verdict = RunVerdict::Incomplete;
-    if (!checkpoint(initial)) {
-        run.verdict = RunVerdict::Error;
-        run.events.push_back({std::chrono::system_clock::now(), {}, "PERSISTENCE_ERROR",
-                              run.persistenceError, RunVerdict::Error});
-        // Ошибка записи относится к хранилищу. При подтверждённом сбросе
-        // нельзя объявлять исправное оборудование неисправным.
-        if (resourceLeases && lease) stopLeasedResources(false, run.persistenceError);
-        else equipment.safeStopAll();
-        finish();
-        return run;
-    }
-    run.persistenceStarted = static_cast<bool>(checkpointSink);
 
     std::map<std::string, StepRunResult> completedSteps;
     std::function<std::optional<StepRunResult>(const ScenarioNode&)> partialNode;
@@ -951,8 +907,28 @@ ScenarioRunResult ScenarioEngine::run(
     }
 
     if (resourceLeases && lease) {
-        const bool allConfirmed = stopLeasedResources(run.verdict == RunVerdict::Error,
-                                                       operationFailureReason);
+        const auto stopResults = equipment.safeStopResources(leasedResources);
+        bool allConfirmed = true;
+        for (const auto& resource : leasedResources) {
+            const auto result = stopResults.find(resource);
+            const bool confirmed = result != stopResults.end() && result->second.confirmed;
+            std::string reason = result == stopResults.end()
+                ? "provider returned no safe-stop result for resource"
+                : result->second.reason;
+            if (!operationFailureReason.empty())
+                reason = "run failure: " + operationFailureReason + "; cleanup: " + reason;
+            resourceLeases->recordSafeStop(
+                resource, run.runId, confirmed, run.verdict == RunVerdict::Error, reason);
+            const auto state = !confirmed ? "INDETERMINATE"
+                : run.verdict == RunVerdict::Error ? "ERROR" : "SAFE";
+            publish({
+                std::chrono::system_clock::now(), {}, "RESOURCE_SAFE_STOP",
+                confirmed ? "Безопасная остановка ресурса подтверждена"
+                          : "Безопасная остановка ресурса не подтверждена",
+                confirmed ? RunVerdict::NotRun : RunVerdict::Error,
+                {{"resource", resource}, {"state", state}, {"reason", reason}}});
+            allConfirmed = allConfirmed && confirmed;
+        }
         if (!allConfirmed && run.verdict == RunVerdict::Ok)
             run.verdict = RunVerdict::Error;
     } else {
