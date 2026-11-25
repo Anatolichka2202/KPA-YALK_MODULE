@@ -9,6 +9,7 @@
 #include <QObject>
 #include <QRect>
 #include <QString>
+#include <QStringList>
 #include <QVector>
 #include <QWidget>
 
@@ -31,6 +32,7 @@ struct HmiElement {
     QString binding;   // unresolved key, NEVER an active hardware route
     QString unit;
     QRect geometry;    // fixed logical canvas coordinates; pixels at 100% zoom
+    QString groupId;   // optional visual group; never an equipment capability
 };
 
 class HmiDocument final : public QObject {
@@ -47,20 +49,36 @@ public:
     bool updateElement(const HmiElement& updated);
     bool moveElement(const QString& id, int x, int y);
     bool remove(const QString& id);
+    QStringList duplicateElements(const QStringList& ids);
+    bool removeElements(const QStringList& ids);
+    bool translateElements(const QStringList& ids, int dx, int dy);
+    bool alignElements(const QStringList& ids, const QString& edge);
+    bool groupElements(const QStringList& ids);
+    bool ungroupElements(const QStringList& ids);
+    QStringList expandGroups(const QStringList& ids) const;
+    bool undo();
+    bool redo();
+    bool canUndo() const noexcept { return historyIndex_ > 0; }
+    bool canRedo() const noexcept { return historyIndex_ + 1 < history_.size(); }
     static QStringList allowedTypes();
 
 signals:
     void changed();
+    void historyChanged();
 
 private:
     QString deliveryId_;
     QVector<HmiElement> elements_;
+    QVector<QVector<HmiElement>> history_;
+    int historyIndex_ = 0;
+    void checkpoint();
 };
 
 class HmiCanvas final : public QGraphicsView {
     Q_OBJECT
 public:
     explicit HmiCanvas(HmiDocument* document, QWidget* parent = nullptr);
+    ~HmiCanvas() override;
     void setEditing(bool editing);
     bool editing() const noexcept { return editing_; }
     void setDemoValues(bool enabled);
@@ -68,13 +86,17 @@ public:
     double zoomFactor() const noexcept { return zoomFactor_; }
     bool demoValues() const noexcept { return demoValues_; }
     void selectElement(const QString& id);
+    void selectElements(const QStringList& ids);
+    QStringList selectedElements() const { return selectedIds_; }
     QString selectedElement() const { return selectedId_; }
     int renderedElementCount() const;
 
 signals:
     void selectedElementChanged(const QString& id);
+    void selectionChanged();
 
 protected:
+    void mousePressEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
 
@@ -88,6 +110,8 @@ private:
     bool demoValues_ = false;
     double zoomFactor_ = 0.0;
     QString selectedId_;
+    QStringList selectedIds_;
+    QPoint dragStart_;
 };
 
 class HmiDesignerPage final : public QWidget {
@@ -96,12 +120,14 @@ public:
     explicit HmiDesignerPage(HmiDocument* document, QWidget* parent = nullptr,
                              bool compact = false);
     HmiCanvas* canvas() const noexcept { return canvas_; }
+    HmiDocument* document() const noexcept { return document_; }
     QComboBox* previewMode() const noexcept { return mode_; }
     QComboBox* zoomChoice() const noexcept { return zoom_; }
     QComboBox* bindingChoice() const noexcept { return bindingChoice_; }
     QPushButton* addButton(const QString& type) const;
     QPushButton* exportButton() const noexcept { return export_; }
     QPushButton* importButton() const noexcept { return import_; }
+    QPushButton* editCommand(const QString& id) const;
 
 private:
     void showSelected(const QString& id);
@@ -109,6 +135,7 @@ private:
     void updateMode(int index);
     void setNotice(const QString& notice);
     void refreshBindingHint();
+    void updateEditActions();
 
     HmiDocument* document_ = nullptr;
     HmiCanvas* canvas_ = nullptr;
@@ -130,6 +157,8 @@ private:
     QPushButton* import_ = nullptr;
     QLabel* notice_ = nullptr;
     QVector<QPair<QString, QPushButton*>> palette_;
+    QVector<QPair<QString, QPushButton*>> edits_;
+    QLabel* selectionInfo_ = nullptr;
 };
 
 class HmiReadOnlyPanel final : public QFrame {
@@ -137,8 +166,10 @@ class HmiReadOnlyPanel final : public QFrame {
 public:
     explicit HmiReadOnlyPanel(HmiDocument* document, QWidget* parent = nullptr);
     HmiCanvas* canvas() const noexcept { return canvas_; }
+    HmiDocument* document() const noexcept { return document_; }
 
 private:
+    HmiDocument* document_ = nullptr;
     HmiCanvas* canvas_ = nullptr;
 };
 

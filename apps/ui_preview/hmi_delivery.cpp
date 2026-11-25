@@ -1,10 +1,14 @@
 #include "hmi_delivery.h"
 
 #include <QComboBox>
+#include <QDialog>
+#include <QKeySequence>
+#include <QShortcut>
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QHBoxLayout>
+#include <QHash>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -285,6 +289,10 @@ HmiDeliveryEditor::HmiDeliveryEditor(HmiDeliveryCollection* pages, QWidget* pare
     remove_->setObjectName(QStringLiteral("ui.hmi.deletePage"));
     pageActions->addWidget(remove_);
     pageActions->addStretch();
+    fullscreenButton_ = new QPushButton(QStringLiteral("Развернуть редактор"));
+    fullscreenButton_->setObjectName(QStringLiteral("ui.hmi.fullscreen"));
+    fullscreenButton_->setAccessibleName(QStringLiteral("Открыть HMI-редактор на весь экран"));
+    pageActions->addWidget(fullscreenButton_);
     root->addLayout(pageActions);
 
     auto* actions = new QHBoxLayout;
@@ -318,6 +326,39 @@ HmiDeliveryEditor::HmiDeliveryEditor(HmiDeliveryCollection* pages, QWidget* pare
 
     connect(pages_, &HmiDeliveryCollection::pagesChanged,
             this, &HmiDeliveryEditor::rebuild);
+    connect(fullscreenButton_, &QPushButton::clicked, this, [this] {
+        if (fullscreen_) {
+            fullscreen_->raise();
+            fullscreen_->activateWindow();
+            return;
+        }
+        const auto page = pages_->pageAt(pages_->currentIndex());
+        if (!page.document) return;
+        auto* dialog = new QDialog(this, Qt::Window);
+        fullscreen_ = dialog;
+        dialog->setObjectName(QStringLiteral("ui.hmi.fullscreenDialog"));
+        dialog->setWindowTitle(QStringLiteral("MilTechStation · HMI: %1").arg(page.title));
+        dialog->setAttribute(Qt::WA_DeleteOnClose);
+        dialog->resize(1600, 900);
+        auto* outer = new QVBoxLayout(dialog);
+        outer->setContentsMargins(10, 8, 10, 8);
+        outer->setSpacing(8);
+        auto* header = new QHBoxLayout;
+        auto* title = new QLabel(QStringLiteral("HMI / %1").arg(page.title));
+        title->setProperty("role", "section");
+        header->addWidget(title);
+        header->addStretch();
+        auto* exit = new QPushButton(QStringLiteral("Вернуться к станции · Esc"));
+        exit->setObjectName(QStringLiteral("ui.hmi.exitFullscreen"));
+        header->addWidget(exit);
+        outer->addLayout(header);
+        auto* designer = new HmiDesignerPage(page.document, dialog, true);
+        outer->addWidget(designer, 1);
+        connect(exit, &QPushButton::clicked, dialog, &QDialog::close);
+        auto* escape = new QShortcut(QKeySequence(Qt::Key_Escape), dialog);
+        connect(escape, &QShortcut::activated, dialog, &QDialog::close);
+        dialog->showFullScreen();
+    });
     connect(pages_, &HmiDeliveryCollection::currentPageChanged,
             this, &HmiDeliveryEditor::updateSelection);
     connect(pageSelector_, qOverload<int>(&QComboBox::currentIndexChanged),
@@ -385,10 +426,18 @@ void HmiDeliveryEditor::notification(const QString& message)
 
 void HmiDeliveryEditor::rebuild()
 {
+    if (fullscreen_) fullscreen_->close();
+
+    // Preserve widgets for unchanged document pointers. Recreating the entire
+    // stack on every add/rename destroyed live HMI scenes unnecessarily.
+    QHash<HmiDocument*, QWidget*> retained;
     while (stack_->count() > 0) {
-        QWidget* page = stack_->widget(0);
-        stack_->removeWidget(page);
-        delete page;
+        QWidget* widget = stack_->widget(0);
+        auto* scroll = qobject_cast<QScrollArea*>(widget);
+        auto* designer = scroll ? qobject_cast<HmiDesignerPage*>(scroll->widget()) : nullptr;
+        stack_->removeWidget(widget);
+        if (designer && designer->document()) retained.insert(designer->document(), widget);
+        else delete widget;
     }
     {
         QSignalBlocker blocker(pageSelector_);
@@ -396,16 +445,21 @@ void HmiDeliveryEditor::rebuild()
         for (int i = 0; i < pages_->pageCount(); ++i) {
             const auto record = pages_->pageAt(i);
             pageSelector_->addItem(record.title, record.id);
-            auto* scroll = new QScrollArea;
-            scroll->setObjectName(QStringLiteral("ui.hmi.designerScroll"));
-            scroll->setWidgetResizable(true);
-            scroll->setFrameShape(QFrame::NoFrame);
-            auto* designer = new HmiDesignerPage(record.document, nullptr, true);
-            designer->setMinimumWidth(920);
-            scroll->setWidget(designer);
-            stack_->addWidget(scroll);
+            QWidget* view = retained.take(record.document);
+            if (!view) {
+                auto* scroll = new QScrollArea;
+                scroll->setObjectName(QStringLiteral("ui.hmi.designerScroll"));
+                scroll->setWidgetResizable(true);
+                scroll->setFrameShape(QFrame::NoFrame);
+                auto* designer = new HmiDesignerPage(record.document, nullptr, true);
+                designer->setMinimumWidth(920);
+                scroll->setWidget(designer);
+                view = scroll;
+            }
+            stack_->addWidget(view);
         }
     }
+    for (QWidget* old : retained) delete old;
     updateSelection();
 }
 
@@ -469,10 +523,13 @@ HmiReadOnlyPanel* HmiDeliveryViewer::currentPanel() const
 
 void HmiDeliveryViewer::rebuild()
 {
+    QHash<HmiDocument*, QWidget*> retained;
     while (views_->count() > 0) {
-        QWidget* item = views_->widget(0);
-        views_->removeWidget(item);
-        delete item;
+        QWidget* widget = views_->widget(0);
+        auto* panel = qobject_cast<HmiReadOnlyPanel*>(widget);
+        views_->removeWidget(widget);
+        if (panel && panel->document()) retained.insert(panel->document(), widget);
+        else delete widget;
     }
     {
         QSignalBlocker blocker(selector_);
@@ -480,9 +537,11 @@ void HmiDeliveryViewer::rebuild()
         for (int index = 0; index < pages_->pageCount(); ++index) {
             const auto page = pages_->pageAt(index);
             selector_->addItem(page.title, page.id);
-            views_->addWidget(new HmiReadOnlyPanel(page.document));
+            QWidget* widget = retained.take(page.document);
+            views_->addWidget(widget ? widget : new HmiReadOnlyPanel(page.document));
         }
     }
+    for (QWidget* old : retained) delete old;
     updateSelection();
 }
 

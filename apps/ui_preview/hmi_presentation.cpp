@@ -1,5 +1,6 @@
 #include "hmi_presentation.h"
 
+#include <QApplication>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QFile>
@@ -23,10 +24,13 @@
 #include <QRegularExpression>
 #include <QResizeEvent>
 #include <QSet>
+#include <QHash>
 #include <QFont>
 #include <QSaveFile>
 #include <QScrollArea>
 #include <QSignalBlocker>
+#include <QShortcut>
+#include <QKeySequence>
 #include <QSpinBox>
 #include <QSplitter>
 #include <QVBoxLayout>
@@ -34,6 +38,7 @@
 #include <algorithm>
 #include <cmath>
 #include <utility>
+#include <functional>
 
 namespace miltech::ui {
 namespace {
@@ -126,17 +131,15 @@ QColor borderColor(const QString& type)
 HmiDocument::HmiDocument(QString deliveryId, QObject* parent)
     : QObject(parent), deliveryId_(std::move(deliveryId))
 {
+    history_.append(elements_);
 }
 
 QStringList HmiDocument::allowedTypes()
 {
     return {
-        QStringLiteral("label"),
-        QStringLiteral("numeric"),
-        QStringLiteral("status"),
-        QStringLiteral("bar"),
-        QStringLiteral("trend"),
-        QStringLiteral("command")
+        QStringLiteral("label"), QStringLiteral("numeric"),
+        QStringLiteral("status"), QStringLiteral("bar"),
+        QStringLiteral("trend"), QStringLiteral("command")
     };
 }
 
@@ -145,6 +148,35 @@ const HmiElement* HmiDocument::find(const QString& id) const
     const auto it = std::find_if(elements_.cbegin(), elements_.cend(),
         [&id](const HmiElement& value) { return value.id == id; });
     return it == elements_.cend() ? nullptr : &*it;
+}
+
+void HmiDocument::checkpoint()
+{
+    // One snapshot per logical user action; undo never re-enters this function.
+    history_.resize(historyIndex_ + 1);
+    history_.append(elements_);
+    if (history_.size() > 100) history_.removeFirst();
+    historyIndex_ = history_.size() - 1;
+    emit changed();
+    emit historyChanged();
+}
+
+bool HmiDocument::undo()
+{
+    if (!canUndo()) return false;
+    elements_ = history_.at(--historyIndex_);
+    emit changed();
+    emit historyChanged();
+    return true;
+}
+
+bool HmiDocument::redo()
+{
+    if (!canRedo()) return false;
+    elements_ = history_.at(++historyIndex_);
+    emit changed();
+    emit historyChanged();
+    return true;
 }
 
 QByteArray HmiDocument::toJson() const
@@ -161,6 +193,8 @@ QByteArray HmiDocument::toJson() const
         element.insert(QStringLiteral("y"), value.geometry.y());
         element.insert(QStringLiteral("width"), value.geometry.width());
         element.insert(QStringLiteral("height"), value.geometry.height());
+        if (!value.groupId.isEmpty())
+            element.insert(QStringLiteral("groupId"), value.groupId);
         elements.append(element);
     }
 
@@ -181,7 +215,6 @@ bool HmiDocument::loadFromJson(const QByteArray& json, QString* error)
         if (error) *error = reason;
         return false;
     };
-
     QJsonParseError parseError{};
     const auto parsed = QJsonDocument::fromJson(json, &parseError);
     if (parseError.error != QJsonParseError::NoError || !parsed.isObject())
@@ -223,21 +256,28 @@ bool HmiDocument::loadFromJson(const QByteArray& json, QString* error)
             QRect(e.value(QStringLiteral("x")).toInt(),
                   e.value(QStringLiteral("y")).toInt(),
                   e.value(QStringLiteral("width")).toInt(),
-                  e.value(QStringLiteral("height")).toInt())
+                  e.value(QStringLiteral("height")).toInt()),
+            e.value(QStringLiteral("groupId")).toString()
         };
         if (!idPattern.match(element.id).hasMatch() || ids.contains(element.id))
             return fail(QStringLiteral("Повторяющийся или неверный ID элемента"));
         if (!allowedType(element.type) || element.title.trimmed().isEmpty()
             || !geometryValid(element.geometry)
             || element.title.size() > 160 || element.binding.size() > 256
-            || element.unit.size() > 32)
+            || element.unit.size() > 32
+            || (!element.groupId.isEmpty()
+                && !idPattern.match(element.groupId).hasMatch()))
             return fail(QStringLiteral("Неверные свойства элемента: %1").arg(element.id));
         ids.insert(element.id);
         next.push_back(element);
     }
     elements_ = std::move(next);
+    history_.clear();
+    history_.append(elements_);
+    historyIndex_ = 0;
     if (error) error->clear();
     emit changed();
+    emit historyChanged();
     return true;
 }
 
@@ -246,9 +286,8 @@ QString HmiDocument::add(const QString& type)
     if (!allowedType(type) || elements_.size() >= maxElements) return {};
     int serial = 1;
     QString id;
-    do {
-        id = QStringLiteral("element_%1").arg(serial++);
-    } while (find(id) != nullptr);
+    do { id = QStringLiteral("element_%1").arg(serial++); }
+    while (find(id) != nullptr);
     const int index = static_cast<int>(elements_.size());
     const int w = type == QStringLiteral("trend") ? 245 : 195;
     const int h = type == QStringLiteral("trend") ? 145 : 105;
@@ -261,9 +300,9 @@ QString HmiDocument::add(const QString& type)
                 ? QStringLiteral("ui.demo.flag") : type == QStringLiteral("bar")
                     ? QStringLiteral("ui.demo.load") : QStringLiteral("ui.demo.voltage"),
         type == QStringLiteral("numeric") ? QStringLiteral("В") : QString(),
-        QRect(x, y, w, h)
+        QRect(x, y, w, h), {}
     });
-    emit changed();
+    checkpoint();
     return id;
 }
 
@@ -275,40 +314,196 @@ bool HmiDocument::updateElement(const HmiElement& updated)
         return false;
     for (auto& item : elements_) {
         if (item.id == updated.id) {
+            if (item.type == updated.type && item.title == updated.title
+                && item.binding == updated.binding && item.unit == updated.unit
+                && item.geometry == updated.geometry) return true;
+            const QString originalGroup = item.groupId;
             item = updated;
-            emit changed();
+            item.groupId = originalGroup; // group membership is changed via group/ungroup only
+            checkpoint();
             return true;
         }
     }
     return false;
 }
 
-bool HmiDocument::moveElement(const QString& id, int x, int y)
+QStringList HmiDocument::expandGroups(const QStringList& ids) const
 {
-    for (auto& item : elements_) {
-        if (item.id == id) {
-            item.geometry.moveTo(
-                std::clamp(x, 0, canvasWidth - item.geometry.width()),
-                std::clamp(y, 0, canvasHeight - item.geometry.height()));
-            emit changed();
-            return true;
+    QSet<QString> groups;
+    QSet<QString> direct;
+    for (const QString& id : ids) {
+        if (const auto* element = find(id)) {
+            direct.insert(id);
+            if (!element->groupId.isEmpty()) groups.insert(element->groupId);
         }
     }
-    return false;
+    QStringList output;
+    for (const auto& element : elements_) {
+        if (direct.contains(element.id) || (!element.groupId.isEmpty()
+                                             && groups.contains(element.groupId)))
+            output.append(element.id);
+    }
+    return output;
+}
+
+QStringList HmiDocument::duplicateElements(const QStringList& ids)
+{
+    const QStringList expanded = expandGroups(ids);
+    if (expanded.isEmpty() || elements_.size() + expanded.size() > maxElements) return {};
+    const QSet<QString> include(expanded.begin(), expanded.end());
+    QSet<QString> used;
+    QSet<QString> usedGroups;
+    for (const auto& e : elements_) {
+        used.insert(e.id);
+        if (!e.groupId.isEmpty()) usedGroups.insert(e.groupId);
+    }
+    QStringList produced;
+    QVector<HmiElement> copies;
+    QHash<QString, QString> groupMapping;
+    int idSerial = 1, groupSerial = 1;
+    for (const auto& e : elements_) {
+        if (!include.contains(e.id)) continue;
+        HmiElement copy = e;
+        do { copy.id = QStringLiteral("element_%1").arg(idSerial++); }
+        while (used.contains(copy.id));
+        used.insert(copy.id);
+        copy.geometry.moveTo(
+            qMin(canvasWidth - copy.geometry.width(), copy.geometry.x() + gridStep),
+            qMin(canvasHeight - copy.geometry.height(), copy.geometry.y() + gridStep));
+        if (!copy.groupId.isEmpty()) {
+            if (!groupMapping.contains(copy.groupId)) {
+                QString groupId;
+                do { groupId = QStringLiteral("group_%1").arg(groupSerial++); }
+                while (usedGroups.contains(groupId));
+                usedGroups.insert(groupId);
+                groupMapping.insert(copy.groupId, groupId);
+            }
+            copy.groupId = groupMapping.value(copy.groupId);
+        }
+        produced.append(copy.id);
+        copies.push_back(copy);
+    }
+    for (const auto& copy : copies) elements_.append(copy);
+    checkpoint();
+    return produced;
+}
+
+bool HmiDocument::removeElements(const QStringList& ids)
+{
+    const QStringList expanded = expandGroups(ids);
+    const QSet<QString> include(expanded.begin(), expanded.end());
+    if (include.isEmpty()) return false;
+    const int before = elements_.size();
+    elements_.erase(std::remove_if(elements_.begin(), elements_.end(),
+        [&include](const HmiElement& e) { return include.contains(e.id); }),
+        elements_.end());
+    if (elements_.size() == before) return false;
+    checkpoint();
+    return true;
 }
 
 bool HmiDocument::remove(const QString& id)
 {
-    for (int i = 0; i < elements_.size(); ++i) {
-        if (elements_.at(i).id == id) {
-            elements_.removeAt(i);
-            emit changed();
-            return true;
-        }
-    }
-    return false;
+    return removeElements(QStringList{id});
 }
 
+bool HmiDocument::translateElements(const QStringList& ids, int dx, int dy)
+{
+    const QStringList expanded = expandGroups(ids);
+    if (expanded.isEmpty()) return false;
+    const QSet<QString> include(expanded.begin(), expanded.end());
+    int minX = canvasWidth, minY = canvasHeight, maxX = 0, maxY = 0;
+    for (const auto& e : elements_) {
+        if (!include.contains(e.id)) continue;
+        minX = qMin(minX, e.geometry.left());
+        minY = qMin(minY, e.geometry.top());
+        maxX = qMax(maxX, e.geometry.right());
+        maxY = qMax(maxY, e.geometry.bottom());
+    }
+    dx = std::clamp(dx, -minX, canvasWidth - 1 - maxX);
+    dy = std::clamp(dy, -minY, canvasHeight - 1 - maxY);
+    if (dx == 0 && dy == 0) return false;
+    for (auto& e : elements_) {
+        if (include.contains(e.id)) e.geometry.translate(dx, dy);
+    }
+    checkpoint();
+    return true;
+}
+
+bool HmiDocument::moveElement(const QString& id, int x, int y)
+{
+    const auto* element = find(id);
+    if (!element) return false;
+    return translateElements(QStringList{id}, x - element->geometry.x(),
+                            y - element->geometry.y());
+}
+
+bool HmiDocument::alignElements(const QStringList& ids, const QString& edge)
+{
+    const QStringList expanded = expandGroups(ids);
+    if (expanded.size() < 2) return false;
+    const QSet<QString> include(expanded.begin(), expanded.end());
+    QRect bounds;
+    bool first = true;
+    for (const auto& e : elements_) {
+        if (!include.contains(e.id)) continue;
+        bounds = first ? e.geometry : bounds.united(e.geometry);
+        first = false;
+    }
+    if (first) return false;
+    bool modified = false;
+    for (auto& e : elements_) {
+        if (!include.contains(e.id)) continue;
+        QRect next = e.geometry;
+        if (edge == QStringLiteral("left")) next.moveLeft(bounds.left());
+        else if (edge == QStringLiteral("right")) next.moveRight(bounds.right());
+        else if (edge == QStringLiteral("top")) next.moveTop(bounds.top());
+        else if (edge == QStringLiteral("bottom")) next.moveBottom(bounds.bottom());
+        else if (edge == QStringLiteral("hcenter")) next.moveCenter(QPoint(bounds.center().x(), next.center().y()));
+        else if (edge == QStringLiteral("vcenter")) next.moveCenter(QPoint(next.center().x(), bounds.center().y()));
+        else return false;
+        if (next != e.geometry && geometryValid(next)) {
+            e.geometry = next;
+            modified = true;
+        }
+    }
+    if (modified) checkpoint();
+    return modified;
+}
+
+bool HmiDocument::groupElements(const QStringList& ids)
+{
+    const QStringList expanded = expandGroups(ids);
+    if (expanded.size() < 2) return false;
+    const QSet<QString> include(expanded.begin(), expanded.end());
+    int serial = 1;
+    QString group;
+    bool exists;
+    do {
+        group = QStringLiteral("group_%1").arg(serial++);
+        exists = std::any_of(elements_.cbegin(), elements_.cend(),
+            [&group](const HmiElement& e) { return e.groupId == group; });
+    } while (exists);
+    for (auto& e : elements_)
+        if (include.contains(e.id)) e.groupId = group;
+    checkpoint();
+    return true;
+}
+
+bool HmiDocument::ungroupElements(const QStringList& ids)
+{
+    const QStringList expanded = expandGroups(ids);
+    const QSet<QString> include(expanded.begin(), expanded.end());
+    bool modified = false;
+    for (auto& e : elements_) {
+        if (include.contains(e.id) && !e.groupId.isEmpty()) {
+            e.groupId.clear();
+            modified = true;
+        }
+    }
+    if (modified) checkpoint();
+    return modified;
+}
 HmiCanvas::HmiCanvas(HmiDocument* document, QWidget* parent)
     : QGraphicsView(parent), document_(document),
       scene_(new QGraphicsScene(this))
@@ -327,6 +522,18 @@ HmiCanvas::HmiCanvas(HmiDocument* document, QWidget* parent)
     connect(document_, &HmiDocument::changed, this, &HmiCanvas::redraw);
     redraw();
     applyZoom();
+}
+
+HmiCanvas::~HmiCanvas()
+{
+    // QGraphicsScene can emit selectionChanged while its items are being
+    // destroyed. Disconnect before QGraphicsView/Qt destroys the scene graph.
+    if (scene_) {
+        QObject::disconnect(scene_, nullptr, this, nullptr);
+        scene_->blockSignals(true);
+        scene_->clearSelection();
+        setScene(nullptr);
+    }
 }
 
 void HmiCanvas::setZoom(double factor)
@@ -359,6 +566,7 @@ void HmiCanvas::setEditing(bool editing)
 {
     if (editing_ == editing) return;
     editing_ = editing;
+    setDragMode(editing_ ? QGraphicsView::RubberBandDrag : QGraphicsView::NoDrag);
     redraw();
 }
 
@@ -371,17 +579,26 @@ void HmiCanvas::setDemoValues(bool enabled)
 
 void HmiCanvas::selectElement(const QString& id)
 {
-    selectedId_ = id;
+    selectElements(id.isEmpty() ? QStringList{} : QStringList{id});
+}
+
+void HmiCanvas::selectElements(const QStringList& ids)
+{
+    const QStringList next = editing_ ? document_->expandGroups(ids) : QStringList{};
+    const bool different = next != selectedIds_;
+    selectedIds_ = next;
+    selectedId_ = selectedIds_.isEmpty() ? QString() : selectedIds_.constFirst();
     {
         QSignalBlocker blocker(scene_);
         for (auto* item : scene_->items()) {
-            if (item->data(0).toString() == id && item->flags() & QGraphicsItem::ItemIsSelectable)
-                item->setSelected(true);
-            else if (item->flags() & QGraphicsItem::ItemIsSelectable)
-                item->setSelected(false);
+            if (item->flags() & QGraphicsItem::ItemIsSelectable)
+                item->setSelected(selectedIds_.contains(item->data(0).toString()));
         }
     }
-    emit selectedElementChanged(selectedId_);
+    if (different) {
+        emit selectedElementChanged(selectedId_);
+        emit selectionChanged();
+    }
 }
 
 int HmiCanvas::renderedElementCount() const
@@ -394,32 +611,50 @@ int HmiCanvas::renderedElementCount() const
 
 void HmiCanvas::onSelected()
 {
-    const auto selected = scene_->selectedItems();
-    const QString next = selected.isEmpty() ? QString() : selected.constFirst()->data(0).toString();
-    if (selectedId_ == next) return;
-    selectedId_ = next;
-    emit selectedElementChanged(selectedId_);
+    QSet<QString> raw;
+    for (auto* item : scene_->selectedItems()) {
+        const QString id = item->data(0).toString();
+        if (!id.isEmpty()) raw.insert(id);
+    }
+    QStringList requested;
+    for (const auto& element : document_->elements())
+        if (raw.contains(element.id)) requested.append(element.id);
+    selectElements(requested);
+}
+
+void HmiCanvas::mousePressEvent(QMouseEvent* event)
+{
+    dragStart_ = event->position().toPoint();
+    QGraphicsView::mousePressEvent(event);
 }
 
 void HmiCanvas::mouseReleaseEvent(QMouseEvent* event)
 {
     QGraphicsView::mouseReleaseEvent(event);
-    if (!editing_) return;
+    if (!editing_ || (event->position().toPoint() - dragStart_).manhattanLength()
+                       < QApplication::startDragDistance()) return;
     const auto selected = scene_->selectedItems();
     if (selected.isEmpty()) return;
-    QGraphicsItem* selectedItem = selected.constFirst();
-    const QString id = selectedItem->data(0).toString();
-    const HmiElement* element = document_->find(id);
-    if (id.isEmpty() || !element) return;
-    const QPointF position = selectedItem->pos();
-    const int x = qRound(position.x() / gridStep) * gridStep;
-    const int y = qRound(position.y() / gridStep) * gridStep;
-    document_->moveElement(id, x, y);
+    QGraphicsItem* item = selected.constFirst();
+    const QString id = item->data(0).toString();
+    const HmiElement* reference = document_->find(id);
+    if (!reference) return;
+    const QPointF position = item->pos();
+    if ((position - reference->geometry.topLeft()).manhattanLength() < 1.0) return;
+    const int nextX = qRound(position.x() / gridStep) * gridStep;
+    const int nextY = qRound(position.y() / gridStep) * gridStep;
+    // One history checkpoint per group drag, not one for each selected widget.
+    document_->translateElements(selectedIds_, nextX - reference->geometry.x(),
+                                 nextY - reference->geometry.y());
 }
 
 void HmiCanvas::redraw()
 {
     QSignalBlocker blocker(scene_);
+    const QStringList stillSelected = document_->expandGroups(selectedIds_);
+    const bool selectionLost = stillSelected != selectedIds_;
+    selectedIds_ = stillSelected;
+    selectedId_ = selectedIds_.isEmpty() ? QString() : selectedIds_.constFirst();
     scene_->clear();
     for (int x = 0; x <= canvasWidth; x += gridStep) {
         const bool major = x % 100 == 0;
@@ -438,7 +673,8 @@ void HmiCanvas::redraw()
         const int w = element.geometry.width();
         const int h = element.geometry.height();
         auto* root = scene_->addRect(QRectF(0, 0, w, h),
-            QPen(borderColor(element.type), 1.3),
+            QPen(element.groupId.isEmpty()
+                ? borderColor(element.type) : QColor(QStringLiteral("#67AFCB")), 1.3),
             QBrush(QColor(QStringLiteral("#162C3E"))));
         root->setData(0, element.id);
         root->setPos(element.geometry.topLeft());
@@ -453,7 +689,7 @@ void HmiCanvas::redraw()
         } else {
             root->setAcceptedMouseButtons(Qt::NoButton);
         }
-        if (editing_ && element.id == selectedId_) root->setSelected(true);
+        if (editing_ && selectedIds_.contains(element.id)) root->setSelected(true);
 
         const int availableWidth = w - 24;
         drawText(root, element.title, QPointF(12, 8), 10,
@@ -537,6 +773,10 @@ void HmiCanvas::redraw()
     }
     applyZoom();
     viewport()->update();
+    if (selectionLost) {
+        emit selectedElementChanged(selectedId_);
+        emit selectionChanged();
+    }
 }
 
 HmiDesignerPage::HmiDesignerPage(HmiDocument* document, QWidget* parent, bool compact)
@@ -586,6 +826,48 @@ HmiDesignerPage::HmiDesignerPage(HmiDocument* document, QWidget* parent, bool co
         export_->hide();
     }
     root->addLayout(toolbar);
+
+    // Multi-object tools stay independent from the station's runtime capabilities.
+    auto* editRow = new QHBoxLayout;
+    editRow->setSpacing(6);
+    auto* alignmentRow = new QHBoxLayout;
+    alignmentRow->setSpacing(6);
+    auto edit = [this](QHBoxLayout* layout, const QString& id,
+                       const QString& caption, const QString& tip) {
+        auto* button = new QPushButton(caption);
+        button->setObjectName(QStringLiteral("ui.hmi.action.%1").arg(id));
+        button->setToolTip(tip);
+        layout->addWidget(button);
+        edits_.append({id, button});
+        return button;
+    };
+    auto* undoButton = edit(editRow, QStringLiteral("undo"), QStringLiteral("↶ Отменить"),
+                            QStringLiteral("Ctrl+Z · отменить изменение HMI"));
+    auto* redoButton = edit(editRow, QStringLiteral("redo"), QStringLiteral("↷ Повторить"),
+                            QStringLiteral("Ctrl+Shift+Z · повторить изменение HMI"));
+    auto* duplicateButton = edit(editRow, QStringLiteral("duplicate"), QStringLiteral("Копия"),
+                                 QStringLiteral("Ctrl+D · дублировать выбранные элементы"));
+    auto* groupButton = edit(editRow, QStringLiteral("group"), QStringLiteral("Группа"),
+                             QStringLiteral("Ctrl+G · объединить выделенные элементы"));
+    auto* ungroupButton = edit(editRow, QStringLiteral("ungroup"), QStringLiteral("Разгрупп."),
+                               QStringLiteral("Ctrl+Shift+G · разделить группу"));
+    editRow->addStretch(1);
+    root->addLayout(editRow);
+
+    auto* leftButton = edit(alignmentRow, QStringLiteral("align.left"),
+                            QStringLiteral("Лево"), QStringLiteral("По левому краю"));
+    auto* centerButton = edit(alignmentRow, QStringLiteral("align.hcenter"),
+                              QStringLiteral("Центр X"), QStringLiteral("По горизонтальному центру"));
+    auto* rightButton = edit(alignmentRow, QStringLiteral("align.right"),
+                             QStringLiteral("Право"), QStringLiteral("По правому краю"));
+    auto* topButton = edit(alignmentRow, QStringLiteral("align.top"),
+                           QStringLiteral("Верх"), QStringLiteral("По верхнему краю"));
+    auto* middleButton = edit(alignmentRow, QStringLiteral("align.vcenter"),
+                              QStringLiteral("Центр Y"), QStringLiteral("По вертикальному центру"));
+    auto* bottomButton = edit(alignmentRow, QStringLiteral("align.bottom"),
+                              QStringLiteral("Низ"), QStringLiteral("По нижнему краю"));
+    alignmentRow->addStretch(1);
+    root->addLayout(alignmentRow);
 
     auto* splitter = new QSplitter(Qt::Horizontal);
     splitter->setChildrenCollapsible(false);
@@ -637,6 +919,9 @@ HmiDesignerPage::HmiDesignerPage(HmiDocument* document, QWidget* parent, bool co
     inspectorLayout->setContentsMargins(13, 13, 13, 13);
     inspectorLayout->setSpacing(9);
     inspectorLayout->addWidget(label(QStringLiteral("СВОЙСТВА ЭЛЕМЕНТА"), "eyebrow"));
+    selectionInfo_ = label(QStringLiteral("Ctrl+Click · выбрать несколько элементов"), "muted");
+    selectionInfo_->setObjectName(QStringLiteral("ui.hmi.selectionCount"));
+    inspectorLayout->addWidget(selectionInfo_);
 
     auto* form = new QFormLayout;
     form->setLabelAlignment(Qt::AlignLeft);
@@ -706,6 +991,60 @@ HmiDesignerPage::HmiDesignerPage(HmiDocument* document, QWidget* parent, bool co
 
     connect(canvas_, &HmiCanvas::selectedElementChanged,
             this, &HmiDesignerPage::showSelected);
+    connect(canvas_, &HmiCanvas::selectionChanged,
+            this, &HmiDesignerPage::updateEditActions);
+    connect(document_, &HmiDocument::historyChanged,
+            this, &HmiDesignerPage::updateEditActions);
+
+    connect(undoButton, &QPushButton::clicked, document_, &HmiDocument::undo);
+    connect(redoButton, &QPushButton::clicked, document_, &HmiDocument::redo);
+    connect(duplicateButton, &QPushButton::clicked, this, [this] {
+        const QStringList created = document_->duplicateElements(canvas_->selectedElements());
+        if (!created.isEmpty()) {
+            canvas_->selectElements(created);
+            setNotice(QStringLiteral("Создано копий: %1").arg(created.size()));
+        }
+    });
+    connect(groupButton, &QPushButton::clicked, this, [this] {
+        if (document_->groupElements(canvas_->selectedElements()))
+            setNotice(QStringLiteral("Элементы объединены; перетаскивание группы — одним действием"));
+    });
+    connect(ungroupButton, &QPushButton::clicked, this, [this] {
+        if (document_->ungroupElements(canvas_->selectedElements()))
+            setNotice(QStringLiteral("Группа разделена"));
+    });
+    for (const auto& action : QVector<QPair<QPushButton*, QString>>{
+        {leftButton, QStringLiteral("left")}, {centerButton, QStringLiteral("hcenter")},
+        {rightButton, QStringLiteral("right")}, {topButton, QStringLiteral("top")},
+        {middleButton, QStringLiteral("vcenter")}, {bottomButton, QStringLiteral("bottom")}}) {
+        connect(action.first, &QPushButton::clicked, this, [this, edge = action.second] {
+            if (document_->alignElements(canvas_->selectedElements(), edge))
+                setNotice(QStringLiteral("Выравнивание применено к выбранным элементам"));
+        });
+    }
+    auto shortcut = [this](const QString& sequence, const std::function<void()>& handler) {
+        auto* key = new QShortcut(QKeySequence(sequence), canvas_);
+        key->setContext(Qt::WidgetWithChildrenShortcut);
+        connect(key, &QShortcut::activated, this, handler);
+    };
+    shortcut(QStringLiteral("Ctrl+Z"), [this] { if (canvas_->editing()) document_->undo(); });
+    shortcut(QStringLiteral("Ctrl+Shift+Z"), [this] { if (canvas_->editing()) document_->redo(); });
+    shortcut(QStringLiteral("Ctrl+D"), [duplicateButton] { if (duplicateButton->isEnabled()) duplicateButton->click(); });
+    shortcut(QStringLiteral("Ctrl+G"), [groupButton] { if (groupButton->isEnabled()) groupButton->click(); });
+    shortcut(QStringLiteral("Ctrl+Shift+G"), [ungroupButton] { if (ungroupButton->isEnabled()) ungroupButton->click(); });
+    shortcut(QStringLiteral("Ctrl+A"), [this] {
+        if (!canvas_->editing()) return;
+        QStringList ids;
+        for (const auto& element : document_->elements()) ids.append(element.id);
+        canvas_->selectElements(ids);
+    });
+    shortcut(QStringLiteral("Delete"), [this] {
+        if (canvas_->editing() && !canvas_->selectedElements().isEmpty()) {
+            const QStringList ids = canvas_->selectedElements();
+            canvas_->selectElements({});
+            document_->removeElements(ids);
+        }
+    });
     connect(document_, &HmiDocument::changed, this, [this] {
         showSelected(canvas_->selectedElement());
     });
@@ -725,10 +1064,10 @@ HmiDesignerPage::HmiDesignerPage(HmiDocument* document, QWidget* parent, bool co
     });
     connect(apply_, &QPushButton::clicked, this, &HmiDesignerPage::applySelected);
     connect(remove_, &QPushButton::clicked, this, [this] {
-        const QString id = id_->text();
-        canvas_->selectElement({});
-        if (document_->remove(id))
-            setNotice(QStringLiteral("Элемент удалён"));
+        const QStringList ids = canvas_->selectedElements();
+        canvas_->selectElements({});
+        if (document_->removeElements(ids))
+            setNotice(QStringLiteral("Удалено элементов: %1").arg(ids.size()));
     });
     connect(export_, &QPushButton::clicked, this, [this] {
         const QString filename = QFileDialog::getSaveFileName(
@@ -763,6 +1102,7 @@ HmiDesignerPage::HmiDesignerPage(HmiDocument* document, QWidget* parent, bool co
         setNotice(QStringLiteral("Загружен HMI-черновик: %1").arg(filename));
     });
     showSelected({});
+    updateEditActions();
 }
 
 QPushButton* HmiDesignerPage::addButton(const QString& type) const
@@ -771,6 +1111,45 @@ QPushButton* HmiDesignerPage::addButton(const QString& type) const
         if (item.first == type) return item.second;
     }
     return nullptr;
+}
+
+QPushButton* HmiDesignerPage::editCommand(const QString& id) const
+{
+    for (const auto& action : edits_)
+        if (action.first == id) return action.second;
+    return nullptr;
+}
+
+void HmiDesignerPage::updateEditActions()
+{
+    if (!canvas_) return;
+    const QStringList ids = canvas_->selectedElements();
+    const bool editing = canvas_->editing();
+    bool grouped = false;
+    for (const QString& id : ids) {
+        const auto* element = document_->find(id);
+        if (element && !element->groupId.isEmpty()) grouped = true;
+    }
+    for (const auto& action : edits_) {
+        const QString id = action.first;
+        bool enabled = false;
+        if (id == QStringLiteral("undo")) enabled = document_->canUndo();
+        else if (id == QStringLiteral("redo")) enabled = document_->canRedo();
+        else if (id == QStringLiteral("duplicate")) enabled = !ids.isEmpty();
+        else if (id == QStringLiteral("group")) enabled = ids.size() > 1;
+        else if (id == QStringLiteral("ungroup")) enabled = grouped;
+        else if (id.startsWith(QStringLiteral("align."))) enabled = ids.size() > 1;
+        action.second->setEnabled(editing && enabled);
+    }
+    if (selectionInfo_) {
+        selectionInfo_->setText(ids.isEmpty()
+            ? QStringLiteral("Ctrl+Click · выбрать несколько элементов")
+            : ids.size() == 1
+                ? QStringLiteral("Выбран 1 элемент%1")
+                      .arg(grouped ? QStringLiteral(" · группа") : QString())
+                : QStringLiteral("Выбрано: %1 · свойства первого элемента%2")
+                      .arg(ids.size()).arg(grouped ? QStringLiteral(" · группа") : QString()));
+    }
 }
 
 void HmiDesignerPage::setNotice(const QString& notice)
@@ -803,6 +1182,7 @@ void HmiDesignerPage::refreshBindingHint()
 
 void HmiDesignerPage::showSelected(const QString& id)
 {
+    updateEditActions();
     const HmiElement* item = document_->find(id);
     const bool exists = item != nullptr;
     for (QWidget* field : QVector<QWidget*>{title_, binding_, bindingChoice_, unit_,
@@ -854,6 +1234,7 @@ void HmiDesignerPage::updateMode(int index)
     canvas_->setDemoValues(index == 2);
     for (const auto& element : palette_) element.second->setEnabled(index == 0);
     showSelected(canvas_->selectedElement());
+    updateEditActions();
     if (index == 2)
         setNotice(QStringLiteral("СИНТЕТИКА · значения только из UI-фикстур, НЕ измерения"));
     else if (index == 1)
@@ -863,7 +1244,7 @@ void HmiDesignerPage::updateMode(int index)
 }
 
 HmiReadOnlyPanel::HmiReadOnlyPanel(HmiDocument* document, QWidget* parent)
-    : QFrame(parent)
+    : QFrame(parent), document_(document)
 {
     setObjectName(QStringLiteral("card"));
     auto* layout = new QVBoxLayout(this);

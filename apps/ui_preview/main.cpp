@@ -8,6 +8,7 @@
 #include <QApplication>
 #include <QCheckBox>
 #include <QDir>
+#include <QDialog>
 #include <QDebug>
 #include <QCloseEvent>
 #include <QComboBox>
@@ -40,6 +41,17 @@
 namespace {
 
 constexpr int kLayoutVersion = 2;
+
+void uiCleanupTrace(const QString& message)
+{
+    if (qEnvironmentVariable("QT_QPA_PLATFORM") != QStringLiteral("offscreen")) return;
+    QFile file(QStringLiteral("build-ui-preview/ui-smoke.trace"));
+    if (file.open(QIODevice::Append | QIODevice::WriteOnly)) {
+        file.write(message.toUtf8());
+        file.write("\n");
+        file.flush();
+    }
+}
 
 // UI preview deliberately has no dependency on StationSession, drivers or scenarios.
 // These are view-only fixtures, not station telemetry or hardware availability.
@@ -418,6 +430,7 @@ private:
 
     void resetNavigation()
     {
+        uiCleanupTrace(QStringLiteral("resetNavigation begin"));
         navButtons_.clear();
         screenIds_.clear();
         while (auto* item = navLayout_->takeAt(0)) {
@@ -426,16 +439,21 @@ private:
         }
         while (stack_->count() > 0) {
             QWidget* widget = stack_->widget(0);
+            const QString kind = widget->metaObject()->className();
+            uiCleanupTrace(QStringLiteral("resetNavigation deleting widget: %1").arg(kind));
             stack_->removeWidget(widget);
             delete widget;
+            uiCleanupTrace(QStringLiteral("resetNavigation deleted widget: %1").arg(kind));
         }
         dockHost_ = nullptr;
         parameterDock_ = nullptr;
         eventDock_ = nullptr;
         parameterPanel_ = nullptr;
         eventLog_ = nullptr;
+        uiCleanupTrace(QStringLiteral("resetNavigation before HMI collection deletion"));
         delete hmiCollection_;
         hmiCollection_ = nullptr;
+        uiCleanupTrace(QStringLiteral("resetNavigation finished"));
     }
 
     QWidget* createModuleScreen(const QString& id, const DeliveryFixture& delivery)
@@ -462,9 +480,11 @@ private:
 
     void switchMode(int index)
     {
+        uiCleanupTrace(QStringLiteral("switchMode begin %1").arg(index));
         saveWorkspace();
         currentPage_ = -1;
         resetNavigation();
+        uiCleanupTrace(QStringLiteral("switchMode reset done %1").arg(index));
 
         composition_ = index >= 0 && index < compositions_.size()
             ? compositions_.at(index) : miltech::ui::UiComposition{};
@@ -750,8 +770,19 @@ int main(int argc, char* argv[])
                            QDir::tempPath() + QStringLiteral("/MilTechStationUiAutomation"));
     }
 
+    // Trace for headless Windows UI crashes (WIN32_EXECUTABLE hides Qt stderr).
+    const auto trace = [](const QString& stage) {
+        QFile output(QStringLiteral("build-ui-preview/ui-smoke.trace"));
+        if (output.open(QIODevice::WriteOnly | QIODevice::Append)) {
+            output.write(stage.toUtf8());
+            output.write("\n");
+            output.flush();
+        }
+    };
+    if (args.contains(QStringLiteral("--ui-smoke"))) trace(QStringLiteral("start"));
     UiPreviewWindow window;
     window.show();
+    if (args.contains(QStringLiteral("--ui-smoke"))) trace(QStringLiteral("window shown"));
 
     if (args.contains(QStringLiteral("--ui-smoke"))) {
         auto* selector = window.findChild<QComboBox*>(QStringLiteral("ui.variantSelector"));
@@ -761,8 +792,10 @@ int main(int argc, char* argv[])
         for (const QString& required : {QStringLiteral("ktma"), QStringLiteral("reference_device"), QStringLiteral("tu_ubsi")})
             if (selector->findData(required) < 0) return 25;
         for (int index = 0; index < selector->count(); ++index) {
+            trace(QStringLiteral("mode start=%1").arg(index));
             selector->setCurrentIndex(index);
             QApplication::processEvents();
+            trace(QStringLiteral("mode=%1").arg(index));
             const auto composition = compositions.at(index);
             if (!composition.valid() || stack->count() != composition.screens.size()) return 3;
             const auto docks = window.findChildren<QDockWidget*>();
@@ -816,6 +849,7 @@ int main(int argc, char* argv[])
             if (events->entryCount() < 3) return 15;
             if (bool(window.findChild<miltech::ui::SignalTopology*>()) != composition.hasComponent(QStringLiteral("topology"))) return 24;
             if (composition.hasComponent(QStringLiteral("hmi"))) {
+                trace(QStringLiteral("HMI start %1").arg(composition.id));
                 auto* pages = window.findChild<miltech::ui::HmiDeliveryCollection*>();
                 auto* pageEditor = window.findChild<miltech::ui::HmiDeliveryEditor*>();
                 auto* pageViewer = window.findChild<miltech::ui::HmiDeliveryViewer*>();
@@ -846,6 +880,7 @@ int main(int argc, char* argv[])
                 if (document->elements().size() != before + 1
                     || viewer->canvas()->renderedElementCount() != before + 1)
                     return 53;
+                trace(QStringLiteral("HMI added widget"));
                 auto* sourcePicker = designer->bindingChoice();
                 auto* bindingField = designer->findChild<QLineEdit*>(QStringLiteral("ui.hmi.binding"));
                 auto* applyBinding = designer->findChild<QPushButton*>(QStringLiteral("ui.hmi.apply"));
@@ -881,35 +916,122 @@ int main(int argc, char* argv[])
                 if (!moved || moved->geometry.right() >= 960
                     || moved->geometry.bottom() >= 540) return 59;
 
+                trace(QStringLiteral("HMI previous checks passed"));
+                designer->previewMode()->setCurrentIndex(0);
+                auto* undoButton = designer->editCommand(QStringLiteral("undo"));
+                auto* redoButton = designer->editCommand(QStringLiteral("redo"));
+                auto* groupButton = designer->editCommand(QStringLiteral("group"));
+                auto* ungroupButton = designer->editCommand(QStringLiteral("ungroup"));
+                auto* copyButton = designer->editCommand(QStringLiteral("duplicate"));
+                auto* leftButton = designer->editCommand(QStringLiteral("align.left"));
+                if (!undoButton || !redoButton || !groupButton || !ungroupButton
+                    || !copyButton || !leftButton) return 76;
+                const QString one = document->elements().at(0).id;
+                const QString two = document->elements().at(1).id;
+                const int beforeEditing = document->elements().size();
+                const QRect oldFirst = document->find(one)->geometry;
+                const QRect oldSecond = document->find(two)->geometry;
+                trace(QStringLiteral("HMI multi-select"));
+                designer->canvas()->selectElements({one, two});
+                if (designer->canvas()->selectedElements().size() != 2
+                    || !groupButton->isEnabled()) return 77;
+                trace(QStringLiteral("HMI group"));
+                groupButton->click();
+                const QString grouped = document->find(one)->groupId;
+                if (grouped.isEmpty() || document->find(two)->groupId != grouped
+                    || !ungroupButton->isEnabled()) return 78;
+                trace(QStringLiteral("HMI align"));
+                leftButton->click();
+                if (document->find(one)->geometry.left()
+                    != document->find(two)->geometry.left()) return 79;
+                trace(QStringLiteral("HMI undo alignment"));
+                undoButton->click();
+                if (document->find(one)->geometry != oldFirst
+                    || document->find(two)->geometry != oldSecond
+                    || !redoButton->isEnabled()) return 80;
+                trace(QStringLiteral("HMI redo alignment"));
+                redoButton->click();
+                if (document->find(one)->geometry.left()
+                    != document->find(two)->geometry.left()) return 81;
+                undoButton->click(); // undo alignment
+                trace(QStringLiteral("HMI duplicate"));
+                copyButton->click();
+                if (document->elements().size() != beforeEditing + 2) return 82;
+                const QString newGroupA = document->elements().at(beforeEditing).groupId;
+                const QString newGroupB = document->elements().at(beforeEditing + 1).groupId;
+                if (newGroupA.isEmpty() || newGroupA == grouped || newGroupA != newGroupB)
+                    return 83;
+                trace(QStringLiteral("HMI undo duplicate"));
+                undoButton->click();
+                if (document->elements().size() != beforeEditing) return 84;
+                trace(QStringLiteral("HMI redo duplicate"));
+                redoButton->click();
+                if (document->elements().size() != beforeEditing + 2) return 85;
+                undoButton->click();
+                designer->canvas()->selectElements({one, two});
+                trace(QStringLiteral("HMI ungroup"));
+                ungroupButton->click();
+                if (!document->find(one)->groupId.isEmpty()
+                    || !document->find(two)->groupId.isEmpty()) return 86;
+                undoButton->click();
+                if (document->find(one)->groupId != grouped) return 87;
+                if (!pageEditor->fullscreenButton()) return 88;
+                trace(QStringLiteral("HMI fullscreen open"));
+                pageEditor->fullscreenButton()->click();
+                QApplication::processEvents();
+                auto* fullScreen = pageEditor->fullscreenDialog();
+                if (!fullScreen || !fullScreen->isVisible()
+                    || !fullScreen->findChild<miltech::ui::HmiDesignerPage*>()) return 89;
+                trace(QStringLiteral("HMI fullscreen close"));
+                fullScreen->close();
+                QApplication::processEvents();
+
+                trace(QStringLiteral("HMI editing complete"));
                 if (pages->pageCount() != composition.hmiPages.size()) return 62;
+                trace(QStringLiteral("HMI switch page"));
                 if (!pages->setCurrentIndex(1)
                     || pageEditor->pageSelector()->currentIndex() != 1
                     || pageViewer->visiblePageIndex() != 1) return 63;
+                trace(QStringLiteral("HMI switch page DONE"));
+                trace(QStringLiteral("HMI add page BEGIN"));
                 pageEditor->addPageButton()->click();
+                trace(QStringLiteral("HMI add page DONE"));
                 if (pages->pageCount() != composition.hmiPages.size() + 1
                     || pageViewer->visiblePageIndex() != pages->currentIndex()) return 64;
                 pageEditor->nameInput()->setText(QStringLiteral("Новый экран · проверка UX"));
+                trace(QStringLiteral("HMI rename BEGIN"));
                 pageEditor->renamePageButton()->click();
+                trace(QStringLiteral("HMI rename DONE"));
                 if (pages->pageAt(pages->currentIndex()).title
                     != QStringLiteral("Новый экран · проверка UX")) return 65;
+                trace(QStringLiteral("HMI duplicate page BEGIN"));
                 pageEditor->duplicatePageButton()->click();
+                trace(QStringLiteral("HMI duplicate page DONE"));
                 if (pages->pageCount() != composition.hmiPages.size() + 2
                     || !pages->pageAt(pages->currentIndex()).title.contains(QStringLiteral("копия")))
                     return 66;
                 miltech::ui::HmiDeliveryCollection restoredPages(composition.id);
+                trace(QStringLiteral("HMI collection JSON BEGIN"));
                 if (!restoredPages.loadFromJson(pages->toJson(), &reason)
                     || restoredPages.pageCount() != pages->pageCount()) return 67;
                 const QByteArray beforeInvalid = pages->toJson();
                 miltech::ui::HmiDeliveryCollection otherDelivery(QStringLiteral("another_delivery"));
                 if (otherDelivery.loadFromJson(beforeInvalid, &reason)) return 68;
+                trace(QStringLiteral("HMI delete page BEGIN"));
                 if (!pages->deletePage(pages->currentIndex())
                     || pages->pageCount() != composition.hmiPages.size() + 1) return 69;
+                trace(QStringLiteral("HMI delete page DONE"));
                 if (pageEditor->pageSelector()->count() != pages->pageCount()
                     || pageViewer->pageSelector()->count() != pages->pageCount()) return 70;
+                trace(QStringLiteral("HMI all checks completed"));
             }
+            trace(QStringLiteral("HMI switch main navigation BEGIN"));
             nav.at(0)->click();
+            trace(QStringLiteral("HMI switch main navigation DONE"));
             QApplication::processEvents();
+            trace(QStringLiteral("HMI processEvents DONE"));
         }
+        trace(QStringLiteral("HMI variants checks completed"));
         for (const QSize size : {QSize(800, 600), QSize(1024, 768), QSize(1366, 768), QSize(1600, 900)}) {
             window.resize(size);
             for (int variant = 0; variant < selector->count(); ++variant) {
