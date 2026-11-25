@@ -12,6 +12,7 @@ class QCheckBox;
 class QComboBox;
 class QSplitter;
 class QLabel;
+class QPushButton;
 
 // Параметр задаётся парой идентификаторов: одинаковые адреса у разных
 // источников не смешиваются и не требуют общего пространства имён приборов.
@@ -49,6 +50,9 @@ private:
     void refreshPages(const QString& selectedId = {});
     void applyPage(bool resetSelection);
     void editPage(bool create);
+    void refreshRecordingSources();
+    void startRecording();
+    void updateRecordingStatus();
     void display();
     void updateGraph(int row, const std::optional<orbita::stand::ParameterSample>& sample);
     void updateVisibility();
@@ -59,6 +63,12 @@ private:
     QCheckBox* automaticScale_ = nullptr;
     QComboBox* pages_ = nullptr;
     QLabel* pageError_ = nullptr;
+    QComboBox* recordingSource_ = nullptr;
+    QPushButton* recordingStart_ = nullptr;
+    QPushButton* recordingStop_ = nullptr;
+    QLabel* recordingStatus_ = nullptr;
+    std::unique_ptr<orbita::stand::ParameterStreamRecording> recording_;
+    bool recordingStopping_ = false;
     QSplitter* splitter_ = nullptr;
     QWidget* graphPanel_ = nullptr;
     struct Series {

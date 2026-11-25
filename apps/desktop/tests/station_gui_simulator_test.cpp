@@ -8,6 +8,7 @@
 #include "table_widget.h"
 #include "detail_view.h"
 #include "parameter_sources.h"
+#include "orbita.h"
 #include "orbita_stand/run_store.h"
 #include "orbita_stand/sample_source.h"
 
@@ -19,6 +20,7 @@
 #include <QDirIterator>
 #include <QDialogButtonBox>
 #include <QFile>
+#include <QFileDialog>
 #include <QFileInfo>
 #include <QElapsedTimer>
 #include <QEventLoop>
@@ -1520,6 +1522,91 @@ int runChild(const QString& mode)
 
 int runParent()
 {
+    {
+        // Признак имитатора передаётся адаптеру из явного выбора профиля;
+        // без этого признака адаптер не утверждает происхождение отсчётов.
+        orbita::Orbita decoder;
+        auto simulator = miltech::integration::createOrbitaSampleSimulator();
+        std::shared_mutex channels;
+        auto unknown = makeOrbitaParameters(decoder, *simulator, channels);
+        auto simulated = makeOrbitaParameters(decoder, *simulator, channels,
+            orbita::stand::ParameterProvenance::Simulated);
+        require(unknown->provenance() == orbita::stand::ParameterProvenance::Unknown
+                    && simulated->provenance() == orbita::stand::ParameterProvenance::Simulated,
+                "Orbita adapter invented or lost configured provenance");
+    }
+    {
+        // Оператор выбирает конкретный источник и получает файл без данных
+        // другого имитатора; запуск и завершение видны в интерфейсе.
+        QTemporaryDir directory;
+        require(directory.isValid(), "recording UI temporary directory unavailable");
+        const auto path = directory.filePath(QStringLiteral("monitor.jsonl"));
+        orbita::stand::ParameterRepository repository;
+        repository.add(makeParameterSimulator("ui-one", "voltage", 12.0, "V"));
+        repository.add(makeParameterSimulator("ui-two", "voltage", 34.0, "V"));
+        MultiSourceMonitor monitor;
+        monitor.setBindings({{QStringLiteral("ui-one"), QStringLiteral("Первый"),
+                              QStringLiteral("voltage"), QStringLiteral("Напряжение"), {}, QStringLiteral("V")},
+                             {QStringLiteral("ui-two"), QStringLiteral("Второй"),
+                              QStringLiteral("voltage"), QStringLiteral("Напряжение"), {}, QStringLiteral("V")}});
+        monitor.setRepository(&repository);
+        monitor.show();
+        auto* source = monitor.findChild<QComboBox*>(QStringLiteral("recordingSource"));
+        auto* start = monitor.findChild<QPushButton*>(QStringLiteral("recordingStart"));
+        auto* stop = monitor.findChild<QPushButton*>(QStringLiteral("recordingStop"));
+        auto* status = monitor.findChild<QLabel*>(QStringLiteral("recordingStatus"));
+        require(source && start && stop && status && source->count() == 2 && start->isEnabled(),
+                "recording controls are unavailable");
+        source->setCurrentIndex(source->findData(QStringLiteral("ui-one")));
+        QTimer::singleShot(0, [&] {
+            auto* dialog = qobject_cast<QFileDialog*>(QApplication::activeModalWidget());
+            if (!dialog) return;
+            dialog->selectFile(path);
+            QMetaObject::invokeMethod(dialog, "accept", Qt::DirectConnection);
+        });
+        start->click();
+        const auto wait = [](const auto& predicate) {
+            QElapsedTimer timer; timer.start();
+            while (!predicate() && timer.elapsed() < 5000) {
+                QApplication::processEvents();
+                QThread::msleep(10);
+            }
+            return predicate();
+        };
+        require(wait([&] { return status->text().contains(QStringLiteral("Запись результатов")); }),
+                "recording did not start in UI");
+        require(status->text().contains(QStringLiteral("имитация")),
+                "simulated recording was not identified in UI");
+        repository.refresh("ui-one", "voltage");
+        repository.refresh("ui-two", "voltage");
+        require(wait([&] { return status->text().contains(QStringLiteral("записей: 1")); }),
+                "recorded sample count was not displayed");
+        stop->click();
+        require(wait([&] { return status->text().contains(QStringLiteral("Запись завершена")); }),
+                "recording completion was not displayed");
+        QFile file(path);
+        require(file.open(QIODevice::ReadOnly), "UI recording file is unavailable");
+        const auto lines = file.readAll().split('\n');
+        require(lines.size() == 4
+                    && QJsonDocument::fromJson(lines[0]).object().value("source_id").toString() == "ui-one"
+                    && QJsonDocument::fromJson(lines[0]).object().value("provenance").toString() == "simulated"
+                    && QJsonDocument::fromJson(lines[1]).object().value("value").toDouble() == 12
+                    && QJsonDocument::fromJson(lines[2]).object().value("complete").toBool(),
+                "UI recording did not contain exactly the selected source");
+        file.close();
+        QTimer::singleShot(0, [&] {
+            auto* dialog = qobject_cast<QFileDialog*>(QApplication::activeModalWidget());
+            if (!dialog) return;
+            dialog->selectFile(path);
+            QMetaObject::invokeMethod(dialog, "accept", Qt::DirectConnection);
+        });
+        start->click();
+        require(wait([&] { return status->text().contains(QStringLiteral("Ошибка записи")); }),
+                "recording failure was not displayed in UI");
+        require(file.open(QIODevice::ReadOnly) && file.readAll().split('\n') == lines,
+                "recording error overwrote the existing file");
+        monitor.setRepository(nullptr);
+    }
     {
         orbita::stand::ParameterRepository repository;
         repository.add(makeParameterSimulator("unknown-unit", "voltage", 12.0, "V"));

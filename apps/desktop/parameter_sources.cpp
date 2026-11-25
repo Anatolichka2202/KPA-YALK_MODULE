@@ -9,10 +9,11 @@ namespace {
 class OrbitaParameters final : public orbita::stand::IParameterSource {
 public:
     OrbitaParameters(orbita::Orbita& decoder, orbita::stand::ISampleSource& source,
-                     std::shared_mutex& channelsMutex)
+                     std::shared_mutex& channelsMutex, orbita::stand::ParameterProvenance provenance)
         : decoder_(decoder), source_(source), channelsMutex_(channelsMutex), monotonicOrigin_(std::chrono::steady_clock::now()),
-          wallOrigin_(std::chrono::system_clock::now()) {}
+          wallOrigin_(std::chrono::system_clock::now()), provenance_(provenance) {}
     std::string sourceId() const override { return "orbita"; }
+    orbita::stand::ParameterProvenance provenance() const noexcept override { return provenance_; }
     std::string probe() override { return source_.isRunning() ? "ready" : "disconnected"; }
     orbita::stand::ParameterSample read(const std::string& key) override {
         orbita::stand::ParameterSample sample;
@@ -45,6 +46,7 @@ private:
     std::shared_mutex& channelsMutex_;
     std::chrono::steady_clock::time_point monotonicOrigin_;
     std::chrono::system_clock::time_point wallOrigin_;
+    orbita::stand::ParameterProvenance provenance_;
 };
 
 class ParameterSimulator final : public orbita::stand::IParameterSource {
@@ -52,6 +54,9 @@ public:
     ParameterSimulator(std::string id, std::string key, double value, std::string unit)
         : id_(std::move(id)), key_(std::move(key)), value_(value), unit_(std::move(unit)) {}
     std::string sourceId() const override { return id_; }
+    orbita::stand::ParameterProvenance provenance() const noexcept override {
+        return orbita::stand::ParameterProvenance::Simulated;
+    }
     std::string probe() override { return "ready"; }
     orbita::stand::ParameterSample read(const std::string& key) override {
         orbita::stand::ParameterSample sample;
@@ -75,9 +80,10 @@ private:
 }
 
 std::unique_ptr<orbita::stand::IParameterSource> makeOrbitaParameters(
-    orbita::Orbita& decoder, orbita::stand::ISampleSource& source, std::shared_mutex& channelsMutex)
+    orbita::Orbita& decoder, orbita::stand::ISampleSource& source, std::shared_mutex& channelsMutex,
+    orbita::stand::ParameterProvenance provenance)
 {
-    return std::make_unique<OrbitaParameters>(decoder, source, channelsMutex);
+    return std::make_unique<OrbitaParameters>(decoder, source, channelsMutex, provenance);
 }
 std::unique_ptr<orbita::stand::IParameterSource> makeParameterSimulator(
     std::string id, std::string key, double value, std::string unit)

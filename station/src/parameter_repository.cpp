@@ -3,11 +3,68 @@
 #include <deque>
 #include <limits>
 #include <utility>
+#include <atomic>
+#include <cmath>
+#include <thread>
+#include <QFile>
+#include <QJsonDocument>
+#include <QJsonObject>
 
 namespace orbita::stand {
 
+ParameterStreamSubscription::ParameterStreamSubscription(std::size_t capacity, ParameterProvenance provenance)
+    : capacity_(capacity), provenance_(provenance)
+{
+    if (!capacity_) throw std::invalid_argument("Размер очереди записи должен быть больше нуля");
+}
+
+void ParameterStreamSubscription::append(const ParameterSample& sample)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (closed_) return;
+    if (queue_.size() >= capacity_) {
+        // Не перезаписываем уже принятые данные и явно завершаем неполный поток.
+        overflow_ = true;
+        closed_ = true;
+        return;
+    }
+    try {
+        queue_.push_back(sample);
+    } catch (...) {
+        // Потеря возможности сохранить отсчёт завершает только подписку;
+        // опрос источника и другие потребители продолжаются.
+        overflow_ = true;
+        closed_ = true;
+    }
+}
+
+ParameterStreamBatch ParameterStreamSubscription::take()
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    ParameterStreamBatch result;
+    result.samples.swap(queue_);
+    result.overflow = overflow_;
+    result.closed = closed_;
+    result.sourceStopped = sourceStopped_;
+    return result;
+}
+
+void ParameterStreamSubscription::close() noexcept
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    closed_ = true;
+}
+
+void ParameterStreamSubscription::closeFromSource() noexcept
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (!closed_) sourceStopped_ = true;
+    closed_ = true;
+}
+
 struct ParameterRepository::Source {
-    explicit Source(std::unique_ptr<IParameterSource> value) : device(std::move(value)) {}
+    explicit Source(std::unique_ptr<IParameterSource> value)
+        : device(std::move(value)), provenance(device->provenance()) {}
     struct Entry {
         ParameterSample sample;
         std::chrono::steady_clock::time_point received;
@@ -20,9 +77,13 @@ struct ParameterRepository::Source {
         }
     };
     std::unique_ptr<IParameterSource> device;
+    const ParameterProvenance provenance;
     std::mutex io;
     mutable std::mutex cacheMutex;
     std::map<std::string, Entry> cache;
+    std::mutex subscribersMutex;
+    std::vector<std::weak_ptr<ParameterStreamSubscription>> subscribers;
+    bool subscriptionsClosed = false; // Защищено subscribersMutex.
     bool closed = false; // Защищено io; закрытый источник больше не опрашивается.
 };
 
@@ -87,7 +148,32 @@ ParameterSample ParameterRepository::refresh(const std::string& id, const std::s
         entry.sample = result;
         entry.append(result);
     }
+    // Подписчики получают тот же результат, что и остальные потребители;
+    // накопление не обращается к источнику повторно и не выполняет файловый IO.
+    {
+        std::lock_guard<std::mutex> lock(source->subscribersMutex);
+        for (auto it = source->subscribers.begin(); it != source->subscribers.end();) {
+            if (auto subscriber = it->lock()) {
+                subscriber->append(result);
+                ++it;
+            } else {
+                it = source->subscribers.erase(it);
+            }
+        }
+    }
     return result;
+}
+
+std::shared_ptr<ParameterStreamSubscription> ParameterRepository::subscribeStream(
+    const std::string& id, std::size_t capacity)
+{
+    const auto source = find(id);
+    auto subscriber = std::make_shared<ParameterStreamSubscription>(capacity, source->provenance);
+    // Подписка не ждёт медленного чтения прибора, выполняющегося в io.
+    std::lock_guard<std::mutex> lock(source->subscribersMutex);
+    if (source->subscriptionsClosed) throw std::runtime_error("Источник параметров закрыт");
+    source->subscribers.push_back(subscriber);
+    return subscriber;
 }
 
 std::optional<ParameterSample> ParameterRepository::latest(const std::string& id,
@@ -145,6 +231,12 @@ void ParameterRepository::clear() noexcept
         const auto& source = item.second;
         std::lock_guard<std::mutex> lock(source->io);
         source->closed = true;
+        {
+            std::lock_guard<std::mutex> subscribersLock(source->subscribersMutex);
+            source->subscriptionsClosed = true;
+            for (const auto& weak : source->subscribers)
+                if (auto subscriber = weak.lock()) subscriber->closeFromSource();
+        }
         source->device->safeStop();
     }
     {
@@ -152,6 +244,119 @@ void ParameterRepository::clear() noexcept
         clearing_ = false;
     }
     cleared_.notify_all();
+}
+
+struct ParameterStreamRecording::Impl {
+    std::shared_ptr<ParameterStreamSubscription> subscription;
+    std::string sourceId;
+    std::string filePath;
+    std::atomic_bool stopRequested{false};
+    mutable std::mutex mutex;
+    ParameterRecordingStatus current;
+    std::thread worker;
+
+    void setStatus(ParameterRecordingState state, std::string error = {}) {
+        std::lock_guard<std::mutex> lock(mutex);
+        current.state = state;
+        current.error = std::move(error);
+    }
+    void run() noexcept {
+        try {
+            QFile file(QString::fromUtf8(filePath.data(), static_cast<int>(filePath.size())));
+            if (!file.open(QIODevice::WriteOnly | QIODevice::NewOnly))
+                throw std::runtime_error(file.errorString().toUtf8().toStdString());
+            const auto write = [&file](const QJsonObject& object) {
+                auto data = QJsonDocument(object).toJson(QJsonDocument::Compact);
+                data.append('\n');
+                if (file.write(data) != data.size())
+                    throw std::runtime_error(file.errorString().toUtf8().toStdString());
+            };
+            const auto flush = [&file] {
+                if (!file.flush()) throw std::runtime_error(file.errorString().toUtf8().toStdString());
+            };
+            write({{"type", "header"}, {"schema", 1},
+                   {"source_id", QString::fromUtf8(sourceId.data(), static_cast<int>(sourceId.size()))},
+                   {"scope", "polled_parameter_samples"},
+                   {"provenance", subscription->provenance() == ParameterProvenance::Simulated
+                       ? "simulated" : "unknown"}});
+            flush();
+            setStatus(ParameterRecordingState::Recording);
+            for (;;) {
+                auto batch = subscription->take();
+                for (const auto& sample : batch.samples) {
+                    const auto nanos = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                        sample.timestamp.time_since_epoch()).count();
+                    const char* quality = sample.quality == SampleQuality::Good ? "good"
+                        : sample.quality == SampleQuality::Stale ? "stale"
+                        : sample.quality == SampleQuality::Disconnected ? "disconnected" : "invalid";
+                    QJsonObject object{{"type", "sample"},
+                        {"parameter", QString::fromUtf8(sample.parameterKey.data(), static_cast<int>(sample.parameterKey.size()))},
+                        {"timestamp_ns", sample.timestamp == std::chrono::system_clock::time_point{}
+                            ? QJsonValue(QJsonValue::Null) : QJsonValue(QString::number(nanos))},
+                        {"sequence", QString::number(sample.sequence)},
+                        {"raw", sample.quality == SampleQuality::Good && std::isfinite(sample.rawValue)
+                            ? QJsonValue(sample.rawValue) : QJsonValue(QJsonValue::Null)},
+                        {"value", sample.quality == SampleQuality::Good && std::isfinite(sample.physicalValue)
+                            ? QJsonValue(sample.physicalValue) : QJsonValue(QJsonValue::Null)},
+                        {"unit", QString::fromUtf8(sample.unit.data(), static_cast<int>(sample.unit.size()))},
+                        {"quality", quality},
+                        {"diagnostic", QString::fromUtf8(sample.diagnostic.data(), static_cast<int>(sample.diagnostic.size()))}};
+                    write(object);
+                }
+                if (!batch.samples.empty()) {
+                    flush();
+                    std::lock_guard<std::mutex> lock(mutex);
+                    current.samplesWritten += batch.samples.size();
+                }
+                if (batch.closed) {
+                    const bool complete = !batch.overflow && !batch.sourceStopped && stopRequested.load();
+                    const std::string reason = batch.overflow ? "Переполнение очереди записи"
+                        : complete ? std::string() : "Источник остановлен до завершения записи";
+                    write({{"type", "end"}, {"complete", complete}, {"reason", QString::fromUtf8(reason.c_str())}});
+                    flush();
+                    setStatus(complete ? ParameterRecordingState::Completed : ParameterRecordingState::Failed, reason);
+                    return;
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            }
+        } catch (const std::exception& error) {
+            subscription->close();
+            setStatus(ParameterRecordingState::Failed, error.what());
+        } catch (...) {
+            subscription->close();
+            setStatus(ParameterRecordingState::Failed, "Неизвестная ошибка записи");
+        }
+    }
+};
+
+ParameterStreamRecording::ParameterStreamRecording(ParameterRepository& repository,
+    std::string sourceId, std::string filePath, std::size_t queueCapacity)
+    : impl_(std::make_unique<Impl>())
+{
+    if (filePath.empty()) throw std::invalid_argument("Не указан файл записи");
+    impl_->subscription = repository.subscribeStream(sourceId, queueCapacity);
+    impl_->current.provenance = impl_->subscription->provenance();
+    impl_->sourceId = std::move(sourceId);
+    impl_->filePath = std::move(filePath);
+    impl_->worker = std::thread([state = impl_.get()] { state->run(); });
+}
+
+ParameterStreamRecording::~ParameterStreamRecording()
+{
+    requestStop();
+    if (impl_->worker.joinable()) impl_->worker.join();
+}
+
+void ParameterStreamRecording::requestStop() noexcept
+{
+    impl_->stopRequested.store(true);
+    impl_->subscription->close();
+}
+
+ParameterRecordingStatus ParameterStreamRecording::status() const
+{
+    std::lock_guard<std::mutex> lock(impl_->mutex);
+    return impl_->current;
 }
 
 } // namespace orbita::stand

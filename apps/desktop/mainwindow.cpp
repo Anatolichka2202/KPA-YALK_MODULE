@@ -1019,7 +1019,13 @@ void MainWindow::initializeStandRuntime()
                             }
                         }, Qt::QueuedConnection);
                     });
-                stationSession_.parameters().add(makeOrbitaParameters(*orbita_, *telemetrySampleSource_, orbitaChannelsMutex_));
+                // Признак имитации берём только из явно выбранного provider
+                // профиля; для остальных источников происхождение неизвестно.
+                const auto provenance = isSimulator
+                    ? orbita::stand::ParameterProvenance::Simulated
+                    : orbita::stand::ParameterProvenance::Unknown;
+                stationSession_.parameters().add(makeOrbitaParameters(
+                    *orbita_, *telemetrySampleSource_, orbitaChannelsMutex_, provenance));
             } else {
                 log(QStringLiteral(
                     "Поставка не объявляет binding telemetry.orbita.sample_source"));

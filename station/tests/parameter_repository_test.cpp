@@ -4,6 +4,11 @@
 #include <iostream>
 #include <stdexcept>
 #include <thread>
+#include <future>
+#include <QFile>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QTemporaryDir>
 
 using namespace orbita::stand;
 using namespace std::chrono_literals;
@@ -22,6 +27,7 @@ public:
         : id_(std::move(id)), value_(value), state_(state),
           timestamp_(std::chrono::system_clock::now()) {}
     std::string sourceId() const override { return id_; }
+    ParameterProvenance provenance() const noexcept override { return ParameterProvenance::Simulated; }
     std::string probe() override { return "ready"; }
     ParameterSample read(const std::string& key) override {
         ++state_.reads;
@@ -48,11 +54,144 @@ private:
     std::chrono::system_clock::time_point timestamp_;
     std::uint64_t sequence_ = 1;
 };
+class SlowSimulator final : public IParameterSource {
+public:
+    std::atomic_bool entered{false};
+    std::atomic_bool release{false};
+    std::string sourceId() const override { return "slow"; }
+    std::string probe() override { return "ready"; }
+    ParameterSample read(const std::string& key) override {
+        entered = true;
+        while (!release.load()) std::this_thread::sleep_for(1ms);
+        ParameterSample result; result.parameterKey = key; return result;
+    }
+    void safeStop() noexcept override {}
+};
 }
 
 int main()
 {
     try {
+        {
+            ParameterRepository repository;
+            auto source = std::make_unique<SlowSimulator>();
+            auto* slow = source.get();
+            repository.add(std::move(source));
+            std::thread reader([&] { repository.refresh("slow", "value"); });
+            while (!slow->entered.load()) std::this_thread::yield();
+            auto subscription = std::async(std::launch::async, [&] { return repository.subscribeStream("slow"); });
+            const bool returned = subscription.wait_for(2s) == std::future_status::ready;
+            slow->release = true;
+            reader.join();
+            auto active = subscription.get();
+            require(returned && active && active->provenance() == ParameterProvenance::Unknown,
+                    "subscription blocked or invented the source provenance");
+        }
+        {
+            // Файл содержит фактические результаты выбранного источника и
+            // доступен до остановки; отказ пути не мешает второму источнику.
+            QTemporaryDir directory;
+            require(directory.isValid(), "recording test directory unavailable");
+            State firstSource, secondSource;
+            ParameterRepository repository;
+            repository.add(std::make_unique<Simulator>("one", 12, firstSource));
+            repository.add(std::make_unique<Simulator>("two", 34, secondSource));
+            const auto path = directory.filePath(QStringLiteral("запись.jsonl"));
+            ParameterStreamRecording recording(repository, "one", path.toUtf8().toStdString());
+            const auto wait = [](const auto& predicate) {
+                const auto deadline = std::chrono::steady_clock::now() + 3s;
+                while (!predicate() && std::chrono::steady_clock::now() < deadline)
+                    std::this_thread::sleep_for(10ms);
+                return predicate();
+            };
+            require(wait([&] { return recording.status().state != ParameterRecordingState::Starting; })
+                        && recording.status().state == ParameterRecordingState::Recording,
+                    "recording did not open output file");
+            repository.refresh("one", "voltage");
+            repository.refresh("two", "voltage");
+            require(wait([&] { return recording.status().samplesWritten == 1; }),
+                    "recording did not flush sample while active");
+            QFile file(path);
+            require(file.open(QIODevice::ReadOnly), "partial recording unavailable");
+            const auto partial = file.readAll().split('\n');
+            file.close();
+            require(partial.size() >= 3
+                        && QJsonDocument::fromJson(partial[0]).object().value("source_id").toString() == "one"
+                        && QJsonDocument::fromJson(partial[0]).object().value("provenance").toString() == "simulated"
+                        && recording.status().provenance == ParameterProvenance::Simulated
+                        && QJsonDocument::fromJson(partial[1]).object().value("value").toDouble() == 12,
+                    "partial file lost source or observed value");
+            firstSource.fail = true;
+            repository.refresh("one", "voltage");
+            require(wait([&] { return recording.status().samplesWritten == 2; }),
+                    "disconnection was not recorded");
+            recording.requestStop();
+            require(wait([&] { return recording.status().state == ParameterRecordingState::Completed; }),
+                    "recording did not finish");
+            require(file.open(QIODevice::ReadOnly), "completed recording unavailable");
+            const auto complete = file.readAll().split('\n');
+            file.close();
+            require(complete.size() == 5, "unexpected number of recording lines");
+            const auto disconnected = QJsonDocument::fromJson(complete[2]).object();
+            require(disconnected.value("quality").toString() == "disconnected"
+                        && disconnected.value("value").isNull()
+                        && QJsonDocument::fromJson(complete[3]).object().value("complete").toBool(),
+                    "recording did not retain its final marker or included another source");
+            ParameterStreamRecording badPath(repository, "one",
+                directory.filePath(QStringLiteral("missing/output.jsonl")).toUtf8().toStdString());
+            require(wait([&] { return badPath.status().state == ParameterRecordingState::Failed; })
+                        && !badPath.status().error.empty(), "write failure was not observable");
+            repository.refresh("two", "voltage");
+            require(repository.latest("two", "voltage", 1s)->physicalValue == 34,
+                    "recording failure interrupted another source");
+            ParameterStreamRecording interrupted(repository, "two",
+                directory.filePath(QStringLiteral("interrupted.jsonl")).toUtf8().toStdString());
+            require(wait([&] { return interrupted.status().state == ParameterRecordingState::Recording; }),
+                    "second recording did not start");
+            repository.clear();
+            interrupted.requestStop();
+            require(wait([&] { return interrupted.status().state == ParameterRecordingState::Failed; }),
+                    "source shutdown was incorrectly reported as a complete recording");
+        }
+        {
+            // Два источника продолжают опрашиваться независимо; подписка
+            // получает только выбранный источник и не теряет очередь при остановке.
+            State recordedState, otherState;
+            ParameterRepository repository;
+            repository.add(std::make_unique<Simulator>("recorded", 12, recordedState));
+            repository.add(std::make_unique<Simulator>("other", 34, otherState));
+            auto stream = repository.subscribeStream("recorded", 2);
+            repository.refresh("recorded", "voltage");
+            repository.refresh("other", "voltage");
+            repository.refresh("recorded", "current");
+            stream->close();
+            repository.refresh("recorded", "voltage");
+            const auto saved = stream->take();
+            require(saved.closed && !saved.overflow && saved.samples.size() == 2
+                        && saved.samples[0].parameterKey == "voltage"
+                        && saved.samples[1].parameterKey == "current"
+                        && saved.samples[0].timestamp != std::chrono::system_clock::time_point{}
+                        && otherState.reads == 1, "selected source stream lost identity or final samples");
+            auto limited = repository.subscribeStream("recorded", 1);
+            repository.refresh("recorded", "voltage");
+            repository.refresh("recorded", "voltage");
+            const auto overflow = limited->take();
+            require(overflow.closed && overflow.overflow && overflow.samples.size() == 1,
+                    "stream overflow did not preserve the partial queue and signal loss");
+            auto failedStream = repository.subscribeStream("recorded");
+            recordedState.fail = true;
+            repository.refresh("recorded", "voltage");
+            repository.refresh("other", "voltage");
+            const auto failed = failedStream->take();
+            const auto other = repository.latest("other", "voltage", 1s);
+            require(failed.samples.size() == 1 && failed.samples[0].quality == SampleQuality::Disconnected
+                        && !failed.samples[0].diagnostic.empty() && other
+                        && other->quality == SampleQuality::Good && other->physicalValue == 34,
+                    "source failure was not captured independently from the second source");
+            auto shutdown = repository.subscribeStream("other");
+            repository.clear();
+            require(shutdown->take().closed, "repository shutdown left a stream open");
+        }
         State first, second;
         StationSession station;
         auto& samples = station.parameters();
@@ -157,12 +296,12 @@ int main()
         checkScenario.steps[0].arguments["timeout_ms"] = "1000";
         require(station.scenarioEngine().validate(checkScenario).empty(), "valid stability wait rejected");
         std::thread sequence([&] {
-            const auto emit = [&](double value, std::chrono::milliseconds pause) {
+            const auto emitSample = [&](double value, std::chrono::milliseconds pause) {
                 std::this_thread::sleep_for(pause);
                 first.nextValue = value; first.advance = true;
                 samples.refresh("one", "voltage");
             };
-            emit(12, 50ms); emit(14, 40ms); emit(12, 40ms); emit(12, 120ms);
+            emitSample(12, 50ms); emitSample(14, 40ms); emitSample(12, 40ms); emitSample(12, 120ms);
         });
         const auto startWait = std::chrono::steady_clock::now();
         const auto stable = station.runScenario(checkScenario, "test", "", false);

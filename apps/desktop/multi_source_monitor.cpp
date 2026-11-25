@@ -19,6 +19,7 @@
 #include <QDialogButtonBox>
 #include <QDir>
 #include <QFile>
+#include <QFileDialog>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -30,6 +31,7 @@
 #include <QUuid>
 #include <QCryptographicHash>
 #include <algorithm>
+#include <QThreadPool>
 
 MultiSourceMonitor::MultiSourceMonitor(QWidget* parent) : QWidget(parent)
 {
@@ -59,6 +61,31 @@ MultiSourceMonitor::MultiSourceMonitor(QWidget* parent) : QWidget(parent)
     pageError_->setStyleSheet(QStringLiteral("color:#ffc180;"));
     pageError_->hide();
     layout->addWidget(pageError_);
+    auto* recordingControls = new QHBoxLayout;
+    recordingControls->addWidget(new QLabel(QStringLiteral("Запись источника"), this));
+    recordingSource_ = new QComboBox(this);
+    recordingSource_->setObjectName(QStringLiteral("recordingSource"));
+    recordingControls->addWidget(recordingSource_, 1);
+    recordingStart_ = new QPushButton(QStringLiteral("Записать…"), this);
+    recordingStart_->setObjectName(QStringLiteral("recordingStart"));
+    recordingStop_ = new QPushButton(QStringLiteral("Остановить"), this);
+    recordingStop_->setObjectName(QStringLiteral("recordingStop"));
+    recordingControls->addWidget(recordingStart_);
+    recordingControls->addWidget(recordingStop_);
+    layout->addLayout(recordingControls);
+    recordingStatus_ = new QLabel(QStringLiteral("Запись не ведётся"), this);
+    recordingStatus_->setObjectName(QStringLiteral("recordingStatus"));
+    recordingStatus_->setWordWrap(true);
+    layout->addWidget(recordingStatus_);
+    connect(recordingStart_, &QPushButton::clicked, this, &MultiSourceMonitor::startRecording);
+    connect(recordingStop_, &QPushButton::clicked, this, [this] {
+        if (recording_) {
+            recording_->requestStop();
+            recordingStopping_ = true;
+            recordingStop_->setEnabled(false);
+            recordingStatus_->setText(QStringLiteral("Завершение записи…"));
+        }
+    });
     table_ = new QTableWidget(this);
     table_->setObjectName(QStringLiteral("multiSourceValues"));
     table_->setColumnCount(5);
@@ -118,14 +145,23 @@ MultiSourceMonitor::MultiSourceMonitor(QWidget* parent) : QWidget(parent)
     refreshPages();
     timer_ = new QTimer(this);
     timer_->setInterval(250);
-    connect(timer_, &QTimer::timeout, this, &MultiSourceMonitor::display);
+    connect(timer_, &QTimer::timeout, this, [this] { display(); updateRecordingStatus(); });
+    updateRecordingStatus();
 }
 
-MultiSourceMonitor::~MultiSourceMonitor() = default;
+MultiSourceMonitor::~MultiSourceMonitor()
+{
+    if (recording_) {
+        recording_->requestStop();
+        // Закрытие файла может ожидать диск; не задерживаем поток интерфейса.
+        QThreadPool::globalInstance()->start([pending = std::move(recording_)]() mutable { pending.reset(); });
+    }
+}
 
 void MultiSourceMonitor::setRepository(orbita::stand::ParameterRepository* repository)
 {
     if (repository_ != repository) {
+        if (recording_) { recording_->requestStop(); recordingStopping_ = true; }
         // Одинаковое имя источника в другом профиле не доказывает, что это
         // тот же прибор. История и диапазоны предыдущей сессии не переносятся.
         for (auto& item : series_) {
@@ -139,14 +175,76 @@ void MultiSourceMonitor::setRepository(orbita::stand::ParameterRepository* repos
         }
     }
     repository_ = repository;
-    if (repository_) timer_->start(); else timer_->stop();
+    if (repository_ || recording_) timer_->start(); else timer_->stop();
     display();
+    updateRecordingStatus();
 }
 
 void MultiSourceMonitor::setBindings(std::vector<MonitoredBinding> bindings)
 {
     availableBindings_ = std::move(bindings);
+    refreshRecordingSources();
     applyPage(false);
+}
+
+void MultiSourceMonitor::refreshRecordingSources()
+{
+    const auto selected = recordingSource_->currentData().toString();
+    const QSignalBlocker block(recordingSource_);
+    recordingSource_->clear();
+    for (const auto& binding : availableBindings_) {
+        if (binding.sourceId.isEmpty() || recordingSource_->findData(binding.sourceId) >= 0) continue;
+        recordingSource_->addItem(binding.sourceTitle.isEmpty() ? binding.sourceId : binding.sourceTitle,
+                                  binding.sourceId);
+    }
+    const int previous = recordingSource_->findData(selected);
+    if (previous >= 0) recordingSource_->setCurrentIndex(previous);
+    updateRecordingStatus();
+}
+
+void MultiSourceMonitor::startRecording()
+{
+    if (!repository_ || recording_ || recordingSource_->currentIndex() < 0) return;
+    const auto path = QFileDialog::getSaveFileName(this, QStringLiteral("Записать отсчёты источника"), {},
+        QStringLiteral("JSON Lines (*.jsonl)"), nullptr,
+        QFileDialog::DontUseNativeDialog | QFileDialog::DontConfirmOverwrite);
+    if (path.isEmpty()) return;
+    try {
+        recording_ = std::make_unique<orbita::stand::ParameterStreamRecording>(
+            *repository_, recordingSource_->currentData().toString().toUtf8().toStdString(),
+            path.toUtf8().toStdString());
+        recordingStopping_ = false;
+        recordingStatus_->setText(QStringLiteral("Подготовка записи: %1").arg(path));
+        timer_->start();
+    } catch (const std::exception& error) {
+        recordingStatus_->setText(QStringLiteral("Ошибка записи: %1").arg(QString::fromUtf8(error.what())));
+    }
+    updateRecordingStatus();
+}
+
+void MultiSourceMonitor::updateRecordingStatus()
+{
+    if (recording_) {
+        const auto status = recording_->status();
+        const auto provenance = status.provenance == orbita::stand::ParameterProvenance::Simulated
+            ? QStringLiteral("имитация") : QStringLiteral("происхождение неизвестно");
+        if (status.state == orbita::stand::ParameterRecordingState::Recording && !recordingStopping_)
+            recordingStatus_->setText(QStringLiteral("Запись результатов опроса · %1 · записей: %2")
+                .arg(provenance).arg(static_cast<qulonglong>(status.samplesWritten)));
+        else if (status.state == orbita::stand::ParameterRecordingState::Completed
+                 || status.state == orbita::stand::ParameterRecordingState::Failed) {
+            recordingStatus_->setText(status.state == orbita::stand::ParameterRecordingState::Completed
+                ? QStringLiteral("Запись завершена · %1 · записей: %2")
+                    .arg(provenance).arg(static_cast<qulonglong>(status.samplesWritten))
+                : QStringLiteral("Ошибка записи: %1").arg(QString::fromUtf8(status.error.c_str())));
+            recording_.reset();
+            recordingStopping_ = false;
+            if (!repository_) timer_->stop();
+        }
+    }
+    recordingSource_->setEnabled(!recording_);
+    recordingStart_->setEnabled(repository_ && !recording_ && recordingSource_->count() > 0);
+    recordingStop_->setEnabled(recording_ && !recordingStopping_);
 }
 
 void MultiSourceMonitor::reloadPages()
