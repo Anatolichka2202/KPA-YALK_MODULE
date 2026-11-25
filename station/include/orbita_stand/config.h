@@ -82,7 +82,7 @@ StandProfile resolvePhysicalProfile(const StandProfile& embedded,
     const std::optional<StandProfile>& shared, const ConnectionOverrides& local);
 
 enum class EnvironmentIssueCode {
-    MissingResource, AmbiguousResource, DisabledResource, CapabilityMismatch,
+    MissingResource, AmbiguousResource, DisabledResource, CapabilityMismatch, UnverifiedResource,
     MissingLocalAddress, MissingSerialPort, UncheckedPort
 };
 struct EnvironmentIssue {

@@ -373,7 +373,10 @@ StandProfile resolvePhysicalProfile(const StandProfile& embedded,
         if (component == result.components.end())
             throw std::invalid_argument("Неизвестный компонент переопределения: " + id);
         for (const auto& [key, value] : values) {
-            if (!allowed.count(key) || !component->configuration.count(key) || value.empty())
+            // Второй порт поддерживается этим provider как необязательное
+            // подключение, даже если в типовом профиле он пока не назначен.
+            const bool optionalSecondPort = key == "port_bi" && component->provider == "orbita.akip_1160_pair";
+            if (!allowed.count(key) || (!component->configuration.count(key) && !optionalSecondPort) || value.empty())
                 throw std::invalid_argument("Недопустимое переопределение соединения: " + id + "." + key);
             component->configuration[key] = value;
             // Старый runtime читает параллельное представление devices.
@@ -397,12 +400,16 @@ EnvironmentPlan planEnvironment(const StandProfile& profile,
             if (component.enabled) selected.insert(component.id);
     }
     for (const auto& [resource, capability] : requested) {
-        std::vector<const ComponentProfile*> candidates;
+        std::vector<const ComponentProfile*> candidates, disabled;
         for (const auto& component : profile.components)
             if (component.id == resource || std::find(component.bindings.begin(), component.bindings.end(), resource)
-                    != component.bindings.end()) candidates.push_back(&component);
+                    != component.bindings.end()) {
+                (component.enabled ? candidates : disabled).push_back(&component);
+            }
         if (candidates.empty()) {
-            result.issues.push_back({EnvironmentIssueCode::MissingResource, {}, resource});
+            result.issues.push_back({disabled.empty() ? EnvironmentIssueCode::MissingResource
+                                                     : EnvironmentIssueCode::DisabledResource,
+                                     disabled.empty() ? std::string() : disabled.front()->id, resource});
             continue;
         }
         if (candidates.size() != 1) {
@@ -410,11 +417,12 @@ EnvironmentPlan planEnvironment(const StandProfile& profile,
             continue;
         }
         const auto& component = *candidates.front();
-        if (!component.enabled) {
-            result.issues.push_back({EnvironmentIssueCode::DisabledResource, component.id, resource});
-            continue;
-        }
         selected.insert(component.id);
+        // Legacy bind означает capability, а не роль: разные режимы сборки
+        // registry регистрируют такой alias по-разному, поэтому статическая
+        // проверка не может подтвердить наличие именованного ресурса.
+        if (component.kind == "equipment" && component.capabilities.empty() && component.id != resource)
+            result.issues.push_back({EnvironmentIssueCode::UnverifiedResource, component.id, resource});
         const auto& capabilities = component.capabilities.empty() ? component.bindings : component.capabilities;
         if (std::find(capabilities.begin(), capabilities.end(), capability) == capabilities.end())
             result.issues.push_back({EnvironmentIssueCode::CapabilityMismatch, component.id, capability});

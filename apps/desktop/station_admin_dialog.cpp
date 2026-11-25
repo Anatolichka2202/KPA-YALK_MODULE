@@ -111,6 +111,7 @@ StationAdminDialog::StationAdminDialog(
                     case orbita::stand::EnvironmentIssueCode::AmbiguousResource: reason = QStringLiteral("Несколько компонентов для ресурса"); break;
                     case orbita::stand::EnvironmentIssueCode::DisabledResource: reason = QStringLiteral("Компонент отключён"); break;
                     case orbita::stand::EnvironmentIssueCode::CapabilityMismatch: reason = QStringLiteral("Возможность не объявлена"); break;
+                    case orbita::stand::EnvironmentIssueCode::UnverifiedResource: reason = QStringLiteral("Регистрация ресурса не подтверждена для устаревшего профиля"); break;
                     case orbita::stand::EnvironmentIssueCode::MissingLocalAddress: reason = QStringLiteral("Локальный адрес не найден среди активных интерфейсов"); break;
                     case orbita::stand::EnvironmentIssueCode::MissingSerialPort: reason = QStringLiteral("Последовательный порт не обнаружен"); break;
                     case orbita::stand::EnvironmentIssueCode::UncheckedPort: reason = QStringLiteral("Тип порта не распознан; требуется ручная проверка"); break;

@@ -99,6 +99,24 @@ int main(int argc, char** argv)
             require(conflict.issues.size() == 1
                         && conflict.issues[0].code == EnvironmentIssueCode::AmbiguousResource,
                     "ambiguous resource was silently assigned to one device");
+            ambiguous.components.back().enabled = false;
+            require(planEnvironment(ambiguous, {{"power.dut", "power.dc_supply"}}, found).issues.empty(),
+                    "disabled component made an enabled role ambiguous");
+            auto legacy = resolved;
+            legacy.components[0].capabilities.clear();
+            const auto legacyPlan = planEnvironment(legacy, {{"power.dut", "power.dut"}}, found);
+            require(legacyPlan.issues.size() == 1
+                        && legacyPlan.issues[0].code == EnvironmentIssueCode::UnverifiedResource,
+                    "legacy binding was incorrectly confirmed as a registered resource");
+            auto paired = embedded;
+            paired.components[0].provider = "orbita.akip_1160_pair";
+            require(resolvePhysicalProfile(paired, std::nullopt, {{"supply", {{"port_bi", "COM8"}}}})
+                        .components[0].configuration.at("port_bi") == "COM8",
+                    "optional second port was rejected for paired supply");
+            bool extraPortRejected = false;
+            try { (void)resolvePhysicalProfile(embedded, std::nullopt, {{"supply", {{"port_bi", "COM8"}}}}); }
+            catch (const std::invalid_argument&) { extraPortRejected = true; }
+            require(extraPortRejected, "unconfigured second port was accepted for another provider");
             auto unresolved = resolved;
             unresolved.components[0].configuration["port"] = "custom-port";
             const auto unchecked = planEnvironment(unresolved, {{"power.dut", "power.dc_supply"}}, found);
