@@ -4,6 +4,7 @@
 #include <QApplication>
 #include <QAction>
 #include <QCheckBox>
+#include <QSpinBox>
 #include <QComboBox>
 #include <QElapsedTimer>
 #include <QFile>
@@ -190,6 +191,16 @@ void testWindow()
             "clicking Eptm did not reveal its trend below the live bars");
     require(waitUntil([&] { return trendPlot->property("brpTrendRawPoints").toInt() >= 150; }, 12000),
             "Eptm trend did not preserve intra-group samples");
+    require(waitUntil([&] {
+        const auto text = status->text();
+        return text.contains(QStringLiteral(" · сред. ")) && text.contains(QStringLiteral(" · полуразмах "))
+            && text.contains(QStringLiteral(" · мин. ")) && text.contains(QStringLiteral(" · макс. "));
+    }), "Eptm monitor statistics did not reach the selected channel");
+    auto* opacity = window.findChild<QSpinBox*>("brpMonitorOverlayOpacity");
+    require(opacity && opacity->value() == 45, "missing monitor overlay opacity");
+    opacity->setValue(0);
+    require(barsPlot->isVisible() && trendPlot->isVisible(), "opacity hid the live values or trend");
+    opacity->setValue(45);
     view->setCurrentIndex(0);
     require(barsPlot->isVisible() && !trendPlot->isVisible(), "closing the trend hid the live bars");
     stop->click();

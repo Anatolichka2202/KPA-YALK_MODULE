@@ -26,6 +26,7 @@
 #include <QSaveFile>
 #include <QSet>
 #include <QSignalBlocker>
+#include <QSpinBox>
 #include <QHeaderView>
 #include <QSqlDatabase>
 #include <QSqlError>
@@ -567,9 +568,6 @@ struct BrpTuWindow::Impl {
         plotOptionsLayout->setContentsMargins(0, 0, 0, 0);
         plotOptionsLayout->addWidget(new QLabel(QStringLiteral("Вид графика:"), plotOptions));
         plotOptionsLayout->addWidget(plotView);
-        instantBars = new QCheckBox(QStringLiteral("Мгновенный код"), plotOptions);
-        instantBars->setToolTip(QStringLiteral("Столбцы показывают последний код вместо среднего по 10 группам. Тренд всегда показывает сырые отсчёты."));
-        plotOptionsLayout->addWidget(instantBars);
         QObject::connect(loadE2010, &QAction::triggered, &window, [this] { selectE2010Profile(); });
         plotOptionsLayout->addWidget(trendChannel, 1);
         trendWindow = new QComboBox(plotOptions);
@@ -578,7 +576,17 @@ struct BrpTuWindow::Impl {
         trendWindow->setCurrentIndex(1);
         trendWindow->hide();
         plotOptionsLayout->addWidget(trendWindow);
-        plotOptionsLayout->addStretch();
+        auto* overlayOpacity = new QSpinBox(plotOptions);
+        overlayOpacity->setObjectName(QStringLiteral("brpMonitorOverlayOpacity"));
+        overlayOpacity->setRange(0, 100);
+        overlayOpacity->setValue(45);
+        overlayOpacity->setSuffix(QStringLiteral(" %"));
+        overlayOpacity->setAccessibleName(QStringLiteral("Непрозрачность статистики"));
+        overlayOpacity->setToolTip(QStringLiteral("Непрозрачность наложения среднего, полуразмаха и пиков. 0 % — только текущий код."));
+        plotOptionsLayout->addWidget(overlayOpacity);
+        QObject::connect(overlayOpacity, &QSpinBox::valueChanged, &window, [this](int opacity) {
+            monitorPlot->setOverlayOpacity(opacity / 100.0);
+        });
         plotOptions->hide();
         interfaceLayout->addWidget(plotOptions);
         QObject::connect(plotView, &QComboBox::currentIndexChanged, &window,
@@ -621,7 +629,8 @@ struct BrpTuWindow::Impl {
         interfaceLayout->addWidget(graph, 1);
         monitorPlot = new brp::ui::HistoryPlot(interfaceBox);
         monitorPlot->setObjectName(QStringLiteral("brpMonitorPlot"));
-        monitorPlot->setToolTip(QStringLiteral("Нажмите столбец, чтобы открыть тренд выбранного канала ниже."));
+        monitorPlot->setToolTip(QStringLiteral("Нажмите столбец, чтобы открыть тренд. Сплошной столбец — последний код, "
+            "полупрозрачный — среднее, тонкая полоса — минимум и максимум, янтарная отметка — полуразмах."));
         monitorPlot->configure(QStringLiteral("Текущие коды Орбиты"), QStringLiteral("код"), {});
         monitorPlot->setMinimumHeight(240);
         monitorPlot->hide();
@@ -882,7 +891,6 @@ struct BrpTuWindow::Impl {
             else profiles.setActiveIndex(index);
             profiles.replaceActive(profile.specs);
             combineProfiles->setChecked(false);
-            instantBars->setChecked(true);
             interfaceMode->setCurrentIndex(3);
             refreshProfiles();
             showProfileAddresses();
@@ -1751,40 +1759,36 @@ struct BrpTuWindow::Impl {
                 auto& point = it.value();
                 auto& raw = trendSamples[it.key().toStdString()];
                 const double missing = std::numeric_limits<double>::quiet_NaN();
-                if (gap)
+                if (gap) {
                     raw.emplace_back(rawTrendGroupStart, missing);
+                    point.groups = point.count = point.sum = 0;
+                    point.statistics.reset();
+                }
                 for (auto slot = point.layout.firstWord; slot < words.size(); slot += point.layout.stride) {
                     const auto word = words[slot] & 0x7ff;
                     const double stamp = rawTrendGroupStart + groupPeriod * slot / groupWords;
                     point.latest = (word >> point.shift) & 0x3ff;
                     point.latestFill = word == 0x2aa;
-                    point.latestAt = receivedAt;
                     raw.emplace_back(stamp, point.latestFill ? missing : point.latest);
-                }
-                while (!raw.empty() && (raw.size() > 65536 || raw.front().x() < rawTrendGroupStart - 15.0))
-                    raw.pop_front();
-                if (gap) {
-                    point.groups = 0;
-                    point.count = 0;
-                    point.sum = 0;
-                    point.fillCount = 0;
-                    point.updatedAt = {};
-                }
-                for (auto i = point.layout.firstWord; i < words.size(); i += point.layout.stride) {
-                    point.sum += (words[i] >> point.shift) & 0x3ff;
-                    if ((words[i] & 0x7ff) == 0x2aa) ++point.fillCount;
+                    if (point.latestFill) continue;
+                    point.minimum = point.count ? std::min(point.minimum, point.latest) : point.latest;
+                    point.maximum = point.count ? std::max(point.maximum, point.latest) : point.latest;
+                    point.sum += point.latest;
                     ++point.count;
                 }
-                if (++point.groups == 10 && point.count) {
-                    // Delphi UnitM16.pas суммирует все отсчёты за десять
-                    // групп и округляет средний код для индикации.
-                    point.value = std::nearbyint(static_cast<double>(point.sum) / point.count);
-                    point.fillOnly = point.fillCount == point.count;
-                    point.updatedAt = std::chrono::steady_clock::now();
-                    point.groups = 0;
-                    point.count = 0;
-                    point.sum = 0;
-                    point.fillCount = 0;
+                point.latestAt = receivedAt;
+                while (!raw.empty() && (raw.size() > 65536 || raw.front().x() < rawTrendGroupStart - 15.0))
+                    raw.pop_front();
+                if (++point.groups == 10) {
+                    // Публикуем законченные окна по десять групп. Слово заполнения
+                    // разрывает тренд и не участвует в статистике сигнала.
+                    if (point.count)
+                        point.statistics = brp::ui::HistoryPlot::BarStatistics{
+                            static_cast<double>(point.sum) / point.count,
+                            double(point.minimum), double(point.maximum)};
+                    else
+                        point.statistics.reset();
+                    point.groups = point.count = point.sum = 0;
                 }
             }
         }
@@ -1846,7 +1850,10 @@ struct BrpTuWindow::Impl {
             QHash<QString, AnalogMonitorPoint> averages;
             {
                 std::lock_guard<std::mutex> lock(dataMutex);
+                // Копируем под блокировкой, чтобы изменение хеша в потоке
+                // декодера не вызвало отложенное глубокое копирование.
                 averages = monitorAnalog;
+                averages.detach();
             }
             for (const auto& channel : snapshot.values) {
                 ++channelNumber;
@@ -1855,15 +1862,14 @@ struct BrpTuWindow::Impl {
                 const bool averaged = average != averages.cend();
                 // Последний принятый код остаётся виден при паузе, с явной
                 // пометкой возраста. Отсутствие данных и заполнитель различаются.
-                const bool showInstant = averaged && instantBars->isChecked();
-                const auto updatedAt = showInstant ? average->latestAt
-                    : averaged ? average->updatedAt : channel.updatedAt;
+                const auto updatedAt = averaged ? average->latestAt : channel.updatedAt;
                 const bool received = updatedAt != std::chrono::steady_clock::time_point{}
                     && (averaged || channel.valid);
                 const auto age = now - updatedAt;
                 const bool fresh = received && age < std::chrono::seconds(2);
-                const double value = showInstant ? average->latest : averaged ? average->value : channel.value;
-                const bool fillOnly = received && averaged && (showInstant ? average->latestFill : average->fillOnly);
+                const double value = averaged ? average->latest : channel.value;
+                const bool fillOnly = received && averaged && average->latestFill;
+                const auto statistics = received && averaged ? average->statistics : std::nullopt;
                 const auto name = activeMonitorNames.value(address);
                 const auto label = name.isEmpty() ? address : QStringLiteral("%1 · %2").arg(name, address);
                 QString measurement = fillOnly ? QStringLiteral("заполнение ЯФК 0x2AA")
@@ -1871,12 +1877,16 @@ struct BrpTuWindow::Impl {
                 if (received && !fresh)
                     measurement += QStringLiteral(" (устарело, %1 с)")
                         .arg(std::chrono::duration<double>(age).count(), 0, 'f', 1);
+                if (statistics && address == selectedAddress)
+                    measurement += QStringLiteral(" · сред. %1 · полуразмах %2 · мин. %3 · макс. %4")
+                        .arg(statistics->mean, 0, 'f', 1).arg(statistics->halfRange(), 0, 'f', 1)
+                        .arg(statistics->minimum).arg(statistics->maximum);
                 if (!compact || address == selectedAddress)
                     values.append(QStringLiteral("%1 = %2").arg(label, measurement));
                 if (plotEnabled->isChecked()) {
                     const auto barName = name.isEmpty() ? address : name;
                     bars.append({compact ? QStringLiteral("%1 · %2").arg(channelNumber).arg(barName) : barName,
-                                 value, received && !fillOnly, !fresh, address});
+                                 value, received && !fillOnly, !fresh, address, statistics});
                 }
             }
             if (plotEnabled->isChecked() && !monitorCounterActive) {
@@ -2401,19 +2411,16 @@ struct BrpTuWindow::Impl {
     QComboBox* profileCombo = nullptr;
     QCheckBox *combineProfiles = nullptr, *plotEnabled = nullptr, *counterToCom = nullptr;
     QComboBox *plotView = nullptr, *trendChannel = nullptr, *trendWindow = nullptr;
-    QCheckBox* instantBars = nullptr;
     brp::ui::HistoryPlot* detailTrend = nullptr;
     QWidget* plotOptions = nullptr;
     brp::ui::HistoryPlot* monitorPlot = nullptr;
     struct AnalogMonitorPoint {
         orbita::M16GroupChannel layout;
         unsigned shift;
-        unsigned groups = 0, count = 0, sum = 0, fillCount = 0;
-        double value = 0;
-        unsigned latest = 0;
-        bool fillOnly = false;
+        unsigned groups = 0, count = 0, sum = 0;
+        unsigned minimum = 0, maximum = 0, latest = 0;
+        std::optional<brp::ui::HistoryPlot::BarStatistics> statistics;
         bool latestFill = false;
-        std::chrono::steady_clock::time_point updatedAt{};
         std::chrono::steady_clock::time_point latestAt{};
     };
     QComboBox* adcChannel = nullptr;

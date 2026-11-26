@@ -2,7 +2,6 @@
 
 #include <QPainter>
 #include <QMouseEvent>
-#include <QVariantAnimation>
 #include <QPainterPath>
 #include <QWidget>
 
@@ -36,12 +35,20 @@ public:
         QString name;
         QVector<double> values;
     };
+    struct BarStatistics {
+        double mean;
+        double minimum;
+        double maximum;
+
+        double halfRange() const { return (maximum - minimum) / 2.0; }
+    };
     struct BarValue {
         QString name;
         double value = 0.0;
         bool valid = false;
         bool stale = false;
         QString address;
+        std::optional<BarStatistics> statistics;
     };
     struct TimedSeries {
         QString name;
@@ -53,10 +60,6 @@ public:
     explicit HistoryPlot(QWidget* parent = nullptr) : QWidget(parent)
     {
         setMinimumHeight(120);
-        barsAnimation_.setDuration(55);
-        barsAnimation_.setStartValue(0.0);
-        barsAnimation_.setEndValue(1.0);
-        connect(&barsAnimation_, &QVariantAnimation::valueChanged, this, [this] { update(); });
     }
 
     void configure(QString title, QString unit, QString firstName, QString secondName = {})
@@ -114,18 +117,13 @@ public:
         second_.clear();
         named_.clear();
         timed_.reset();
-        QVector<double> previous;
-        previous.reserve(bars.size());
-        for (qsizetype i = 0; i < bars.size(); ++i) {
-            const auto& next = bars[i];
-            previous.append(i < bars_.size() && bars_[i].address == next.address
-                && bars_[i].valid && !bars_[i].stale && next.valid && !next.stale
-                ? displayedBar(i) : next.value);
-        }
-        barsAnimation_.stop();
-        barOrigins_ = std::move(previous);
         bars_ = std::move(bars);
-        barsAnimation_.start();
+        update();
+    }
+
+    void setOverlayOpacity(double opacity)
+    {
+        overlayOpacity_ = opacity;
         update();
     }
 
@@ -275,13 +273,36 @@ protected:
                 const QColor color = valid
                     ? (bar.stale ? palette::dim : QColor::fromHsv((205 + 53 * (i % 6)) % 360, 145, 247))
                     : palette::dim;
-                const double ratio = valid ? std::clamp(displayedBar(i) / maximum, 0.0, 1.0) : 0.0;
                 const double width = std::max(2.0, std::min(slot * .64, 100.0));
-                const double x = plot.left() + (i + .5) * slot - width / 2.0;
-                const double height = ratio * plot.height();
-                p.fillRect(QRectF(x, plot.bottom() - height, width, height), color);
+                const double centre = plot.left() + (i + .5) * slot;
+                const auto yFor = [&](double value) {
+                    return plot.bottom() - std::clamp(value / maximum, 0.0, 1.0) * plot.height();
+                };
+                const double top = valid ? yFor(bar.value) : plot.bottom();
+                p.fillRect(QRectF(centre - width * .22, top, width * .44, plot.bottom() - top), color);
+                if (bar.statistics && overlayOpacity_ > 0.0) {
+                    const auto& stats = *bar.statistics;
+                    p.save();
+                    p.setOpacity(overlayOpacity_ * (bar.stale ? .45 : 1.0));
+                    const double meanY = yFor(stats.mean);
+                    const double side = width * .28;
+                    for (const double x : {centre - width * .5, centre + width * .22})
+                        p.fillRect(QRectF(x, meanY, side, plot.bottom() - meanY), palette::cyan);
+                    // Над текущим кодом среднее занимает всю ширину столбца.
+                    if (meanY < top)
+                        p.fillRect(QRectF(centre - width * .22, meanY, width * .44, top - meanY), palette::cyan);
+                    p.setPen(QPen(palette::amber, 2));
+                    p.drawLine(QPointF(centre - width * .5, yFor(stats.halfRange())),
+                               QPointF(centre + width * .5, yFor(stats.halfRange())));
+                    const double peakX = centre + width * .38;
+                    p.setPen(QPen(palette::text, 1));
+                    p.drawLine(QPointF(peakX, yFor(stats.maximum)), QPointF(peakX, yFor(stats.minimum)));
+                    for (const double peak : {stats.minimum, stats.maximum})
+                        p.drawLine(QPointF(peakX - 3, yFor(peak)), QPointF(peakX + 3, yFor(peak)));
+                    p.restore();
+                }
                 p.setPen(valid ? palette::text : palette::dim);
-                const QRectF valueRect(plot.left() + i * slot, plot.bottom() - height - 21,
+                const QRectF valueRect(plot.left() + i * slot, top - 21,
                                        slot, 18);
                 p.drawText(valueRect, Qt::AlignCenter,
                            valid ? QString::number(bar.value, 'f', 0) : QStringLiteral("—"));
@@ -374,16 +395,7 @@ protected:
     }
 
 private:
-    double displayedBar(qsizetype index) const
-    {
-        const double target = bars_[index].value;
-        if (barsAnimation_.state() != QAbstractAnimation::Running || index >= barOrigins_.size())
-            return target;
-        return barOrigins_[index] + (target - barOrigins_[index]) * barsAnimation_.currentValue().toDouble();
-    }
-
-    QVariantAnimation barsAnimation_;
-    QVector<double> barOrigins_;
+    double overlayOpacity_ = .45;
     QRectF plotArea() const
     {
         return {52.0, 32.0, static_cast<double>(std::max(20, width() - 66)),
