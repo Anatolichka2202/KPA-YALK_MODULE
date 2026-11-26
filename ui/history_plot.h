@@ -32,6 +32,11 @@ public:
         QString name;
         QVector<double> values;
     };
+    struct BarValue {
+        QString name;
+        double value = 0.0;
+        bool valid = false;
+    };
 
     explicit HistoryPlot(QWidget* parent = nullptr) : QWidget(parent)
     {
@@ -56,7 +61,17 @@ public:
 
     void setNamedSeries(QVector<NamedSeries> series)
     {
+        bars_.clear();
         named_ = std::move(series);
+        update();
+    }
+
+    // Static bar view for the most recent M16/M8 snapshot. Unlike a line graph,
+    // it does not suggest continuity between independent channel addresses.
+    void setBars(QVector<BarValue> bars)
+    {
+        named_.clear();
+        bars_ = std::move(bars);
         update();
     }
 
@@ -65,6 +80,7 @@ public:
         first_.clear();
         second_.clear();
         named_.clear();
+        bars_.clear();
         update();
     }
 
@@ -86,6 +102,51 @@ protected:
             const double y = area.top() + tick * area.height() / 4.0;
             p.setPen(QPen(palette::lineSoft, 1, Qt::DashLine));
             p.drawLine(QPointF(area.left(), y), QPointF(area.right(), y));
+        }
+
+        if (!bars_.isEmpty()) {
+            // Zero-based scale, with an independent column for each channel.
+            const double maximum = [&] {
+                double value = 1.0;
+                for (const auto& bar : bars_)
+                    if (bar.valid && std::isfinite(bar.value))
+                        value = std::max(value, bar.value);
+                return std::max(1023.0, value);
+            }();
+            const QRectF plot(area.left(), area.top() + 4, area.width(),
+                              std::max(20.0, area.height() - 29));
+            p.setFont(QFont(QStringLiteral("Segoe UI"), 8));
+            for (int tick = 0; tick <= 4; ++tick) {
+                const double value = maximum * tick / 4.0;
+                const double y = plot.bottom() - plot.height() * tick / 4.0;
+                p.setPen(palette::lineSoft);
+                p.drawLine(QPointF(plot.left(), y), QPointF(plot.right(), y));
+                p.setPen(palette::muted);
+                p.drawText(QRectF(0, y - 8, 46, 16), Qt::AlignRight | Qt::AlignVCenter,
+                           QString::number(value, 'f', 0));
+            }
+            const double slot = plot.width() / bars_.size();
+            for (int i = 0; i < bars_.size(); ++i) {
+                const auto& bar = bars_[i];
+                const bool valid = bar.valid && std::isfinite(bar.value);
+                const QColor color = valid
+                    ? QColor::fromHsv((205 + 53 * (i % 6)) % 360, 145, 247) : palette::dim;
+                const double ratio = valid ? std::clamp(bar.value / maximum, 0.0, 1.0) : 0.0;
+                const double width = std::max(2.0, std::min(slot * .64, 100.0));
+                const double x = plot.left() + (i + .5) * slot - width / 2.0;
+                const double height = ratio * plot.height();
+                p.fillRect(QRectF(x, plot.bottom() - height, width, height), color);
+                p.setPen(valid ? palette::text : palette::dim);
+                const QRectF valueRect(plot.left() + i * slot, plot.bottom() - height - 21,
+                                       slot, 18);
+                p.drawText(valueRect, Qt::AlignCenter,
+                           valid ? QString::number(bar.value, 'f', 0) : QStringLiteral("—"));
+                const QString label = p.fontMetrics().elidedText(bar.name, Qt::ElideRight,
+                                                 std::max(20, int(slot - 6)));
+                p.drawText(QRectF(plot.left() + i * slot, plot.bottom() + 5, slot, 20),
+                           Qt::AlignCenter, label);
+            }
+            return;
         }
 
         QVector<double> finite;
@@ -167,6 +228,7 @@ private:
     QString title_, unit_, firstName_, secondName_;
     QVector<double> first_, second_;
     QVector<NamedSeries> named_;
+    QVector<BarValue> bars_;
 };
 
 
