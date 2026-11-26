@@ -50,6 +50,13 @@ int main(int argc, char** argv)
             return *found;
         };
 
+        require(shouldObserveCounter(false, false, false),
+                "real RS485 mode must decode M16 returned counter (not simulation-only)");
+        require(shouldObserveCounter(false, true, true)
+                && !shouldObserveCounter(false, true, false)
+                && !shouldObserveCounter(true, false, false),
+                "counter telemetry guard must distinguish passive monitor and YASM");
+
         unsigned next = 1023;
         const auto bytes = counterBytes(next, 2);
         require(bytes == std::vector<uint8_t>{0x5F, 0x9F, 0x40, 0x80} && next == 1,
