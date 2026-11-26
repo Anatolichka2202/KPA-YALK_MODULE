@@ -23,6 +23,7 @@
 #include <QDialog>
 #include <QInputDialog>
 #include <QMenu>
+#include <QMessageBox>
 #include <QSaveFile>
 #include <QSet>
 #include <QSignalBlocker>
@@ -56,6 +57,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <deque>
 #include <cmath>
@@ -64,6 +66,7 @@
 #include <stdexcept>
 #include <thread>
 #include <unordered_map>
+#include <utility>
 
 namespace {
 using namespace miltech::brp;
@@ -195,7 +198,98 @@ std::vector<uint16_t> readYasmFixture(const QString& path)
 
 using Readiness = std::array<QString, 4>;
 
-Readiness probeStand(const QDir& root, const YAML::Node& profile, const QString& host, const QString& rs485)
+struct BrpPowerProfile {
+    tu::hardware::AkipConfig device;
+    double voltage;
+    double currentLimit;
+    unsigned settleMs;
+};
+
+BrpPowerProfile loadPowerProfile(const YAML::Node& stand, const QString& rs485)
+{
+    const auto power = stand["akip"];
+    BrpPowerProfile profile{};
+    const auto canonicalPort = [](QString port) {
+        port = port.trimmed();
+        if (port.startsWith(QStringLiteral(R"(\\.\)"))) port.remove(0, 4);
+        return port;
+    };
+    const auto port = canonicalPort(QString::fromStdString(power["port"].as<std::string>("")));
+    if (port.isEmpty()) throw std::runtime_error("Укажите COM-порт АКИП в профиле БРП.");
+    if (canonicalPort(rs485).compare(port, Qt::CaseInsensitive) == 0)
+        throw std::runtime_error("АКИП и RS-485 требуют разных COM-портов.");
+    profile.device.portName = port.toStdString();
+    profile.device.expectedIdentity = power["expected_idn"].as<std::string>();
+    if (profile.device.expectedIdentity.empty()) throw std::runtime_error("В профиле АКИП отсутствует модель прибора.");
+    profile.voltage = power["voltage_v"].as<double>(0.0);
+    profile.currentLimit = power["current_limit_a"].as<double>(0.0);
+    profile.device.overvoltageLimitV = power["ovp_v"].as<double>(0.0);
+    profile.settleMs = power["settle_ms"].as<unsigned>(300);
+    // Рабочий диапазон БРП по ЛВРМ.468157.004 ТУ v1.3: 24–35 В, до 1,5 А.
+    profile.device.maximumVoltageV = 35.0;
+    profile.device.maximumCurrentA = 1.5;
+    if (!(profile.voltage >= 24 && profile.voltage <= 35
+          && profile.currentLimit >= 0.005 && profile.currentLimit <= 1.5
+          && profile.device.overvoltageLimitV >= profile.voltage
+          && profile.device.overvoltageLimitV <= 35))
+        throw std::runtime_error("Задайте в профиле БРП voltage_v (24–35), current_limit_a (0,005–1,5) и ovp_v (от уставки до 35).");
+    return profile;
+}
+
+struct PowerStartResult {
+    bool needsOff = false;
+    tu::hardware::PowerState state;
+    QString error;
+};
+
+PowerStartResult startBrpPower(const BrpPowerProfile& profile, const std::atomic_bool& cancelled)
+{
+    PowerStartResult result;
+    try {
+        tu::hardware::Akip1160 supply(profile.device);
+        supply.probe();
+        if (cancelled.load()) return result;
+        // Сначала выключаем и подтверждаем выход. Затем задаём обе уставки
+        // и включаем по той же последовательности, что в процедуре УБСИ.
+        result.needsOff = true;
+        supply.setOutput(false);
+        if (cancelled.load()) return result;
+        supply.setCurrentLimit(profile.currentLimit);
+        supply.setVoltage(profile.voltage);
+        if (cancelled.load()) return result;
+        supply.setOutput(true);
+        for (unsigned waited = 0; waited < profile.settleMs && !cancelled.load();) {
+            const auto slice = std::min(50u, profile.settleMs - waited);
+            std::this_thread::sleep_for(std::chrono::milliseconds(slice));
+            waited += slice;
+        }
+        if (cancelled.load()) return result;
+        result.state = supply.readState();
+        if (!result.state.outputEnabled || !(result.state.measuredVoltageV >= 24
+            && result.state.measuredVoltageV <= 35 && result.state.measuredCurrentA >= 0
+            && result.state.measuredCurrentA <= profile.currentLimit + profile.device.currentSetpointToleranceA
+            && result.state.measuredCurrentA <= 1.5))
+            throw std::runtime_error("Выход АКИП не подтвердил рабочее напряжение и ток БРП.");
+    } catch (const std::exception& error) {
+        result.error = QString::fromUtf8(error.what());
+    }
+    return result;
+}
+
+QString stopBrpPower(const tu::hardware::AkipConfig& config)
+{
+    try {
+        tu::hardware::Akip1160 supply(config);
+        supply.probe();
+        supply.setOutput(false);
+        return {};
+    } catch (const std::exception& error) {
+        return QString::fromUtf8(error.what());
+    }
+}
+
+Readiness probeStand(const QDir& root, const YAML::Node& profile, const QString& host, const QString& rs485,
+                     const std::optional<tu::hardware::AkipConfig>& unconfirmedDevice)
 {
     Readiness result;
     try {
@@ -213,15 +307,14 @@ Readiness probeStand(const QDir& root, const YAML::Node& profile, const QString&
         result[1] = QString::fromUtf8(exception.what());
     }
     try {
-        const auto supply = profile["akip"];
-        tu::hardware::AkipConfig config;
-        config.portName = supply["port"].as<std::string>();
-        config.expectedIdentity = supply["expected_idn"].as<std::string>();
-        if (!config.portName.empty()) {
-            if (rs485.compare(QString::fromStdString(config.portName), Qt::CaseInsensitive) == 0)
-                throw std::runtime_error("АКИП и RS-485 требуют разных COM-портов.");
-            tu::hardware::Akip1160 instrument(config);
-            instrument.probe();
+        const auto power = loadPowerProfile(profile, rs485);
+        tu::hardware::Akip1160 supply(power.device);
+        supply.probe();
+        if (unconfirmedDevice) {
+            tu::hardware::Akip1160 previous(*unconfirmedDevice);
+            previous.probe();
+            if (previous.readState().outputEnabled)
+                throw std::runtime_error("После сбоя выход АКИП всё ещё включён. Отключите его и повторите проверку стенда.");
         }
     } catch (const std::exception& exception) {
         result[2] = QString::fromUtf8(exception.what());
@@ -800,7 +893,14 @@ struct BrpTuWindow::Impl {
         // callback's Impl lifetime until the worker has exited.
         refresh.stop();
         send.stop();
+        if (powerWatcher) {
+            cancelPower.store(true);
+            powerWatcher->future().waitForFinished();
+            if (powerWatcher->result().needsOff && runPowerProfile)
+                stopBrpPower(runPowerProfile->device);
+        }
         if (stopWatcher) stopWatcher->future().waitForFinished();
+        else if (poweredDevice) stopBrpPower(*poweredDevice);
         if (bridge) bridge.reset();
         decoder.reset();
         source.reset();
@@ -1161,7 +1261,7 @@ struct BrpTuWindow::Impl {
             error = QStringLiteral("Выберите COM-порт RS-485 на стартовом экране.");
         else if (mode == 1 && yasmFixture.empty() && yasmCodes->text().trimmed().isEmpty())
             error = QStringLiteral("Загрузите тест ЯСМ или укажите ожидаемые коды.");
-        else if (bridge || stoppingStream || preparingIsd || probing || meterBusy)
+        else if (bridge || stoppingStream || powerWatcher || preparingIsd || probing || meterBusy)
             error = QStringLiteral("Дождитесь завершения обращения к оборудованию.");
         if (!error.isEmpty()) {
             flow->setEquipmentStatus(connection, false, error);
@@ -1195,19 +1295,30 @@ struct BrpTuWindow::Impl {
             const auto result = watcher->result();
             watcher->deleteLater();
             probing = false;
+            if (result[2].isEmpty()) unconfirmedPowerDevice.reset();
             const std::array codes{isd, meter, supply, adc};
             for (std::size_t i = 0; i < codes.size(); ++i)
                 page->flow()->setEquipmentStatus(codes[i], result[i].isEmpty(), result[i]);
             updateCaptureControls();
         });
-        watcher->setFuture(QtConcurrent::run([host, root = root, profile, rs485 = flow->rs485Port(), mode] {
-            return probeStand(root, profile, host, mode == 0 ? rs485 : QString());
+        watcher->setFuture(QtConcurrent::run([host, root = root, profile, rs485 = flow->rs485Port(),
+                                             unconfirmedDevice = unconfirmedPowerDevice] {
+            return probeStand(root, profile, host, rs485, unconfirmedDevice);
         }));
     }
 
     void startScenario(const QString& serialNumber)
     {
-        if (currentStage >= 0 || bridge || stoppingStream || preparingIsd || probing || meterBusy) return;
+        if (currentStage >= 0 || bridge || stoppingStream || powerWatcher || unconfirmedPowerDevice
+            || preparingIsd || probing || meterBusy) return;
+        if (!simulation) {
+            try {
+                runPowerProfile = loadPowerProfile(loadStand(root), page->flow()->rs485Port());
+            } catch (const std::exception& error) {
+                page->flow()->setEquipmentStatus(QStringLiteral("АКИП"), false, QString::fromUtf8(error.what()));
+                return;
+            }
+        }
         const bool yasmMode = formalInterfaceMode() == 1;
         const int interfaceRow = yasmMode ? 13 : 12;
         const auto input = std::find_if(checks.begin(), checks.end(), [interfaceRow](const auto& check) {
@@ -1288,6 +1399,7 @@ struct BrpTuWindow::Impl {
             return;
         }
         currentStage = 0;
+        powerOffRecorded = true;
         waitingForPoint = false;
         pendingDecision = false;
         forcedOkActive = false;
@@ -1296,8 +1408,65 @@ struct BrpTuWindow::Impl {
             yasmMode ? QStringLiteral("Последовательность ЯСМ в M16P1A22")
                      : QStringLiteral("Счётчик RS-485 · два периода 0–1023"),
             QStringLiteral("код"), QStringLiteral("Орбита M16"));
+        setProgress(QStringLiteral("Подготовка питания БРП."));
+        if (simulation) {
+            simulatedPowerActive = true;
+            if (recordPower("POWER_ON", QStringLiteral("Имитация включения питания БРП."), RunVerdict::Ok))
+                startFormalInterface();
+            else
+                endSession(QStringLiteral("Не удалось сохранить состояние питания БРП."), RunVerdict::Error);
+            return;
+        }
+        if (!recordPower("POWER_PREPARE", QStringLiteral("Запрошена подготовка выхода АКИП."), RunVerdict::NotRun)) {
+            endSession(QStringLiteral("Не удалось сохранить запрос на подготовку питания БРП."), RunVerdict::Error);
+            return;
+        }
+        cancelPower.store(false);
+        auto* watcher = new QFutureWatcher<PowerStartResult>(&window);
+        powerWatcher = watcher;
+        QObject::connect(watcher, &QFutureWatcherBase::finished, &window, [this, watcher] {
+            auto result = watcher->result();
+            powerWatcher = nullptr;
+            watcher->deleteLater();
+            if (result.needsOff) poweredDevice = runPowerProfile->device;
+            if (cancelPower.load()) {
+                if (result.needsOff) recordPower("POWER_ON",
+                    QStringLiteral("Подготовка питания прервана. Выход АКИП будет отключён."), RunVerdict::Aborted);
+                endSession(cancelPowerMessage, RunVerdict::Aborted);
+                if (closeWhenStopped && !stoppingStream) {
+                    closeWhenStopped = false;
+                    QMetaObject::invokeMethod(&window, [this] { window.close(); }, Qt::QueuedConnection);
+                }
+            } else if (!result.error.isEmpty()) {
+                const auto message = QStringLiteral("Ошибка питания АКИП: %1").arg(result.error);
+                recordPower("POWER_ON", message, RunVerdict::Error);
+                endSession(message, RunVerdict::Error);
+            } else {
+                const auto message = QStringLiteral("АКИП подтвердил выход. Измерено %1 В, %2 А.")
+                    .arg(result.state.measuredVoltageV, 0, 'f', 3)
+                    .arg(result.state.measuredCurrentA, 0, 'f', 3);
+                if (recordPower("POWER_ON", message, RunVerdict::Ok)) startFormalInterface();
+                else endSession(QStringLiteral("Не удалось сохранить состояние питания БРП."), RunVerdict::Error);
+            }
+        });
+        watcher->setFuture(QtConcurrent::run([profile = *runPowerProfile, cancel = &cancelPower] {
+            return startBrpPower(profile, *cancel);
+        }));
+    }
+
+    void startFormalInterface()
+    {
         setProgress(QStringLiteral("Ожидание тестовой последовательности в кадре M16."));
         startInterface();
+    }
+
+    bool recordPower(const char* action, const QString& message, RunVerdict result)
+    {
+        const tu::RunEvent event{std::chrono::system_clock::now(), "akip", action, message.toStdString(), result};
+        run.events.push_back(event);
+        page->appendRunEvent(event);
+        appendLog(message);
+        return persistRun();
     }
 
     bool pointCanStart() const
@@ -1438,20 +1607,19 @@ struct BrpTuWindow::Impl {
     {
         currentStage = -1;
         waitingForPoint = false;
+        if (stoppingStream) {
+            finalizeAfterStop = true;
+            page->setProgress(QStringLiteral("Завершение работы стенда. Ожидание подтверждения отключения."), false);
+            return;
+        }
         run.finishedAt = std::chrono::system_clock::now();
         run.verdict = RunVerdict::Ok;
         for (const auto& step : run.steps)
             run.verdict = tu::combineVerdicts(run.verdict,
                 step.verdict == RunVerdict::NotRun ? RunVerdict::Incomplete : step.verdict);
-        persistRun();
-        // Do not expose "New check" until the previous stream has finished
-        // releasing its decoder and producer on the background worker.
-        if (stoppingStream) {
-            finalizeAfterStop = true;
-            if (status) status->setText(QStringLiteral("Завершение потока Орбиты; результаты сохранены."));
-        } else {
-            page->finishRun(run);
-        }
+        if (unconfirmedPowerDevice || !powerOffRecorded) run.verdict = RunVerdict::Error;
+        if (!persistRun()) run.verdict = RunVerdict::Error;
+        page->finishRun(run);
     }
 
     void updateCaptureControls()
@@ -2331,7 +2499,7 @@ struct BrpTuWindow::Impl {
         // Keep all three dependencies alive on the same background worker;
         // the bridge stops the producer before the decoder and only then releases
         // the borrowed references. No subsequent session may start until finished.
-        if (!stoppingStream && (bridge || decoder || source)) {
+        if (!stoppingStream && (bridge || decoder || source || poweredDevice || simulatedPowerActive)) {
             stoppingStream = true;
             const auto last = decoder ? decoder->getBoardTimeSeconds() : std::nullopt;
             const auto stoppedTime = last ? QStringLiteral("Бортовое время · %1 с (приём остановлен)").arg(*last)
@@ -2341,33 +2509,56 @@ struct BrpTuWindow::Impl {
             auto oldBridge = std::move(bridge);
             auto oldDecoder = std::move(decoder);
             auto oldSource = std::move(source);
-            auto* watcher = new QFutureWatcher<void>(&window);
+            auto device = std::exchange(poweredDevice, std::nullopt);
+            const bool simulatedPower = std::exchange(simulatedPowerActive, false);
+            const bool recordOff = device.has_value() || simulatedPower;
+            auto* watcher = new QFutureWatcher<QString>(&window);
             stopWatcher = watcher;
             QObject::connect(watcher, &QFutureWatcherBase::finished, &window,
-                [this, watcher] {
+                [this, watcher, recordOff, simulatedPower, device] {
+                    const auto powerError = watcher->result();
+                    if (recordOff) {
+                        const bool offFailed = !powerError.isEmpty();
+                        unconfirmedPowerDevice = offFailed ? device : std::nullopt;
+                        const auto detail = offFailed
+                            ? QStringLiteral("АКИП не подтвердил отключение: %1").arg(powerError)
+                            : simulatedPower ? QStringLiteral("Имитация отключения питания БРП.")
+                                             : QStringLiteral("АКИП подтвердил отключение выхода.");
+                        powerOffRecorded = recordPower("POWER_OFF", detail,
+                            offFailed ? RunVerdict::Error : RunVerdict::Ok);
+                    }
                     if (stopWatcher == watcher) stopWatcher = nullptr;
                     stoppingStream = false;
                     watcher->deleteLater();
                     if (start) start->setEnabled(true);
                     if (stop) stop->setEnabled(false);
-                    if (status) status->setText(QStringLiteral("Поток Орбиты остановлен; оборудование освобождено."));
+                    if (status) status->setText(!powerError.isEmpty()
+                        ? QStringLiteral("Поток остановлен. Отключение АКИП не подтверждено: %1").arg(powerError)
+                        : QStringLiteral("Поток Орбиты остановлен; оборудование освобождено."));
                     if (finalizeAfterStop) {
                         finalizeAfterStop = false;
-                        page->finishRun(run);
+                        finishScenario();
                     }
                     updateCaptureControls();
                     if (closeWhenStopped) {
                         closeWhenStopped = false;
-                        QMetaObject::invokeMethod(&window, [this] { window.close(); }, Qt::QueuedConnection);
+                        if (powerError.isEmpty()) {
+                            QMetaObject::invokeMethod(&window, [this] { window.close(); }, Qt::QueuedConnection);
+                        } else {
+                            QMessageBox::warning(&window, QStringLiteral("Ошибка стенда"),
+                                QStringLiteral("АКИП не подтвердил отключение выхода: %1").arg(powerError));
+                        }
                     }
                 });
             watcher->setFuture(QtConcurrent::run(
                 [oldBridge = std::move(oldBridge), oldDecoder = std::move(oldDecoder),
-                 oldSource = std::move(oldSource)]() mutable {
+                 oldSource = std::move(oldSource), device = std::move(device)]() mutable {
+                    const auto powerError = device ? stopBrpPower(*device) : QString{};
                     if (oldBridge) oldBridge->stopDiscardPending();
                     oldBridge.reset();
                     oldDecoder.reset();
                     oldSource.reset();
+                    return powerError;
                 }));
         }
         pointActive = false;
@@ -2386,6 +2577,12 @@ struct BrpTuWindow::Impl {
     void endSession(const QString& message, RunVerdict result = RunVerdict::Error,
                     bool stageAlreadyRecorded = false)
     {
+        if (powerWatcher) {
+            cancelPowerMessage = message;
+            cancelPower.store(true);
+            setProgress(QStringLiteral("Отмена подготовки питания. Ожидание подтверждения АКИП."));
+            return;
+        }
         shutdown();
         if (status) status->setText(message);
         appendLog(message);
@@ -2479,7 +2676,15 @@ struct BrpTuWindow::Impl {
     std::unique_ptr<ISampleSource> source;
     std::unique_ptr<orbita::Orbita> decoder;
     std::unique_ptr<miltech::integration::OrbitaSampleBridge> bridge;
-    QFutureWatcher<void>* stopWatcher = nullptr;
+    QFutureWatcher<QString>* stopWatcher = nullptr;
+    QFutureWatcher<PowerStartResult>* powerWatcher = nullptr;
+    std::optional<BrpPowerProfile> runPowerProfile;
+    std::optional<tu::hardware::AkipConfig> poweredDevice;
+    std::atomic_bool cancelPower{false};
+    QString cancelPowerMessage;
+    bool simulatedPowerActive = false;
+    bool powerOffRecorded = true;
+    std::optional<tu::hardware::AkipConfig> unconfirmedPowerDevice;
     bool stoppingStream = false;
     bool closeWhenStopped = false;
     bool finalizeAfterStop = false;
@@ -2530,7 +2735,7 @@ void BrpTuWindow::closeEvent(QCloseEvent* event)
     }
     if (impl_->currentStage >= 0 || impl_->bridge) {
         impl_->endSession(QStringLiteral("Окно закрыто во время испытания или сбора."), RunVerdict::Aborted);
-        if (impl_->stoppingStream) {
+        if (impl_->stoppingStream || impl_->powerWatcher) {
             impl_->closeWhenStopped = true;
             event->ignore();
             return;

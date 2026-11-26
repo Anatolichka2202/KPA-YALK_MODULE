@@ -14,8 +14,13 @@ isd:
 rs485:
   port: COM15
 akip:
-  port: ""
+  port: COM9
   expected_idn: AKIP-1160/6
+  # Указать утверждённые уставки конкретного стенда до запуска реального ТУ.
+  voltage_v: null
+  current_limit_a: null
+  ovp_v: null
+  settle_ms: 300
 
 isd_baseline:
   type2_last: 40

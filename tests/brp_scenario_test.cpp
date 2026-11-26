@@ -428,6 +428,9 @@ void testScenarioAndReport()
         && checkpoint.contains(QStringLiteral(".attempt_2"))
         && checkpoint.contains(QStringLiteral("\"finished_ms\":")),
         "durable checkpoint lost a forced verdict or attempt history");
+    const auto powerOn = checkpoint.indexOf(QStringLiteral("POWER_ON"));
+    const auto powerOff = checkpoint.indexOf(QStringLiteral("POWER_OFF"));
+    require(powerOn >= 0 && powerOff > powerOn, "completed run lost its power lifecycle");
     const auto html = readText(completeHtml);
     const auto txt = readText(base + QStringLiteral(".txt"));
     const auto csv = readText(base + QStringLiteral(".csv"));
@@ -453,6 +456,9 @@ void testScenarioAndReport()
     require(waitUntil([&] { return name->isVisible(); }, 20000),
             "aborted run did not finish background Orbita teardown");
     const auto cancelledHtml = exportReport();
+    const auto abortedId = QFileInfo(cancelledHtml).completeBaseName().mid(3);
+    const auto abortedCheckpoint = readText(reports.path() + QStringLiteral("/runs/") + abortedId + QStringLiteral(".json"));
+    require(abortedCheckpoint.contains(QStringLiteral("POWER_OFF")), "operator stop lost its power cleanup");
     require(cancelledHtml != completeHtml
         && stageResult(0) == QStringLiteral("ОСТАНОВЛЕНО") && stageResult(2) == QStringLiteral("НЕ ВЫПОЛНЕНО"),
         "cancelled run left a stale result");
