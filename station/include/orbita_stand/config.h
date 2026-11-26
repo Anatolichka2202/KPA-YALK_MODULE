@@ -103,6 +103,14 @@ struct EnvironmentPlan {
 EnvironmentPlan planEnvironment(const StandProfile& profile,
     const std::vector<ResourceRequirement>& requirements, const EnvironmentInventory& inventory);
 
+// Определяет только физические приборы, необходимые шагам сценария.
+// Именованная роль не расширяется до всех приборов с той же возможностью;
+// для старого требования без роли сохраняется выбор по capability.
+std::set<std::string> selectScenarioEquipment(const StandProfile& profile,
+    const ScenarioDefinition& scenario,
+    const std::vector<ResourceRequirement>& availableServices = {},
+    const std::set<std::string>& availableCapabilities = {});
+
 StandProfile loadStandProfile(const std::string& path);
 ScenarioDefinition loadScenarioYaml(const std::string& path);
 ScenarioDefinition parseScenarioYaml(const std::string& document);

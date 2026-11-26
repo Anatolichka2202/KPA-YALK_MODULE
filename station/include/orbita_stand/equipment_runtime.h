@@ -120,6 +120,7 @@ public:
     std::map<std::string, SafeStopResult> safeStopResources(
         const std::set<std::string>& resources) noexcept override;
     std::vector<std::string> capabilities() const;
+    std::set<std::string> builtinCapabilities() const;
 
 private:
     struct DefaultBinding {

@@ -54,15 +54,6 @@ bool enabledFlag(const std::map<std::string, std::string>& config,
         || found->second == "yes" || found->second == "on";
 }
 
-bool providesAny(const orbita::stand::ComponentProfile& component,
-                 const std::set<std::string>& required)
-{
-    if (required.empty()) return true;
-    const auto& capabilities = componentCapabilities(component);
-    return std::any_of(capabilities.begin(), capabilities.end(),
-        [&](const std::string& capability) { return required.count(capability) != 0; });
-}
-
 } // namespace
 
 void KtmaMainWindow::integrationPrepareEquipmentForScenario(
@@ -80,6 +71,18 @@ void KtmaMainWindow::integrationPrepareEquipmentForScenario(
 
     session.prepare(activity, [&](orbita::stand::StationSession::Preparation& preparation) {
     const auto required = scenarioCapabilities(scenario);
+    std::vector<orbita::stand::ResourceRequirement> availableServices;
+    for (const auto& resource : registry->resources()) {
+        if (!resource.builtin) continue;
+        for (const auto& capability : resource.capabilities)
+            availableServices.push_back({resource.id, capability});
+    }
+    auto availableCapabilities = registry->builtinCapabilities();
+    // Эти сервисы переустанавливаются ниже до открытия любого прибора.
+    availableCapabilities.insert("catalog.parameter_resolver");
+    availableCapabilities.insert("operator.manual_input");
+    const auto selectedEquipment = orbita::stand::selectScenarioEquipment(
+        profile, scenario, availableServices, availableCapabilities);
     preparation.clearPhysicalEquipment();
 
     // Application-level services survive clearPhysicalEquipment(), but these two
@@ -261,8 +264,11 @@ void KtmaMainWindow::integrationPrepareEquipmentForScenario(
 
     QApplication::setOverrideCursor(Qt::WaitCursor);
     try {
-        if (ubsiWorkflow) {
-            const auto plan = ktma::ubsi::buildEquipmentReadinessPlan(profile, required);
+        if (required.empty()) {
+            // Пустая методика не должна открывать все приборы профиля.
+        } else if (ubsiWorkflow) {
+            const auto plan = ktma::ubsi::buildScenarioEquipmentReadinessPlan(
+                profile, scenario, availableServices, availableCapabilities);
             ktma::ubsi::executeEquipmentReadinessPlan(profile, plan, {
                 [&](const orbita::stand::ComponentProfile& component, bool armSupply) {
                     prepareComponent(component, armSupply);
@@ -281,7 +287,7 @@ void KtmaMainWindow::integrationPrepareEquipmentForScenario(
             // probes and binds equipment required by the scenario. Any active
             // stimulus must be an explicit scenario operation.
             for (const auto& component : profile.components) {
-                if (component.kind != "equipment" || !providesAny(component, required)) continue;
+                if (component.kind != "equipment" || !selectedEquipment.count(component.id)) continue;
                 prepareComponent(component, false);
             }
         }

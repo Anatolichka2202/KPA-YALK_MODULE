@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <functional>
 #include <stdexcept>
 
 namespace orbita::stand {
@@ -385,6 +386,56 @@ StandProfile resolvePhysicalProfile(const StandProfile& embedded,
         }
     }
     return result;
+}
+
+std::set<std::string> selectScenarioEquipment(const StandProfile& profile,
+    const ScenarioDefinition& scenario, const std::vector<ResourceRequirement>& availableServices,
+    const std::set<std::string>& availableCapabilities)
+{
+    std::set<std::string> selected;
+    std::function<void(const ScenarioNode&)> visit = [&](const ScenarioNode& node) {
+        std::set<std::string> routedCapabilities;
+        for (const auto& requirement : node.requiredResources) {
+            routedCapabilities.insert(requirement.capability);
+            const ComponentProfile* match = nullptr;
+            for (const auto& component : profile.components) {
+                if (!component.enabled || component.kind != "equipment") continue;
+                if (component.id != requirement.resource
+                    && std::find(component.bindings.begin(), component.bindings.end(), requirement.resource)
+                        == component.bindings.end()) continue;
+                if (match) throw std::invalid_argument("Неоднозначная роль оборудования: " + requirement.resource);
+                match = &component;
+            }
+            if (!match) {
+                const bool serviceAvailable = std::any_of(availableServices.begin(), availableServices.end(),
+                    [&](const auto& service) { return service.resource == requirement.resource
+                        && service.capability == requirement.capability; });
+                if (!serviceAvailable)
+                    throw std::invalid_argument("Ресурс сценария недоступен: " + requirement.resource);
+                continue;
+            }
+            const auto& capabilities = match->capabilities.empty() ? match->bindings : match->capabilities;
+            if (std::find(capabilities.begin(), capabilities.end(), requirement.capability) == capabilities.end())
+                throw std::invalid_argument("Ресурс не поддерживает возможность: " + requirement.resource + ":" + requirement.capability);
+            selected.insert(match->id);
+        }
+        for (const auto& capability : node.requiredCapabilities) {
+            if (routedCapabilities.count(capability)) continue;
+            bool available = availableCapabilities.count(capability) != 0;
+            for (const auto& component : profile.components) {
+                if (!component.enabled || component.kind != "equipment") continue;
+                const auto& capabilities = component.capabilities.empty() ? component.bindings : component.capabilities;
+                if (std::find(capabilities.begin(), capabilities.end(), capability) != capabilities.end()) {
+                    selected.insert(component.id);
+                    available = true;
+                }
+            }
+            if (!available) throw std::invalid_argument("Возможность сценария недоступна: " + capability);
+        }
+        for (const auto& child : node.children) visit(child);
+    };
+    for (const auto& node : scenario.steps) visit(node);
+    return selected;
 }
 
 EnvironmentPlan planEnvironment(const StandProfile& profile,

@@ -82,6 +82,59 @@ EquipmentReadinessPlan buildEquipmentReadinessPlan(
     return plan;
 }
 
+EquipmentReadinessPlan buildScenarioEquipmentReadinessPlan(
+    const orbita::stand::StandProfile& profile,
+    const orbita::stand::ScenarioDefinition& scenario,
+    const std::vector<orbita::stand::ResourceRequirement>& availableServices,
+    const std::set<std::string>& availableCapabilities)
+{
+    auto selected = orbita::stand::selectScenarioEquipment(profile, scenario, availableServices, availableCapabilities);
+    auto adapterScenario = scenario;
+    std::function<void(orbita::stand::ScenarioNode&)> keepAdapterRequirements;
+    keepAdapterRequirements = [&](orbita::stand::ScenarioNode& node) {
+        for (auto it = node.requiredCapabilities.begin(); it != node.requiredCapabilities.end();) {
+            if (*it != "ulk.parameter_source") it = node.requiredCapabilities.erase(it);
+            else ++it;
+        }
+        node.requiredResources.erase(std::remove_if(node.requiredResources.begin(), node.requiredResources.end(),
+            [](const auto& requirement) { return requirement.capability != "ulk.parameter_source"; }),
+            node.requiredResources.end());
+        for (auto& child : node.children) keepAdapterRequirements(child);
+    };
+    for (auto& node : adapterScenario.steps) keepAdapterRequirements(node);
+    const auto adapters = orbita::stand::selectScenarioEquipment(
+        profile, adapterScenario, availableServices, availableCapabilities);
+    const bool needsAdapter = !adapters.empty();
+    std::vector<const orbita::stand::ComponentProfile*> dutSupplies;
+    for (const auto& component : profile.components) {
+        if (!component.enabled || component.kind != "equipment" || !provides(component, "power.dc_supply")) continue;
+        const bool dutRole = component.id == "power.dut"
+            || std::find(component.bindings.begin(), component.bindings.end(), "power.dut") != component.bindings.end();
+        if (dutRole) dutSupplies.push_back(&component);
+    }
+    const auto* dutSupply = dutSupplies.size() == 1 ? dutSupplies.front() : nullptr;
+    if (needsAdapter && !dutSupply)
+        throw std::invalid_argument("Нельзя однозначно выбрать питание УБСИ для адаптера");
+    if (needsAdapter) selected.insert(dutSupply->id);
+    auto limited = profile;
+    limited.components.erase(std::remove_if(limited.components.begin(), limited.components.end(),
+        [&](const auto& component) { return !selected.count(component.id); }), limited.components.end());
+    auto plan = buildEquipmentReadinessPlan(limited);
+    for (auto& item : plan.items) {
+        // 27 В допустимы только для источника УБСИ, а не для любого другого
+        // выбранного сценарием прибора с той же capability.
+        if (item.stage == EquipmentReadinessStage::Power
+            && (!dutSupply || item.componentId != dutSupply->id))
+            item.stage = EquipmentReadinessStage::Independent;
+        if (item.stage == EquipmentReadinessStage::Adapter && !adapters.count(item.componentId))
+            item.stage = EquipmentReadinessStage::Independent;
+    }
+    std::stable_sort(plan.items.begin(), plan.items.end(), [](const auto& a, const auto& b) {
+        return a.stage < b.stage;
+    });
+    return plan;
+}
+
 void executeEquipmentReadinessPlan(
     const orbita::stand::StandProfile& profile,
     const EquipmentReadinessPlan& plan,

@@ -117,6 +117,53 @@ int main(int argc, char** argv)
             try { (void)resolvePhysicalProfile(embedded, std::nullopt, {{"supply", {{"port_bi", "COM8"}}}}); }
             catch (const std::invalid_argument&) { extraPortRejected = true; }
             require(extraPortRejected, "unconfigured second port was accepted for another provider");
+            auto selectionProfile = resolved;
+            selectionProfile.components.push_back(secondDevice);
+            selectionProfile.components.back().bindings = {"power.other"};
+            ScenarioDefinition selectionScenario;
+            ScenarioNode group, child;
+            child.requiredCapabilities.insert("power.dc_supply");
+            child.requiredResources.push_back({"power.dut", "power.dc_supply"});
+            group.children.push_back(child);
+            selectionScenario.steps.push_back(group);
+            require(selectScenarioEquipment(selectionProfile, selectionScenario) == std::set<std::string>{"supply"},
+                    "resource-specific scenario selected another device with the same capability");
+            selectionScenario.steps[0].children[0].requiredResources.clear();
+            require(selectScenarioEquipment(selectionProfile, selectionScenario)
+                        == (std::set<std::string>{"supply", "supply2"}),
+                    "legacy capability-only selection was not preserved");
+            selectionScenario.steps.clear();
+            require(selectScenarioEquipment(selectionProfile, selectionScenario).empty(),
+                    "empty scenario selected physical devices");
+            selectionScenario.steps.push_back(group);
+            selectionProfile.components.back().bindings = {"power.dut"};
+            bool ambiguousSelectionRejected = false;
+            try { (void)selectScenarioEquipment(selectionProfile, selectionScenario); }
+            catch (const std::invalid_argument&) { ambiguousSelectionRejected = true; }
+            require(ambiguousSelectionRejected, "ambiguous physical role was selected silently");
+            selectionProfile.components.pop_back();
+            selectionScenario.steps[0].children[0].requiredResources.push_back({"unknown.role", "example"});
+            bool missingRoleRejected = false;
+            try { (void)selectScenarioEquipment(selectionProfile, selectionScenario); }
+            catch (const std::invalid_argument&) { missingRoleRejected = true; }
+            require(missingRoleRejected, "missing role was not rejected before hardware selection");
+            require(selectScenarioEquipment(selectionProfile, selectionScenario, {{"unknown.role", "example"}})
+                        == std::set<std::string>{"supply"},
+                    "declared built-in resource was not accepted");
+            selectionScenario.steps[0].children[0].requiredResources.back() = {"power.dut", "wrong.capability"};
+            bool wrongCapabilityRejected = false;
+            try { (void)selectScenarioEquipment(selectionProfile, selectionScenario); }
+            catch (const std::invalid_argument&) { wrongCapabilityRejected = true; }
+            require(wrongCapabilityRejected, "resource with wrong capability was accepted");
+            selectionScenario.steps[0].children[0].requiredResources = {{"power.dut", "power.dc_supply"}};
+            selectionScenario.steps[0].children[0].requiredCapabilities.insert("unknown.service");
+            bool missingLegacyRejected = false;
+            try { (void)selectScenarioEquipment(selectionProfile, selectionScenario); }
+            catch (const std::invalid_argument&) { missingLegacyRejected = true; }
+            require(missingLegacyRejected, "missing legacy capability was not rejected before hardware selection");
+            require(selectScenarioEquipment(selectionProfile, selectionScenario, {}, {"unknown.service"})
+                        == std::set<std::string>{"supply"},
+                    "available built-in capability was rejected");
             auto unresolved = resolved;
             unresolved.components[0].configuration["port"] = "custom-port";
             const auto unchecked = planEnvironment(unresolved, {{"power.dut", "power.dc_supply"}}, found);
@@ -124,6 +171,25 @@ int main(int argc, char** argv)
                     "unrecognized port was incorrectly treated as checked");
         }
         const QDir sourceRoot(QString::fromUtf8(ORBITA_SOURCE_DIR));
+        const auto simulatorProfile = loadStandProfile(sourceRoot.filePath(
+            QStringLiteral("data/profiles/stand_ktma_simulator.yaml")).toStdString());
+        ScenarioDefinition simulatorScenario;
+        ScenarioNode simulatorStep;
+        simulatorStep.requiredResources = {{"power.dut", "power.dc_supply"},
+            {"dut.parameter_source", "ulk.parameter_source"},
+            {"switch_matrix.primary", "stand.switch_matrix"},
+            {"measure.reference", "measure.reference_voltage"},
+            {"signal.primary", "signal.generator"}};
+        simulatorScenario.steps.push_back(simulatorStep);
+        require(selectScenarioEquipment(simulatorProfile, simulatorScenario)
+                    == (std::set<std::string>{"local-adapter", "local-isd", "local-scpi"}),
+                "simulator profile does not expose its explicit equipment roles");
+        const auto shippedScenario = loadScenarioYaml(sourceRoot.filePath(
+            QStringLiteral("data/scenarios/ubsi_yalk_tu_5_6.yaml")).toStdString());
+        require(selectScenarioEquipment(simulatorProfile, shippedScenario, {},
+                    {"catalog.parameter_resolver", "operator.manual_input"})
+                    == (std::set<std::string>{"local-adapter", "local-isd", "local-scpi"}),
+                "shipped UBSI scenario cannot resolve its simulator equipment");
         const auto profilePath = sourceRoot.filePath(QStringLiteral("data/profiles/stand_ktma.yaml"));
         const auto profile = loadStandProfile(profilePath.toStdString());
 

@@ -39,6 +39,14 @@ EquipmentReadinessPlan buildEquipmentReadinessPlan(
     const orbita::stand::StandProfile& profile,
     const std::set<std::string>& requiredCapabilities = {});
 
+// Для запуска выбираются роли сценария; питание адаптера добавляется как
+// зависимость поставки только при однозначной роли power.dut.
+EquipmentReadinessPlan buildScenarioEquipmentReadinessPlan(
+    const orbita::stand::StandProfile& profile,
+    const orbita::stand::ScenarioDefinition& scenario,
+    const std::vector<orbita::stand::ResourceRequirement>& availableServices = {},
+    const std::set<std::string>& availableCapabilities = {});
+
 struct EquipmentReadinessCallbacks {
     // `armSupply` is true only for the power stage. The callback owns concrete
     // provider creation/probe/binding so the sequence itself stays UI-free.

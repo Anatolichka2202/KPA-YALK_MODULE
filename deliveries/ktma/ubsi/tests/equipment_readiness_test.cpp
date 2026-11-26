@@ -106,6 +106,63 @@ int main()
         require(all.items.back().componentId == "ubsi-adapter",
             "all-equipment plan must still probe adapter last");
 
+        auto scenarioProfile = profile;
+        scenarioProfile.components[0].bindings = {"dut.parameter_source"};
+        scenarioProfile.components[2].bindings = {"power.dut"};
+        auto otherSupply = equipment("other-supply", {"power.dc_supply"});
+        otherSupply.bindings = {"power.other"};
+        scenarioProfile.components.push_back(otherSupply);
+        orbita::stand::ScenarioDefinition scenario;
+        orbita::stand::ScenarioNode node;
+        node.requiredCapabilities.insert("ulk.parameter_source");
+        node.requiredResources.push_back({"dut.parameter_source", "ulk.parameter_source"});
+        scenario.steps.push_back(node);
+        const auto scenarioPlan = buildScenarioEquipmentReadinessPlan(scenarioProfile, scenario);
+        require(scenarioPlan.items.size() == 2 && scenarioPlan.items[0].componentId == "dc-supply"
+                    && scenarioPlan.items[1].componentId == "ubsi-adapter",
+                "scenario readiness armed an unrelated power supply or lost the DUT dependency");
+        auto disabledSupply = equipment("disabled-dut-supply", {"power.dc_supply"}, false);
+        disabledSupply.bindings = {"power.dut"};
+        scenarioProfile.components.push_back(disabledSupply);
+        require(buildScenarioEquipmentReadinessPlan(scenarioProfile, scenario).items.size() == 2,
+                "disabled DUT supply made the enabled role ambiguous");
+        scenarioProfile.components.pop_back();
+        scenario.steps[0].requiredResources.push_back({"power.other", "power.dc_supply"});
+        const auto separateSupplyPlan = buildScenarioEquipmentReadinessPlan(scenarioProfile, scenario);
+        require(separateSupplyPlan.items.size() == 3
+                    && separateSupplyPlan.items[0].componentId == "dc-supply"
+                    && separateSupplyPlan.items[0].stage == EquipmentReadinessStage::Power
+                    && separateSupplyPlan.items[1].componentId == "other-supply"
+                    && separateSupplyPlan.items[1].stage == EquipmentReadinessStage::Independent,
+                "non-DUT power supply was armed with the DUT voltage");
+        scenarioProfile.components[2].bindings.clear();
+        bool rejectedAmbiguousPower = false;
+        try { (void)buildScenarioEquipmentReadinessPlan(scenarioProfile, scenario); }
+        catch (const std::invalid_argument&) { rejectedAmbiguousPower = true; }
+        require(rejectedAmbiguousPower, "ambiguous adapter power dependency was guessed");
+        scenarioProfile.components.erase(scenarioProfile.components.begin() + 2);
+        bool rejectedUnidentifiedPower = false;
+        try { (void)buildScenarioEquipmentReadinessPlan(scenarioProfile, scenario); }
+        catch (const std::invalid_argument&) { rejectedUnidentifiedPower = true; }
+        require(rejectedUnidentifiedPower, "sole non-DUT supply was assumed to power the adapter");
+        scenario.steps[0].requiredCapabilities.clear();
+        scenario.steps[0].requiredResources = {{"power.other", "power.dc_supply"}};
+        const auto otherOnly = buildScenarioEquipmentReadinessPlan(scenarioProfile, scenario);
+        require(otherOnly.items.size() == 1 && otherOnly.items[0].componentId == "other-supply"
+                    && otherOnly.items[0].stage == EquipmentReadinessStage::Independent,
+                "sole non-DUT supply was armed without an adapter");
+        auto multifunction = equipment("multifunction", {"ulk.parameter_source", "measure.reference_voltage"});
+        multifunction.bindings = {"measure.multi"};
+        scenarioProfile.components.push_back(multifunction);
+        scenario.steps[0].requiredResources = {{"measure.multi", "measure.reference_voltage"}};
+        const auto measurementOnly = buildScenarioEquipmentReadinessPlan(scenarioProfile, scenario);
+        require(measurementOnly.items.size() == 1 && measurementOnly.items[0].componentId == "multifunction"
+                    && measurementOnly.items[0].stage == EquipmentReadinessStage::Independent,
+                "unrequested adapter capability triggered DUT power or adapter wait");
+        scenario.steps.clear();
+        require(buildScenarioEquipmentReadinessPlan(scenarioProfile, scenario).items.empty(),
+                "empty scenario opened delivery equipment");
+
         std::cout << "KTMA equipment readiness ordering OK\n";
         return 0;
     } catch (const std::exception& error) {

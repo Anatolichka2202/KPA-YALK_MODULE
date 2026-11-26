@@ -470,6 +470,14 @@ std::vector<std::string> EquipmentRegistry::capabilities() const
     return result;
 }
 
+std::set<std::string> EquipmentRegistry::builtinCapabilities() const
+{
+    std::set<std::string> result;
+    for (const auto& [capability, binding] : defaults_)
+        if (!binding.device) result.insert(capability);
+    return result;
+}
+
 std::map<std::string, SafeStopResult> EquipmentRegistry::safeStopResources(
     const std::set<std::string>& resources) noexcept
 {

@@ -20,6 +20,50 @@ components:
       value: "12.5"
       unit: В
 
+  - id: local-adapter
+    kind: equipment
+    provider: orbita.ktma_adapter_udp
+    bind: [dut.parameter_source]
+    capabilities: [ulk.parameter_source]
+    config:
+      host: 127.0.0.2
+      local_address: 127.0.0.1
+      data_port: 1113
+      timeout_ms: 1000
+      queue_capacity: 8192
+      record_root: records
+      protocol: rokt_yalk
+      ytp_protocol: rokt_ytp68
+      ytp_endpoint: 1
+      device.active_commands_confirmed: true
+  - id: local-isd
+    kind: equipment
+    provider: orbita.isd_http
+    bind: [switch_matrix.primary]
+    capabilities: [stand.switch_matrix]
+    config:
+      host: 127.0.0.1
+      port: 18080
+      timeout_ms: 1000
+      switch_type: 2
+      device.active_commands_confirmed: true
+  - id: local-scpi
+    kind: equipment
+    provider: orbita.tcp_scpi_bench
+    bind: [power.dut, measure.reference, signal.primary]
+    capabilities:
+      - power.dc_supply
+      - measure.reference_voltage
+      - measure.dc_current
+      - measure.reference_ac_voltage
+      - measure.reference_frequency
+      - signal.generator
+    config:
+      host: 127.0.0.1
+      port: 15025
+      timeout_ms: 1000
+      device.active_commands_confirmed: true
+
 connections:
   adapter_rs485: UDP-имитатор Адаптера на 127.0.0.2:1113
   isd_to_yalk: HTTP-имитатор ИСД на 127.0.0.1:18080
@@ -71,44 +115,3 @@ routes:
     type: 2
     bus: 0
     safe: off
-
-devices:
-  - id: local-adapter
-    plugin: orbita.ktma_adapter_udp
-    bind:
-      - ulk.parameter_source
-    config:
-      host: 127.0.0.2
-      local_address: 127.0.0.1
-      data_port: 1113
-      timeout_ms: 1000
-      queue_capacity: 8192
-      record_root: records
-      protocol: rokt_yalk
-      ytp_protocol: rokt_ytp68
-      ytp_endpoint: 1
-      device.active_commands_confirmed: true
-  - id: local-isd
-    plugin: orbita.isd_http
-    bind:
-      - stand.switch_matrix
-    config:
-      host: 127.0.0.1
-      port: 18080
-      timeout_ms: 1000
-      switch_type: 2
-      device.active_commands_confirmed: true
-  - id: local-scpi
-    plugin: orbita.tcp_scpi_bench
-    bind:
-      - power.dc_supply
-      - measure.reference_voltage
-      - measure.dc_current
-      - measure.reference_ac_voltage
-      - measure.reference_frequency
-      - signal.generator
-    config:
-      host: 127.0.0.1
-      port: 15025
-      timeout_ms: 1000
-      device.active_commands_confirmed: true
