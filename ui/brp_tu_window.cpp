@@ -546,7 +546,10 @@ struct BrpTuWindow::Impl {
         status->setObjectName(QStringLiteral("brpInterfaceStatus"));
         interfaceLayout->addWidget(status);
         graph = new brp::ui::HistoryPlot(interfaceBox);
-        graph->configure(QStringLiteral("Счётчик RS-485"), QStringLiteral("код"), QStringLiteral("Орбита M16"));
+        graph->setObjectName(QStringLiteral("brpCounterPlot"));
+        graph->configure(QStringLiteral("Счётчик RS-485 · принятые коды 0–1023"),
+                         QStringLiteral("код"), QStringLiteral("Орбита M16 · ЯФК"));
+        graph->setFixedRange(0.0, 1023.0);
         interfaceLayout->addWidget(graph, 1);
         monitorPlot = new brp::ui::HistoryPlot(interfaceBox);
         monitorPlot->setObjectName(QStringLiteral("brpMonitorPlot"));
@@ -1447,8 +1450,12 @@ struct BrpTuWindow::Impl {
             // Состояние обнуляется до подключения callback. Перед любым следующим
             // запуском shutdown ждёт завершения потока, который изменяет эти поля.
             counter = {};
-            observeCounter = (simulation && !yasmMode && !monitor) || monitorCounter;
+            // The real RS-485 mode must decode the response just like the
+            // simulator. Previously the real branch only wrote bytes to COM.
+            observeCounter = (!yasmMode && !monitor) || monitorCounter;
             monitorCounterActive = monitorCounter;
+            counterTimeoutLogged = false;
+            counterResultLogged = false;
             nextCounter = 0;
             gatePassed = false;
             if (monitor) {
@@ -1468,6 +1475,12 @@ struct BrpTuWindow::Impl {
                 activeMonitorNames.clear();
                 monitorHistory.clear();
                 monitorPlot->clear();
+                monitorPlot->setFixedRange(monitorCounter ? 0.0 : 0.0,
+                                           monitorCounter ? 1023.0 : 0.0);
+                monitorPlot->configure(monitorCounter
+                    ? QStringLiteral("Счётчик RS-485 · полученные коды 0–1023")
+                    : QStringLiteral("Коды M16 / M8 · текущие значения по адресам"),
+                    QStringLiteral("код"), {});
                 for (const auto& spec : channels)
                     activeMonitorNames.insert(QString::fromStdString(spec.address), QString::fromStdString(spec.name));
                 if (m8Mode) decoder->setInvertSignal(m8Invert->isChecked());
@@ -1594,7 +1607,8 @@ struct BrpTuWindow::Impl {
                 if (plotEnabled->isChecked())
                     bars.append({name.isEmpty() ? address : name, channel.value, fresh});
             }
-            if (plotEnabled->isChecked()) monitorPlot->setBars(std::move(bars));
+            if (plotEnabled->isChecked() && !monitorCounterActive)
+                monitorPlot->setBars(std::move(bars));
             // M16 getErrors() exposes raw counters, not percentages;
             // M8 returns percentages. Never label a raw count as e.g. 112 %.
             const bool m8 = selectedMode() == 2;
@@ -1603,22 +1617,67 @@ struct BrpTuWindow::Impl {
                 : QStringLiteral("M16 · групп %1 · счётчики ошибок: фразы %2, группы %3");
             QString counterStatus;
             if (monitorCounterActive) {
-                unsigned consecutive = 0;
+                unsigned consecutive = 0, decoded = 0, words = 0;
                 bool validated = false;
+                std::vector<unsigned> recent;
                 {
                     std::lock_guard<std::mutex> lock(dataMutex);
                     consecutive = counter.contiguous();
+                    decoded = counter.decodedValues();
+                    words = counter.markedWords();
                     validated = counter.passed();
+                    recent = counter.recent();
                 }
-                counterStatus = QStringLiteral("\nRS-485 %1 → M16: %2 / 2049 подряд; %3")
-                    .arg(simulation ? QStringLiteral("(имитация)") : selectedPort())
-                    .arg(consecutive)
+                if (plotEnabled->isChecked())
+                    monitorPlot->setSeries(QVector<double>(recent.begin(), recent.end()));
+                counterStatus = QStringLiteral("\nСчётчик RS-485: кодов %1, слов с меткой %2; "
+                    "непрерывно %3/2049; %4")
+                    .arg(decoded).arg(words).arg(consecutive)
                     .arg(validated ? QStringLiteral("два периода 0–1023 ПОДТВЕРЖДЕНЫ")
-                                   : QStringLiteral("не подтверждено"));
+                                   : QStringLiteral("пока не подтверждено"));
             }
             status->setText(heading.arg(snapshot.stats.frames_processed)
                 .arg(snapshot.stats.phrase_error_percent).arg(snapshot.stats.group_error_percent)
                 + counterStatus + QLatin1Char('\n') + values.join(QLatin1Char('\n')));
+            return;
+        }
+
+        // Manual counter mode is a live oscilloscope-like diagnostic, not a
+        // time-limited TU verdict. Keep plotting received code pairs even if
+        // the 2049-value strict continuity criterion is not yet satisfied.
+        if (currentStage < 0 && selectedMode() == 0) {
+            std::vector<unsigned> recent;
+            unsigned consecutive = 0, groups = 0, marked = 0, pairs = 0, breaks = 0;
+            bool passed = false;
+            std::optional<unsigned> latest;
+            {
+                std::lock_guard<std::mutex> lock(dataMutex);
+                recent = counter.recent();
+                consecutive = counter.contiguous();
+                groups = counter.groupsReceived();
+                marked = counter.markedWords();
+                pairs = counter.decodedValues();
+                breaks = counter.breaks();
+                latest = counter.latestValue();
+                passed = counter.passed();
+            }
+            if (graph) graph->setSeries(QVector<double>(recent.begin(), recent.end()));
+            status->setText(QStringLiteral("Счётчик RS-485 · %1 · код %2 / 1023"
+                "\nM16: групп %3 · слов с меткой %4 · принято кодов %5 · разрывов %6"
+                "\nНепрерывно %7 / 2049 · %8")
+                .arg(simulation ? QStringLiteral("ИМИТАЦИЯ") : selectedPort())
+                .arg(latest ? QString::number(*latest) : QStringLiteral("нет принятого кода"))
+                .arg(groups).arg(marked).arg(pairs).arg(breaks).arg(consecutive)
+                .arg(passed ? QStringLiteral("ДВА ПЕРИОДА ПОДТВЕРЖДЕНЫ")
+                            : QStringLiteral("проверка продолжается")));
+            if (passed && !counterResultLogged) {
+                counterResultLogged = true;
+                appendLog(QStringLiteral("RS-485: два периода 0–1023 подтверждены; мониторинг продолжается."));
+            } else if (!passed && !counterTimeoutLogged && gateClock.elapsed() >= counterTimeoutMs) {
+                counterTimeoutLogged = true;
+                appendLog(QStringLiteral("RS-485: за первые 5 с критерий двух периодов не выполнен. "
+                    "Мониторинг продолжается; смотрите число групп M16 и принятых кодов."));
+            }
             return;
         }
 
@@ -2075,6 +2134,8 @@ struct BrpTuWindow::Impl {
     std::vector<uint16_t> yasmFixture;
     bool observeCounter = false;
     bool monitorCounterActive = false;
+    bool counterTimeoutLogged = false;
+    bool counterResultLogged = false;
     unsigned nextCounter = 0;
     bool gatePassed = false;
     bool reading = false, groupGap = false;
