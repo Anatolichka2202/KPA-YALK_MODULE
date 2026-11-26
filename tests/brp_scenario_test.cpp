@@ -12,6 +12,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QInputDialog>
+#include <QMouseEvent>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QTableWidget>
@@ -166,6 +167,33 @@ void testWindow()
     }, 12000), "M16 monitor did not validate returned RS485 counter");
     stop->click();
     require(waitUntil([&] { return start->isEnabled(); }, 20000), "M16 stop did not release stream");
+    comToggle->setChecked(false);
+    auto* view = window.findChild<QComboBox*>("brpMonitorPlotView");
+    auto* trendChannel = window.findChild<QComboBox*>("brpMonitorTrendChannel");
+    auto* barsPlot = window.findChild<QWidget*>("brpMonitorPlot");
+    auto* trendPlot = window.findChild<QWidget*>("brpMonitorTrend");
+    require(view && trendChannel && trendPlot && barsPlot && view->count() == 2,
+            "monitor must provide both live bars and a separate time trend");
+    view->setCurrentIndex(0);
+    start->click();
+    require(waitUntil([&] { return trendChannel->count() >= 3; }),
+            "trend channels did not include Eptm");
+    const int eptm = trendChannel->findText(QStringLiteral("Ептм"), Qt::MatchContains);
+    require(eptm >= 0, "Eptm missing from monitor trend selector");
+    require(waitUntil([&] { return status->text().contains(QStringLiteral("Ептм ·"))
+        && !status->text().contains(QStringLiteral("нет отсчёта")); }), "M16 columns did not receive data");
+    const QPointF slot(52 + (eptm + 0.5) * (barsPlot->width() - 66) / trendChannel->count(), 64);
+    QMouseEvent click(QEvent::MouseButtonPress, slot, barsPlot->mapToGlobal(slot.toPoint()),
+                      Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(barsPlot, &click);
+    require(barsPlot->isVisible() && trendPlot->isVisible() && trendChannel->currentIndex() == eptm,
+            "clicking Eptm did not reveal its trend below the live bars");
+    require(waitUntil([&] { return trendPlot->property("brpTrendRawPoints").toInt() >= 150; }, 12000),
+            "Eptm trend did not preserve intra-group samples");
+    view->setCurrentIndex(0);
+    require(barsPlot->isVisible() && !trendPlot->isVisible(), "closing the trend hid the live bars");
+    stop->click();
+    require(waitUntil([&] { return start->isEnabled(); }, 20000), "trend monitor stop did not release stream");
     window.findChild<QPushButton*>("brpBrowseDb")->click();
     auto* addressTable = window.findChild<QTableWidget*>("brpAddressTable");
     require(addressTable && addressTable->rowCount() > 0

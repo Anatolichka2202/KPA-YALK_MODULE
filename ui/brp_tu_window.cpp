@@ -24,6 +24,7 @@
 #include <QInputDialog>
 #include <QMenu>
 #include <QSaveFile>
+#include <QSet>
 #include <QSignalBlocker>
 #include <QHeaderView>
 #include <QSqlDatabase>
@@ -54,11 +55,14 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
+#include <deque>
 #include <cmath>
 #include <mutex>
 #include <limits>
 #include <stdexcept>
 #include <thread>
+#include <unordered_map>
 
 namespace {
 using namespace miltech::brp;
@@ -408,6 +412,7 @@ struct BrpTuWindow::Impl {
         QObject::connect(counterToCom, &QCheckBox::toggled, &window, [this](bool checked) {
             if (port && interfaceMode) port->setVisible(!this->simulation
                 && (selectedMode() == 0 || (selectedMode() == 3 && checked)));
+            updateTrendVisibility();
         });
         yasmCodes = new QLineEdit(interfaceBox);
         yasmCodes->setObjectName(QStringLiteral("brpYasmCodes"));
@@ -486,7 +491,8 @@ struct BrpTuWindow::Impl {
         interfaceLayout->addWidget(profileBar);
         profileBar->hide();
         profiles.addToActive({{"M16P1A10B60C11T01", "ББ СУ", "ЯГР1"},
-                              {"M16P1A10B60C21T01", "ББ ПР", "ЯГР1"}});
+                              {"M16P1A10B60C21T01", "ББ ПР", "ЯГР1"},
+                              {"M16P1A10B60C31T01", "Ептм", "ЯГР2"}});
         if (simulation)
             profiles.addToActive({{"M08A10T01", {}, {}}, {"M08A20T01", {}, {}}});
         refreshProfiles();
@@ -526,6 +532,17 @@ struct BrpTuWindow::Impl {
         plotEnabled->setObjectName(QStringLiteral("brpMonitorGraphToggle"));
         plotEnabled->setChecked(true); // Show live columns by default.
         plotEnabled->hide();
+        plotView = new QComboBox(interfaceBox);
+        plotView->setObjectName(QStringLiteral("brpMonitorPlotView"));
+        plotView->addItems({QStringLiteral("Только столбцы"), QStringLiteral("Столбцы и тренд")});
+        plotView->setToolTip(QStringLiteral("Тренд показывает сырые коды из кадров по времени, без сглаживания."));
+        plotView->hide();
+        trendChannel = new QComboBox(interfaceBox);
+        trendChannel->setObjectName(QStringLiteral("brpMonitorTrendChannel"));
+        trendChannel->setMinimumContentsLength(10);
+        trendChannel->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+        trendChannel->setToolTip(QStringLiteral("Канал тренда: фактические коды из liborbita, без фильтрации."));
+        trendChannel->hide();
         auto* interfaceActions = new QHBoxLayout;
         auto* monitorButton = new QPushButton(QStringLiteral("Монитор Орбиты"), interfaceBox);
         QObject::connect(monitorButton, &QPushButton::clicked, interfaceMode, [this] {
@@ -543,6 +560,28 @@ struct BrpTuWindow::Impl {
         interfaceActions->addWidget(plotEnabled);
         interfaceActions->addStretch();
         interfaceLayout->addLayout(interfaceActions);
+        plotOptions = new QWidget(interfaceBox);
+        auto* plotOptionsLayout = new QHBoxLayout(plotOptions);
+        plotOptionsLayout->setContentsMargins(0, 0, 0, 0);
+        plotOptionsLayout->addWidget(new QLabel(QStringLiteral("Вид графика:"), plotOptions));
+        plotOptionsLayout->addWidget(plotView);
+        plotOptionsLayout->addWidget(trendChannel, 1);
+        trendWindow = new QComboBox(plotOptions);
+        for (double seconds : {0.25, 1.0, 5.0, 15.0})
+            trendWindow->addItem(QStringLiteral("%1 с").arg(seconds), seconds);
+        trendWindow->setCurrentIndex(1);
+        trendWindow->hide();
+        plotOptionsLayout->addWidget(trendWindow);
+        plotOptionsLayout->addStretch();
+        plotOptions->hide();
+        interfaceLayout->addWidget(plotOptions);
+        QObject::connect(plotView, &QComboBox::currentIndexChanged, &window,
+            [this] { updateTrendVisibility(); });
+        QObject::connect(plotEnabled, &QCheckBox::toggled, &window, [this](bool checked) {
+            if (plotOptions) plotOptions->setVisible(selectedMode() >= 2 && checked && !monitorCounterActive);
+            if (plotView) plotView->setVisible(selectedMode() >= 2 && checked && !monitorCounterActive);
+            updateTrendVisibility();
+        });
         QObject::connect(yasmCodes, &QLineEdit::textEdited, &window, [this] { yasmFixture.clear(); });
         QObject::connect(yasmFile, &QPushButton::clicked, &window, [this] {
             const auto path = QFileDialog::getOpenFileName(&this->window, QStringLiteral("Тест ЯСМ"),
@@ -576,10 +615,24 @@ struct BrpTuWindow::Impl {
         interfaceLayout->addWidget(graph, 1);
         monitorPlot = new brp::ui::HistoryPlot(interfaceBox);
         monitorPlot->setObjectName(QStringLiteral("brpMonitorPlot"));
-        monitorPlot->configure(QStringLiteral("Коды Орбиты · последние 200 обновлений"), QStringLiteral("код"), {});
+        monitorPlot->setToolTip(QStringLiteral("Нажмите столбец, чтобы открыть тренд выбранного канала ниже."));
+        monitorPlot->configure(QStringLiteral("Текущие коды Орбиты"), QStringLiteral("код"), {});
         monitorPlot->setMinimumHeight(240);
         monitorPlot->hide();
         interfaceLayout->addWidget(monitorPlot, 1);
+        detailTrend = new brp::ui::HistoryPlot(interfaceBox);
+        detailTrend->setObjectName(QStringLiteral("brpMonitorTrend"));
+        detailTrend->configure(QStringLiteral("Тренд · код Орбиты"), QStringLiteral("код"), {});
+        detailTrend->setMinimumHeight(220);
+        detailTrend->hide();
+        interfaceLayout->addWidget(detailTrend, 1);
+        monitorPlot->onBarSelected([this](const QString& address) {
+            const int index = trendChannel->findData(address);
+            if (index < 0) return;
+            trendChannel->setCurrentIndex(index);
+            plotView->setCurrentIndex(1);
+            updateTrendVisibility();
+        });
         QObject::connect(plotEnabled, &QCheckBox::toggled, monitorPlot, &QWidget::setVisible);
         interfaceLayout->addStretch();
         QObject::connect(interfaceMode, &QComboBox::currentIndexChanged, &window, [this, columns, interfaceBox](int index) {
@@ -600,6 +653,10 @@ struct BrpTuWindow::Impl {
             m8Invert->setVisible(index >= 2);
             profileBar->setVisible(index >= 2);
             plotEnabled->setVisible(index >= 2);
+            plotOptions->setVisible(index >= 2 && plotEnabled->isChecked()
+                && !(index == 3 && counterToCom->isChecked()));
+            plotView->setVisible(index >= 2 && plotEnabled->isChecked());
+            updateTrendVisibility();
             monitorPlot->setVisible(index >= 2 && plotEnabled->isChecked());
             if (index >= 2 && plotEnabled->isChecked()) columns->setAlignment(interfaceBox, Qt::Alignment{});
 
@@ -1476,10 +1533,19 @@ struct BrpTuWindow::Impl {
             // Состояние обнуляется до подключения callback. Перед любым следующим
             // запуском shutdown ждёт завершения потока, который изменяет эти поля.
             counter = {};
+            {
+                std::lock_guard<std::mutex> lock(trendMutex);
+                trendSamples.clear();
+                trendLastUpdate.clear();
+                trendOrigin = std::chrono::steady_clock::now();
+                rawTrendLastGroup = {};
+                rawTrendGroupStart = 0.0;
+            }
             // The real RS-485 mode must decode the response just like the
             // simulator. Previously the real branch only wrote bytes to COM.
             observeCounter = shouldObserveCounter(yasmMode, monitor, monitorCounter);
             monitorCounterActive = monitorCounter;
+            updateTrendVisibility();
             counterTimeoutLogged = false;
             counterResultLogged = false;
             nextCounter = 0;
@@ -1512,19 +1578,59 @@ struct BrpTuWindow::Impl {
                         }
                     }
                 }
-                monitorHistory.clear();
+                detailTrend->clear();
                 monitorPlot->clear();
                 const bool tenBitOnly = static_cast<std::size_t>(monitorAnalog.size()) == channels.size();
                 monitorPlot->setFixedRange(0.0, monitorCounter || tenBitOnly ? 1023.0 : 0.0);
                 monitorPlot->configure(monitorCounter
                     ? QStringLiteral("Счётчик RS-485 · полученные коды 0–1023")
-                    : QStringLiteral("Коды Орбиты · последние 200 обновлений"),
+                    : QStringLiteral("Текущие коды Орбиты"),
                     QStringLiteral("код"), {});
-                for (const auto& spec : channels)
-                    activeMonitorNames.insert(QString::fromStdString(spec.address), QString::fromStdString(spec.name));
+                {
+                    QSignalBlocker block(trendChannel);
+                    const QString previously = trendChannel->currentData().toString();
+                    trendChannel->clear();
+                    for (const auto& spec : channels) {
+                        activeMonitorNames.insert(QString::fromStdString(spec.address), QString::fromStdString(spec.name));
+                        const QString address = QString::fromStdString(spec.address);
+                        trendChannel->addItem(spec.name.empty() ? address
+                            : QStringLiteral("%1 · %2").arg(QString::fromStdString(spec.name), address), address);
+                    }
+                    int selected = trendChannel->findData(previously);
+                    if (selected < 0) {
+                        for (int i = 0; i < trendChannel->count(); ++i)
+                            if (trendChannel->itemText(i).contains(QStringLiteral("Ептм"), Qt::CaseInsensitive)) {
+                                selected = i;
+                                break;
+                            }
+                    }
+                    if (selected >= 0) trendChannel->setCurrentIndex(selected);
+                }
+                // Capture decoded values on each group; GUI may redraw at 5 Hz.
+                // Exactly the codes returned by liborbita; no smoothing or reinterpretation.
+                QSet<QString> rawChannels;
+                for (auto it = monitorAnalog.cbegin(); it != monitorAnalog.cend(); ++it)
+                    rawChannels.insert(it.key());
+                decoder->setDataCallback([this, rawChannels](const orbita::Snapshot& frame) {
+                    std::lock_guard<std::mutex> lock(trendMutex);
+                    for (const auto& channel : frame.values) {
+                        if (rawChannels.contains(QString::fromStdString(channel.address))) continue;
+                        if (!channel.valid || channel.updatedAt == std::chrono::steady_clock::time_point{}
+                            || !std::isfinite(channel.value)) continue;
+                        auto& last = trendLastUpdate[channel.address];
+                        if (last == channel.updatedAt) continue;
+                        last = channel.updatedAt;
+                        const double t = std::chrono::duration<double>(
+                            channel.updatedAt - trendOrigin).count();
+                        if (t < 0) continue;
+                        auto& series = trendSamples[channel.address];
+                        series.emplace_back(t, channel.value);
+                        while (!series.empty() && (series.size() > 2560
+                            || series.front().x() < t - 15.0)) series.pop_front();
+                    }
+                });
                 decoder->setInvertSignal(m8Invert->isChecked());
                 if (!m8Mode) {
-                    // Счётчик и аналоговые каналы используют один поток групп M16.
                     decoder->setGroupCallback([this](const auto& words, int group, int cycle) {
                         consume(words, group, cycle);
                     });
@@ -1553,7 +1659,7 @@ struct BrpTuWindow::Impl {
                 ? QStringLiteral("Ожидание кодов внешнего теста ЯСМ в M16P1A22")
                 : QStringLiteral("Ожидание двух непрерывных периодов счётчика 0–1023"));
             gateClock.start();
-            refresh.start(60);
+            refresh.start(monitor ? 200 : 60);
             if (sendCounter) {
                 appendLog(QStringLiteral("RS-485: счётчик 0–1023 передаётся в %1; обратная телеметрия принимается только через Е20-10.")
                     .arg(selectedPort()));
@@ -1593,8 +1699,31 @@ struct BrpTuWindow::Impl {
             && words.size() == groupWords) {
             const int ordinal = (cycle - 1) * 32 + group - 1;
             const bool gap = monitorOrdinal >= 0 && ordinal != (monitorOrdinal + 1) % groupsPerSecond;
+            const int distance = monitorOrdinal < 0 ? 1
+                : std::max(1, (ordinal - monitorOrdinal + groupsPerSecond) % groupsPerSecond);
             monitorOrdinal = ordinal;
-            for (auto& point : monitorAnalog) {
+            const auto receivedAt = std::chrono::steady_clock::now();
+            constexpr double groupPeriod = 1.0 / groupsPerSecond;
+            std::lock_guard<std::mutex> trendLock(trendMutex);
+            const double observed = std::chrono::duration<double>(receivedAt - trendOrigin).count();
+            if (rawTrendLastGroup == std::chrono::steady_clock::time_point{} || gap)
+                rawTrendGroupStart = std::max(rawTrendGroupStart + groupPeriod * distance, observed - groupPeriod);
+            else
+                rawTrendGroupStart += groupPeriod;
+            rawTrendLastGroup = receivedAt;
+            for (auto it = monitorAnalog.begin(); it != monitorAnalog.end(); ++it) {
+                auto& point = it.value();
+                auto& raw = trendSamples[it.key().toStdString()];
+                const double missing = std::numeric_limits<double>::quiet_NaN();
+                if (gap)
+                    raw.emplace_back(rawTrendGroupStart, missing);
+                for (auto slot = point.layout.firstWord; slot < words.size(); slot += point.layout.stride) {
+                    const auto word = words[slot] & 0x7ff;
+                    const double stamp = rawTrendGroupStart + groupPeriod * slot / groupWords;
+                    raw.emplace_back(stamp, word == 0x2aa ? missing : (word >> point.shift) & 0x3ff);
+                }
+                while (!raw.empty() && (raw.size() > 65536 || raw.front().x() < rawTrendGroupStart - 15.0))
+                    raw.pop_front();
                 if (gap) {
                     point.groups = 0;
                     point.count = 0;
@@ -1652,6 +1781,17 @@ struct BrpTuWindow::Impl {
         }
     }
 
+    void updateTrendVisibility()
+    {
+        if (!detailTrend) return;
+        const bool visible = selectedMode() >= 2 && plotEnabled->isChecked()
+            && plotView->currentIndex() == 1 && !monitorCounterActive
+            && !(selectedMode() == 3 && counterToCom->isChecked());
+        trendChannel->setVisible(visible);
+        trendWindow->setVisible(visible);
+        detailTrend->setVisible(visible);
+    }
+
     void update()
     {
         const auto sourceError = bridge->lastError();
@@ -1664,36 +1804,63 @@ struct BrpTuWindow::Impl {
             const auto snapshot = decoder->getSnapshot();
             const auto now = std::chrono::steady_clock::now();
             QStringList values;
-            QVector<brp::ui::HistoryPlot::NamedSeries> series;
+            QVector<brp::ui::HistoryPlot::BarValue> bars;
             QHash<QString, AnalogMonitorPoint> averages;
             {
                 std::lock_guard<std::mutex> lock(dataMutex);
                 averages = monitorAnalog;
             }
             for (const auto& channel : snapshot.values) {
-                // Поддерживаемые адреса обновляются хотя бы раз за цикл.
-                // После паузы длиннее кадра старый код скрываем.
                 const auto address = QString::fromStdString(channel.address);
                 const auto average = averages.constFind(address);
                 const bool averaged = average != averages.cend();
-                const bool fresh = averaged
-                    ? average->updatedAt != std::chrono::steady_clock::time_point{}
-                        && now - average->updatedAt < std::chrono::seconds(1)
-                    : channel.valid && now - channel.updatedAt < std::chrono::seconds(1);
+                // Последний принятый код остаётся виден при паузе, с явной
+                // пометкой возраста. Отсутствие данных и заполнитель различаются.
+                const auto updatedAt = averaged ? average->updatedAt : channel.updatedAt;
+                const bool received = updatedAt != std::chrono::steady_clock::time_point{}
+                    && (averaged || channel.valid);
+                const auto age = now - updatedAt;
+                const bool fresh = received && age < std::chrono::seconds(2);
                 const double value = averaged ? average->value : channel.value;
-                const bool fillOnly = fresh && averaged && average->fillOnly;
+                const bool fillOnly = received && averaged && average->fillOnly;
                 const auto name = activeMonitorNames.value(address);
                 const auto label = name.isEmpty() ? address : QStringLiteral("%1 · %2").arg(name, address);
-                values.append(QStringLiteral("%1 = %2").arg(label,
-                    fillOnly ? QStringLiteral("заполнение ЯФК 0x2AA")
-                             : fresh ? QString::number(value) : QStringLiteral("нет отсчёта")));
-                auto& trace = monitorHistory[address];
-                trace.append(fresh && !fillOnly ? value : std::numeric_limits<double>::quiet_NaN());
-                if (trace.size() > 200) trace.removeFirst();
-                if (plotEnabled->isChecked()) series.append({name.isEmpty() ? address : name, trace});
+                QString measurement = fillOnly ? QStringLiteral("заполнение ЯФК 0x2AA")
+                    : received ? QString::number(value) : QStringLiteral("нет отсчёта");
+                if (received && !fresh)
+                    measurement += QStringLiteral(" (устарело, %1 с)")
+                        .arg(std::chrono::duration<double>(age).count(), 0, 'f', 1);
+                values.append(QStringLiteral("%1 = %2").arg(label, measurement));
+                if (plotEnabled->isChecked())
+                    bars.append({name.isEmpty() ? address : name, value, received && !fillOnly, !fresh, address});
             }
-            if (plotEnabled->isChecked() && !monitorCounterActive)
-                monitorPlot->setNamedSeries(std::move(series));
+            if (plotEnabled->isChecked() && !monitorCounterActive) {
+                monitorPlot->setBars(std::move(bars));
+                if (plotView->currentIndex() == 1) {
+                    const auto address = trendChannel->currentData().toString().toStdString();
+                    QVector<QPointF> raw;
+                    double elapsed = 0.0;
+                    {
+                        std::lock_guard<std::mutex> lock(trendMutex);
+                        elapsed = std::chrono::duration<double>(now - trendOrigin).count();
+                        const auto it = trendSamples.find(address);
+                        const double windowSeconds = trendWindow->currentData().toDouble();
+                        if (averages.contains(QString::fromStdString(address))
+                            && rawTrendLastGroup != std::chrono::steady_clock::time_point{}) {
+                            elapsed = rawTrendGroupStart + 1.0 / groupsPerSecond
+                                + std::chrono::duration<double>(now - rawTrendLastGroup).count();
+                        }
+                        if (it != trendSamples.end()) {
+                            const auto& points = it->second;
+                            const auto first = std::lower_bound(points.begin(), points.end(), elapsed - windowSeconds,
+                                [](const QPointF& point, double left) { return point.x() < left; });
+                            raw = QVector<QPointF>(first, points.end());
+                        }
+                    }
+                    detailTrend->setTimedSeries({trendChannel->currentText(), std::move(raw), elapsed,
+                        trendWindow->currentData().toDouble()});
+                }
+            }
             // M16 getErrors() exposes raw counters, not percentages;
             // M8 returns percentages. Never label a raw count as e.g. 112 %.
             const bool m8 = selectedMode() == 2;
@@ -2187,6 +2354,9 @@ struct BrpTuWindow::Impl {
     QWidget* profileBar = nullptr;
     QComboBox* profileCombo = nullptr;
     QCheckBox *combineProfiles = nullptr, *plotEnabled = nullptr, *counterToCom = nullptr;
+    QComboBox *plotView = nullptr, *trendChannel = nullptr, *trendWindow = nullptr;
+    brp::ui::HistoryPlot* detailTrend = nullptr;
+    QWidget* plotOptions = nullptr;
     brp::ui::HistoryPlot* monitorPlot = nullptr;
     struct AnalogMonitorPoint {
         orbita::M16GroupChannel layout;
@@ -2199,7 +2369,7 @@ struct BrpTuWindow::Impl {
     QComboBox* adcChannel = nullptr;
     QHash<QString, AnalogMonitorPoint> monitorAnalog;
     int monitorOrdinal = -1;
-    QHash<QString, QVector<double>> monitorHistory;
+
     std::vector<FrameCheck> checks;
     QComboBox *interfaceMode = nullptr, *port = nullptr, *checkList = nullptr,
               *channelList = nullptr, *expectedState = nullptr;
@@ -2226,6 +2396,12 @@ struct BrpTuWindow::Impl {
     bool closeWhenStopped = false;
     bool finalizeAfterStop = false;
     std::mutex dataMutex;
+    // Decoder callback writes bounded raw time-series; Qt reads at its own rate.
+    std::mutex trendMutex;
+    std::unordered_map<std::string, std::deque<QPointF>> trendSamples;
+    std::unordered_map<std::string, std::chrono::steady_clock::time_point> trendLastUpdate;
+    std::chrono::steady_clock::time_point trendOrigin{}, rawTrendLastGroup{};
+    double rawTrendGroupStart = 0.0;
     CounterCheck counter;
     std::optional<YasmCheck> yasm;
     std::vector<uint16_t> yasmFixture;
