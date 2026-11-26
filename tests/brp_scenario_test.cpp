@@ -304,7 +304,9 @@ void testScenarioAndReport()
     // Discrete inputs are checked in states 0 and 1, with manual switching
     // when no verified ISD route has been configured for the physical input.
     auto* continueStage = window.findChild<QPushButton*>("brpContinueStage");
-    require(continueStage != nullptr, "operator continue control missing");
+    auto* retryStage = window.findChild<QPushButton*>("brpRetryStage");
+    require(continueStage && retryStage, "operator retry/continue controls missing");
+    bool retriedFailure = false;
     for (int signalPoint = 0; signalPoint < 16; ++signalPoint) {
         require(waitUntil([&] { return measure->isVisible(); }, 12000),
                 "scenario did not offer a discrete input state confirmation");
@@ -312,8 +314,19 @@ void testScenarioAndReport()
         require(waitUntil([&] {
             return continueStage->isVisible() || measure->isVisible() || name->isVisible();
         }, 12000), "discrete input check did not settle");
+        if (continueStage->isVisible() && !retriedFailure) {
+            retryStage->click();
+            require(waitUntil([&] { return measure->isVisible(); }, 12000),
+                    "retry did not restart only the failed discrete point");
+            measure->click();
+            require(waitUntil([&] {
+                return continueStage->isVisible() || measure->isVisible() || name->isVisible();
+            }, 12000), "retried point did not reach a verdict");
+            retriedFailure = true;
+        }
         if (continueStage->isVisible()) continueStage->click();
     }
+    require(retriedFailure, "no failed point was offered for retry");
     require(waitUntil([&] { return name->isVisible(); }, 12000),
             "scenario did not finish after discrete checks");
 
@@ -329,6 +342,7 @@ void testScenarioAndReport()
     require(checkpoint.contains(QStringLiteral("\"forcedOk\": true"))
         && checkpoint.contains(QStringLiteral("\"attempt_1\"")) == false
         && checkpoint.contains(QStringLiteral(".attempt_1"))
+        && checkpoint.contains(QStringLiteral(".attempt_2"))
         && checkpoint.contains(QStringLiteral("\"finished_ms\":")),
         "durable checkpoint lost a forced verdict or attempt history");
     const auto html = readText(completeHtml);
