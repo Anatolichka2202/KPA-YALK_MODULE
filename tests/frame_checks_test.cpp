@@ -164,7 +164,21 @@ int main(int argc, char** argv)
         unsigned measuredGroups = 0;
         orbita::Orbita decoder;
         const auto& m16Address = checks.front().addresses.front();
-        decoder.setChannels({{m16Address, {}, {}}});
+        const auto& eptmAddress = byNumber(5).addresses.front();
+        decoder.setChannels({{m16Address, {}, {}}, {eptmAddress, {}, {}}});
+        unsigned eptmSamples = 0;
+        unsigned eptmMinimum = 1024, eptmMaximum = 0;
+        std::chrono::steady_clock::time_point previousEptm{};
+        decoder.setDataCallback([&](const orbita::Snapshot& frame) {
+            if (frame.values.size() < 2) return;
+            const auto& channel = frame.values[1];
+            if (!channel.valid || channel.updatedAt == previousEptm) return;
+            previousEptm = channel.updatedAt;
+            const unsigned raw = static_cast<unsigned>(channel.value);
+            eptmMinimum = std::min(eptmMinimum, raw);
+            eptmMaximum = std::max(eptmMaximum, raw);
+            ++eptmSamples;
+        });
         decoder.setGroupCallback([&](const auto& words, int group, int cycle) {
             decodedYasm.consume(words, group, cycle);
             if (!decoded.passed()) {
@@ -191,6 +205,10 @@ int main(int argc, char** argv)
         require(completed && decodedCodes.count == 2048 && decodedCodes.matches(512, 512),
                 "addressed M16 samples changed after the interface gate");
         require(decoder.getValueByAddress(m16Address) == 512, "M16 channel snapshot changed");
+        require(decoder.getValueByAddress(eptmAddress) == 512,
+                "Eptm raw code mismatches a constant M16 fixture");
+        require(eptmSamples >= 12 && eptmMinimum == 512 && eptmMaximum == 512,
+                "M16 Eptm callback introduced spurious variation in a constant input");
         return 0;
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
