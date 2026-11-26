@@ -238,7 +238,10 @@ struct IsdRouter::Impl
             try {
                 return getOnce(path, requireAck, timeoutMilliseconds);
             } catch (const IsdNoResponse&) {
-                if (attempt >= config.requestAttempts) throw;
+                // A timeout on a mutation is ambiguous: the relay might already
+                // have changed state. Only connectivity probes may be retried.
+                // Recovery of outputs requires operator-confirmed ISD restart.
+                if (path != QStringLiteral("/") || attempt >= config.requestAttempts) throw;
                 std::this_thread::sleep_for(
                     std::chrono::milliseconds(config.retryDelayMilliseconds));
             }
