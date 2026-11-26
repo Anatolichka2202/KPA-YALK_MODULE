@@ -26,7 +26,14 @@ public:
     void consume(const std::vector<uint16_t>& words, int group, int cycle);
     bool passed() const { return contiguous_ >= 2 * (counterLimit + 1) + 1; }
     std::vector<unsigned> trace() const { return {trace_.begin(), trace_.end()}; }
+    // Recent decoded values survive continuity gaps. For live diagnostics only.
+    std::vector<unsigned> recent() const { return {recent_.begin(), recent_.end()}; }
     unsigned contiguous() const { return contiguous_; }
+    unsigned groupsReceived() const { return groupsReceived_; }
+    unsigned markedWords() const { return markedWords_; }
+    unsigned decodedValues() const { return decodedValues_; }
+    unsigned breaks() const { return breaks_; }
+    std::optional<unsigned> latestValue() const { return latestValue_; }
 
 private:
     void interrupt();
@@ -36,6 +43,12 @@ private:
     std::optional<unsigned> previous_;
     unsigned contiguous_ = 0;
     std::deque<unsigned> trace_;
+    std::deque<unsigned> recent_;
+    unsigned groupsReceived_ = 0;
+    unsigned markedWords_ = 0;
+    unsigned decodedValues_ = 0;
+    unsigned breaks_ = 0;
+    std::optional<unsigned> latestValue_;
 };
 
 // Входной тест ЯСМ выполняется на внешнем источнике. Здесь сверяются
