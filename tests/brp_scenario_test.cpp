@@ -122,6 +122,18 @@ void testWindow()
             && !text.contains(QStringLiteral("нет отсчёта"));
     }), "M8 monitor did not display decoded channels");
     require(!capture->isEnabled(), "M16 acceptance was enabled from the M8 monitor");
+    stop->click();
+    mode->setCurrentIndex(3);
+    start->click();
+    require(waitUntil([&] {
+        return status->text().contains(QStringLiteral("M16P1A10B60C11T01 = 512"));
+    }), "passive M16 monitor did not show the decoded BRP address");
+    stop->click();
+    window.findChild<QPushButton*>("brpBrowseDb")->click();
+    auto* addressTable = window.findChild<QTableWidget*>("brpAddressTable");
+    require(addressTable && addressTable->rowCount() > 0
+        && addressTable->editTriggers() == QAbstractItemView::NoEditTriggers,
+        "read-only address catalog did not load");
 }
 
 QString readText(const QString& path)

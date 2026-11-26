@@ -18,6 +18,12 @@
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
+#include <QDialog>
+#include <QHeaderView>
+#include <QSqlDatabase>
+#include <QSqlError>
+#include <QSqlQuery>
+#include <QTableWidget>
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileDialog>
@@ -138,33 +144,45 @@ std::vector<uint16_t> readYasmFixture(const QString& path)
     return words;
 }
 
-QString readEquipment(QString host, QString akipPort)
+using Readiness = std::array<QString, 4>;
+
+Readiness probeStand(const QDir& root, const YAML::Node& profile, const QString& host, const QString& rs485)
 {
-    QStringList results;
-    if (!host.isEmpty()) {
-        try {
-            tu::hardware::IsdRouter isd({host.toStdString()});
-            isd.probe();
-            results << QStringLiteral("ИСД ответил по HTTP. Состояние реле не проверялось.");
-        } catch (const std::exception& error) {
-            results << QStringLiteral("ИСД: %1").arg(QString::fromUtf8(error.what()));
-        }
+    Readiness result;
+    try {
+        tu::hardware::IsdRouter router({host.toStdString()});
+        router.probe();
+    } catch (const std::exception& exception) {
+        result[0] = QString::fromUtf8(exception.what());
     }
-    if (!akipPort.isEmpty()) {
-        try {
-            tu::hardware::Akip1160 akip({akipPort.toStdString()});
-            const auto identity = QString::fromStdString(akip.probe());
-            const auto state = akip.readState();
-            results << QStringLiteral("АКИП: %1, выход %2, измерено %3 В / %4 А")
-                .arg(identity, state.outputEnabled ? QStringLiteral("включён")
-                                                   : QStringLiteral("выключен"))
-                .arg(state.measuredVoltageV, 0, 'f', 3)
-                .arg(state.measuredCurrentA, 0, 'f', 3);
-        } catch (const std::exception& error) {
-            results << QStringLiteral("АКИП: %1").arg(QString::fromUtf8(error.what()));
-        }
+    try {
+        tu::hardware::VisaInstrument meter(loadV7(root).visa);
+        const auto identity = meter.query("*IDN?");
+        if (identity.find_first_not_of(" \t\r\n") == std::string::npos)
+            throw std::runtime_error("Пустой ответ на *IDN?");
+    } catch (const std::exception& exception) {
+        result[1] = QString::fromUtf8(exception.what());
     }
-    return results.join(QLatin1Char('\n'));
+    try {
+        const auto supply = profile["akip"];
+        tu::hardware::AkipConfig config;
+        config.portName = supply["port"].as<std::string>();
+        config.expectedIdentity = supply["expected_idn"].as<std::string>();
+        if (rs485.compare(QString::fromStdString(config.portName), Qt::CaseInsensitive) == 0)
+            throw std::runtime_error("АКИП и RS-485 требуют разных COM-портов.");
+        tu::hardware::Akip1160 instrument(config);
+        instrument.probe();
+    } catch (const std::exception& exception) {
+        result[2] = QString::fromUtf8(exception.what());
+    }
+    try {
+        auto adc = createE2010SampleSource(profile["e2010"].as<std::map<std::string, std::string>>());
+        if (!adc->open()) throw std::runtime_error("АЦП не открылся по профилю стенда.");
+        adc->close();
+    } catch (const std::exception& exception) {
+        result[3] = QString::fromUtf8(exception.what());
+    }
+    return result;
 }
 } // namespace
 
@@ -228,6 +246,10 @@ struct BrpTuWindow::Impl {
         manualTitle->setFont(manualFont);
         header->addWidget(manualTitle);
         header->addStretch();
+        auto* database = new QPushButton(QStringLiteral("База адресов Орбиты"), manual);
+        database->setObjectName(QStringLiteral("brpBrowseDb"));
+        header->addWidget(database);
+        QObject::connect(database, &QPushButton::clicked, &window, [this] { browseDatabase(); });
         if (simulation) {
             auto* modeLabel = new QLabel(QStringLiteral("Имитация"), manual);
             modeLabel->setProperty("muted", true);
@@ -252,13 +274,13 @@ struct BrpTuWindow::Impl {
             page->showFlow();
         });
 
-        auto* interfaceBox = new QGroupBox(QStringLiteral("Интерфейс и монитор Орбита"), manual);
+        auto* interfaceBox = new QGroupBox(QStringLiteral("Орбита · приём через Е20-10"), manual);
         auto* interfaceLayout = new QVBoxLayout(interfaceBox);
         auto* interfaceControls = new QHBoxLayout;
         interfaceMode = new QComboBox(interfaceBox);
         interfaceMode->setObjectName(QStringLiteral("brpInterfaceMode"));
-        interfaceMode->addItems({QStringLiteral("RS-485 · счётчик"), QStringLiteral("ЯСМ · внешний тест"),
-                                 QStringLiteral("M8 · приём кадра")});
+        interfaceMode->addItems({QStringLiteral("RS-485 → ячейка · счётчик"), QStringLiteral("ЯСМ · внешний тест"),
+                                 QStringLiteral("Орбита M8 · приём"), QStringLiteral("Орбита M16 · приём")});
         port = new QComboBox(interfaceBox);
         port->setEditable(true);
         port->setMinimumContentsLength(14);
@@ -295,7 +317,7 @@ struct BrpTuWindow::Impl {
         m8Addresses = new QLineEdit(interfaceBox);
         m8Addresses->setObjectName(QStringLiteral("brpM8Addresses"));
         m8Addresses->setPlaceholderText(QStringLiteral("Адреса M08… через пробел"));
-        if (simulation) m8Addresses->setText(QStringLiteral("M08A10T01 M08A20T01"));
+
         m8Invert = new QCheckBox(QStringLiteral("Инверсия сигнала"), interfaceBox);
         m8Addresses->hide();
         m8Invert->hide();
@@ -304,6 +326,11 @@ struct BrpTuWindow::Impl {
         m8Controls->addWidget(m8Invert);
         interfaceLayout->addLayout(m8Controls);
         auto* interfaceActions = new QHBoxLayout;
+        auto* monitorButton = new QPushButton(QStringLiteral("Монитор Орбиты"), interfaceBox);
+        QObject::connect(monitorButton, &QPushButton::clicked, interfaceMode, [this] {
+            if (!bridge) interfaceMode->setCurrentIndex(3);
+        });
+        interfaceActions->addWidget(monitorButton);
         interfaceActions->addWidget(start);
         interfaceActions->addWidget(stop);
         interfaceActions->addStretch();
@@ -343,21 +370,27 @@ struct BrpTuWindow::Impl {
             yasmFile->setVisible(index == 1);
             graph->setVisible(index == 0);
             columns->setAlignment(interfaceBox, index == 0 ? Qt::Alignment{} : Qt::AlignTop);
-            m8Addresses->setVisible(index == 2);
+            m8Addresses->setVisible(index >= 2);
+            if (index >= 2) {
+                m8Addresses->setPlaceholderText(index == 2 ? QStringLiteral("Адреса M08… через пробел")
+                                                         : QStringLiteral("Адреса M16… через пробел"));
+                m8Addresses->setText(index == 3 ? QStringLiteral("M16P1A10B60C11T01 M16P1A10B60C21T01")
+                    : this->simulation ? QStringLiteral("M08A10T01 M08A20T01") : QString());
+            }
             m8Invert->setVisible(index == 2);
-            checksPanel->setVisible(index != 2);
-            start->setText(index == 2 ? QStringLiteral("Начать приём M8")
+            checksPanel->setVisible(index < 2);
+            start->setText(index >= 2 ? QStringLiteral("Начать приём Орбиты")
                                      : QStringLiteral("Проверить интерфейс"));
-            if (index == 2)
-                status->setText(QStringLiteral("Приём M8 через вход АЦП. Укажите адреса M08."));
+            if (index >= 2)
+                status->setText(QStringLiteral("Пассивный приём через Е20-10. Укажите адреса для наблюдения."));
             else
-                status->setText(QStringLiteral("Готово к запуску проверки M16."));
+                status->setText(QStringLiteral("Приём кадра идёт через Е20-10. RS-485 используется только для подачи счётчика на ячейку."));
             updateScenario();
         });
         columns->addWidget(interfaceBox, 5);
         columns->addLayout(side, 4);
 
-        auto* checksBox = new QGroupBox(QStringLiteral("Кадровый контроль · раздел 3.2"), manual);
+        auto* checksBox = new QGroupBox(QStringLiteral("Проверка сигналов в кадре M16"), manual);
         checksPanel = checksBox;
         auto* checksLayout = new QFormLayout(checksBox);
         checksLayout->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
@@ -390,45 +423,17 @@ struct BrpTuWindow::Impl {
         if (!simulation) {
             auto* instruments = new QGroupBox(QStringLiteral("Оборудование стенда"), manual);
             auto* instrumentsLayout = new QFormLayout(instruments);
-            instrumentsLayout->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
             isdHost = new QLineEdit(instruments);
-            auto* akipPort = new QLineEdit(instruments);
-            isdHost->setPlaceholderText(QStringLiteral("Адрес ИСД"));
-            akipPort->setPlaceholderText(QStringLiteral("COM-порт АКИП"));
-            auto* probe = new QPushButton(QStringLiteral("Проверить ИСД и АКИП"), instruments);
+            isdHost->setReadOnly(true);
+            auto* probe = new QPushButton(QStringLiteral("Обновить состояние приборов"), instruments);
             prepare = new QPushButton(QStringLiteral("Подготовить ИСД · ЦАП OFF"), instruments);
             instrumentsLayout->addRow(QStringLiteral("ИСД"), isdHost);
-            instrumentsLayout->addRow(QStringLiteral("АКИП"), akipPort);
             instrumentsLayout->addRow(probe);
             instrumentsLayout->addRow(prepare);
             side->addWidget(instruments);
-            QObject::connect(isdHost, &QLineEdit::textChanged, &window, [this] {
-                isdReady = false;
-                updateCaptureControls();
-            });
             QObject::connect(prepare, &QPushButton::clicked, &window, [this] { startIsdPreparation(); });
-            QObject::connect(probe, &QPushButton::clicked, &window, [this, probe, akipPort] {
-                if (preparingIsd || pointActive) return;
-                const auto host = isdHost->text().trimmed();
-                const auto supplyPort = akipPort->text().trimmed();
-                if (host.isEmpty() && supplyPort.isEmpty()) return;
-                if (!supplyPort.isEmpty() && supplyPort.compare(port->currentText().trimmed(), Qt::CaseInsensitive) == 0) {
-                    appendLog(QStringLiteral("АКИП и RS-485 требуют разных COM-портов."));
-                    return;
-                }
-                probing = true;
-                probe->setEnabled(false);
-                updateCaptureControls();
-                auto* watcher = new QFutureWatcher<QString>(&this->window);
-                QObject::connect(watcher, &QFutureWatcherBase::finished, &this->window, [this, watcher, probe] {
-                    appendLog(watcher->result());
-                    watcher->deleteLater();
-                    probe->setEnabled(true);
-                    probing = false;
-                    updateCaptureControls();
-                });
-                watcher->setFuture(QtConcurrent::run(readEquipment, host, supplyPort));
-            });
+            QObject::connect(probe, &QPushButton::clicked, &window, [this] { checkManualEquipment(); });
+            QObject::connect(flow, &TuFlowWidget::manualRequested, &window, [this] { checkManualEquipment(); });
         }
 
         log = new QPlainTextEdit(&window);
@@ -480,6 +485,112 @@ struct BrpTuWindow::Impl {
 
     ~Impl() { shutdown(); }
 
+    void browseDatabase()
+    {
+        auto* dialog = new QDialog(&window);
+        dialog->setAttribute(Qt::WA_DeleteOnClose);
+        dialog->setWindowTitle(QStringLiteral("База адресов Орбиты"));
+        dialog->resize(940, 540);
+        auto* layout = new QVBoxLayout(dialog);
+        const auto path = root.filePath(QStringLiteral("data/parameters.db"));
+        auto* summary = new QLabel(path, dialog);
+        summary->setTextFormat(Qt::PlainText);
+        summary->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        layout->addWidget(summary);
+        auto* filter = new QLineEdit(dialog);
+        filter->setPlaceholderText(QStringLiteral("Поиск по адресу, названию или типу"));
+        layout->addWidget(filter);
+        auto* table = new QTableWidget(0, 5, dialog);
+        table->setObjectName(QStringLiteral("brpAddressTable"));
+        table->setHorizontalHeaderLabels({QStringLiteral("Адрес / компоненты"), QStringLiteral("Параметр"),
+            QStringLiteral("Тип"), QStringLiteral("Ед."), QStringLiteral("Источник")});
+        table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+        table->setSelectionBehavior(QAbstractItemView::SelectRows);
+        table->setAlternatingRowColors(true);
+        table->verticalHeader()->hide();
+        table->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+        table->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+        layout->addWidget(table);
+
+        const auto connection = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        QString error;
+        {
+            auto db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connection);
+            db.setDatabaseName(path);
+            db.setConnectOptions(QStringLiteral("QSQLITE_OPEN_READONLY"));
+            if (!db.open()) {
+                error = db.lastError().text();
+            } else {
+                QSqlQuery query(db);
+                if (!query.exec(QStringLiteral(
+                        "SELECT a.full_address, p.name, p.signal_type, p.units, a.is_zu, "
+                        "a.stream, a.a, a.b, a.c, a.d, a.e, a.x, a.t, a.p "
+                        "FROM addresses a JOIN parameters p ON p.id=a.param_id "
+                        "ORDER BY a.full_address, a.id"))) error = query.lastError().text();
+                while (query.next()) {
+                    const int row = table->rowCount();
+                    table->insertRow(row);
+                    auto address = query.value(0).toString();
+                    if (address.isEmpty()) {
+                        address = query.value(5).toString();
+                        constexpr char components[] = {'A', 'B', 'C', 'D', 'E', 'X', 'T', 'P'};
+                        for (int i = 0; i < 8; ++i) {
+                            const auto value = query.value(i + 6).toString();
+                            if (!value.isEmpty()) address += QLatin1Char(components[i]) + value.rightJustified(2, QLatin1Char('0'));
+                        }
+                    }
+                    table->setItem(row, 0, new QTableWidgetItem(address));
+                    for (int column = 1; column < 4; ++column)
+                        table->setItem(row, column, new QTableWidgetItem(query.value(column).toString()));
+                    table->setItem(row, 4, new QTableWidgetItem(query.value(4).toBool()
+                        ? QStringLiteral("ЗУ") : QStringLiteral("Кадр")));
+                }
+            }
+        }
+        QSqlDatabase::removeDatabase(connection);
+        summary->setText(error.isEmpty() ? QStringLiteral("%1 · %2 адресов").arg(path).arg(table->rowCount())
+                                         : QStringLiteral("%1 · %2").arg(path, error));
+        QObject::connect(filter, &QLineEdit::textChanged, table, [table](const QString& text) {
+            const auto needle = text.trimmed();
+            for (int row = 0; row < table->rowCount(); ++row) {
+                bool matches = needle.isEmpty();
+                for (int column = 0; column < table->columnCount() && !matches; ++column)
+                    matches = table->item(row, column)->text().contains(needle, Qt::CaseInsensitive);
+                table->setRowHidden(row, !matches);
+            }
+        });
+        dialog->open();
+    }
+
+    void checkManualEquipment()
+    {
+        if (bridge || preparingIsd || probing || meterBusy) return;
+        try {
+            const auto profile = loadStand(root);
+            const auto host = QString::fromStdString(profile["isd"]["host"].as<std::string>()).trimmed();
+            isdHost->setText(host);
+            probing = true;
+            updateCaptureControls();
+            appendLog(QStringLiteral("Проверка приборов по профилю стенда…"));
+            auto* watcher = new QFutureWatcher<Readiness>(&window);
+            QObject::connect(watcher, &QFutureWatcherBase::finished, &window, [this, watcher] {
+                const auto result = watcher->result();
+                watcher->deleteLater();
+                probing = false;
+                const std::array names{QStringLiteral("ИСД"), QStringLiteral("В7"),
+                                       QStringLiteral("АКИП"), QStringLiteral("Е20-10")};
+                for (std::size_t i = 0; i < names.size(); ++i)
+                    appendLog(QStringLiteral("%1 · %2").arg(names[i], result[i].isEmpty()
+                        ? QStringLiteral("доступен") : result[i]));
+                updateCaptureControls();
+            });
+            const auto rs485 = port->currentText().trimmed();
+            watcher->setFuture(QtConcurrent::run(probeStand, root, profile, host, rs485));
+        } catch (const std::exception& error) {
+            appendLog(QString::fromUtf8(error.what()));
+        }
+    }
+
     void appendLog(const QString& message)
     {
         if (log) log->appendPlainText(message);
@@ -506,7 +617,7 @@ struct BrpTuWindow::Impl {
         flow->beginStandCheck(serialNumber, {connection, isd, meter, supply, adc});
         QString error;
         const int mode = selectedMode();
-        if (mode == 2)
+        if (mode >= 2)
             error = QStringLiteral("Выберите RS-485 или ЯСМ в ручном управлении.");
         else if (!simulation && mode == 0 && page->flow()->rs485Port().isEmpty())
             error = QStringLiteral("Выберите COM-порт RS-485 на стартовом экране.");
@@ -539,7 +650,6 @@ struct BrpTuWindow::Impl {
             return;
         }
         const auto host = scenarioIsdHost;
-        using Readiness = std::array<QString, 4>;
         probing = true;
         updateCaptureControls();
         auto* watcher = new QFutureWatcher<Readiness>(&window);
@@ -553,41 +663,7 @@ struct BrpTuWindow::Impl {
             updateCaptureControls();
         });
         watcher->setFuture(QtConcurrent::run([host, root = root, profile, rs485 = flow->rs485Port(), mode] {
-            Readiness result;
-            try {
-                tu::hardware::IsdRouter router({host.toStdString()});
-                router.probe();
-            } catch (const std::exception& exception) {
-                result[0] = QString::fromUtf8(exception.what());
-            }
-            try {
-                tu::hardware::VisaInstrument meter(loadV7(root).visa);
-                const auto identity = meter.query("*IDN?");
-                if (identity.find_first_not_of(" \t\r\n") == std::string::npos)
-                    throw std::runtime_error("Пустой ответ на *IDN?");
-            } catch (const std::exception& exception) {
-                result[1] = QString::fromUtf8(exception.what());
-            }
-            try {
-                const auto supply = profile["akip"];
-                tu::hardware::AkipConfig config;
-                config.portName = supply["port"].as<std::string>();
-                config.expectedIdentity = supply["expected_idn"].as<std::string>();
-                if (mode == 0 && rs485.compare(QString::fromStdString(config.portName), Qt::CaseInsensitive) == 0)
-                    throw std::runtime_error("АКИП и RS-485 требуют разных COM-портов.");
-                tu::hardware::Akip1160 instrument(config);
-                instrument.probe();
-            } catch (const std::exception& exception) {
-                result[2] = QString::fromUtf8(exception.what());
-            }
-            try {
-                auto adc = createE2010SampleSource(profile["e2010"].as<std::map<std::string, std::string>>());
-                if (!adc->open()) throw std::runtime_error("АЦП не открылся по профилю стенда.");
-                adc->close();
-            } catch (const std::exception& exception) {
-                result[3] = QString::fromUtf8(exception.what());
-            }
-            return result;
+            return probeStand(root, profile, host, mode == 0 ? rs485 : QString());
         }));
     }
 
@@ -803,6 +879,8 @@ struct BrpTuWindow::Impl {
         try {
             const bool yasmMode = selectedMode() == 1;
             const bool m8Mode = selectedMode() == 2;
+            const bool monitor = selectedMode() >= 2;
+            if (probing) throw std::runtime_error("Дождитесь проверки приборов.");
             double sampleRate = 10'000'000;
             if (yasmMode && !yasmFixture.empty()) {
                 yasm.emplace(YasmCheck::fromBusWords(yasmFixture));
@@ -816,7 +894,7 @@ struct BrpTuWindow::Impl {
                     expected.push_back(value);
                 }
                 yasm.emplace(std::move(expected));
-            } else if (!simulation && !m8Mode) {
+            } else if (!simulation && !monitor) {
                 const auto portName = selectedPort();
                 if (portName.isEmpty()) throw std::runtime_error("Выберите COM-порт RS-485");
                 serial.setPortName(portName);
@@ -839,31 +917,33 @@ struct BrpTuWindow::Impl {
                 const auto config = loadStand(root);
                 if (!config["e2010"].IsMap())
                     throw std::runtime_error("Неверная схема профиля E20-10");
-                if (m8Mode) sampleRate = config["e2010"]["sample_rate_khz"].as<double>() * 1000;
+                if (monitor) sampleRate = config["e2010"]["sample_rate_khz"].as<double>() * 1000;
                 source = createE2010SampleSource(config["e2010"].as<std::map<std::string, std::string>>());
             }
 
             // Состояние обнуляется до подключения callback. Перед любым следующим
             // запуском shutdown ждёт завершения потока, который изменяет эти поля.
             counter = {};
-            observeCounter = simulation && !yasmMode && !m8Mode;
+            observeCounter = simulation && !yasmMode && !monitor;
             nextCounter = 0;
             gatePassed = false;
-            if (m8Mode) {
-                decoder = std::make_unique<orbita::Orbita>(orbita::Informativity::M8, sampleRate);
+            if (monitor) {
+                decoder = std::make_unique<orbita::Orbita>(
+                    m8Mode ? orbita::Informativity::M8 : orbita::Informativity::M16, sampleRate);
+                const std::string prefix = m8Mode ? "M08" : "M16";
                 std::vector<orbita::ChannelSpec> channels;
                 for (const auto& item : m8Addresses->text().split(
                         QRegularExpression(QStringLiteral("[\\s,]+")), Qt::SkipEmptyParts)) {
                     const auto address = encoding::normalizeAddress(item.toStdString());
-                    if (address.rfind("M08", 0) != 0 || !orbita::isValidChannelAddress(address))
-                        throw std::invalid_argument("Неверный адрес M08: " + address);
+                    if (address.rfind(prefix, 0) != 0 || !orbita::isValidChannelAddress(address))
+                        throw std::invalid_argument("Адрес должен начинаться с " + prefix + ": " + address);
                     channels.push_back({address, {}, {}});
                 }
-                if (channels.empty()) throw std::invalid_argument("Задайте хотя бы один адрес M08");
+                if (channels.empty()) throw std::invalid_argument("Задайте хотя бы один адрес");
                 decoder->setChannels(channels);
                 if (decoder->getChannels().size() != channels.size())
-                    throw std::invalid_argument("В списке есть адреса за пределами цикла M8");
-                decoder->setInvertSignal(m8Invert->isChecked());
+                    throw std::invalid_argument("В списке есть адреса за пределами кадра");
+                if (m8Mode) decoder->setInvertSignal(m8Invert->isChecked());
             } else {
                 decoder = std::make_unique<orbita::Orbita>();
                 decoder->setGroupCallback([this](const auto& words, int group, int cycle) {
@@ -881,12 +961,12 @@ struct BrpTuWindow::Impl {
             if (m8Addresses) m8Addresses->setEnabled(false);
             if (m8Invert) m8Invert->setEnabled(false);
             if (graph) graph->clear();
-            if (status) status->setText(m8Mode ? QStringLiteral("M8: поиск маркеров фразы и цикла") : yasmMode
+            if (status) status->setText(monitor ? QStringLiteral("Ожидание синхронизации Орбиты") : yasmMode
                 ? QStringLiteral("Ожидание кодов внешнего теста ЯСМ в M16P1A22")
                 : QStringLiteral("Ожидание двух непрерывных периодов счётчика 0–1023"));
             gateClock.start();
             refresh.start(60);
-            if (!simulation && !yasmMode && !m8Mode) send.start(10);
+            if (!simulation && !yasmMode && !monitor) send.start(10);
             updateScenario();
         } catch (const std::exception& error) {
             endSession(QStringLiteral("Запуск не выполнен: %1").arg(QString::fromUtf8(error.what())));
@@ -947,7 +1027,7 @@ struct BrpTuWindow::Impl {
             return;
         }
 
-        if (selectedMode() == 2) {
+        if (selectedMode() >= 2) {
             const auto snapshot = decoder->getSnapshot();
             const auto now = std::chrono::steady_clock::now();
             QStringList values;
@@ -958,7 +1038,8 @@ struct BrpTuWindow::Impl {
                 values.append(QStringLiteral("%1 = %2").arg(QString::fromStdString(channel.address),
                     fresh ? QString::number(channel.value) : QStringLiteral("нет отсчёта")));
             }
-            status->setText(QStringLiteral("M8 · групп %1 · ошибки фраз %2 % · ошибки групп %3 %\n%4")
+            status->setText(QStringLiteral("%1 · групп %2 · ошибки фраз %3 % · ошибки групп %4 %\n%5")
+                .arg(selectedMode() == 2 ? QStringLiteral("M8") : QStringLiteral("M16"))
                 .arg(snapshot.stats.frames_processed).arg(snapshot.stats.phrase_error_percent)
                 .arg(snapshot.stats.group_error_percent).arg(values.join(QLatin1Char('\n'))));
             return;
