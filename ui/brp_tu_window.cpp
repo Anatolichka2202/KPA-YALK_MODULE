@@ -366,6 +366,11 @@ struct BrpTuWindow::Impl {
         for (const auto& entry : QSerialPortInfo::availablePorts()) port->addItem(entry.portName());
         port->setCurrentIndex(-1);
         port->setVisible(!simulation);
+        counterToCom = new QCheckBox(QStringLiteral("Счётчик RS-485 → COM"), interfaceBox);
+        counterToCom->setObjectName(QStringLiteral("brpMonitorCounterToCom"));
+        counterToCom->setToolTip(QStringLiteral("Отправлять тест 0–1023 на выбранный COM во время приёма M16 через Е20-10. Отдельная физическая линия RS-485 обязательна."));
+        counterToCom->setChecked(false);
+        counterToCom->hide();
         start = new QPushButton(QStringLiteral("Проверить интерфейс"), interfaceBox);
         start->setObjectName(QStringLiteral("brpInterfaceStart"));
         start->setProperty("accent", true);
@@ -375,7 +380,12 @@ struct BrpTuWindow::Impl {
         stop->setEnabled(false);
         interfaceControls->addWidget(interfaceMode, 1);
         interfaceControls->addWidget(port, 1);
+        interfaceControls->addWidget(counterToCom);
         interfaceLayout->addLayout(interfaceControls);
+        QObject::connect(counterToCom, &QCheckBox::toggled, &window, [this](bool checked) {
+            if (port && interfaceMode) port->setVisible(!simulation
+                && (selectedMode() == 0 || (selectedMode() == 3 && checked)));
+        });
         yasmCodes = new QLineEdit(interfaceBox);
         yasmCodes->setObjectName(QStringLiteral("brpYasmCodes"));
         yasmCodes->setPlaceholderText(QStringLiteral("Коды M16 из внешнего теста ЯСМ, HEX через пробел"));
@@ -491,6 +501,7 @@ struct BrpTuWindow::Impl {
         QObject::connect(saveProfiles, &QAction::triggered, &window, [this] { profileFile(true); });
         plotEnabled = new QCheckBox(QStringLiteral("График"), interfaceBox);
         plotEnabled->setObjectName(QStringLiteral("brpMonitorGraphToggle"));
+        plotEnabled->setChecked(true); // Show live columns by default.
         plotEnabled->hide();
         auto* interfaceActions = new QHBoxLayout;
         auto* monitorButton = new QPushButton(QStringLiteral("Монитор Орбиты"), interfaceBox);
@@ -539,14 +550,16 @@ struct BrpTuWindow::Impl {
         interfaceLayout->addWidget(graph, 1);
         monitorPlot = new brp::ui::HistoryPlot(interfaceBox);
         monitorPlot->setObjectName(QStringLiteral("brpMonitorPlot"));
-        monitorPlot->configure(QStringLiteral("История кодов · последние 200 обновлений"), QStringLiteral("код"), {});
+        monitorPlot->configure(QStringLiteral("Коды M16 / M8 · текущие значения по адресам"), QStringLiteral("код"), {});
         monitorPlot->setMinimumHeight(240);
         monitorPlot->hide();
         interfaceLayout->addWidget(monitorPlot, 1);
         QObject::connect(plotEnabled, &QCheckBox::toggled, monitorPlot, &QWidget::setVisible);
         interfaceLayout->addStretch();
         QObject::connect(interfaceMode, &QComboBox::currentIndexChanged, &window, [this, columns, interfaceBox](int index) {
-            port->setVisible(!this->simulation && index == 0);
+            port->setVisible(!this->simulation && (index == 0
+                || (index == 3 && counterToCom->isChecked())));
+            counterToCom->setVisible(index == 3 && !this->simulation);
             if (purumk) purumk->setVisible(index == 1 && !this->simulation);
             yasmCodes->setVisible(index == 1);
             yasmFile->setVisible(index == 1);
@@ -568,7 +581,7 @@ struct BrpTuWindow::Impl {
             start->setText(index >= 2 ? QStringLiteral("Начать приём Орбиты")
                                      : QStringLiteral("Проверить интерфейс"));
             if (index >= 2)
-                status->setText(QStringLiteral("Пассивный приём через Е20-10. Укажите адреса для наблюдения."));
+                status->setText(QStringLiteral("Пассивный приём через Е20-10. COM не задействован; для отправки счётчика на ячейку включите «Счётчик RS-485 → COM»."));
             else
                 status->setText(QStringLiteral("Приём кадра идёт через Е20-10. RS-485 используется только для подачи счётчика на ячейку."));
             updateScenario();
@@ -619,7 +632,9 @@ struct BrpTuWindow::Impl {
             side->addWidget(instruments);
             QObject::connect(prepare, &QPushButton::clicked, &window, [this] { startIsdPreparation(); });
             QObject::connect(probe, &QPushButton::clicked, &window, [this] { checkManualEquipment(); });
-            QObject::connect(flow, &TuFlowWidget::manualRequested, &window, [this] { checkManualEquipment(); });
+            QObject::connect(flow, &TuFlowWidget::manualRequested, &window, [this] {
+            appendLog(QStringLiteral("Ручной режим: питание БРП внешнее. ИСД, АКИП и В7 не опрашиваются автоматически; контроль RS-485/Орбиты запускается отдельно."));
+        });
         }
 
         log = new QPlainTextEdit(&window);
@@ -1360,6 +1375,8 @@ struct BrpTuWindow::Impl {
             const bool yasmMode = selectedMode() == 1;
             const bool m8Mode = selectedMode() == 2;
             const bool monitor = selectedMode() >= 2;
+            const bool sendCounter = !simulation && (selectedMode() == 0
+                || (selectedMode() == 3 && counterToCom && counterToCom->isChecked()));
             if (probing) throw std::runtime_error("Дождитесь проверки приборов.");
             double sampleRate = 10'000'000;
             if (yasmMode && !yasmFixture.empty()) {
@@ -1374,7 +1391,8 @@ struct BrpTuWindow::Impl {
                     expected.push_back(value);
                 }
                 yasm.emplace(std::move(expected));
-            } else if (!simulation && !monitor) {
+            }
+            if (sendCounter) {
                 const auto portName = selectedPort();
                 if (portName.isEmpty()) throw std::runtime_error("Выберите COM-порт RS-485");
                 serial.setPortName(portName);
@@ -1450,7 +1468,11 @@ struct BrpTuWindow::Impl {
                 : QStringLiteral("Ожидание двух непрерывных периодов счётчика 0–1023"));
             gateClock.start();
             refresh.start(60);
-            if (!simulation && !yasmMode && !monitor) send.start(10);
+            if (sendCounter) {
+                appendLog(QStringLiteral("RS-485: счётчик 0–1023 передаётся в %1; обратная телеметрия принимается только через Е20-10.")
+                    .arg(selectedPort()));
+                send.start(10);
+            }
             updateScenario();
         } catch (const std::exception& error) {
             endSession(QStringLiteral("Запуск не выполнен: %1").arg(QString::fromUtf8(error.what())));
@@ -1525,7 +1547,7 @@ struct BrpTuWindow::Impl {
             const auto snapshot = decoder->getSnapshot();
             const auto now = std::chrono::steady_clock::now();
             QStringList values;
-            QVector<brp::ui::HistoryPlot::NamedSeries> traces;
+            QVector<brp::ui::HistoryPlot::BarValue> bars;
             for (const auto& channel : snapshot.values) {
                 // Поддерживаемые адреса обновляются хотя бы раз за цикл.
                 // После паузы длиннее кадра старый код скрываем.
@@ -1535,14 +1557,10 @@ struct BrpTuWindow::Impl {
                 const auto label = name.isEmpty() ? address : QStringLiteral("%1 · %2").arg(name, address);
                 values.append(QStringLiteral("%1 = %2").arg(label,
                     fresh ? QString::number(channel.value) : QStringLiteral("нет отсчёта")));
-                auto& history = monitorHistory[address];
-                history.append(fresh ? channel.value : std::numeric_limits<double>::quiet_NaN());
-                if (history.size() > 200) history.removeFirst();
                 if (plotEnabled->isChecked())
-                    traces.append({name.isEmpty() ? address : name, history});
-
+                    bars.append({name.isEmpty() ? address : name, channel.value, fresh});
             }
-            if (plotEnabled->isChecked()) monitorPlot->setNamedSeries(std::move(traces));
+            if (plotEnabled->isChecked()) monitorPlot->setBars(std::move(bars));
             status->setText(QStringLiteral("%1 · групп %2 · ошибки фраз %3 % · ошибки групп %4 %\n%5")
                 .arg(selectedMode() == 2 ? QStringLiteral("M8") : QStringLiteral("M16"))
                 .arg(snapshot.stats.frames_processed).arg(snapshot.stats.phrase_error_percent)
@@ -1928,7 +1946,7 @@ struct BrpTuWindow::Impl {
     AddressSetModel profiles;
     QWidget* profileBar = nullptr;
     QComboBox* profileCombo = nullptr;
-    QCheckBox *combineProfiles = nullptr, *plotEnabled = nullptr;
+    QCheckBox *combineProfiles = nullptr, *plotEnabled = nullptr, *counterToCom = nullptr;
     brp::ui::HistoryPlot* monitorPlot = nullptr;
     QHash<QString, QVector<double>> monitorHistory;
     std::vector<FrameCheck> checks;
