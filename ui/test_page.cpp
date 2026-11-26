@@ -149,10 +149,10 @@ struct TestPage::Impl {
         skipHotspot->setFlat(true);
         skipHotspot->setStyleSheet(QStringLiteral(
             "QPushButton{background:transparent;border:0;}"));
-        skipButton = new QPushButton(QStringLiteral("Пропустить этап"), header);
+        skipButton = new QPushButton(QStringLiteral("Принудительный ОК"), header);
         skipButton->setObjectName(QStringLiteral("skipStage"));
         skipButton->setToolTip(QStringLiteral(
-            "Ctrl+Shift+Q: пропустить текущую измерительную точку"));
+            "Ctrl+Shift+Q: установить итог ОК, не прерывая измерения"));
         skipButton->hide();
         headerLayout->addWidget(runtimeBack);
         headerLayout->addWidget(runTitle);
@@ -277,6 +277,19 @@ struct TestPage::Impl {
         confirm->setObjectName(QStringLiteral("brpMeasureAction"));
         confirm->setProperty("brpPointAction", true);
         stagePageLayout->addWidget(confirm, 0, Qt::AlignRight);
+        auto* retryActions = new QHBoxLayout;
+        retry = new QPushButton(QStringLiteral("Повторить пункт"), stagePage);
+        retry->setObjectName(QStringLiteral("brpRetryStage"));
+        proceed = new QPushButton(QStringLiteral("Продолжить с НЕ НОРМА"), stagePage);
+        proceed->setObjectName(QStringLiteral("brpContinueStage"));
+        retry->hide();
+        proceed->hide();
+        retryActions->addStretch();
+        retryActions->addWidget(retry);
+        retryActions->addWidget(proceed);
+        stagePageLayout->addLayout(retryActions);
+        QObject::connect(retry, &QPushButton::clicked, q, &TestPage::retryStageRequested);
+        QObject::connect(proceed, &QPushButton::clicked, q, &TestPage::continueStageRequested);
         QObject::connect(confirm, &QPushButton::clicked, q, &TestPage::pointReady);
         stageStack->addWidget(stagePage);
     }
@@ -354,7 +367,7 @@ struct TestPage::Impl {
     QWidget *manualPage = nullptr, *runtimePageWidget = nullptr;
     QFrame *runtimeContextStrip = nullptr, *tuSidebar = nullptr;
     QPushButton *runtimeBack = nullptr, *stopButton = nullptr, *skipHotspot = nullptr,
-                *skipButton = nullptr, *confirm = nullptr;
+                *skipButton = nullptr, *confirm = nullptr, *retry = nullptr, *proceed = nullptr;
     QLabel *runTitle = nullptr, *runSubtitle = nullptr, *contextCaption = nullptr, *context = nullptr,
            *progressCaption = nullptr, *progressText = nullptr, *tuTitle = nullptr, *tuSerial = nullptr,
            *stageHeading = nullptr, *referenceBefore = nullptr, *referenceAfter = nullptr, *maximumError = nullptr;
@@ -389,6 +402,7 @@ void TestPage::beginRun(const tu::ScenarioRunResult& result)
         impl_->addTuRequirement(QString::fromStdString(step.nodeId), QString::fromStdString(step.tuRequirement),
                                 QString::fromStdString(step.title));
     }
+    setRetryAvailable(false);
     impl_->runtimeBack->setEnabled(false);
     impl_->stopButton->setEnabled(true);
     impl_->pages->setCurrentWidget(impl_->runtimePageWidget);
@@ -432,13 +446,19 @@ void TestPage::setStageResult(int index, const tu::StepRunResult& result)
     impl_->refreshTuRow(index);
 }
 
-void TestPage::setProgress(const QString& detail, bool pointCanStart)
+void TestPage::setProgress(const QString& detail, bool pointCanStart, bool canForceOk)
 {
     impl_->progressText->setText(detail);
     impl_->confirm->setVisible(pointCanStart);
-    impl_->skipButton->setEnabled(pointCanStart);
-    impl_->skipHotspot->setEnabled(pointCanStart);
-    if (!pointCanStart) impl_->skipButton->hide();
+    impl_->skipButton->setEnabled(canForceOk);
+    impl_->skipHotspot->setEnabled(canForceOk);
+    if (!canForceOk) impl_->skipButton->hide();
+}
+
+void TestPage::setRetryAvailable(bool available)
+{
+    impl_->retry->setVisible(available);
+    impl_->proceed->setVisible(available);
 }
 
 void TestPage::setSeries(const QVector<double>& first, const QVector<double>& second)
