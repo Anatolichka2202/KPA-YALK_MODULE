@@ -684,7 +684,18 @@ struct BrpTuWindow::Impl {
         updateScenario();
     }
 
-    ~Impl() { shutdown(); }
+    ~Impl()
+    {
+        // The window normally postpones closing until the asynchronous decoder
+        // teardown finishes. During application destruction, still protect the
+        // callback's Impl lifetime until the worker has exited.
+        refresh.stop();
+        send.stop();
+        if (stopWatcher) stopWatcher->future().waitForFinished();
+        if (bridge) bridge.reset();
+        decoder.reset();
+        source.reset();
+    }
 
     void refreshProfiles()
     {
@@ -920,7 +931,7 @@ struct BrpTuWindow::Impl {
 
     void checkManualEquipment()
     {
-        if (bridge || preparingIsd || probing || meterBusy) return;
+        if (bridge || stoppingStream || preparingIsd || probing || meterBusy) return;
         try {
             const auto profile = loadStand(root);
             const auto host = QString::fromStdString(profile["isd"]["host"].as<std::string>()).trimmed();
@@ -1007,7 +1018,7 @@ struct BrpTuWindow::Impl {
             error = QStringLiteral("Выберите COM-порт RS-485 на стартовом экране.");
         else if (mode == 1 && yasmFixture.empty() && yasmCodes->text().trimmed().isEmpty())
             error = QStringLiteral("Загрузите тест ЯСМ или укажите ожидаемые коды.");
-        else if (bridge || preparingIsd || probing || meterBusy)
+        else if (bridge || stoppingStream || preparingIsd || probing || meterBusy)
             error = QStringLiteral("Дождитесь завершения обращения к оборудованию.");
         if (!error.isEmpty()) {
             flow->setEquipmentStatus(connection, false, error);
@@ -1053,7 +1064,7 @@ struct BrpTuWindow::Impl {
 
     void startScenario(const QString& serialNumber)
     {
-        if (currentStage >= 0 || bridge || preparingIsd || probing || meterBusy) return;
+        if (currentStage >= 0 || bridge || stoppingStream || preparingIsd || probing || meterBusy) return;
         const bool yasmMode = selectedMode() == 1;
         const int interfaceRow = yasmMode ? 13 : 12;
         const auto input = std::find_if(checks.begin(), checks.end(), [interfaceRow](const auto& check) {
@@ -1377,6 +1388,7 @@ struct BrpTuWindow::Impl {
             const bool monitor = selectedMode() >= 2;
             const bool sendCounter = !simulation && (selectedMode() == 0
                 || (selectedMode() == 3 && counterToCom && counterToCom->isChecked()));
+            if (stoppingStream) throw std::runtime_error("Орбита завершает предыдущий сеанс. Повторный запуск пока заблокирован.");
             if (probing) throw std::runtime_error("Дождитесь проверки приборов.");
             double sampleRate = 10'000'000;
             if (yasmMode && !yasmFixture.empty()) {
@@ -1878,15 +1890,49 @@ struct BrpTuWindow::Impl {
             serial.clear(QSerialPort::Output);
             serial.close();
         }
-        bridge.reset();
-        decoder.reset();
-        source.reset();
+        // GUI must never join the 10 MHz acquisition/decoder pipeline.
+        // Keep all three dependencies alive on the same background worker;
+        // the bridge stops the producer before the decoder and only then releases
+        // the borrowed references. No subsequent session may start until finished.
+        if (!stoppingStream && (bridge || decoder || source)) {
+            stoppingStream = true;
+            auto oldBridge = std::move(bridge);
+            auto oldDecoder = std::move(decoder);
+            auto oldSource = std::move(source);
+            auto* watcher = new QFutureWatcher<void>(&window);
+            stopWatcher = watcher;
+            QObject::connect(watcher, &QFutureWatcherBase::finished, &window,
+                [this, watcher] {
+                    if (stopWatcher == watcher) stopWatcher = nullptr;
+                    stoppingStream = false;
+                    watcher->deleteLater();
+                    if (start) start->setEnabled(true);
+                    if (stop) stop->setEnabled(false);
+                    if (status) status->setText(QStringLiteral("Поток Орбиты остановлен; оборудование освобождено."));
+                    updateCaptureControls();
+                    if (closeWhenStopped) {
+                        closeWhenStopped = false;
+                        QMetaObject::invokeMethod(&window, [this] { window.close(); }, Qt::QueuedConnection);
+                    }
+                });
+            watcher->setFuture(QtConcurrent::run(
+                [oldBridge = std::move(oldBridge), oldDecoder = std::move(oldDecoder),
+                 oldSource = std::move(oldSource)]() mutable {
+                    oldBridge.reset();
+                    oldDecoder.reset();
+                    oldSource.reset();
+                }));
+        }
         yasm.reset();
         pointActive = false;
         ++pointId;
         ++interfaceSessionId;
-        reading = gatePassed = false;
-        coverageActive = false;
+        {
+            std::lock_guard<std::mutex> lock(dataMutex);
+            reading = gatePassed = false;
+            observeCounter = false;
+            coverageActive = false;
+        }
     }
 
     void endSession(const QString& message, RunVerdict result = RunVerdict::Error,
@@ -1895,7 +1941,7 @@ struct BrpTuWindow::Impl {
         shutdown();
         if (status) status->setText(message);
         appendLog(message);
-        if (start) start->setEnabled(true);
+        if (start) start->setEnabled(!stoppingStream);
         if (stop) stop->setEnabled(false);
         if (port) port->setEnabled(true);
         if (interfaceMode) interfaceMode->setEnabled(true);
@@ -1970,6 +2016,9 @@ struct BrpTuWindow::Impl {
     std::unique_ptr<ISampleSource> source;
     std::unique_ptr<orbita::Orbita> decoder;
     std::unique_ptr<miltech::integration::OrbitaSampleBridge> bridge;
+    QFutureWatcher<void>* stopWatcher = nullptr;
+    bool stoppingStream = false;
+    bool closeWhenStopped = false;
     std::mutex dataMutex;
     CounterCheck counter;
     std::optional<YasmCheck> yasm;
@@ -1998,7 +2047,18 @@ BrpTuWindow::~BrpTuWindow() = default;
 
 void BrpTuWindow::closeEvent(QCloseEvent* event)
 {
-    if (impl_->currentStage >= 0)
-        impl_->endSession(QStringLiteral("Окно закрыто во время испытания."), RunVerdict::Aborted);
+    if (impl_->stoppingStream) {
+        impl_->closeWhenStopped = true;
+        event->ignore();
+        return;
+    }
+    if (impl_->currentStage >= 0 || impl_->bridge) {
+        impl_->endSession(QStringLiteral("Окно закрыто во время испытания или сбора."), RunVerdict::Aborted);
+        if (impl_->stoppingStream) {
+            impl_->closeWhenStopped = true;
+            event->ignore();
+            return;
+        }
+    }
     QWidget::closeEvent(event);
 }
