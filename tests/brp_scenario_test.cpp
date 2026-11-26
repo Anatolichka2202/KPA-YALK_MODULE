@@ -375,6 +375,8 @@ void testScenarioAndReport()
     check->click();
     start->click();
     stop->click();
+    require(waitUntil([&] { return name->isVisible(); }, 20000),
+            "aborted run did not finish background Orbita teardown");
     const auto cancelledHtml = exportReport();
     require(cancelledHtml != completeHtml
         && stageResult(0) == QStringLiteral("ОСТАНОВЛЕНО") && stageResult(2) == QStringLiteral("НЕ ВЫПОЛНЕНО"),
@@ -417,7 +419,9 @@ void testOperatorBuild()
     measure->click();
     require(waitUntil([&] { return measure->isVisible(); }), "RS-485 scenario did not advance after V7");
     action(simulation, "tuStopAction")->click();
-    require(simulation.findChild<QLineEdit*>("tuCompletionOperator")->isVisible(), "report entry is missing");
+    require(waitUntil([&] {
+        return simulation.findChild<QLineEdit*>("tuCompletionOperator")->isVisible();
+    }, 20000), "report entry is missing after asynchronous stop");
 }
 
 } // namespace
