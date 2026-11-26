@@ -97,6 +97,19 @@ void OrbitaSampleBridge::stop() noexcept
     running_ = false;
 }
 
+void OrbitaSampleBridge::stopDiscardPending() noexcept
+{
+    // Must stop/join the sample producer before discarding decoder backlog.
+    source_.stop();
+    detachCallbacks();
+    try {
+        decoder_.stopDiscardPending();
+    } catch (...) {
+        try { decoder_.stop(); } catch (...) {}
+    }
+    running_ = false;
+}
+
 bool OrbitaSampleBridge::isRunning() const noexcept
 {
     return running_.load() && source_.isRunning() && decoder_.isRunning();
