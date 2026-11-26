@@ -1452,7 +1452,7 @@ struct BrpTuWindow::Impl {
             counter = {};
             // The real RS-485 mode must decode the response just like the
             // simulator. Previously the real branch only wrote bytes to COM.
-            observeCounter = (!yasmMode && !monitor) || monitorCounter;
+            observeCounter = shouldObserveCounter(yasmMode, monitor, monitorCounter);
             monitorCounterActive = monitorCounter;
             counterTimeoutLogged = false;
             counterResultLogged = false;
