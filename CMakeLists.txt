@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 include(CTest)
-option(BRP_ENABLE_MANUAL_TESTS "Include the BRP diagnostics screen" OFF)
+option(BRP_ENABLE_MANUAL_TESTS "Include the BRP diagnostics screen" ON)
 find_package(Qt6 6.8 REQUIRED COMPONENTS Core Widgets SerialPort Network Sql Concurrent)
 qt_standard_project_setup()
 
