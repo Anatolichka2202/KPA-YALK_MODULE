@@ -1924,6 +1924,7 @@ struct BrpTuWindow::Impl {
             watcher->setFuture(QtConcurrent::run(
                 [oldBridge = std::move(oldBridge), oldDecoder = std::move(oldDecoder),
                  oldSource = std::move(oldSource)]() mutable {
+                    if (oldBridge) oldBridge->stopDiscardPending();
                     oldBridge.reset();
                     oldDecoder.reset();
                     oldSource.reset();
