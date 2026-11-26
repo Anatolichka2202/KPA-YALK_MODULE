@@ -39,6 +39,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QPlainTextEdit>
+#include <QProcess>
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QScrollArea>
@@ -348,7 +349,34 @@ struct BrpTuWindow::Impl {
         auto* yasmControls = new QHBoxLayout;
         yasmControls->addWidget(yasmCodes, 1);
         yasmControls->addWidget(yasmFile);
+        purumk = new QPushButton(QStringLiteral("Запустить PURUMK…"), interfaceBox);
+        purumk->setObjectName(QStringLiteral("brpLaunchPurumk"));
+        purumk->setToolTip(QStringLiteral("Внешняя программа формирует сигнал; БРП отдельно проверяет приём в M16."));
+        purumk->setVisible(false);
+        purumk->setEnabled(!simulation);
+        yasmControls->addWidget(purumk);
         interfaceLayout->addLayout(yasmControls);
+        QObject::connect(purumk, &QPushButton::clicked, &window, [this] {
+            QString program = purumkProgram;
+            if (program.isEmpty()) {
+                const auto bundled = root.filePath(QStringLiteral("PURUMK.exe"));
+                if (QFileInfo::exists(bundled)) program = bundled;
+                else program = QFileDialog::getOpenFileName(&window,
+                    QStringLiteral("Выберите исполняемый файл PURUMK"), root.path(),
+                    QStringLiteral("Приложение PURUMK (*.exe);;Все файлы (*)"));
+            }
+            if (program.isEmpty()) return;
+            if (!QFileInfo::exists(program)) {
+                appendLog(QStringLiteral("PURUMK: исполняемый файл не найден: %1").arg(program));
+                return;
+            }
+            if (QProcess::startDetached(program, {})) {
+                purumkProgram = program;
+                appendLog(QStringLiteral("PURUMK запущена. Сигнал и его наличие ещё НЕ подтверждены."));
+            } else {
+                appendLog(QStringLiteral("Не удалось запустить PURUMK: %1").arg(program));
+            }
+        });
         m8Addresses = new QLineEdit(interfaceBox);
         m8Addresses->setObjectName(QStringLiteral("brpM8Addresses"));
         m8Addresses->setPlaceholderText(QStringLiteral("Адреса M08… через пробел"));
@@ -472,6 +500,7 @@ struct BrpTuWindow::Impl {
         interfaceLayout->addStretch();
         QObject::connect(interfaceMode, &QComboBox::currentIndexChanged, &window, [this, columns, interfaceBox](int index) {
             port->setVisible(!this->simulation && index == 0);
+            if (purumk) purumk->setVisible(index == 1 && !this->simulation);
             yasmCodes->setVisible(index == 1);
             yasmFile->setVisible(index == 1);
             graph->setVisible(index == 0);
@@ -1782,7 +1811,9 @@ struct BrpTuWindow::Impl {
     QLineEdit *isdHost = nullptr, *yasmCodes = nullptr, *m8Addresses = nullptr;
     QCheckBox* m8Invert = nullptr;
     QGroupBox* checksPanel = nullptr;
-    QPushButton *start = nullptr, *stop = nullptr, *capture = nullptr, *prepare = nullptr, *yasmFile = nullptr;
+    QPushButton *start = nullptr, *stop = nullptr, *capture = nullptr, *prepare = nullptr,
+                *yasmFile = nullptr, *purumk = nullptr;
+    QString purumkProgram;
     QLabel *status = nullptr, *details = nullptr;
     QFormLayout* checkForm = nullptr;
     QPlainTextEdit* log = nullptr;
