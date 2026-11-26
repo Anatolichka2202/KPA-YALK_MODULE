@@ -294,9 +294,9 @@ void testScenarioAndReport()
     require(skip->isVisible(), "skip action did not reveal");
     skip->click();
     measure->click();
-    // Four POS channels, three configured points each, plus BB SU/PR/Eptm.
-    // The first three points were handled above; complete the remaining twelve.
-    for (int point = 3; point < 15; ++point) {
+    // Four POS channels x three points, plus BB SU/PR/Eptm: 15 total.
+    // Two measurements were triggered above; complete the remaining 13.
+    for (int point = 2; point < 15; ++point) {
         require(waitUntil([&] { return measure->isVisible(); }, 12000),
                 "scenario did not reach the next multi-point measurement");
         measure->click();
