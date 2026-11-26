@@ -247,7 +247,7 @@ struct BrpTuWindow::Impl {
         QObject::connect(page, &TestPage::bbPrSignalRequested, &window,
             [this] { triggerBbPr(); });
         QObject::connect(page, &TestPage::skipCurrentStepRequested, &window, [this] {
-            if (currentStage < 2 || pendingDecision || forcedOkActive) return;
+            if (currentStage < 3 || pendingDecision || forcedOkActive) return;
             forcedOkActive = true;
             const tu::RunEvent event{std::chrono::system_clock::now(),
                 run.steps[currentStage].nodeId, "OPERATOR_OVERRIDE",
@@ -270,10 +270,13 @@ struct BrpTuWindow::Impl {
             }
             const auto [check, channel] = voltagePoints[currentStage - 3];
             const auto address = QString::fromStdString(checks[check].addresses[channel]);
+            const int expected = digitalExpectations[currentStage - 3];
             page->setStage(currentStage, QString::fromStdString(run.steps[currentStage].title),
-                address, QStringLiteral("В"), QStringLiteral("ЯГР мин., В"), QStringLiteral("ЯГР макс., В"));
+                address, expected < 0 ? QStringLiteral("В") : QStringLiteral("бит"));
             waitingForPoint = true;
-            setProgress(QStringLiteral("Повторная попытка: подготовьте воздействие и измерьте точку."));
+            setProgress(expected < 0
+                ? QStringLiteral("Повторная попытка: подготовьте напряжение и измерьте точку.")
+                : QStringLiteral("Повторная попытка: установите состояние входа %1 и измерьте.").arg(expected));
         });
         QObject::connect(page, &TestPage::continueStageRequested, &window, [this] {
             if (!pendingDecision || currentStage < 2) return;
@@ -1148,7 +1151,7 @@ struct BrpTuWindow::Impl {
         page->setBbPrSignalAvailable(canPulse);
         if (currentStage >= 0)
             page->setProgress(stageProgress, pointCanStart(),
-                currentStage >= 2 && !pendingDecision && !forcedOkActive);
+                currentStage >= 3 && !pendingDecision && !forcedOkActive);
     }
 
     bool persistRun()
@@ -1245,7 +1248,7 @@ struct BrpTuWindow::Impl {
         }
         // Equipment faults are not DUT failures and cannot be overridden.
         if (currentStage >= 2 && result == RunVerdict::Error) {
-            endSession(QStringLiteral("Ошибка оборудования: испытание остановлено."), RunVerdict::Error);
+            endSession(QStringLiteral("Ошибка оборудования: испытание остановлено."), RunVerdict::Error, true);
             return;
         }
         advanceStage();
@@ -1868,7 +1871,8 @@ struct BrpTuWindow::Impl {
         coverageActive = false;
     }
 
-    void endSession(const QString& message, RunVerdict result = RunVerdict::Error)
+    void endSession(const QString& message, RunVerdict result = RunVerdict::Error,
+                    bool stageAlreadyRecorded = false)
     {
         shutdown();
         if (status) status->setText(message);
@@ -1887,7 +1891,7 @@ struct BrpTuWindow::Impl {
         if (expectedState) expectedState->setEnabled(true);
         isdReady = false;
         if (currentStage >= 0) {
-            recordStage(result, message);
+            if (!stageAlreadyRecorded) recordStage(result, message);
             finishScenario();
         }
         updateCaptureControls();
