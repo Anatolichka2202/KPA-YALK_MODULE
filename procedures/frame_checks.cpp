@@ -102,9 +102,10 @@ void YasmCheck::consume(const std::vector<uint16_t>& words, int group, int cycle
 
 void CounterCheck::interrupt()
 {
+    ++breaks_;
     // Уже подтверждённое наблюдение остаётся результатом этой сессии.
     // Разрыв до достижения критерия требует новую непрерывную последовательность.
-    if (passed()) return;
+    if (passed()) { low_.reset(); return; }
     low_.reset();
     previous_.reset();
     contiguous_ = 0;
@@ -113,7 +114,6 @@ void CounterCheck::interrupt()
 
 void CounterCheck::consume(const std::vector<uint16_t>& words, int group, int cycle)
 {
-    if (passed()) return;
     if (words.size() != groupWords || group < 1 || group > 32 || cycle < 1 || cycle > 4) {
         interrupt();
         group_ = cycle_ = 0;
@@ -124,6 +124,7 @@ void CounterCheck::consume(const std::vector<uint16_t>& words, int group, int cy
     if (group_ && (group != expectedGroup || cycle != expectedCycle)) interrupt();
     group_ = group;
     cycle_ = cycle;
+    ++groupsReceived_;
 
     // ROM_485 версии Actual последовательно выбирает чётные слова M16
     // (нечётные индексы). MAIN помещает байт в биты 10:3, признак данных — в 2,
@@ -131,6 +132,7 @@ void CounterCheck::consume(const std::vector<uint16_t>& words, int group, int cy
     for (std::size_t index = 1; index < words.size(); index += 2) {
         const auto word = words[index];
         if (!(word & 0x04)) break;
+        ++markedWords_;
         const auto byte = (word >> 3) & 0xFF;
         if ((byte & 0xE0) == 0x40) {
             if (low_) interrupt();
@@ -138,11 +140,16 @@ void CounterCheck::consume(const std::vector<uint16_t>& words, int group, int cy
         } else if ((byte & 0xE0) == 0x80 && low_) {
             const auto value = ((byte & 0x1F) << 5) | *low_;
             low_.reset();
+            ++decodedValues_;
+            latestValue_ = value;
+            recent_.push_back(value);
+            if (recent_.size() > 512) recent_.pop_front();
             if (previous_ && value != ((*previous_ + 1) & counterLimit)) interrupt();
             previous_ = value;
-            ++contiguous_;
-            trace_.push_back(value);
-            if (passed()) return;
+            if (!passed()) {
+                ++contiguous_;
+                trace_.push_back(value);
+            }
         } else {
             interrupt();
         }
