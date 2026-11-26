@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <optional>
 #include <utility>
 
 namespace brp::ui {
@@ -54,8 +55,19 @@ public:
 
     void setSeries(const QVector<double>& first, const QVector<double>& second = {})
     {
+        bars_.clear();
+        named_.clear();
         first_ = first;
         second_ = second;
+        update();
+    }
+
+    void setFixedRange(double minimum, double maximum)
+    {
+        if (std::isfinite(minimum) && std::isfinite(maximum) && maximum > minimum)
+            fixedRange_ = std::make_pair(minimum, maximum);
+        else
+            fixedRange_.reset();
         update();
     }
 
@@ -70,6 +82,8 @@ public:
     // it does not suggest continuity between independent channel addresses.
     void setBars(QVector<BarValue> bars)
     {
+        first_.clear();
+        second_.clear();
         named_.clear();
         bars_ = std::move(bars);
         update();
@@ -164,9 +178,14 @@ protected:
         const auto mm = std::minmax_element(finite.begin(), finite.end());
         double lo = *mm.first;
         double hi = *mm.second;
-        const double pad = std::max((hi - lo) * .15, std::max(.001, std::abs(hi) * .01));
-        lo -= pad;
-        hi += pad;
+        if (fixedRange_) {
+            lo = fixedRange_->first;
+            hi = fixedRange_->second;
+        } else {
+            const double pad = std::max((hi - lo) * .15, std::max(.001, std::abs(hi) * .01));
+            lo -= pad;
+            hi += pad;
+        }
         if (!(hi > lo)) hi = lo + 1.0;
 
         const auto yFor = [&](double value) {
@@ -229,6 +248,7 @@ private:
     QVector<double> first_, second_;
     QVector<NamedSeries> named_;
     QVector<BarValue> bars_;
+    std::optional<std::pair<double, double>> fixedRange_;
 };
 
 
