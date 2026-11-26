@@ -533,15 +533,23 @@ struct BrpTuWindow::Impl {
         interfaceActions->addWidget(start);
         interfaceActions->addWidget(stop);
         interfaceActions->addWidget(plotEnabled);
-        interfaceActions->addWidget(plotView);
-        interfaceActions->addWidget(trendChannel);
         interfaceActions->addStretch();
         interfaceLayout->addLayout(interfaceActions);
+        plotOptions = new QWidget(interfaceBox);
+        auto* plotOptionsLayout = new QHBoxLayout(plotOptions);
+        plotOptionsLayout->setContentsMargins(0, 0, 0, 0);
+        plotOptionsLayout->addWidget(new QLabel(QStringLiteral("Вид графика:"), plotOptions));
+        plotOptionsLayout->addWidget(plotView);
+        plotOptionsLayout->addWidget(trendChannel, 1);
+        plotOptionsLayout->addStretch();
+        plotOptions->hide();
+        interfaceLayout->addWidget(plotOptions);
         QObject::connect(plotView, &QComboBox::currentIndexChanged, &window, [this](int index) {
             if (trendChannel) trendChannel->setVisible(selectedMode() >= 2
                 && plotEnabled->isChecked() && index == 1 && !monitorCounterActive);
         });
         QObject::connect(plotEnabled, &QCheckBox::toggled, &window, [this](bool checked) {
+            if (plotOptions) plotOptions->setVisible(selectedMode() >= 2 && checked && !monitorCounterActive);
             if (plotView) plotView->setVisible(selectedMode() >= 2 && checked && !monitorCounterActive);
             if (trendChannel) trendChannel->setVisible(selectedMode() >= 2 && checked
                 && plotView->currentIndex() == 1 && !monitorCounterActive);
@@ -603,6 +611,8 @@ struct BrpTuWindow::Impl {
             m8Invert->setVisible(index == 2);
             profileBar->setVisible(index >= 2);
             plotEnabled->setVisible(index >= 2);
+            plotOptions->setVisible(index >= 2 && plotEnabled->isChecked()
+                && !(index == 3 && counterToCom->isChecked()));
             plotView->setVisible(index >= 2 && plotEnabled->isChecked());
             trendChannel->setVisible(index >= 2 && plotEnabled->isChecked()
                 && plotView->currentIndex() == 1 && !counterToCom->isChecked());
@@ -2196,6 +2206,7 @@ struct BrpTuWindow::Impl {
     QComboBox* profileCombo = nullptr;
     QCheckBox *combineProfiles = nullptr, *plotEnabled = nullptr, *counterToCom = nullptr;
     QComboBox *plotView = nullptr, *trendChannel = nullptr;
+    QWidget* plotOptions = nullptr;
     brp::ui::HistoryPlot* monitorPlot = nullptr;
     QHash<QString, QVector<double>> monitorHistory;
     std::vector<FrameCheck> checks;
