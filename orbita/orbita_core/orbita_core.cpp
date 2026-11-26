@@ -361,7 +361,12 @@ void Context::onDecoderGroup(const std::vector<uint16_t>& group12,
                 switch (ch.adressType) {
                 case ORBITA_ADDR_TYPE_ANALOG_10BIT: v = analog10bitCode(w);              break;
                 case ORBITA_ADDR_TYPE_ANALOG_9BIT:  v = analog9bitCode(w);               break;
-                case ORBITA_ADDR_TYPE_CONTACT:      v = contactExtractBit(w, ch.bitNumber); break;
+                case ORBITA_ADDR_TYPE_CONTACT:
+                    // В БРП T05 без Pxx обозначает весь пакет из восьми
+                    // контактных битов (разряды 10:3 слова M16).
+                    v = !m8Decoder_ && ch.bitNumber == 0 ? (w >> 3) & 0xff
+                                                       : contactExtractBit(w, ch.bitNumber);
+                    break;
                 case ORBITA_ADDR_TYPE_FAST_1:       v = fastT21Value(w);                 break;
                 case ORBITA_ADDR_TYPE_FAST_2:       v = fastT22Value(w, w2);             break;
                 case ORBITA_ADDR_TYPE_FAST_4:       v = fastT24Value(w, w2);             break;

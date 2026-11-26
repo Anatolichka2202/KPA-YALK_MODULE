@@ -2,6 +2,7 @@
 
 #include <QPainter>
 #include <QMouseEvent>
+#include <QVariantAnimation>
 #include <QPainterPath>
 #include <QWidget>
 
@@ -52,6 +53,10 @@ public:
     explicit HistoryPlot(QWidget* parent = nullptr) : QWidget(parent)
     {
         setMinimumHeight(120);
+        barsAnimation_.setDuration(55);
+        barsAnimation_.setStartValue(0.0);
+        barsAnimation_.setEndValue(1.0);
+        connect(&barsAnimation_, &QVariantAnimation::valueChanged, this, [this] { update(); });
     }
 
     void configure(QString title, QString unit, QString firstName, QString secondName = {})
@@ -109,7 +114,18 @@ public:
         second_.clear();
         named_.clear();
         timed_.reset();
+        QVector<double> previous;
+        previous.reserve(bars.size());
+        for (qsizetype i = 0; i < bars.size(); ++i) {
+            const auto& next = bars[i];
+            previous.append(i < bars_.size() && bars_[i].address == next.address
+                && bars_[i].valid && !bars_[i].stale && next.valid && !next.stale
+                ? displayedBar(i) : next.value);
+        }
+        barsAnimation_.stop();
+        barOrigins_ = std::move(previous);
         bars_ = std::move(bars);
+        barsAnimation_.start();
         update();
     }
 
@@ -259,7 +275,7 @@ protected:
                 const QColor color = valid
                     ? (bar.stale ? palette::dim : QColor::fromHsv((205 + 53 * (i % 6)) % 360, 145, 247))
                     : palette::dim;
-                const double ratio = valid ? std::clamp(bar.value / maximum, 0.0, 1.0) : 0.0;
+                const double ratio = valid ? std::clamp(displayedBar(i) / maximum, 0.0, 1.0) : 0.0;
                 const double width = std::max(2.0, std::min(slot * .64, 100.0));
                 const double x = plot.left() + (i + .5) * slot - width / 2.0;
                 const double height = ratio * plot.height();
@@ -358,6 +374,16 @@ protected:
     }
 
 private:
+    double displayedBar(qsizetype index) const
+    {
+        const double target = bars_[index].value;
+        if (barsAnimation_.state() != QAbstractAnimation::Running || index >= barOrigins_.size())
+            return target;
+        return barOrigins_[index] + (target - barOrigins_[index]) * barsAnimation_.currentValue().toDouble();
+    }
+
+    QVariantAnimation barsAnimation_;
+    QVector<double> barOrigins_;
     QRectF plotArea() const
     {
         return {52.0, 32.0, static_cast<double>(std::max(20, width() - 66)),

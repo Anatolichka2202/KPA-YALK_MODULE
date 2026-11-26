@@ -1,0 +1,131 @@
+{
+  "schema": 2,
+  "active": 0,
+  "sets": [
+    {
+      "title": "Е20-10 · M16",
+      "channels": [
+        {
+          "address": "M16P1A10B20T01",
+          "name": "ПОС1",
+          "category": "Аналоговые",
+          "enabled": true
+        },
+        {
+          "address": "M16P1A10B30T01",
+          "name": "ПОС2",
+          "category": "Аналоговые",
+          "enabled": true
+        },
+        {
+          "address": "M16P1A10B40T01",
+          "name": "ПОС3",
+          "category": "Аналоговые",
+          "enabled": true
+        },
+        {
+          "address": "M16P1A10B50T01",
+          "name": "ПОС4",
+          "category": "Аналоговые",
+          "enabled": true
+        },
+        {
+          "address": "M16P1A10B60C11T01",
+          "name": "ББ СУ",
+          "category": "Аналоговые",
+          "enabled": true
+        },
+        {
+          "address": "M16P1A10B60C21T01",
+          "name": "ББ ПР",
+          "category": "Аналоговые",
+          "enabled": true
+        },
+        {
+          "address": "M16P1A10B60C31T01",
+          "name": "Ептм",
+          "category": "Аналоговые",
+          "enabled": true
+        },
+        {
+          "address": "M16P1A10B60C41T01",
+          "name": "Uрезерв1",
+          "category": "Аналоговые",
+          "enabled": true
+        },
+        {
+          "address": "M16P1A10B70C11T01",
+          "name": "Uрезерв2",
+          "category": "Аналоговые",
+          "enabled": true
+        },
+        {
+          "address": "M16P1A10B70C31T01",
+          "name": "Uрезерв3",
+          "category": "Аналоговые",
+          "enabled": true
+        },
+        {
+          "address": "M16P1A10B70C22T01",
+          "name": "Канал 11",
+          "category": "Аналоговые",
+          "enabled": true
+        },
+        {
+          "address": "M16P1A10B80C12T01",
+          "name": "Канал 12",
+          "category": "Аналоговые",
+          "enabled": true
+        },
+        {
+          "address": "M16P1A10B80C22T01",
+          "name": "Канал 13",
+          "category": "Аналоговые",
+          "enabled": true
+        },
+        {
+          "address": "M16P1A30B10C12T01",
+          "name": "Канал 14",
+          "category": "Аналоговые",
+          "enabled": true
+        },
+        {
+          "address": "M16P1A30B10C22T01",
+          "name": "Канал 15",
+          "category": "Аналоговые",
+          "enabled": true
+        },
+        {
+          "address": "M16P1A30B20C12T01",
+          "name": "Канал 16",
+          "category": "Аналоговые",
+          "enabled": true
+        },
+        {
+          "address": "M16P1A30B20C22T01",
+          "name": "Канал 17",
+          "category": "Аналоговые",
+          "enabled": true
+        },
+        {
+          "address": "M16P1A30B31T05",
+          "name": "ПНА · T05",
+          "category": "Сигнальные",
+          "enabled": true
+        },
+        {
+          "address": "M16P1A30B40C11T05",
+          "name": "Контакты C11 · T05",
+          "category": "Сигнальные",
+          "enabled": true
+        },
+        {
+          "address": "M16P1A30B40C21T05",
+          "name": "Контакты C21 · T05",
+          "category": "Сигнальные",
+          "enabled": true
+        }
+      ]
+    }
+  ]
+}

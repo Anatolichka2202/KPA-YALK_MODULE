@@ -235,6 +235,14 @@ void testWindow()
     require(window.findChild<QWidget*>("brpMonitorPlot")->isVisible(), "combined monitor graph is hidden");
     stop->click();
     require(waitUntil([&] { return start->isEnabled(); }, 20000), "combined monitor stop did not finish");
+    auto* e2010 = window.findChild<QAction*>("brpE2010Profile");
+    require(e2010, "E20-10 profile action is missing");
+    e2010->trigger();
+    const auto addresses = window.findChild<QLineEdit*>("brpM8Addresses")->text().split(QLatin1Char(' '), Qt::SkipEmptyParts);
+    require(addresses.size() == 20 && addresses.at(6) == QStringLiteral("M16P1A10B60C31T01"),
+            "E20-10 profile lost its channel order");
+    require(addresses.endsWith(QStringLiteral("M16P1A30B40C21T05")),
+            "E20-10 profile did not include the complete contact word");
 }
 
 QString readText(const QString& path)

@@ -480,6 +480,8 @@ struct BrpTuWindow::Impl {
         auto* renameProfile = menu->addAction(QStringLiteral("Переименовать…"));
         auto* deleteProfile = menu->addAction(QStringLiteral("Удалить текущий профиль"));
         menu->addSeparator();
+        auto* loadE2010 = menu->addAction(QStringLiteral("Профиль Е20-10 · 20 каналов"));
+        loadE2010->setObjectName(QStringLiteral("brpE2010Profile"));
         auto* loadProfiles = menu->addAction(QStringLiteral("Загрузить наборы…"));
         auto* saveProfiles = menu->addAction(QStringLiteral("Сохранить наборы…"));
         combineProfiles = new QCheckBox(QStringLiteral("Объединить"), profileBar);
@@ -565,6 +567,10 @@ struct BrpTuWindow::Impl {
         plotOptionsLayout->setContentsMargins(0, 0, 0, 0);
         plotOptionsLayout->addWidget(new QLabel(QStringLiteral("Вид графика:"), plotOptions));
         plotOptionsLayout->addWidget(plotView);
+        instantBars = new QCheckBox(QStringLiteral("Мгновенный код"), plotOptions);
+        instantBars->setToolTip(QStringLiteral("Столбцы показывают последний код вместо среднего по 10 группам. Тренд всегда показывает сырые отсчёты."));
+        plotOptionsLayout->addWidget(instantBars);
+        QObject::connect(loadE2010, &QAction::triggered, &window, [this] { selectE2010Profile(); });
         plotOptionsLayout->addWidget(trendChannel, 1);
         trendWindow = new QComboBox(plotOptions);
         for (double seconds : {0.25, 1.0, 5.0, 15.0})
@@ -859,6 +865,31 @@ struct BrpTuWindow::Impl {
             return;
         }
         status->setText(error);
+    }
+
+    void selectE2010Profile()
+    {
+        if (bridge) return;
+        QFile file(root.filePath(QStringLiteral("data/e2010_monitor.json")));
+        AddressSetModel preset;
+        QString error;
+        if (!file.open(QIODevice::ReadOnly)) error = file.errorString();
+        else if (preset.restore(file.readAll(), &error)) {
+            const auto& profile = preset.at(0);
+            int index = 0;
+            while (index < profiles.count() && profiles.at(index).title != profile.title) ++index;
+            if (index == profiles.count()) profiles.addSet(profile.title);
+            else profiles.setActiveIndex(index);
+            profiles.replaceActive(profile.specs);
+            combineProfiles->setChecked(false);
+            instantBars->setChecked(true);
+            interfaceMode->setCurrentIndex(3);
+            refreshProfiles();
+            showProfileAddresses();
+            status->setText(QStringLiteral("Е20-10 · 20 каналов. Канал 7 — Ептм."));
+            return;
+        }
+        status->setText(QStringLiteral("Профиль Е20-10: %1").arg(error));
     }
 
     void browseDatabase(const QString& databasePath = {})
@@ -1576,6 +1607,11 @@ struct BrpTuWindow::Impl {
                             const auto index = static_cast<std::size_t>(found - check.addresses.begin());
                             monitorAnalog.insert(QString::fromStdString(spec.address), {check.layouts[index], check.shifts[index]});
                         }
+                        const auto address = QString::fromStdString(spec.address);
+                        if (!monitorAnalog.contains(address) && address.endsWith(QStringLiteral("T01"))) {
+                            if (const auto layout = orbita::m16GroupChannel(spec.address))
+                                monitorAnalog.insert(address, {*layout, 1});
+                        }
                     }
                 }
                 detailTrend->clear();
@@ -1659,7 +1695,7 @@ struct BrpTuWindow::Impl {
                 ? QStringLiteral("Ожидание кодов внешнего теста ЯСМ в M16P1A22")
                 : QStringLiteral("Ожидание двух непрерывных периодов счётчика 0–1023"));
             gateClock.start();
-            refresh.start(monitor ? 200 : 60);
+            refresh.start(60);
             if (sendCounter) {
                 appendLog(QStringLiteral("RS-485: счётчик 0–1023 передаётся в %1; обратная телеметрия принимается только через Е20-10.")
                     .arg(selectedPort()));
@@ -1720,7 +1756,10 @@ struct BrpTuWindow::Impl {
                 for (auto slot = point.layout.firstWord; slot < words.size(); slot += point.layout.stride) {
                     const auto word = words[slot] & 0x7ff;
                     const double stamp = rawTrendGroupStart + groupPeriod * slot / groupWords;
-                    raw.emplace_back(stamp, word == 0x2aa ? missing : (word >> point.shift) & 0x3ff);
+                    point.latest = (word >> point.shift) & 0x3ff;
+                    point.latestFill = word == 0x2aa;
+                    point.latestAt = receivedAt;
+                    raw.emplace_back(stamp, point.latestFill ? missing : point.latest);
                 }
                 while (!raw.empty() && (raw.size() > 65536 || raw.front().x() < rawTrendGroupStart - 15.0))
                     raw.pop_front();
@@ -1805,24 +1844,30 @@ struct BrpTuWindow::Impl {
             const auto now = std::chrono::steady_clock::now();
             QStringList values;
             QVector<brp::ui::HistoryPlot::BarValue> bars;
+            const bool compact = plotEnabled->isChecked() && snapshot.values.size() > 8;
+            const auto selectedAddress = trendChannel->currentData().toString();
+            int channelNumber = 0;
             QHash<QString, AnalogMonitorPoint> averages;
             {
                 std::lock_guard<std::mutex> lock(dataMutex);
                 averages = monitorAnalog;
             }
             for (const auto& channel : snapshot.values) {
+                ++channelNumber;
                 const auto address = QString::fromStdString(channel.address);
                 const auto average = averages.constFind(address);
                 const bool averaged = average != averages.cend();
                 // Последний принятый код остаётся виден при паузе, с явной
                 // пометкой возраста. Отсутствие данных и заполнитель различаются.
-                const auto updatedAt = averaged ? average->updatedAt : channel.updatedAt;
+                const bool showInstant = averaged && instantBars->isChecked();
+                const auto updatedAt = showInstant ? average->latestAt
+                    : averaged ? average->updatedAt : channel.updatedAt;
                 const bool received = updatedAt != std::chrono::steady_clock::time_point{}
                     && (averaged || channel.valid);
                 const auto age = now - updatedAt;
                 const bool fresh = received && age < std::chrono::seconds(2);
-                const double value = averaged ? average->value : channel.value;
-                const bool fillOnly = received && averaged && average->fillOnly;
+                const double value = showInstant ? average->latest : averaged ? average->value : channel.value;
+                const bool fillOnly = received && averaged && (showInstant ? average->latestFill : average->fillOnly);
                 const auto name = activeMonitorNames.value(address);
                 const auto label = name.isEmpty() ? address : QStringLiteral("%1 · %2").arg(name, address);
                 QString measurement = fillOnly ? QStringLiteral("заполнение ЯФК 0x2AA")
@@ -1830,9 +1875,13 @@ struct BrpTuWindow::Impl {
                 if (received && !fresh)
                     measurement += QStringLiteral(" (устарело, %1 с)")
                         .arg(std::chrono::duration<double>(age).count(), 0, 'f', 1);
-                values.append(QStringLiteral("%1 = %2").arg(label, measurement));
-                if (plotEnabled->isChecked())
-                    bars.append({name.isEmpty() ? address : name, value, received && !fillOnly, !fresh, address});
+                if (!compact || address == selectedAddress)
+                    values.append(QStringLiteral("%1 = %2").arg(label, measurement));
+                if (plotEnabled->isChecked()) {
+                    const auto barName = name.isEmpty() ? address : name;
+                    bars.append({compact ? QStringLiteral("%1 · %2").arg(channelNumber).arg(barName) : barName,
+                                 value, received && !fillOnly, !fresh, address});
+                }
             }
             if (plotEnabled->isChecked() && !monitorCounterActive) {
                 monitorPlot->setBars(std::move(bars));
@@ -2358,6 +2407,7 @@ struct BrpTuWindow::Impl {
     QComboBox* profileCombo = nullptr;
     QCheckBox *combineProfiles = nullptr, *plotEnabled = nullptr, *counterToCom = nullptr;
     QComboBox *plotView = nullptr, *trendChannel = nullptr, *trendWindow = nullptr;
+    QCheckBox* instantBars = nullptr;
     brp::ui::HistoryPlot* detailTrend = nullptr;
     QWidget* plotOptions = nullptr;
     brp::ui::HistoryPlot* monitorPlot = nullptr;
@@ -2366,8 +2416,11 @@ struct BrpTuWindow::Impl {
         unsigned shift;
         unsigned groups = 0, count = 0, sum = 0, fillCount = 0;
         double value = 0;
+        unsigned latest = 0;
         bool fillOnly = false;
+        bool latestFill = false;
         std::chrono::steady_clock::time_point updatedAt{};
+        std::chrono::steady_clock::time_point latestAt{};
     };
     QComboBox* adcChannel = nullptr;
     QHash<QString, AnalogMonitorPoint> monitorAnalog;
