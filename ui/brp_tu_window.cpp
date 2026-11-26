@@ -1307,7 +1307,14 @@ struct BrpTuWindow::Impl {
             run.verdict = tu::combineVerdicts(run.verdict,
                 step.verdict == RunVerdict::NotRun ? RunVerdict::Incomplete : step.verdict);
         persistRun();
-        page->finishRun(run);
+        // Do not expose "New check" until the previous stream has finished
+        // releasing its decoder and producer on the background worker.
+        if (stoppingStream) {
+            finalizeAfterStop = true;
+            if (status) status->setText(QStringLiteral("Завершение потока Орбиты; результаты сохранены."));
+        } else {
+            page->finishRun(run);
+        }
     }
 
     void updateCaptureControls()
@@ -1944,6 +1951,10 @@ struct BrpTuWindow::Impl {
                     if (start) start->setEnabled(true);
                     if (stop) stop->setEnabled(false);
                     if (status) status->setText(QStringLiteral("Поток Орбиты остановлен; оборудование освобождено."));
+                    if (finalizeAfterStop) {
+                        finalizeAfterStop = false;
+                        page->finishRun(run);
+                    }
                     updateCaptureControls();
                     if (closeWhenStopped) {
                         closeWhenStopped = false;
@@ -2057,6 +2068,7 @@ struct BrpTuWindow::Impl {
     QFutureWatcher<void>* stopWatcher = nullptr;
     bool stoppingStream = false;
     bool closeWhenStopped = false;
+    bool finalizeAfterStop = false;
     std::mutex dataMutex;
     CounterCheck counter;
     std::optional<YasmCheck> yasm;
