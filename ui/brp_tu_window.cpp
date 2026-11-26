@@ -223,7 +223,13 @@ struct BrpTuWindow::Impl {
             pendingDecision = false;
             forcedOkActive = false;
             page->setRetryAvailable(false);
-            const auto [check, channel] = voltagePoints[currentStage - 2];
+            if (currentStage == 2) {
+                page->setStage(2, QString::fromStdString(run.steps[2].title),
+                    QStringLiteral("Контроль адресов M16"), QStringLiteral("код"));
+                beginCoverage();
+                return;
+            }
+            const auto [check, channel] = voltagePoints[currentStage - 3];
             const auto address = QString::fromStdString(checks[check].addresses[channel]);
             page->setStage(currentStage, QString::fromStdString(run.steps[currentStage].title),
                 address, QStringLiteral("В"), QStringLiteral("ЯГР мин., В"), QStringLiteral("ЯГР макс., В"));
@@ -951,6 +957,8 @@ struct BrpTuWindow::Impl {
         run.steps.push_back({yasmMode ? "yasm" : "rs485",
             yasmMode ? "ЯСМ · сверка внешнего теста" : "RS-485 · счётчик 0–1023", input->requirement});
         run.steps.push_back({"isd_off", "Сброс ИСД · ЦАП OFF", {}});
+        run.steps.push_back({"m16_coverage", "M16 · наличие адресов БРП за два цикла",
+            "3.2.1.6–3.2.1.13"});
         voltagePoints.clear();
         for (std::size_t index = 0; index < checks.size(); ++index) {
             const auto& check = checks[index];
@@ -1061,8 +1069,12 @@ struct BrpTuWindow::Impl {
                 completeStage(RunVerdict::Ok, QStringLiteral("Имитация подготовки ИСД."));
             else
                 startIsdPreparation();
+        } else if (currentStage == 2) {
+            page->setStage(2, QString::fromStdString(run.steps[2].title),
+                QStringLiteral("Контроль адресов M16"), QStringLiteral("код"));
+            beginCoverage();
         } else {
-            const auto [check, channel] = voltagePoints[currentStage - 2];
+            const auto [check, channel] = voltagePoints[currentStage - 3];
             const auto address = QString::fromStdString(checks[check].addresses[channel]);
             page->setStage(currentStage, QString::fromStdString(run.steps[currentStage].title),
                 address, QStringLiteral("В"), QStringLiteral("ЯГР мин., В"), QStringLiteral("ЯГР макс., В"));
@@ -1098,7 +1110,7 @@ struct BrpTuWindow::Impl {
     void measureStage()
     {
         if (!pointCanStart()) return;
-        const auto [check, channel] = voltagePoints[currentStage - 2];
+        const auto [check, channel] = voltagePoints[currentStage - 3];
         waitingForPoint = false;
         setProgress(QStringLiteral("Считываются В7 и кадр M16."));
         beginPoint(check, channel, 0);
@@ -1320,6 +1332,16 @@ struct BrpTuWindow::Impl {
         std::lock_guard<std::mutex> lock(dataMutex);
         if (yasm) yasm->consume(words, group, cycle);
         if (observeCounter) counter.consume(words, group, cycle);
+        if (coverageActive && group >= 1 && group <= 32 && cycle >= 1 && cycle <= 4
+            && words.size() == groupWords) {
+            const int ordinal = (cycle - 1) * 32 + group - 1;
+            if (coverageLastOrdinal >= 0 && ordinal != (coverageLastOrdinal + 1) % groupsPerSecond)
+                ++coverageGapGroups;
+            coverageLastOrdinal = ordinal;
+            ++coverageGroups;
+            for (auto& point : coverage)
+                point.samples.consume(words, checks[point.check], point.channel);
+        }
         if (!reading || groupCount == groupsPerSecond || groupGap) return;
         if (group < 1 || group > 32 || cycle < 1 || cycle > 4 || words.size() != groupWords) {
             groupGap = true;
@@ -1376,6 +1398,51 @@ struct BrpTuWindow::Impl {
                 .arg(selectedMode() == 2 ? QStringLiteral("M8") : QStringLiteral("M16"))
                 .arg(snapshot.stats.frames_processed).arg(snapshot.stats.phrase_error_percent)
                 .arg(snapshot.stats.group_error_percent).arg(values.join(QLatin1Char('\n'))));
+            return;
+        }
+
+        if (currentStage == 2 && coverageActive) {
+            bool finished = false;
+            bool sufficient = false;
+            int gaps = 0;
+            std::vector<CoveragePoint> captured;
+            {
+                std::lock_guard<std::mutex> lock(dataMutex);
+                const int count = coverageGroups;
+                finished = count >= 2 * groupsPerSecond || coverageClock.elapsed() >= 5500;
+                sufficient = count >= 2 * groupsPerSecond;
+                gaps = coverageGapGroups;
+                if (finished) {
+                    coverageActive = false;
+                    captured = coverage;
+                }
+            }
+            if (finished) {
+                std::vector<tu::MeasurementResult> measurements;
+                bool allPresent = sufficient && gaps <= 4;
+                for (const auto& item : captured) {
+                    const auto& check = checks[item.check];
+                    tu::MeasurementResult m;
+                    m.parameterKey = check.addresses[item.channel];
+                    m.title = check.channelNames.empty() ? check.title : check.channelNames[item.channel];
+                    m.measured = item.samples.count;
+                    m.unit = "отсч.";
+                    m.verdict = sufficient && item.samples.count && item.samples.fillCount < item.samples.count
+                        ? RunVerdict::Ok : RunVerdict::Fail;
+                    m.message = m.verdict == RunVerdict::Ok ? "Свежие кадры приняты" : "Адрес отсутствует/заполнение";
+                    allPresent = allPresent && m.verdict == RunVerdict::Ok;
+                    measurements.push_back(std::move(m));
+                }
+                completeStage(allPresent ? RunVerdict::Ok : RunVerdict::Fail,
+                    QStringLiteral("M16: %1 адресных проверок; разрывов %2; %3.")
+                        .arg(measurements.size()).arg(gaps)
+                        .arg(allPresent ? QStringLiteral("все присутствуют")
+                                        : QStringLiteral("недостаточно свежих кадров")),
+                    std::move(measurements));
+            } else {
+                setProgress(QStringLiteral("Наблюдение M16: %1 из %2 групп")
+                    .arg(coverageGroups).arg(2 * groupsPerSecond));
+            }
             return;
         }
 
@@ -1475,6 +1542,23 @@ struct BrpTuWindow::Impl {
         else beginFrameCapture();
     }
 
+    void beginCoverage()
+    {
+        {
+            std::lock_guard<std::mutex> lock(dataMutex);
+            coverage.clear();
+            for (std::size_t check = 0; check < checks.size(); ++check)
+                for (std::size_t channel = 0; channel < checks[check].addresses.size(); ++channel)
+                    coverage.push_back({check, channel, {}});
+            coverageGroups = 0;
+            coverageGapGroups = 0;
+            coverageLastOrdinal = -1;
+            coverageActive = true;
+            coverageClock.start();
+        }
+        setProgress(QStringLiteral("Собираются свежие адресные отсчёты M16 за несколько циклов."));
+    }
+
     void beginFrameCapture()
     {
         std::lock_guard<std::mutex> lock(dataMutex);
@@ -1504,7 +1588,7 @@ struct BrpTuWindow::Impl {
         if (checkList) checkList->setEnabled(true);
         if (channelList) channelList->setEnabled(true);
         if (expectedState) expectedState->setEnabled(true);
-        if (currentStage >= 2) completeStage(result, message, std::move(measurements));
+        if (currentStage >= 3) completeStage(result, message, std::move(measurements));
         updateCaptureControls();
     }
 
@@ -1606,6 +1690,7 @@ struct BrpTuWindow::Impl {
         ++pointId;
         ++interfaceSessionId;
         reading = gatePassed = false;
+        coverageActive = false;
     }
 
     void endSession(const QString& message, RunVerdict result = RunVerdict::Error)
@@ -1638,7 +1723,18 @@ struct BrpTuWindow::Impl {
     const QDir root;
     TestPage* page = nullptr;
     tu::ScenarioRunResult run;
+    struct CoveragePoint {
+        std::size_t check = 0;
+        std::size_t channel = 0;
+        CodeRange samples;
+    };
+    std::vector<CoveragePoint> coverage;
     std::vector<std::pair<std::size_t, std::size_t>> voltagePoints;
+    int coverageGroups = 0;
+    int coverageGapGroups = 0;
+    int coverageLastOrdinal = -1;
+    bool coverageActive = false;
+    QElapsedTimer coverageClock;
     QVector<double> minimumTrace, maximumTrace;
     int currentStage = -1;
     bool waitingForPoint = false;
