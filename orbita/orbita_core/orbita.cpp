@@ -56,6 +56,7 @@ std::vector<ChannelSpec> Orbita::getChannels() const { return ctx_->getChannels(
 
 void Orbita::start()  { ctx_->start(); }
 void Orbita::stop()   { ctx_->stop(); }
+void Orbita::stopDiscardPending() { ctx_->stopDiscardPending(); }
 void Orbita::pause()  { ctx_->pause(); }
 void Orbita::resume() { ctx_->resume(); }
 bool Orbita::isRunning() const { return ctx_->isRunning(); }
