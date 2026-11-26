@@ -12,36 +12,33 @@ namespace orbita {
 // ------------------------------------------------------------------
 //  Извлечение бортового времени (МТВ) из группы.
 //  МТВ лежит в маркере кадра (16-я фраза) в формате BCD по 4 декады.
-//  Возвращает 0xFFFFFFFF, если группа не содержит маркер кадра.
+//  Возвращает пустое значение, если маркер отсутствует или повреждён.
 // ------------------------------------------------------------------
-static uint32_t extractSecondsFromGroup(const std::vector<uint16_t>& g) {
+static std::optional<uint32_t> extractSecondsFromGroup(const std::vector<uint16_t>& g) {
     constexpr int WORDS_PER_PHRASE = 16;
 
     // Первое слово 16-й фразы (индекс 15) — маркер кадра (бит 0x800)
     const size_t frameStart = 15 * WORDS_PER_PHRASE;
-    if (frameStart >= g.size())          return 0xFFFFFFFF;
-    if ((g[frameStart] & 0x800) == 0)    return 0xFFFFFFFF;
+    constexpr auto lastTimeWord = (41 + 3 * 2) * WORDS_PER_PHRASE;
+    if (g.size() <= lastTimeWord || (g[frameStart] & 0x800) == 0) return std::nullopt;
 
     auto extractDigit = [&](int phraseOffset) -> uint16_t {
         uint16_t val = 0;
         for (int i = 0; i < 4; ++i) {
             size_t idx = static_cast<size_t>(phraseOffset + i * 2) * WORDS_PER_PHRASE;
-            if (idx >= g.size()) return 0;
             val = static_cast<uint16_t>((val << 1) | ((g[idx] >> 11) & 1));
         }
         return val;
     };
 
-    auto bcd2int = [](uint16_t bcd) -> int {
-        int v = 0;
-        for (int i = 0; i < 4; ++i) v = (v << 1) | ((bcd >> (3 - i)) & 1);
-        return (v > 9) ? 0 : v;
-    };
-
-    return bcd2int(extractDigit(17)) * 1000
-         + bcd2int(extractDigit(25)) * 100
-         + bcd2int(extractDigit(33)) * 10
-         + bcd2int(extractDigit(41));
+    uint32_t seconds = 0;
+    for (const int phrase : {17, 25, 33, 41}) {
+        const auto digit = extractDigit(phrase);
+        // Некорректная декада не должна превращаться в ноль бортового времени.
+        if (digit > 9) return std::nullopt;
+        seconds = seconds * 10 + digit;
+    }
+    return seconds;
 }
 
 // ------------------------------------------------------------------
@@ -162,7 +159,8 @@ void Context::start() {
         std::fill(updatedAt_.begin(), updatedAt_.end(), std::chrono::steady_clock::time_point{});
     }
     data_updated_.store(false);
-    current_mtv_.store(0);
+    current_mtv_.store(noBoardTime);
+    mtv_received_ticks_.store(0);
     stop_worker_ = false;
     paused_ = false;
     samples_processed_ = 0;
@@ -326,8 +324,10 @@ void Context::onDecoderGroup(const std::vector<uint16_t>& group12,
 
     // 1) Бортовое время — независимо от наличия каналов
     if (!m8Decoder_) {
-        const uint32_t sec = extractSecondsFromGroup(group12);
-        if (sec != 0xFFFFFFFF) current_mtv_.store(sec);
+        if (const auto seconds = extractSecondsFromGroup(group12)) {
+            current_mtv_.store(*seconds);
+            mtv_received_ticks_.store(std::chrono::steady_clock::now().time_since_epoch().count());
+        }
     }
 
     // 2) Каналы (если заданы)
@@ -403,7 +403,7 @@ void Context::onDecoderGroup(const std::vector<uint16_t>& group12,
     if (groupCb) groupCb(group12, groupNum, ciklNum);
     if (cb) {
         if (!haveValues) { /* МТВ-only снапшот */ }
-        pushSnap.mtv_seconds = current_mtv_.load();
+        pushSnap.mtv_seconds = getCurrentTimeSeconds();
         pushSnap.stats       = getStats();
         cb(pushSnap);
     }
@@ -474,7 +474,19 @@ Stats Context::getStats() const {
 }
 
 uint32_t Context::getCurrentTimeSeconds() const {
-    return current_mtv_.load();
+    return getBoardTimeSeconds().value_or(0);
+}
+
+std::optional<uint32_t> Context::getBoardTimeSeconds() const {
+    const auto time = current_mtv_.load();
+    if (time == noBoardTime) return std::nullopt;
+    return time;
+}
+
+bool Context::isBoardTimeFresh(std::chrono::milliseconds maxAge) const {
+    using Clock = std::chrono::steady_clock;
+    const auto ticks = mtv_received_ticks_.load();
+    return ticks != 0 && Clock::now() - Clock::time_point{Clock::duration{ticks}} <= maxAge;
 }
 
 void Context::setDataCallback(DataCallback cb) {

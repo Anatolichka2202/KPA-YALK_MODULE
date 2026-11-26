@@ -68,6 +68,16 @@ int main(int argc, char** argv)
             require(window.missing() == skipped && window.healthy() == (skipped <= 4),
                     "M16 quality depends on count of jumps instead of missing groups");
         }
+        for (const bool duplicate : {false, true}) {
+            M16PresenceWindow interrupted;
+            for (int position = 0; !interrupted.complete(); ++position) {
+                if (!duplicate && (position == 12 || position == 36)) continue;
+                observeOrdinal(interrupted, position);
+                if (duplicate && (position == 12 || position == 36)) observeOrdinal(interrupted, position);
+            }
+            require(interrupted.interruptions() == 2 && !interrupted.healthy(),
+                    "repeated interruptions looked like a single short interruption");
+        }
         std::array<CodeRange, 2> observations{};
         for (auto& window : observations) window.consume(groupWordsAt(0), checks.front(), 0);
         require(presentInBothWindows(observations), "constant signal in fresh groups was rejected");

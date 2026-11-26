@@ -312,6 +312,17 @@ void E2010SampleSource::readerLoop()
                 break;
             }
 
+            // Проверяем состояние буфера, как в ACPUnit.pas: завершение чтения
+            // само по себе не подтверждает непрерывность отсчётов.
+            DATA_STATE_E2010 state{};
+            if (!module_->GET_DATA_STATE(&state)) {
+                notifyError("E2010: GET_DATA_STATE failed");
+                break;
+            }
+            if (state.BufferOverrun & (1u << BUFFER_OVERRUN_E2010)) {
+                notifyError("E2010: ADC buffer overrun, samples lost");
+                break;
+            }
             const auto words = static_cast<std::size_t>(bytesTransferred / sizeof(int16_t));
             if (words > 0 && samplesCallback_) {
                 const auto* begin = buffers_[requestNumber_ ^ 1].data();

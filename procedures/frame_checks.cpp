@@ -266,6 +266,7 @@ std::optional<int> M16PresenceWindow::observe(int group, int cycle, std::size_t 
     const int ordinal = (cycle - 1) * 32 + group - 1;
     if (previous_ >= 0) {
         const int distance = (ordinal - previous_ + groupsPerFrame) % groupsPerFrame;
+        if (distance != 1) ++interruptions_;
         if (distance == 0) return std::nullopt;
         missing_ += distance - 1;
     }

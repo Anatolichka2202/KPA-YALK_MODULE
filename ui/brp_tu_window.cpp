@@ -71,6 +71,7 @@ using namespace orbita::stand;
 using tu::RunVerdict;
 
 constexpr int groupsPerSecond = 128;
+const auto rs485Address = QStringLiteral("M16P2");
 constexpr int counterTimeoutMs = 5000;
 constexpr int captureTimeoutMs = 3000;
 
@@ -571,6 +572,7 @@ struct BrpTuWindow::Impl {
         QObject::connect(loadE2010, &QAction::triggered, &window, [this] { selectE2010Profile(); });
         plotOptionsLayout->addWidget(trendChannel, 1);
         trendWindow = new QComboBox(plotOptions);
+        trendWindow->setObjectName(QStringLiteral("brpMonitorTrendWindow"));
         for (double seconds : {0.25, 1.0, 5.0, 15.0})
             trendWindow->addItem(QStringLiteral("%1 с").arg(seconds), seconds);
         trendWindow->setCurrentIndex(1);
@@ -592,8 +594,8 @@ struct BrpTuWindow::Impl {
         QObject::connect(plotView, &QComboBox::currentIndexChanged, &window,
             [this] { updateTrendVisibility(); });
         QObject::connect(plotEnabled, &QCheckBox::toggled, &window, [this](bool checked) {
-            if (plotOptions) plotOptions->setVisible(selectedMode() >= 2 && checked && !monitorCounterActive);
-            if (plotView) plotView->setVisible(selectedMode() >= 2 && checked && !monitorCounterActive);
+            if (plotOptions) plotOptions->setVisible(selectedMode() >= 2 && checked);
+            if (plotView) plotView->setVisible(selectedMode() >= 2 && checked);
             updateTrendVisibility();
         });
         QObject::connect(yasmCodes, &QLineEdit::textEdited, &window, [this] { yasmFixture.clear(); });
@@ -620,17 +622,22 @@ struct BrpTuWindow::Impl {
         status->setTextInteractionFlags(Qt::TextSelectableByMouse);
         status->setProperty("muted", true);
         status->setObjectName(QStringLiteral("brpInterfaceStatus"));
+        manualBoardTime = new QLabel(QStringLiteral("Бортовое время · ожидание приёма"), interfaceBox);
+        manualBoardTime->setObjectName(QStringLiteral("brpManualBoardTime"));
+        interfaceLayout->addWidget(manualBoardTime);
         interfaceLayout->addWidget(status);
         graph = new brp::ui::HistoryPlot(interfaceBox);
         graph->setObjectName(QStringLiteral("brpCounterPlot"));
         graph->configure(QStringLiteral("Счётчик RS-485 · принятые коды 0–1023"),
                          QStringLiteral("код"), QStringLiteral("Орбита M16 · ЯФК"));
         graph->setFixedRange(0.0, 1023.0);
+        graph->setToolTip(QStringLiteral("Ctrl + колесо — масштаб по вертикали."));
         interfaceLayout->addWidget(graph, 1);
         monitorPlot = new brp::ui::HistoryPlot(interfaceBox);
         monitorPlot->setObjectName(QStringLiteral("brpMonitorPlot"));
         monitorPlot->setToolTip(QStringLiteral("Нажмите столбец, чтобы открыть тренд. Сплошной столбец — последний код, "
-            "полупрозрачный — среднее, тонкая полоса — минимум и максимум, янтарная отметка — полуразмах."));
+            "полупрозрачный — среднее, тонкая полоса — минимум и максимум, янтарная отметка — полуразмах. "
+            "Ctrl + колесо — масштаб по вертикали."));
         monitorPlot->configure(QStringLiteral("Текущие коды Орбиты"), QStringLiteral("код"), {});
         monitorPlot->setMinimumHeight(240);
         monitorPlot->hide();
@@ -639,6 +646,11 @@ struct BrpTuWindow::Impl {
         detailTrend->setObjectName(QStringLiteral("brpMonitorTrend"));
         detailTrend->configure(QStringLiteral("Тренд · код Орбиты"), QStringLiteral("код"), {});
         detailTrend->setMinimumHeight(220);
+        detailTrend->setToolTip(QStringLiteral("Ctrl + колесо — масштаб времени."));
+        detailTrend->onTimeZoom([this](int direction) {
+            trendWindow->setCurrentIndex(std::clamp(trendWindow->currentIndex() + direction,
+                                                     0, trendWindow->count() - 1));
+        });
         detailTrend->hide();
         interfaceLayout->addWidget(detailTrend, 1);
         monitorPlot->onBarSelected([this](const QString& address) {
@@ -668,8 +680,7 @@ struct BrpTuWindow::Impl {
             m8Invert->setVisible(index >= 2);
             profileBar->setVisible(index >= 2);
             plotEnabled->setVisible(index >= 2);
-            plotOptions->setVisible(index >= 2 && plotEnabled->isChecked()
-                && !(index == 3 && counterToCom->isChecked()));
+            plotOptions->setVisible(index >= 2 && plotEnabled->isChecked());
             plotView->setVisible(index >= 2 && plotEnabled->isChecked());
             updateTrendVisibility();
             monitorPlot->setVisible(index >= 2 && plotEnabled->isChecked());
@@ -1124,6 +1135,12 @@ struct BrpTuWindow::Impl {
         return interfaceMode ? interfaceMode->currentIndex() : 0;
     }
 
+    int formalInterfaceMode() const
+    {
+        // Диагностический монитор M8/M16 не меняет исходный этап БРП-ТУ.
+        return selectedMode() == 1 ? 1 : 0;
+    }
+
     QString selectedPort() const
     {
         return currentStage >= 0 || !port ? page->flow()->rs485Port() : port->currentText().trimmed();
@@ -1139,10 +1156,8 @@ struct BrpTuWindow::Impl {
         const auto adc = QStringLiteral("Е20-10");
         flow->beginStandCheck(serialNumber, {connection, isd, meter, supply, adc});
         QString error;
-        const int mode = selectedMode();
-        if (mode >= 2)
-            error = QStringLiteral("Выберите RS-485 или ЯСМ в ручном управлении.");
-        else if (!simulation && mode == 0 && page->flow()->rs485Port().isEmpty())
+        const int mode = formalInterfaceMode();
+        if (!simulation && mode == 0 && page->flow()->rs485Port().isEmpty())
             error = QStringLiteral("Выберите COM-порт RS-485 на стартовом экране.");
         else if (mode == 1 && yasmFixture.empty() && yasmCodes->text().trimmed().isEmpty())
             error = QStringLiteral("Загрузите тест ЯСМ или укажите ожидаемые коды.");
@@ -1193,7 +1208,7 @@ struct BrpTuWindow::Impl {
     void startScenario(const QString& serialNumber)
     {
         if (currentStage >= 0 || bridge || stoppingStream || preparingIsd || probing || meterBusy) return;
-        const bool yasmMode = selectedMode() == 1;
+        const bool yasmMode = formalInterfaceMode() == 1;
         const int interfaceRow = yasmMode ? 13 : 12;
         const auto input = std::find_if(checks.begin(), checks.end(), [interfaceRow](const auto& check) {
             return check.number == interfaceRow;
@@ -1518,11 +1533,13 @@ struct BrpTuWindow::Impl {
     void startInterface()
     {
         try {
-            const bool yasmMode = selectedMode() == 1;
-            const bool m8Mode = selectedMode() == 2;
-            const bool monitor = selectedMode() >= 2;
-            const bool monitorCounter = selectedMode() == 3 && counterToCom && counterToCom->isChecked();
-            const bool sendCounter = !simulation && (selectedMode() == 0 || monitorCounter);
+            interfaceForScenario = currentStage >= 0;
+            streamMode = interfaceForScenario ? formalInterfaceMode() : selectedMode();
+            const bool yasmMode = streamMode == 1;
+            const bool m8Mode = streamMode == 2;
+            const bool monitor = streamMode >= 2;
+            const bool monitorCounter = streamMode == 3 && counterToCom && counterToCom->isChecked();
+            const bool sendCounter = !simulation && (streamMode == 0 || monitorCounter);
             if (stoppingStream) throw std::runtime_error("Орбита завершает предыдущий сеанс. Повторный запуск пока заблокирован.");
             if (probing) throw std::runtime_error("Дождитесь проверки приборов.");
             double sampleRate = 10'000'000;
@@ -1572,6 +1589,7 @@ struct BrpTuWindow::Impl {
             // Состояние обнуляется до подключения callback. Перед любым следующим
             // запуском shutdown ждёт завершения потока, который изменяет эти поля.
             counter = {};
+            monitorCounterUpdatedAt = {};
             {
                 std::lock_guard<std::mutex> lock(trendMutex);
                 trendSamples.clear();
@@ -1626,10 +1644,7 @@ struct BrpTuWindow::Impl {
                 monitorPlot->clear();
                 const bool tenBitOnly = static_cast<std::size_t>(monitorAnalog.size()) == channels.size();
                 monitorPlot->setFixedRange(0.0, monitorCounter || tenBitOnly ? 1023.0 : 0.0);
-                monitorPlot->configure(monitorCounter
-                    ? QStringLiteral("Счётчик RS-485 · полученные коды 0–1023")
-                    : QStringLiteral("Текущие коды Орбиты"),
-                    QStringLiteral("код"), {});
+                monitorPlot->configure(QStringLiteral("Текущие коды Орбиты"), QStringLiteral("код"), {});
                 {
                     QSignalBlocker block(trendChannel);
                     const QString previously = trendChannel->currentData().toString();
@@ -1637,6 +1652,7 @@ struct BrpTuWindow::Impl {
                     for (const auto& spec : channels) {
                         activeMonitorNames.insert(QString::fromStdString(spec.address), QString::fromStdString(spec.name));
                         const QString address = QString::fromStdString(spec.address);
+                        if (monitorCounter && address == rs485Address) continue;
                         trendChannel->addItem(spec.name.empty() ? address
                             : QStringLiteral("%1 · %2").arg(QString::fromStdString(spec.name), address), address);
                     }
@@ -1699,6 +1715,8 @@ struct BrpTuWindow::Impl {
             if (profileBar) profileBar->setEnabled(false);
             if (m8Invert) m8Invert->setEnabled(false);
             if (graph) graph->clear();
+            if (interfaceForScenario) page->setBoardTime(QStringLiteral("Бортовое время · ожидание маркера M16"));
+            else if (manualBoardTime) manualBoardTime->setText(QStringLiteral("Бортовое время · ожидание приёма"));
             if (status) status->setText(monitor ? QStringLiteral("Ожидание синхронизации Орбиты") : yasmMode
                 ? QStringLiteral("Ожидание кодов внешнего теста ЯСМ в M16P1A22")
                 : QStringLiteral("Ожидание двух непрерывных периодов счётчика 0–1023"));
@@ -1738,7 +1756,11 @@ struct BrpTuWindow::Impl {
     {
         std::lock_guard<std::mutex> lock(dataMutex);
         if (yasm) yasm->consume(words, group, cycle);
-        if (observeCounter) counter.consume(words, group, cycle);
+        if (observeCounter) {
+            const auto count = counter.decodedValues();
+            counter.consume(words, group, cycle);
+            if (count != counter.decodedValues()) monitorCounterUpdatedAt = std::chrono::steady_clock::now();
+        }
         if (!monitorAnalog.isEmpty() && group >= 1 && group <= 32 && cycle >= 1 && cycle <= 4
             && words.size() == groupWords) {
             const int ordinal = (cycle - 1) * 32 + group - 1;
@@ -1824,8 +1846,7 @@ struct BrpTuWindow::Impl {
     {
         if (!detailTrend) return;
         const bool visible = selectedMode() >= 2 && plotEnabled->isChecked()
-            && plotView->currentIndex() == 1 && !monitorCounterActive
-            && !(selectedMode() == 3 && counterToCom->isChecked());
+            && plotView->currentIndex() == 1;
         trendChannel->setVisible(visible);
         trendWindow->setVisible(visible);
         detailTrend->setVisible(visible);
@@ -1839,7 +1860,16 @@ struct BrpTuWindow::Impl {
             return;
         }
 
-        if (selectedMode() >= 2) {
+        const auto boardSeconds = decoder->getBoardTimeSeconds();
+        const auto boardText = boardSeconds ? (decoder->isBoardTimeFresh(std::chrono::seconds(2))
+            ? QStringLiteral("Бортовое время · %1 с").arg(*boardSeconds)
+            : QStringLiteral("Бортовое время · %1 с (нет свежей отметки)").arg(*boardSeconds))
+             : streamMode == 2 ? QStringLiteral("Бортовое время · M8: декодирование МТВ недоступно")
+                                  : QStringLiteral("Бортовое время · ожидание маркера M16");
+        if (interfaceForScenario) page->setBoardTime(boardText);
+        else if (manualBoardTime && manualBoardTime->text() != boardText) manualBoardTime->setText(boardText);
+
+        if (streamMode >= 2) {
             const auto snapshot = decoder->getSnapshot();
             const auto now = std::chrono::steady_clock::now();
             QStringList values;
@@ -1856,8 +1886,10 @@ struct BrpTuWindow::Impl {
                 averages.detach();
             }
             for (const auto& channel : snapshot.values) {
-                ++channelNumber;
                 const auto address = QString::fromStdString(channel.address);
+                // Представляем этот адрес собранным 10-битным кодом счётчика.
+                if (monitorCounterActive && address == rs485Address) continue;
+                ++channelNumber;
                 const auto average = averages.constFind(address);
                 const bool averaged = average != averages.cend();
                 // Последний принятый код остаётся виден при паузе, с явной
@@ -1889,7 +1921,21 @@ struct BrpTuWindow::Impl {
                                  value, received && !fillOnly, !fresh, address, statistics});
                 }
             }
-            if (plotEnabled->isChecked() && !monitorCounterActive) {
+            QString counterStatus;
+            if (monitorCounterActive) {
+                std::lock_guard<std::mutex> lock(dataMutex);
+                const auto latest = counter.latestValue();
+                if (plotEnabled->isChecked())
+                    bars.append({QStringLiteral("Счётчик RS-485"), double(latest.value_or(0)), latest.has_value(),
+                        !latest || now - monitorCounterUpdatedAt >= std::chrono::seconds(2), {}, {}});
+                counterStatus = QStringLiteral("\nСчётчик RS-485 · %1: %2 / 1023 · кодов %3,"
+                    " слов с меткой %4 · непрерывно %5/2049 · %6")
+                    .arg(rs485Address, latest ? QString::number(*latest) : QStringLiteral("—"))
+                    .arg(counter.decodedValues()).arg(counter.markedWords()).arg(counter.contiguous())
+                    .arg(counter.passed() ? QStringLiteral("два периода 0–1023 ПОДТВЕРЖДЕНЫ")
+                                          : QStringLiteral("пока не подтверждено"));
+            }
+            if (plotEnabled->isChecked()) {
                 monitorPlot->setBars(std::move(bars));
                 if (plotView->currentIndex() == 1) {
                     const auto address = trendChannel->currentData().toString().toStdString();
@@ -1918,31 +1964,10 @@ struct BrpTuWindow::Impl {
             }
             // M16 getErrors() exposes raw counters, not percentages;
             // M8 returns percentages. Never label a raw count as e.g. 112 %.
-            const bool m8 = selectedMode() == 2;
+            const bool m8 = streamMode == 2;
             const auto heading = m8
                 ? QStringLiteral("M8 · групп %1 · ошибки фраз %2 %% · ошибки групп %3 %%")
                 : QStringLiteral("M16 · групп %1 · счётчики ошибок: фразы %2, группы %3");
-            QString counterStatus;
-            if (monitorCounterActive) {
-                unsigned consecutive = 0, decoded = 0, words = 0;
-                bool validated = false;
-                std::vector<unsigned> recent;
-                {
-                    std::lock_guard<std::mutex> lock(dataMutex);
-                    consecutive = counter.contiguous();
-                    decoded = counter.decodedValues();
-                    words = counter.markedWords();
-                    validated = counter.passed();
-                    recent = counter.recent();
-                }
-                if (plotEnabled->isChecked())
-                    monitorPlot->setSeries(QVector<double>(recent.begin(), recent.end()));
-                counterStatus = QStringLiteral("\nСчётчик RS-485: кодов %1, слов с меткой %2; "
-                    "непрерывно %3/2049; %4")
-                    .arg(decoded).arg(words).arg(consecutive)
-                    .arg(validated ? QStringLiteral("два периода 0–1023 ПОДТВЕРЖДЕНЫ")
-                                   : QStringLiteral("пока не подтверждено"));
-            }
             const auto syncStatus = !m8 && snapshot.stats.frames_processed == 0 && gateClock.elapsed() >= 1500
                 ? QStringLiteral("\nСинхронизация M16 не найдена. Проверьте сигнал на выбранном входе Е20-10 и полярность.")
                 : QString();
@@ -1955,7 +1980,7 @@ struct BrpTuWindow::Impl {
         // Manual counter mode is a live oscilloscope-like diagnostic, not a
         // time-limited TU verdict. Keep plotting received code pairs even if
         // the 2049-value strict continuity criterion is not yet satisfied.
-        if (currentStage < 0 && selectedMode() == 0) {
+        if (!interfaceForScenario && streamMode == 0) {
             std::vector<unsigned> recent;
             unsigned consecutive = 0, groups = 0, marked = 0, pairs = 0, breaks = 0;
             bool passed = false;
@@ -1994,7 +2019,7 @@ struct BrpTuWindow::Impl {
         if (currentStage == 2 && coverageActive) {
             bool finished = false;
             bool sufficient = false;
-            int missing = 0, received = 0;
+            int missing = 0, received = 0, interruptions = 0;
             std::vector<CoveragePoint> captured;
             {
                 std::lock_guard<std::mutex> lock(dataMutex);
@@ -2002,6 +2027,7 @@ struct BrpTuWindow::Impl {
                 finished = coverageWindow.complete() || coverageClock.elapsed() >= 5500;
                 sufficient = coverageWindow.healthy();
                 missing = coverageWindow.missing();
+                interruptions = coverageWindow.interruptions();
                 if (finished) {
                     coverageActive = false;
                     captured = coverage;
@@ -2026,8 +2052,8 @@ struct BrpTuWindow::Impl {
                     measurements.push_back(std::move(m));
                 }
                 completeStage(allPresent ? RunVerdict::Ok : RunVerdict::Fail,
-                    QStringLiteral("M16: %1 адресных проверок; принято групп %2, пропущено %3; %4.")
-                        .arg(measurements.size()).arg(received).arg(missing)
+                    QStringLiteral("M16: %1 адресных проверок; принято групп %2, пропущено %3, разрывов %4; %5.")
+                        .arg(measurements.size()).arg(received).arg(missing).arg(interruptions)
                         .arg(allPresent ? QStringLiteral("все присутствуют")
                                         : QStringLiteral("недостаточно свежих кадров")),
                     std::move(measurements));
@@ -2307,6 +2333,11 @@ struct BrpTuWindow::Impl {
         // the borrowed references. No subsequent session may start until finished.
         if (!stoppingStream && (bridge || decoder || source)) {
             stoppingStream = true;
+            const auto last = decoder ? decoder->getBoardTimeSeconds() : std::nullopt;
+            const auto stoppedTime = last ? QStringLiteral("Бортовое время · %1 с (приём остановлен)").arg(*last)
+                                          : QStringLiteral("Бортовое время · приём остановлен");
+            if (interfaceForScenario) page->setBoardTime(stoppedTime);
+            else if (manualBoardTime) manualBoardTime->setText(stoppedTime);
             auto oldBridge = std::move(bridge);
             auto oldDecoder = std::move(decoder);
             auto oldSource = std::move(source);
@@ -2438,7 +2469,7 @@ struct BrpTuWindow::Impl {
     QPushButton *start = nullptr, *stop = nullptr, *capture = nullptr, *prepare = nullptr,
                 *yasmFile = nullptr, *purumk = nullptr;
     QString purumkProgram;
-    QLabel *status = nullptr, *details = nullptr;
+    QLabel *status = nullptr, *details = nullptr, *manualBoardTime = nullptr;
     QFormLayout* checkForm = nullptr;
     QPlainTextEdit* log = nullptr;
     brp::ui::HistoryPlot* graph = nullptr;
@@ -2464,6 +2495,9 @@ struct BrpTuWindow::Impl {
     std::vector<uint16_t> yasmFixture;
     bool observeCounter = false;
     bool monitorCounterActive = false;
+    bool interfaceForScenario = false;
+    int streamMode = 0;
+    std::chrono::steady_clock::time_point monitorCounterUpdatedAt{};
     bool counterTimeoutLogged = false;
     bool counterResultLogged = false;
     unsigned nextCounter = 0;

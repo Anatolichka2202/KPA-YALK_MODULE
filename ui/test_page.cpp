@@ -184,6 +184,9 @@ struct TestPage::Impl {
         contextFont.setBold(true);
         context->setFont(contextFont);
         contextColumn->addWidget(context);
+        boardTime = muted({}, runtimeContextStrip);
+        boardTime->setObjectName(QStringLiteral("brpRunBoardTime"));
+        contextColumn->addWidget(boardTime);
         contextLayout->addLayout(contextColumn, 1);
         auto* progressColumn = new QVBoxLayout;
         progressColumn->setSpacing(2);
@@ -386,6 +389,7 @@ struct TestPage::Impl {
     QPushButton *runtimeBack = nullptr, *stopButton = nullptr, *skipHotspot = nullptr,
                 *skipButton = nullptr, *confirm = nullptr, *retry = nullptr, *proceed = nullptr,
                 *bbPrSignal = nullptr;
+    QLabel* boardTime = nullptr;
     QLabel *runTitle = nullptr, *runSubtitle = nullptr, *contextCaption = nullptr, *context = nullptr,
            *progressCaption = nullptr, *progressText = nullptr, *tuTitle = nullptr, *tuSerial = nullptr,
            *stageHeading = nullptr, *referenceBefore = nullptr, *referenceAfter = nullptr, *maximumError = nullptr;
@@ -488,6 +492,11 @@ void TestPage::setBbPrSignalAvailable(bool available)
 void TestPage::setSeries(const QVector<double>& first, const QVector<double>& second)
 {
     impl_->plot->setSeries(first, second);
+}
+
+void TestPage::setBoardTime(const QString& text)
+{
+    if (impl_->boardTime->text() != text) impl_->boardTime->setText(text);
 }
 
 void TestPage::setVoltage(const QString& before, const QString& after, const QString& error)

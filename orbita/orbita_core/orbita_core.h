@@ -58,6 +58,8 @@ public:
     std::optional<double> getValueByAddress(const std::string& address) const;
     Stats getStats() const;
     uint32_t getCurrentTimeSeconds() const;
+    std::optional<uint32_t> getBoardTimeSeconds() const;
+    bool isBoardTimeFresh(std::chrono::milliseconds maxAge) const;
     void setDataCallback(DataCallback cb);
     void setGroupCallback(GroupCallback cb);
 
@@ -104,7 +106,9 @@ private:
     std::atomic<bool>        data_updated_{false};
 
     // Бортовое время (МТВ), извлекается из маркера кадра независимо от каналов
-    std::atomic<uint32_t>    current_mtv_{0};
+    static constexpr uint32_t noBoardTime = 0xFFFFFFFF;
+    std::atomic<uint32_t>    current_mtv_{noBoardTime};
+    std::atomic<std::chrono::steady_clock::duration::rep> mtv_received_ticks_{0};
 
     // Статистика
     std::atomic<uint64_t> samples_processed_{0};

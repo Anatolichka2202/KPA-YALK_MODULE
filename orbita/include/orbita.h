@@ -161,6 +161,10 @@ public:
 
     /// Бортовое время в секундах.
     uint32_t getCurrentTimeSeconds() const;
+    /// Последняя принятая отметка МТВ. Пусто до получения корректной отметки.
+    std::optional<uint32_t> getBoardTimeSeconds() const;
+    /// Возраст последней принятой отметки МТВ в часах приёмника.
+    bool isBoardTimeFresh(std::chrono::milliseconds maxAge) const;
 
     /// Push-уведомление о новых данных (для серверного режима / RuleEngine).
     void setDataCallback(DataCallback cb);

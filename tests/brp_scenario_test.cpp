@@ -5,6 +5,7 @@
 #include <QAction>
 #include <QCheckBox>
 #include <QSpinBox>
+#include <QWheelEvent>
 #include <QComboBox>
 #include <QElapsedTimer>
 #include <QFile>
@@ -166,6 +167,12 @@ void testWindow()
     require(waitUntil([&] {
         return status->text().contains(QStringLiteral("два периода 0–1023 ПОДТВЕРЖДЕНЫ"));
     }, 12000), "M16 monitor did not validate returned RS485 counter");
+    require(status->text().contains(QStringLiteral("Счётчик RS-485 · M16P2:"))
+        && status->text().contains(QStringLiteral("Ептм ·")),
+        "enabled counter replaced the Orbita profile instead of extending it");
+    auto* manualTime = window.findChild<QLabel*>("brpManualBoardTime");
+    require(manualTime && waitUntil([&] { return manualTime->text() == QStringLiteral("Бортовое время · 0 с"); }),
+            "received zero MTV was not displayed as a valid mark");
     stop->click();
     require(waitUntil([&] { return start->isEnabled(); }, 20000), "M16 stop did not release stream");
     comToggle->setChecked(false);
@@ -191,6 +198,15 @@ void testWindow()
             "clicking Eptm did not reveal its trend below the live bars");
     require(waitUntil([&] { return trendPlot->property("brpTrendRawPoints").toInt() >= 150; }, 12000),
             "Eptm trend did not preserve intra-group samples");
+    auto* trendWindow = window.findChild<QComboBox*>("brpMonitorTrendWindow");
+    require(trendWindow && trendWindow->currentData().toDouble() == 1.0, "unexpected initial trend window");
+    const auto wheelAt = trendPlot->rect().center();
+    QWheelEvent zoom(wheelAt, trendPlot->mapToGlobal(wheelAt), {}, {0, 120}, Qt::NoButton,
+                     Qt::ControlModifier, Qt::NoScrollPhase, false);
+    QApplication::sendEvent(trendPlot, &zoom);
+    require(zoom.isAccepted() && trendWindow->currentData().toDouble() == 0.25,
+            "Ctrl+wheel did not shorten the trend window");
+    trendWindow->setCurrentIndex(1);
     require(waitUntil([&] {
         const auto text = status->text();
         return text.contains(QStringLiteral(" · сред. ")) && text.contains(QStringLiteral(" · полуразмах "))
@@ -329,14 +345,6 @@ void testScenarioAndReport()
 
     require(!check->isEnabled(), "stand check started without a serial number");
     serial->setText(QStringLiteral("BRP-01"));
-    selectInterface(2);
-    check->click();
-    require(readiness->isVisible() && readiness->text() == QStringLiteral("СТЕНД НЕ ГОТОВ")
-        && !start->isVisible(), "M8 diagnostics allowed a M16 scenario");
-    for (auto* button : window.findChildren<QPushButton*>()) {
-        if (button->isVisible() && button->text() == QStringLiteral("Выбрать другой SN")) button->click();
-    }
-
     selectInterface(1);
     check->click();
     require(start->isVisible() && readiness->text() == QStringLiteral("СТЕНД ГОТОВ"), "stand readiness screen is wrong");
@@ -431,9 +439,14 @@ void testScenarioAndReport()
         && csv.contains(QStringLiteral("M16P1A10B60C31T01")), "reference report lost the BRP results or print layout");
 
     newCheck();
-    selectInterface(0);
+    selectInterface(2); // Оставляем диагностику M8 выбранной и запускаем ТУ M16.
     check->click();
+    require(start->isVisible() && readiness->text() == QStringLiteral("СТЕНД ГОТОВ"),
+            "manual M8 selection blocked formal M16 acceptance");
     start->click();
+    auto* runTime = window.findChild<QLabel*>("brpRunBoardTime");
+    require(runTime && waitUntil([&] { return runTime->text() == QStringLiteral("Бортовое время · 0 с"); }),
+            "automatic route did not receive or show M16 time with manual M8 selected");
     stop->click();
     require(waitUntil([&] { return name->isVisible(); }, 20000),
             "aborted run did not finish background Orbita teardown");

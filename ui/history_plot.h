@@ -2,6 +2,7 @@
 
 #include <QPainter>
 #include <QMouseEvent>
+#include <QWheelEvent>
 #include <QPainterPath>
 #include <QWidget>
 
@@ -127,6 +128,11 @@ public:
         update();
     }
 
+    void onTimeZoom(std::function<void(int)> callback)
+    {
+        timeZoom_ = std::move(callback);
+    }
+
     void onBarSelected(std::function<void(const QString&)> callback)
     {
         barSelected_ = std::move(callback);
@@ -143,6 +149,22 @@ public:
     }
 
 protected:
+    void wheelEvent(QWheelEvent* event) override
+    {
+        if (!(event->modifiers() & Qt::ControlModifier) || event->angleDelta().y() == 0) {
+            event->ignore();
+            return;
+        }
+        const int delta = event->angleDelta().y();
+        if (timeZoom_) {
+            timeZoom_(delta > 0 ? -1 : 1);
+        } else {
+            verticalZoom_ = std::clamp(verticalZoom_ * std::pow(2.0, delta / 240.0), 1.0, 32.0);
+            update();
+        }
+        event->accept();
+    }
+
     void mousePressEvent(QMouseEvent* event) override
     {
         const auto area = plotArea();
@@ -252,7 +274,7 @@ protected:
                 for (const auto& bar : bars_)
                     if (bar.valid && std::isfinite(bar.value))
                         value = std::max(value, bar.value);
-                return std::max(1023.0, value);
+                return std::max(1023.0, value) / verticalZoom_;
             }();
             const QRectF plot(area.left(), area.top() + 4, area.width(),
                               std::max(20.0, area.height() - 29));
@@ -338,6 +360,7 @@ protected:
             hi += pad;
         }
         if (!(hi > lo)) hi = lo + 1.0;
+        hi = lo + (hi - lo) / verticalZoom_;
 
         const auto yFor = [&](double value) {
             return area.bottom() - (value - lo) / (hi - lo) * area.height();
@@ -366,8 +389,11 @@ protected:
                 if (!started) { path.moveTo(point); started = true; }
                 else path.lineTo(point);
             }
+            p.save();
+            p.setClipRect(area);
             p.setPen(QPen(color, 2));
             p.drawPath(path);
+            p.restore();
         };
         drawSeries(first_, palette::blue2);
         drawSeries(second_, palette::cyan);
@@ -396,6 +422,8 @@ protected:
 
 private:
     double overlayOpacity_ = .45;
+    double verticalZoom_ = 1.0;
+    std::function<void(int)> timeZoom_;
     QRectF plotArea() const
     {
         return {52.0, 32.0, static_cast<double>(std::max(20, width() - 66)),

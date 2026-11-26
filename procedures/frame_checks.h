@@ -115,8 +115,8 @@ struct CodeRange {
     bool matches(unsigned expectedMin, unsigned expectedMax) const;
 };
 
-// Два окна по 128 реально принятых групп. Допуск относится к пропущенным
-// позициям потока за всё наблюдение, а не к количеству разрывов.
+// Два окна по 128 реально принятых групп. Допускается один краткий разрыв.
+// Повторная группа считается разрывом и не добавляет новый отсчёт.
 class M16PresenceWindow {
 public:
     static constexpr int groupsPerFrame = 128;
@@ -126,12 +126,14 @@ public:
     std::optional<int> observe(int group, int cycle, std::size_t wordCount);
     int received() const { return received_; }
     int missing() const { return missing_; }
+    int interruptions() const { return interruptions_; }
     bool complete() const { return received_ == target; }
-    bool healthy() const { return complete() && missing_ <= missingBudget; }
+    bool healthy() const { return complete() && missing_ <= missingBudget && interruptions_ <= 1; }
 
 private:
     int received_ = 0;
     int missing_ = 0;
+    int interruptions_ = 0;
     int previous_ = -1;
 };
 

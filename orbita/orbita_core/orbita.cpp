@@ -75,6 +75,10 @@ std::optional<double> Orbita::getValueByAddress(const std::string& address) cons
 }
 Stats Orbita::getStats() const { return ctx_->getStats(); }
 uint32_t Orbita::getCurrentTimeSeconds() const { return ctx_->getCurrentTimeSeconds(); }
+std::optional<uint32_t> Orbita::getBoardTimeSeconds() const { return ctx_->getBoardTimeSeconds(); }
+bool Orbita::isBoardTimeFresh(std::chrono::milliseconds maxAge) const {
+    return ctx_->isBoardTimeFresh(maxAge);
+}
 void Orbita::setDataCallback(DataCallback cb) { ctx_->setDataCallback(std::move(cb)); }
 void Orbita::setGroupCallback(GroupCallback cb) { ctx_->setGroupCallback(std::move(cb)); }
 

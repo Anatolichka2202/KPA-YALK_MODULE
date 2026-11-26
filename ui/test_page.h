@@ -28,6 +28,7 @@ public:
     void setRetryAvailable(bool available);
     void setBbPrSignalAvailable(bool available);
     void setSeries(const QVector<double>& first, const QVector<double>& second = {});
+    void setBoardTime(const QString& text);
     void setVoltage(const QString& before, const QString& after, const QString& error);
     void appendRunEvent(const tu::RunEvent& event);
     void finishRun(const tu::ScenarioRunResult& result);
