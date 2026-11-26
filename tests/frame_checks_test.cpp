@@ -63,6 +63,13 @@ int main(int argc, char** argv)
         require(counter.passed() && counter.trace().size() == 2049, "good ramp rejected");
         require(counter.trace().at(1023) == 1023 && counter.trace().at(1024) == 0,
                 "graph must show the wrap");
+        require(counter.recent().size() == 512 && counter.latestValue()
+                && *counter.latestValue() == 0 && counter.decodedValues() == 2049,
+                "live counter must preserve only the latest 512 codes");
+        counter.consume(groupWordsAt(5), 6, 1);
+        require(counter.passed() && counter.trace().size() == 2049
+                && counter.recent().size() == 512 && counter.decodedValues() > 2049,
+                "confirmed TU result must stay valid while live counter continues");
 
         CounterCheck interrupted;
         interrupted.consume(groupWordsAt(0), 1, 1);
@@ -72,6 +79,14 @@ int main(int argc, char** argv)
         corrupt[1001] ^= 0x08;
         interrupted.consume(corrupt, 4, 1);
         require(interrupted.contiguous() < 512, "wrong byte preserved a stale sequence");
+        require(!interrupted.recent().empty() && interrupted.decodedValues() > 512
+                && interrupted.breaks() > 0,
+                "live graph discarded all samples when sequence continuity was lost");
+        CounterCheck noReply;
+        noReply.consume(std::vector<uint16_t>(groupWords, 0), 1, 1);
+        require(noReply.groupsReceived() == 1 && noReply.markedWords() == 0
+                && noReply.decodedValues() == 0 && noReply.recent().empty(),
+                "diagnostic must distinguish M16 groups from actual RS485 payload");
 
         CodeRange codes;
         require(!codes.matches(0, 1023), "missing samples cannot pass");
