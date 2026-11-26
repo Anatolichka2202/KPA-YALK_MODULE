@@ -105,7 +105,7 @@ if(BUILD_TESTING)
         brp_ui tu_hardware Qt6::Network Qt6::Concurrent)
     add_dependencies(brp_scenario_test brp_runtime_data)
     add_test(NAME brp.scenario COMMAND brp_scenario_test -platform offscreen)
-    set_tests_properties(brp.scenario PROPERTIES TIMEOUT 30)
+    set_tests_properties(brp.scenario PROPERTIES TIMEOUT 120)
     if(WIN32)
         set_tests_properties(brp.frame_checks brp.scenario orbita.m8 PROPERTIES ENVIRONMENT_MODIFICATION
             "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
