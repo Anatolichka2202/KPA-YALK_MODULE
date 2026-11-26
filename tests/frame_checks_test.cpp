@@ -52,6 +52,27 @@ int main(int argc, char** argv)
 
         require(shouldObserveCounter(false, false, false),
                 "real RS485 mode must decode M16 returned counter (not simulation-only)");
+        const auto observeOrdinal = [](M16PresenceWindow& window, int ordinal) {
+            return window.observe(ordinal % 32 + 1, ordinal / 32 % 4 + 1, groupWords);
+        };
+        M16PresenceWindow missingStream;
+        require(!missingStream.healthy() && !missingStream.observe(1, 1, 0), "missing M16 was accepted");
+        M16PresenceWindow repeated;
+        for (int i = 0; i < M16PresenceWindow::target; ++i) observeOrdinal(repeated, 0);
+        require(repeated.received() == 1 && !repeated.healthy(), "repeated group looked fresh");
+        for (const int skipped : {0, 1, 5}) {
+            M16PresenceWindow window;
+            observeOrdinal(window, 0);
+            for (int position = 1 + skipped; !window.complete(); ++position)
+                observeOrdinal(window, position);
+            require(window.missing() == skipped && window.healthy() == (skipped <= 4),
+                    "M16 quality depends on count of jumps instead of missing groups");
+        }
+        std::array<CodeRange, 2> observations{};
+        for (auto& window : observations) window.consume(groupWordsAt(0), checks.front(), 0);
+        require(presentInBothWindows(observations), "constant signal in fresh groups was rejected");
+        observations[1].fillCount = observations[1].count;
+        require(!presentInBothWindows(observations), "stale first window masked fill in the second");
         require(shouldObserveCounter(false, true, true)
                 && !shouldObserveCounter(false, true, false)
                 && !shouldObserveCounter(true, false, false),

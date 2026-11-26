@@ -259,6 +259,27 @@ void CodeRange::merge(const CodeRange& group)
     fillCount += group.fillCount;
 }
 
+std::optional<int> M16PresenceWindow::observe(int group, int cycle, std::size_t wordCount)
+{
+    if (complete() || group < 1 || group > 32 || cycle < 1 || cycle > 4 || wordCount != groupWords)
+        return std::nullopt;
+    const int ordinal = (cycle - 1) * 32 + group - 1;
+    if (previous_ >= 0) {
+        const int distance = (ordinal - previous_ + groupsPerFrame) % groupsPerFrame;
+        if (distance == 0) return std::nullopt;
+        missing_ += distance - 1;
+    }
+    previous_ = ordinal;
+    return received_++ / groupsPerFrame;
+}
+
+bool presentInBothWindows(const std::array<CodeRange, 2>& samples)
+{
+    return std::all_of(samples.begin(), samples.end(), [](const auto& window) {
+        return window.count > window.fillCount;
+    });
+}
+
 bool CodeRange::matches(unsigned expectedMin, unsigned expectedMax) const
 {
     return count && minimum >= expectedMin && maximum <= expectedMax;

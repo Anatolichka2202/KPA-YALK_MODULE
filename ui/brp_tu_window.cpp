@@ -1788,15 +1788,11 @@ struct BrpTuWindow::Impl {
                 }
             }
         }
-        if (coverageActive && group >= 1 && group <= 32 && cycle >= 1 && cycle <= 4
-            && words.size() == groupWords) {
-            const int ordinal = (cycle - 1) * 32 + group - 1;
-            if (coverageLastOrdinal >= 0 && ordinal != (coverageLastOrdinal + 1) % groupsPerSecond)
-                ++coverageGapGroups;
-            coverageLastOrdinal = ordinal;
-            ++coverageGroups;
-            for (auto& point : coverage)
-                point.samples.consume(words, checks[point.check], point.channel);
+        if (coverageActive) {
+            if (const auto window = coverageWindow.observe(group, cycle, words.size())) {
+                for (auto& point : coverage)
+                    point.samples[*window].consume(words, checks[point.check], point.channel);
+            }
         }
         if (!reading || groupCount == groupsPerSecond || groupGap) return;
         if (group < 1 || group > 32 || cycle < 1 || cycle > 4 || words.size() != groupWords) {
@@ -1988,14 +1984,14 @@ struct BrpTuWindow::Impl {
         if (currentStage == 2 && coverageActive) {
             bool finished = false;
             bool sufficient = false;
-            int gaps = 0;
+            int missing = 0, received = 0;
             std::vector<CoveragePoint> captured;
             {
                 std::lock_guard<std::mutex> lock(dataMutex);
-                const int count = coverageGroups;
-                finished = count >= 2 * groupsPerSecond || coverageClock.elapsed() >= 5500;
-                sufficient = count >= 2 * groupsPerSecond;
-                gaps = coverageGapGroups;
+                received = coverageWindow.received();
+                finished = coverageWindow.complete() || coverageClock.elapsed() >= 5500;
+                sufficient = coverageWindow.healthy();
+                missing = coverageWindow.missing();
                 if (finished) {
                     coverageActive = false;
                     captured = coverage;
@@ -2003,29 +1999,31 @@ struct BrpTuWindow::Impl {
             }
             if (finished) {
                 std::vector<tu::MeasurementResult> measurements;
-                bool allPresent = sufficient && gaps <= 4;
+                bool allPresent = sufficient && !captured.empty();
                 for (const auto& item : captured) {
                     const auto& check = checks[item.check];
                     tu::MeasurementResult m;
                     m.parameterKey = check.addresses[item.channel];
                     m.title = check.channelNames.empty() ? check.title : check.channelNames[item.channel];
-                    m.measured = item.samples.count;
+                    m.measured = item.samples[0].count + item.samples[1].count;
                     m.unit = "отсч.";
-                    m.verdict = sufficient && item.samples.count && item.samples.fillCount < item.samples.count
+                    m.verdict = sufficient && presentInBothWindows(item.samples)
                         ? RunVerdict::Ok : RunVerdict::Fail;
-                    m.message = m.verdict == RunVerdict::Ok ? "Свежие кадры приняты" : "Адрес отсутствует/заполнение";
+                    m.message = !sufficient ? "Не подтверждена свежесть потока M16"
+                        : m.verdict == RunVerdict::Ok ? "Данные приняты в обоих окнах"
+                                                      : "Нет данных или только заполнение в одном из окон";
                     allPresent = allPresent && m.verdict == RunVerdict::Ok;
                     measurements.push_back(std::move(m));
                 }
                 completeStage(allPresent ? RunVerdict::Ok : RunVerdict::Fail,
-                    QStringLiteral("M16: %1 адресных проверок; разрывов %2; %3.")
-                        .arg(measurements.size()).arg(gaps)
+                    QStringLiteral("M16: %1 адресных проверок; принято групп %2, пропущено %3; %4.")
+                        .arg(measurements.size()).arg(received).arg(missing)
                         .arg(allPresent ? QStringLiteral("все присутствуют")
                                         : QStringLiteral("недостаточно свежих кадров")),
                     std::move(measurements));
             } else {
                 setProgress(QStringLiteral("Наблюдение M16: %1 из %2 групп")
-                    .arg(coverageGroups).arg(2 * groupsPerSecond));
+                    .arg(received).arg(M16PresenceWindow::target));
             }
             return;
         }
@@ -2149,9 +2147,7 @@ struct BrpTuWindow::Impl {
             for (std::size_t check = 0; check < checks.size(); ++check)
                 for (std::size_t channel = 0; channel < checks[check].addresses.size(); ++channel)
                     coverage.push_back({check, channel, {}});
-            coverageGroups = 0;
-            coverageGapGroups = 0;
-            coverageLastOrdinal = -1;
+            coverageWindow = {};
             coverageActive = true;
             coverageClock.start();
         }
@@ -2382,15 +2378,13 @@ struct BrpTuWindow::Impl {
     struct CoveragePoint {
         std::size_t check = 0;
         std::size_t channel = 0;
-        CodeRange samples;
+        std::array<CodeRange, 2> samples;
     };
     std::vector<CoveragePoint> coverage;
     std::vector<std::pair<std::size_t, std::size_t>> voltagePoints;
     std::vector<std::optional<double>> pointTargets;
     std::vector<int> digitalExpectations;
-    int coverageGroups = 0;
-    int coverageGapGroups = 0;
-    int coverageLastOrdinal = -1;
+    M16PresenceWindow coverageWindow;
     bool coverageActive = false;
     QElapsedTimer coverageClock;
     QVector<double> minimumTrace, maximumTrace;

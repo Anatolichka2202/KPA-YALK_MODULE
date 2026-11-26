@@ -115,6 +115,28 @@ struct CodeRange {
     bool matches(unsigned expectedMin, unsigned expectedMax) const;
 };
 
+// Два окна по 128 реально принятых групп. Допуск относится к пропущенным
+// позициям потока за всё наблюдение, а не к количеству разрывов.
+class M16PresenceWindow {
+public:
+    static constexpr int groupsPerFrame = 128;
+    static constexpr int target = 2 * groupsPerFrame;
+    static constexpr int missingBudget = 4;
+
+    std::optional<int> observe(int group, int cycle, std::size_t wordCount);
+    int received() const { return received_; }
+    int missing() const { return missing_; }
+    bool complete() const { return received_ == target; }
+    bool healthy() const { return complete() && missing_ <= missingBudget; }
+
+private:
+    int received_ = 0;
+    int missing_ = 0;
+    int previous_ = -1;
+};
+
+bool presentInBothWindows(const std::array<CodeRange, 2>& samples);
+
 struct VoltageComparison {
     double minimumVolts;
     double maximumVolts;
