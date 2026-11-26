@@ -383,7 +383,7 @@ struct BrpTuWindow::Impl {
         interfaceControls->addWidget(counterToCom);
         interfaceLayout->addLayout(interfaceControls);
         QObject::connect(counterToCom, &QCheckBox::toggled, &window, [this](bool checked) {
-            if (port && interfaceMode) port->setVisible(!simulation
+            if (port && interfaceMode) port->setVisible(!this->simulation
                 && (selectedMode() == 0 || (selectedMode() == 3 && checked)));
         });
         yasmCodes = new QLineEdit(interfaceBox);
