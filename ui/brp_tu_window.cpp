@@ -501,6 +501,10 @@ struct BrpTuWindow::Impl {
                 appendLog(QStringLiteral("ББ ПР: ИМИТАЦИЯ запроса выдачи. Аппаратная команда не отправлялась."));
                 return;
             }
+            if (!isdReady) {
+                appendLog(QStringLiteral("ББ ПР: перед выдачей необходимо выполнить адресную подготовку OFF ИСД."));
+                return;
+            }
             bbPrBusy = true;
             bbPrButton->setEnabled(false);
             auto* watcher = new QFutureWatcher<BbPrCommandResult>(&window);
