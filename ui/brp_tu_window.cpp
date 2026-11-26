@@ -1579,10 +1579,15 @@ struct BrpTuWindow::Impl {
                     bars.append({name.isEmpty() ? address : name, channel.value, fresh});
             }
             if (plotEnabled->isChecked()) monitorPlot->setBars(std::move(bars));
-            status->setText(QStringLiteral("%1 · групп %2 · ошибки фраз %3 % · ошибки групп %4 %\n%5")
-                .arg(selectedMode() == 2 ? QStringLiteral("M8") : QStringLiteral("M16"))
-                .arg(snapshot.stats.frames_processed).arg(snapshot.stats.phrase_error_percent)
-                .arg(snapshot.stats.group_error_percent).arg(values.join(QLatin1Char('\n'))));
+            // M16 getErrors() exposes raw counters, not percentages;
+            // M8 returns percentages. Never label a raw count as e.g. 112 %.
+            const bool m8 = selectedMode() == 2;
+            const auto heading = m8
+                ? QStringLiteral("M8 · групп %1 · ошибки фраз %2 %% · ошибки групп %3 %%")
+                : QStringLiteral("M16 · групп %1 · счётчики ошибок: фразы %2, группы %3");
+            status->setText(heading.arg(snapshot.stats.frames_processed)
+                .arg(snapshot.stats.phrase_error_percent).arg(snapshot.stats.group_error_percent)
+                + QLatin1Char('\n') + values.join(QLatin1Char('\n')));
             return;
         }
 
