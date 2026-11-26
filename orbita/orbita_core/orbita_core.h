@@ -31,7 +31,7 @@ public:
 
     // Единственный вход raw samples. Владение физическим sample source находится
     // выше, на уровне Station/integration.
-    void pushSamples(const std::vector<int16_t>& samples) { pushToQueue(samples); }
+    void pushSamples(std::vector<int16_t> samples) { pushToQueue(std::move(samples)); }
 
     // Каналы (горячая замена)
     void setChannels(const std::vector<ChannelSpec>& specs);
@@ -120,7 +120,10 @@ private:
     std::mutex   callback_mutex_;
 
     // Приватные методы
-    void pushToQueue(const std::vector<int16_t>& samples);
+    void pushToQueue(std::vector<int16_t>&& samples);
+    void publishDecoderStats();
+    mutable std::mutex decoderStatsMutex_;
+    Stats decoderStats_{};
     void decoderLoop();
     void onDecoderGroup(const std::vector<uint16_t>& group12, int groupNum, int ciklNum);
 

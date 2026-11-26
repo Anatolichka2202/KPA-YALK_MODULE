@@ -4,7 +4,7 @@ e2010:
   # В ACPUnit.pas таблица каналов остаётся нулевой (вход 0).
   channel: 0
   sample_rate_khz: 10000
-  buffer_words: 1048576
+  buffer_words: 262144
 
 # Адресные OFF и пауза взяты из isd_startup_baseline в tu-minimal-clean.
 isd:

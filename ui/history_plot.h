@@ -7,6 +7,7 @@
 #include <QWidget>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <functional>
 #include <optional>
@@ -242,19 +243,55 @@ protected:
                            Qt::AlignCenter, QString::number(second, 'f', 1) + QStringLiteral(" c"));
             }
             QPainterPath curve;
-            bool started = false;
-            double previous = 0.0;
-            for (const auto& point : trend.points) {
+            curve.reserve(int(area.width()) * 4);
+            bool connected = false;
+            double previousTime = 0.0;
+            int column = -1;
+            qsizetype first = -1, minimum = -1, maximum = -1, last = -1;
+            const auto xFor = [&](double second) {
+                return area.left() + (second - left) * area.width() / window;
+            };
+            const auto flushColumn = [&] {
+                if (first < 0) return;
+                // Рисуем границы и экстремумы пикселя в порядке отсчётов.
+                // Так короткий пик не исчезает, а график не меняет направление времени.
+                std::array indices{first, minimum, maximum, last};
+                std::sort(indices.begin(), indices.end());
+                qsizetype lastDrawn = -1;
+                for (const auto index : indices) {
+                    if (index == lastDrawn) continue;
+                    const auto& point = trend.points[index];
+                    const QPointF position(xFor(point.x()), ordinate(point.y()));
+                    if (connected) curve.lineTo(position);
+                    else curve.moveTo(position);
+                    connected = true;
+                    lastDrawn = index;
+                }
+                first = -1;
+            };
+            for (qsizetype i = 0; i < trend.points.size(); ++i) {
+                const auto& point = trend.points[i];
                 if (point.x() < left || point.x() > right) continue;
-                if (!std::isfinite(point.y())) { started = false; continue; }
-                const double x = area.left() + (point.x() - left) * area.width() / window;
-                const QPointF mapped(x, ordinate(point.y()));
-                // A missing block is a gap, not a zero or an interpolated signal.
-                if (!started || point.x() - previous > 0.5) curve.moveTo(mapped);
-                else curve.lineTo(mapped);
-                previous = point.x();
-                started = true;
+                const bool valid = std::isfinite(point.y());
+                const bool gap = first >= 0 && point.x() - previousTime > 0.5;
+                if (!valid || gap) {
+                    flushColumn();
+                    connected = false;
+                    if (!valid) continue;
+                }
+                const int nextColumn = int(xFor(point.x()) - area.left());
+                if (nextColumn != column) flushColumn();
+                if (first < 0) {
+                    first = minimum = maximum = i;
+                    column = nextColumn;
+                } else {
+                    if (point.y() < trend.points[minimum].y()) minimum = i;
+                    if (point.y() > trend.points[maximum].y()) maximum = i;
+                }
+                last = i;
+                previousTime = point.x();
             }
+            flushColumn();
             p.save();
             p.setClipRect(area.adjusted(1, 1, -1, -1));
             p.setPen(QPen(palette::cyan, 1.6));

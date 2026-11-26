@@ -151,7 +151,11 @@ void Context::start() {
     }
     bitFifo_.reset();
     recoverer_.reset();
-    { std::lock_guard<std::recursive_mutex> lock(decoder_mutex_); decoder_->reset(); }
+    {
+        std::lock_guard<std::recursive_mutex> lock(decoder_mutex_);
+        decoder_->reset();
+        publishDecoderStats();
+    }
     {
         std::lock_guard<std::mutex> lock(values_mutex_);
         std::fill(values_.begin(), values_.end(), 0.0);
@@ -244,10 +248,10 @@ bool Context::isRecording() const {
 // ------------------------------------------------------------------
 //  Очередь отсчётов
 // ------------------------------------------------------------------
-void Context::pushToQueue(const std::vector<int16_t>& samples) {
+void Context::pushToQueue(std::vector<int16_t>&& samples) {
     std::lock_guard<std::mutex> lock(queue_mutex_);
     if (stop_worker_) return;
-    sample_queue_.push(samples);
+    sample_queue_.push(std::move(samples));
     ++queued_count_;
     queue_cv_.notify_one();
 }
@@ -278,6 +282,7 @@ void Context::decoderLoop() {
             std::lock_guard<std::recursive_mutex> lock(decoder_mutex_);
             m8Decoder_->appendSamples(samples, invert_signal_.load());
             decoder_->process();
+            publishDecoderStats();
         } else {
             const bool inverted = invert_signal_.load();
             if (inverted != m16Inverted) {
@@ -295,6 +300,7 @@ void Context::decoderLoop() {
             recoverer_.processSamples(samples.data(), samples.size());
             std::lock_guard<std::recursive_mutex> lock(decoder_mutex_);
             decoder_->process();
+            publishDecoderStats();
         }
 
         samples_processed_ += samples.size();
@@ -309,6 +315,7 @@ void Context::decoderLoop() {
         recoverer_.flush();
         std::lock_guard<std::recursive_mutex> lock(decoder_mutex_);
         decoder_->process();
+        publishDecoderStats();
     }
     LOG_INFO("Decoder thread finished. Total: %llu samples",
              (unsigned long long)samples_processed_.load());
@@ -402,6 +409,7 @@ void Context::onDecoderGroup(const std::vector<uint16_t>& group12,
     }
     if (groupCb) groupCb(group12, groupNum, ciklNum);
     if (cb) {
+        publishDecoderStats(); // Вызывается из process() под блокировкой декодера.
         if (!haveValues) { /* МТВ-only снапшот */ }
         pushSnap.mtv_seconds = getCurrentTimeSeconds();
         pushSnap.stats       = getStats();
@@ -455,8 +463,7 @@ std::optional<double> Context::getValueByAddress(const std::string& address) con
     return values_[it->second];
 }
 
-Stats Context::getStats() const {
-    std::lock_guard<std::recursive_mutex> lock(decoder_mutex_);
+void Context::publishDecoderStats() {
     Stats s;
     if (decoder_) {
         int pe = 0, ge = 0;
@@ -464,6 +471,17 @@ Stats Context::getStats() const {
         s.phrase_error_percent = pe;
         s.group_error_percent  = ge;
         s.frames_processed     = static_cast<uint64_t>(decoder_->getTotalGroups());
+    }
+    std::lock_guard<std::mutex> lock(decoderStatsMutex_);
+    decoderStats_ = s;
+}
+
+Stats Context::getStats() const {
+    Stats s;
+    {
+        // GUI читает опубликованный срез и не ждёт обработки блока АЦП.
+        std::lock_guard<std::mutex> lock(decoderStatsMutex_);
+        s = decoderStats_;
     }
     double secs = std::chrono::duration<double>(
                       std::chrono::steady_clock::now() - start_time_).count();

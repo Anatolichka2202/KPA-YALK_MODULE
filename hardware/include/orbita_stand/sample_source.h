@@ -14,7 +14,7 @@ namespace orbita::stand {
 // потока и не должна знать, E20-10 это, replay-файл или другой АЦП.
 class ISampleSource {
 public:
-    using SamplesCallback = std::function<void(const std::vector<int16_t>&)>;
+    using SamplesCallback = std::function<void(std::vector<int16_t>)>;
     using ErrorCallback = std::function<void(const std::string&)>;
 
     virtual ~ISampleSource() = default;

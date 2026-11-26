@@ -29,9 +29,9 @@ bool OrbitaSampleBridge::start()
         lastError_.clear();
     }
 
-    source_.setSamplesCallback([this](const std::vector<int16_t>& samples) {
+    source_.setSamplesCallback([this](std::vector<int16_t> samples) {
         try {
-            decoder_.pushSamples(samples);
+            decoder_.pushSamples(std::move(samples));
         } catch (const std::exception& error) {
             recordError(std::string("Orbita sample delivery failed: ") + error.what());
         } catch (...) {

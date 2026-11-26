@@ -50,6 +50,7 @@ Orbita::Orbita(Orbita&&) noexcept = default;
 Orbita& Orbita::operator=(Orbita&&) noexcept = default;
 
 void Orbita::pushSamples(const std::vector<int16_t>& samples) { ctx_->pushSamples(samples); }
+void Orbita::pushSamples(std::vector<int16_t>&& samples) { ctx_->pushSamples(std::move(samples)); }
 
 void Orbita::setChannels(const std::vector<ChannelSpec>& specs) { ctx_->setChannels(specs); }
 std::vector<ChannelSpec> Orbita::getChannels() const { return ctx_->getChannels(); }
