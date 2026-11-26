@@ -265,8 +265,11 @@ void testScenarioAndReport()
     require(waitUntil([&] { return measure->isVisible(); }), "scenario did not reach operator confirmation");
     auto* interfaceStage = window.findChild<QLabel*>("tuRequirementStatus_yasm");
     auto* isdStage = window.findChild<QLabel*>("tuRequirementStatus_isd_off");
-    require(interfaceStage && isdStage && interfaceStage->text() == QStringLiteral("НОРМА")
-        && isdStage->text() == QStringLiteral("НОРМА"), "interface or preparation stage is wrong");
+    auto* coverage = window.findChild<QLabel*>("tuRequirementStatus_m16_coverage");
+    require(interfaceStage && isdStage && coverage && interfaceStage->text() == QStringLiteral("НОРМА")
+        && isdStage->text() == QStringLiteral("НОРМА")
+        && coverage->text() == QStringLiteral("НОРМА"),
+        "interface, ISD preparation or M16 coverage stage is wrong");
     require(window.findChild<QLabel*>("brpStageHeading")->text() == QStringLiteral("M16P1A10B60C11T01"),
         "active stage is missing its address");
 
@@ -281,8 +284,9 @@ void testScenarioAndReport()
 
     const auto completeHtml = exportReport();
     const auto base = completeHtml.chopped(5);
-    require(rows->rowCount() == 5 && stageResult(2) == QStringLiteral("НОРМА")
-        && stageResult(3) == QStringLiteral("НОРМА · ПРИНУД.") && stageResult(4) == QStringLiteral("НОРМА"),
+    require(rows->rowCount() == 6 && stageResult(2) == QStringLiteral("НОРМА")
+        && stageResult(3) == QStringLiteral("НОРМА")
+        && stageResult(4) == QStringLiteral("НОРМА · ПРИНУД.") && stageResult(5) == QStringLiteral("НОРМА"),
         "report summary did not preserve the forced verdict");
     const auto runId = QFileInfo(completeHtml).completeBaseName().mid(3); // TU_<run-id>.html
     const auto checkpoint = readText(reports.path() + QStringLiteral("/runs/") + runId + QStringLiteral(".json"));
