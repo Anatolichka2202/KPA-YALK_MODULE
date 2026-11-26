@@ -301,12 +301,25 @@ void testScenarioAndReport()
                 "scenario did not reach the next multi-point measurement");
         measure->click();
     }
+    // Discrete inputs are checked in states 0 and 1, with manual switching
+    // when no verified ISD route has been configured for the physical input.
+    auto* continueStage = window.findChild<QPushButton*>("brpContinueStage");
+    require(continueStage != nullptr, "operator continue control missing");
+    for (int signalPoint = 0; signalPoint < 16; ++signalPoint) {
+        require(waitUntil([&] { return measure->isVisible(); }, 12000),
+                "scenario did not offer a discrete input state confirmation");
+        measure->click();
+        require(waitUntil([&] {
+            return continueStage->isVisible() || measure->isVisible() || name->isVisible();
+        }, 12000), "discrete input check did not settle");
+        if (continueStage->isVisible()) continueStage->click();
+    }
     require(waitUntil([&] { return name->isVisible(); }, 12000),
-            "scenario did not finish after all multi-point measurements");
+            "scenario did not finish after discrete checks");
 
     const auto completeHtml = exportReport();
     const auto base = completeHtml.chopped(5);
-    require(rows->rowCount() == 18 && stageResult(2) == QStringLiteral("НОРМА")
+    require(rows->rowCount() == 34 && stageResult(2) == QStringLiteral("НОРМА")
         && stageResult(3) == QStringLiteral("НЕПОЛНАЯ")
         && stageResult(4) == QStringLiteral("НОРМА · ПРИНУД.")
         && stageResult(5) == QStringLiteral("НЕПОЛНАЯ"),
