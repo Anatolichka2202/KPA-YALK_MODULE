@@ -244,6 +244,8 @@ struct BrpTuWindow::Impl {
         QObject::connect(flow, &TuFlowWidget::startRequested, &window,
             [this](const QString& serial) { startScenario(serial); });
         QObject::connect(page, &TestPage::pointReady, &window, [this] { measureStage(); });
+        QObject::connect(page, &TestPage::bbPrSignalRequested, &window,
+            [this] { triggerBbPr(); });
         QObject::connect(page, &TestPage::skipCurrentStepRequested, &window, [this] {
             if (currentStage < 2 || pendingDecision || forcedOkActive) return;
             forcedOkActive = true;
@@ -496,28 +498,8 @@ struct BrpTuWindow::Impl {
         bbPrButton = new QPushButton(QStringLiteral("ББ ПР · выдать сигнал"), interfaceBox);
         bbPrButton->setObjectName(QStringLiteral("brpIssueBbPr"));
         bbPrButton->setToolTip(QStringLiteral("Выдача через заданный в профиле контакт ИСД; без карты контакта команда не отправляется."));
-        QObject::connect(bbPrButton, &QPushButton::clicked, &window, [this] {
-            if (bbPrBusy || currentStage >= 0 || bridge || preparingIsd || probing) return;
-            if (this->simulation) {
-                appendLog(QStringLiteral("ББ ПР: ИМИТАЦИЯ запроса выдачи. Аппаратная команда не отправлялась."));
-                return;
-            }
-            if (!isdReady) {
-                appendLog(QStringLiteral("ББ ПР: перед выдачей необходимо выполнить адресную подготовку OFF ИСД."));
-                return;
-            }
-            bbPrBusy = true;
-            bbPrButton->setEnabled(false);
-            auto* watcher = new QFutureWatcher<BbPrCommandResult>(&this->window);
-            QObject::connect(watcher, &QFutureWatcherBase::finished, &this->window, [this, watcher] {
-                const auto reply = watcher->result();
-                watcher->deleteLater();
-                bbPrBusy = false;
-                bbPrButton->setEnabled(true);
-                appendLog(reply.message);
-            });
-            watcher->setFuture(QtConcurrent::run(issueBbPrPulse, root));
-        });
+        QObject::connect(bbPrButton, &QPushButton::clicked, &window,
+            [this] { triggerBbPr(); });
         interfaceActions->addWidget(bbPrButton);
         interfaceActions->addWidget(start);
         interfaceActions->addWidget(stop);
@@ -952,6 +934,34 @@ struct BrpTuWindow::Impl {
         if (log) log->appendPlainText(message);
     }
 
+    void triggerBbPr()
+    {
+        if (bbPrBusy || preparingIsd || probing || pointActive || meterBusy || coverageActive
+            || reading || (currentStage >= 0 && currentStage < 3)
+            || (currentStage < 0 && bridge)) return;
+        if (simulation) {
+            appendLog(QStringLiteral("ББ ПР: ИМИТАЦИЯ запроса выдачи. Аппаратная команда не отправлялась."));
+            return;
+        }
+        if (!isdReady) {
+            appendLog(QStringLiteral("ББ ПР: сначала выполните адресную подготовку OFF ИСД."));
+            return;
+        }
+        bbPrBusy = true;
+        if (bbPrButton) bbPrButton->setEnabled(false);
+        updateScenario();
+        auto* watcher = new QFutureWatcher<BbPrCommandResult>(&window);
+        QObject::connect(watcher, &QFutureWatcherBase::finished, &window, [this, watcher] {
+            const auto reply = watcher->result();
+            watcher->deleteLater();
+            bbPrBusy = false;
+            if (bbPrButton) bbPrButton->setEnabled(true);
+            appendLog(reply.message);
+            updateScenario();
+        });
+        watcher->setFuture(QtConcurrent::run(issueBbPrPulse, root));
+    }
+
     int selectedMode() const
     {
         return interfaceMode ? interfaceMode->currentIndex() : 0;
@@ -1110,6 +1120,10 @@ struct BrpTuWindow::Impl {
 
     void updateScenario()
     {
+        const bool canPulse = currentStage >= 3 && (simulation || isdReady)
+            && !bbPrBusy && !pointActive && !meterBusy && !coverageActive && !reading
+            && !preparingIsd && !probing;
+        page->setBbPrSignalAvailable(canPulse);
         if (currentStage >= 0)
             page->setProgress(stageProgress, pointCanStart(),
                 currentStage >= 2 && !pendingDecision && !forcedOkActive);
