@@ -1935,12 +1935,12 @@ struct BrpTuWindow::Impl {
                     oldSource.reset();
                 }));
         }
-        yasm.reset();
         pointActive = false;
         ++pointId;
         ++interfaceSessionId;
         {
             std::lock_guard<std::mutex> lock(dataMutex);
+            yasm.reset(); // consume() accesses this field from the decoder thread.
             reading = gatePassed = false;
             observeCounter = false;
             coverageActive = false;
