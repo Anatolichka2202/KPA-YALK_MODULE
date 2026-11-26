@@ -40,6 +40,7 @@ public:
     // Жизненный цикл декодера
     void start();
     void stop();
+    void stopDiscardPending();
     void pause();
     void resume();
     bool isRunning() const { return is_running_.load(); }
