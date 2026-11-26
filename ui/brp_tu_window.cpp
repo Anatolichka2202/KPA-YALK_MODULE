@@ -54,11 +54,14 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
+#include <deque>
 #include <cmath>
 #include <mutex>
 #include <limits>
 #include <stdexcept>
 #include <thread>
+#include <unordered_map>
 
 namespace {
 using namespace miltech::brp;
@@ -463,7 +466,8 @@ struct BrpTuWindow::Impl {
         interfaceLayout->addWidget(profileBar);
         profileBar->hide();
         profiles.addToActive({{"M16P1A10B60C11T01", "ББ СУ", "ЯГР1"},
-                              {"M16P1A10B60C21T01", "ББ ПР", "ЯГР1"}});
+                              {"M16P1A10B60C21T01", "ББ ПР", "ЯГР1"},
+                              {"M16P1A10B60C31T01", "Ептм", "ЯГР2"}});
         if (simulation)
             profiles.addToActive({{"M08A10T01", {}, {}}, {"M08A20T01", {}, {}}});
         refreshProfiles();
@@ -503,6 +507,17 @@ struct BrpTuWindow::Impl {
         plotEnabled->setObjectName(QStringLiteral("brpMonitorGraphToggle"));
         plotEnabled->setChecked(true); // Show live columns by default.
         plotEnabled->hide();
+        plotView = new QComboBox(interfaceBox);
+        plotView->setObjectName(QStringLiteral("brpMonitorPlotView"));
+        plotView->addItems({QStringLiteral("Столбцы"), QStringLiteral("Тренд")});
+        plotView->setToolTip(QStringLiteral("Тренд показывает сырые коды из кадров по времени, без сглаживания."));
+        plotView->hide();
+        trendChannel = new QComboBox(interfaceBox);
+        trendChannel->setObjectName(QStringLiteral("brpMonitorTrendChannel"));
+        trendChannel->setMinimumContentsLength(10);
+        trendChannel->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+        trendChannel->setToolTip(QStringLiteral("Канал тренда: фактические коды из liborbita, без фильтрации."));
+        trendChannel->hide();
         auto* interfaceActions = new QHBoxLayout;
         auto* monitorButton = new QPushButton(QStringLiteral("Монитор Орбиты"), interfaceBox);
         QObject::connect(monitorButton, &QPushButton::clicked, interfaceMode, [this] {
@@ -518,8 +533,19 @@ struct BrpTuWindow::Impl {
         interfaceActions->addWidget(start);
         interfaceActions->addWidget(stop);
         interfaceActions->addWidget(plotEnabled);
+        interfaceActions->addWidget(plotView);
+        interfaceActions->addWidget(trendChannel);
         interfaceActions->addStretch();
         interfaceLayout->addLayout(interfaceActions);
+        QObject::connect(plotView, &QComboBox::currentIndexChanged, &window, [this](int index) {
+            if (trendChannel) trendChannel->setVisible(selectedMode() >= 2
+                && plotEnabled->isChecked() && index == 1 && !monitorCounterActive);
+        });
+        QObject::connect(plotEnabled, &QCheckBox::toggled, &window, [this](bool checked) {
+            if (plotView) plotView->setVisible(selectedMode() >= 2 && checked && !monitorCounterActive);
+            if (trendChannel) trendChannel->setVisible(selectedMode() >= 2 && checked
+                && plotView->currentIndex() == 1 && !monitorCounterActive);
+        });
         QObject::connect(yasmCodes, &QLineEdit::textEdited, &window, [this] { yasmFixture.clear(); });
         QObject::connect(yasmFile, &QPushButton::clicked, &window, [this] {
             const auto path = QFileDialog::getOpenFileName(&this->window, QStringLiteral("Тест ЯСМ"),
@@ -577,6 +603,9 @@ struct BrpTuWindow::Impl {
             m8Invert->setVisible(index == 2);
             profileBar->setVisible(index >= 2);
             plotEnabled->setVisible(index >= 2);
+            plotView->setVisible(index >= 2 && plotEnabled->isChecked());
+            trendChannel->setVisible(index >= 2 && plotEnabled->isChecked()
+                && plotView->currentIndex() == 1 && !counterToCom->isChecked());
             monitorPlot->setVisible(index >= 2 && plotEnabled->isChecked());
             if (index >= 2 && plotEnabled->isChecked()) columns->setAlignment(interfaceBox, Qt::Alignment{});
 
@@ -2101,6 +2130,7 @@ struct BrpTuWindow::Impl {
     QWidget* profileBar = nullptr;
     QComboBox* profileCombo = nullptr;
     QCheckBox *combineProfiles = nullptr, *plotEnabled = nullptr, *counterToCom = nullptr;
+    QComboBox *plotView = nullptr, *trendChannel = nullptr;
     brp::ui::HistoryPlot* monitorPlot = nullptr;
     QHash<QString, QVector<double>> monitorHistory;
     std::vector<FrameCheck> checks;
@@ -2129,6 +2159,11 @@ struct BrpTuWindow::Impl {
     bool closeWhenStopped = false;
     bool finalizeAfterStop = false;
     std::mutex dataMutex;
+    // Decoder callback writes bounded raw time-series; Qt reads at its own rate.
+    std::mutex trendMutex;
+    std::unordered_map<std::string, std::deque<QPointF>> trendSamples;
+    std::unordered_map<std::string, std::chrono::steady_clock::time_point> trendLastUpdate;
+    std::chrono::steady_clock::time_point trendOrigin{};
     CounterCheck counter;
     std::optional<YasmCheck> yasm;
     std::vector<uint16_t> yasmFixture;
