@@ -258,7 +258,8 @@ void Context::pushToQueue(const std::vector<int16_t>& samples) {
 //  Декодерный поток
 // ------------------------------------------------------------------
 void Context::decoderLoop() {
-    bool threshold_computed = false;
+    bool m16Inverted = invert_signal_.load();
+    recoverer_.setPolarity(m16Inverted ? BitstreamRecoverer::INVERTED : BitstreamRecoverer::NORMAL);
     LOG_INFO("Decoder thread started");
 
     while (true) {
@@ -280,10 +281,19 @@ void Context::decoderLoop() {
             m8Decoder_->appendSamples(samples, invert_signal_.load());
             decoder_->process();
         } else {
-            if (!threshold_computed && samples.size() >= 100000) {
-                recoverer_.computeThreshold(samples.data(), samples.size(), 100000);
-                threshold_computed = true;
+            const bool inverted = invert_signal_.load();
+            if (inverted != m16Inverted) {
+                m16Inverted = inverted;
+                std::lock_guard<std::recursive_mutex> lock(decoder_mutex_);
+                bitFifo_.reset();
+                recoverer_.reset();
+                recoverer_.setPolarity(inverted ? BitstreamRecoverer::INVERTED : BitstreamRecoverer::NORMAL);
+                decoder_->reset();
             }
+            // В ACPUnit.pas порог обновляется по каждому большому буферу
+            // АЦП. Ровный начальный блок не задаёт порог на весь сеанс.
+            if (!recoverer_.isThresholdComputed() || samples.size() >= 100000)
+                recoverer_.computeThreshold(samples.data(), samples.size(), 100000);
             recoverer_.processSamples(samples.data(), samples.size());
             std::lock_guard<std::recursive_mutex> lock(decoder_mutex_);
             decoder_->process();

@@ -1888,9 +1888,12 @@ struct BrpTuWindow::Impl {
                     .arg(validated ? QStringLiteral("два периода 0–1023 ПОДТВЕРЖДЕНЫ")
                                    : QStringLiteral("пока не подтверждено"));
             }
+            const auto syncStatus = !m8 && snapshot.stats.frames_processed == 0 && gateClock.elapsed() >= 1500
+                ? QStringLiteral("\nСинхронизация M16 не найдена. Проверьте сигнал на выбранном входе Е20-10 и полярность.")
+                : QString();
             status->setText(heading.arg(snapshot.stats.frames_processed)
                 .arg(snapshot.stats.phrase_error_percent).arg(snapshot.stats.group_error_percent)
-                + counterStatus + QLatin1Char('\n') + values.join(QLatin1Char('\n')));
+                + syncStatus + counterStatus + QLatin1Char('\n') + values.join(QLatin1Char('\n')));
             return;
         }
 

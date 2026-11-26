@@ -18,6 +18,7 @@ public:
     void computeThreshold(const int16_t* samples, size_t count, size_t portion_samples = 0);
     // Принудительная установка порога
     void setThreshold(int threshold);
+    void setPolarity(Polarity polarity) { polarity_ = polarity; }
     // Обработать один отсчёт АЦП
     void processSample(int16_t sample);
     // Обработать массив отсчётов

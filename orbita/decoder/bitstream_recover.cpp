@@ -48,7 +48,8 @@ void BitstreamRecoverer::computeThreshold(const int16_t* samples, size_t count, 
         if (samples[i] < minVal) minVal = samples[i];
         if (samples[i] > maxVal) maxVal = samples[i];
     }
-    threshold_ = (static_cast<int>(minVal) + static_cast<int>(maxVal)) / 2;
+    if (minVal == maxVal) return;
+    threshold_ = static_cast<int>(minVal) + (static_cast<int>(maxVal) - minVal + 1) / 2;
     threshold_computed_ = true;
     LOG_DEBUG("[BitstreamRecoverer] Threshold computed: %d (min=%d, max=%d)",
               threshold_, (int)minVal, (int)maxVal);

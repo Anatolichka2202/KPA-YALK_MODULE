@@ -209,6 +209,28 @@ int main(int argc, char** argv)
                 "Eptm raw code mismatches a constant M16 fixture");
         require(eptmSamples >= 12 && eptmMinimum == 512 && eptmMaximum == 512,
                 "M16 Eptm callback introduced spurious variation in a constant input");
+
+        auto invertedSource = miltech::integration::createOrbitaSampleSimulator(simulatedWord);
+        require(invertedSource->open(), "could not open inverted M16 simulator");
+        orbita::Orbita invertedDecoder;
+        invertedDecoder.setChannels({{eptmAddress, {}, {}}});
+        invertedDecoder.setInvertSignal(true);
+        invertedSource->setSamplesCallback([&](const std::vector<int16_t>& samples) {
+            auto reversed = samples;
+            for (auto& sample : reversed) sample = -sample;
+            invertedDecoder.pushSamples(reversed);
+        });
+        invertedDecoder.start();
+        invertedDecoder.pushSamples(std::vector<int16_t>(100000, 12000));
+        require(invertedSource->start(), "could not start inverted M16 simulator");
+        const auto invertedDeadline = std::chrono::steady_clock::now() + 6s;
+        while (!invertedDecoder.getValueByAddress(eptmAddress)
+               && std::chrono::steady_clock::now() < invertedDeadline)
+            std::this_thread::sleep_for(10ms);
+        invertedSource->stop();
+        invertedDecoder.stop();
+        require(invertedDecoder.getValueByAddress(eptmAddress) == 512,
+                "M16 did not recover inverted telemetry after a flat start");
         return 0;
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
