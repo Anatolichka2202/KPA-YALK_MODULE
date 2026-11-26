@@ -24,7 +24,8 @@ public:
     void setStage(int index, const QString& title, const QString& graphTitle,
                   const QString& unit = {}, const QString& first = {}, const QString& second = {});
     void setStageResult(int index, const tu::StepRunResult& result);
-    void setProgress(const QString& detail, bool pointCanStart);
+    void setProgress(const QString& detail, bool pointCanStart, bool canForceOk = false);
+    void setRetryAvailable(bool available);
     void setSeries(const QVector<double>& first, const QVector<double>& second = {});
     void setVoltage(const QString& before, const QString& after, const QString& error);
     void appendRunEvent(const tu::RunEvent& event);
@@ -32,7 +33,9 @@ public:
 
 signals:
     void stopRequested();
-    void skipCurrentStepRequested();
+    void skipCurrentStepRequested(); // Ctrl+Shift+Q now requests verdict override, not a skip.
+    void retryStageRequested();
+    void continueStageRequested();
     void pointReady();
 
 private:
