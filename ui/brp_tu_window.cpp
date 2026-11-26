@@ -211,10 +211,12 @@ Readiness probeStand(const QDir& root, const YAML::Node& profile, const QString&
         tu::hardware::AkipConfig config;
         config.portName = supply["port"].as<std::string>();
         config.expectedIdentity = supply["expected_idn"].as<std::string>();
-        if (rs485.compare(QString::fromStdString(config.portName), Qt::CaseInsensitive) == 0)
-            throw std::runtime_error("АКИП и RS-485 требуют разных COM-портов.");
-        tu::hardware::Akip1160 instrument(config);
-        instrument.probe();
+        if (!config.portName.empty()) {
+            if (rs485.compare(QString::fromStdString(config.portName), Qt::CaseInsensitive) == 0)
+                throw std::runtime_error("АКИП и RS-485 требуют разных COM-портов.");
+            tu::hardware::Akip1160 instrument(config);
+            instrument.probe();
+        }
     } catch (const std::exception& exception) {
         result[2] = QString::fromUtf8(exception.what());
     }
@@ -365,6 +367,13 @@ struct BrpTuWindow::Impl {
         port->lineEdit()->setPlaceholderText(QStringLiteral("COM-порт RS-485"));
         for (const auto& entry : QSerialPortInfo::availablePorts()) port->addItem(entry.portName());
         port->setCurrentIndex(-1);
+        if (!simulation) {
+            try {
+                port->setEditText(QString::fromStdString(loadStand(root)["rs485"]["port"].as<std::string>("")));
+            } catch (const std::exception& error) {
+                port->setToolTip(QString::fromUtf8(error.what()));
+            }
+        }
         port->setVisible(!simulation);
         counterToCom = new QCheckBox(QStringLiteral("Счётчик RS-485 → COM"), interfaceBox);
         counterToCom->setObjectName(QStringLiteral("brpMonitorCounterToCom"));
@@ -380,6 +389,20 @@ struct BrpTuWindow::Impl {
         stop->setEnabled(false);
         interfaceControls->addWidget(interfaceMode, 1);
         interfaceControls->addWidget(port, 1);
+        adcChannel = new QComboBox(interfaceBox);
+        adcChannel->setToolTip(QStringLiteral("Вход Е20-10, на который подан сигнал Орбиты"));
+        for (int input = 0; input < 4; ++input)
+            adcChannel->addItem(QStringLiteral("Е20-10 · вход %1").arg(input), input);
+        if (!simulation) {
+            try {
+                const auto input = loadStand(root)["e2010"]["channel"].as<int>();
+                adcChannel->setCurrentIndex(adcChannel->findData(input));
+            } catch (const std::exception& error) {
+                adcChannel->setToolTip(QString::fromUtf8(error.what()));
+            }
+        }
+        adcChannel->setVisible(!simulation);
+        interfaceControls->addWidget(adcChannel);
         interfaceControls->addWidget(counterToCom);
         interfaceLayout->addLayout(interfaceControls);
         QObject::connect(counterToCom, &QCheckBox::toggled, &window, [this](bool checked) {
@@ -553,7 +576,7 @@ struct BrpTuWindow::Impl {
         interfaceLayout->addWidget(graph, 1);
         monitorPlot = new brp::ui::HistoryPlot(interfaceBox);
         monitorPlot->setObjectName(QStringLiteral("brpMonitorPlot"));
-        monitorPlot->configure(QStringLiteral("Коды M16 / M8 · текущие значения по адресам"), QStringLiteral("код"), {});
+        monitorPlot->configure(QStringLiteral("Коды Орбиты · последние 200 обновлений"), QStringLiteral("код"), {});
         monitorPlot->setMinimumHeight(240);
         monitorPlot->hide();
         interfaceLayout->addWidget(monitorPlot, 1);
@@ -574,7 +597,7 @@ struct BrpTuWindow::Impl {
                                                          : QStringLiteral("Адреса M16… через пробел"));
                 showProfileAddresses();
             }
-            m8Invert->setVisible(index == 2);
+            m8Invert->setVisible(index >= 2);
             profileBar->setVisible(index >= 2);
             plotEnabled->setVisible(index >= 2);
             monitorPlot->setVisible(index >= 2 && plotEnabled->isChecked());
@@ -1444,7 +1467,10 @@ struct BrpTuWindow::Impl {
                 if (!config["e2010"].IsMap())
                     throw std::runtime_error("Неверная схема профиля E20-10");
                 if (monitor) sampleRate = config["e2010"]["sample_rate_khz"].as<double>() * 1000;
-                source = createE2010SampleSource(config["e2010"].as<std::map<std::string, std::string>>());
+                auto adcConfig = config["e2010"].as<std::map<std::string, std::string>>();
+                if (currentStage < 0 && adcChannel && adcChannel->currentIndex() >= 0)
+                    adcConfig["channel"] = std::to_string(adcChannel->currentData().toInt());
+                source = createE2010SampleSource(adcConfig);
             }
 
             // Состояние обнуляется до подключения callback. Перед любым следующим
@@ -1473,20 +1499,32 @@ struct BrpTuWindow::Impl {
                 if (decoder->getChannels().size() != channels.size())
                     throw std::invalid_argument("В профилях есть адреса за пределами кадра");
                 activeMonitorNames.clear();
+                monitorAnalog.clear();
+                monitorOrdinal = -1;
+                if (!m8Mode) {
+                    for (const auto& spec : channels) {
+                        for (const auto& check : checks) {
+                            if (!check.scale) continue;
+                            const auto found = std::find(check.addresses.begin(), check.addresses.end(), spec.address);
+                            if (found == check.addresses.end()) continue;
+                            const auto index = static_cast<std::size_t>(found - check.addresses.begin());
+                            monitorAnalog.insert(QString::fromStdString(spec.address), {check.layouts[index], check.shifts[index]});
+                        }
+                    }
+                }
                 monitorHistory.clear();
                 monitorPlot->clear();
-                monitorPlot->setFixedRange(monitorCounter ? 0.0 : 0.0,
-                                           monitorCounter ? 1023.0 : 0.0);
+                const bool tenBitOnly = static_cast<std::size_t>(monitorAnalog.size()) == channels.size();
+                monitorPlot->setFixedRange(0.0, monitorCounter || tenBitOnly ? 1023.0 : 0.0);
                 monitorPlot->configure(monitorCounter
                     ? QStringLiteral("Счётчик RS-485 · полученные коды 0–1023")
-                    : QStringLiteral("Коды M16 / M8 · текущие значения по адресам"),
+                    : QStringLiteral("Коды Орбиты · последние 200 обновлений"),
                     QStringLiteral("код"), {});
                 for (const auto& spec : channels)
                     activeMonitorNames.insert(QString::fromStdString(spec.address), QString::fromStdString(spec.name));
-                if (m8Mode) decoder->setInvertSignal(m8Invert->isChecked());
-                if (monitorCounter) {
-                    // This callback validates the return path M16 independently
-                    // from the channels displayed as histogram columns.
+                decoder->setInvertSignal(m8Invert->isChecked());
+                if (!m8Mode) {
+                    // Счётчик и аналоговые каналы используют один поток групп M16.
                     decoder->setGroupCallback([this](const auto& words, int group, int cycle) {
                         consume(words, group, cycle);
                     });
@@ -1502,6 +1540,7 @@ struct BrpTuWindow::Impl {
             if (start) start->setEnabled(false);
             if (stop) stop->setEnabled(true);
             if (port) port->setEnabled(false);
+            if (adcChannel) adcChannel->setEnabled(false);
             if (counterToCom) counterToCom->setEnabled(false);
             if (interfaceMode) interfaceMode->setEnabled(false);
             if (yasmCodes) yasmCodes->setEnabled(false);
@@ -1550,6 +1589,37 @@ struct BrpTuWindow::Impl {
         std::lock_guard<std::mutex> lock(dataMutex);
         if (yasm) yasm->consume(words, group, cycle);
         if (observeCounter) counter.consume(words, group, cycle);
+        if (!monitorAnalog.isEmpty() && group >= 1 && group <= 32 && cycle >= 1 && cycle <= 4
+            && words.size() == groupWords) {
+            const int ordinal = (cycle - 1) * 32 + group - 1;
+            const bool gap = monitorOrdinal >= 0 && ordinal != (monitorOrdinal + 1) % groupsPerSecond;
+            monitorOrdinal = ordinal;
+            for (auto& point : monitorAnalog) {
+                if (gap) {
+                    point.groups = 0;
+                    point.count = 0;
+                    point.sum = 0;
+                    point.fillCount = 0;
+                    point.updatedAt = {};
+                }
+                for (auto i = point.layout.firstWord; i < words.size(); i += point.layout.stride) {
+                    point.sum += (words[i] >> point.shift) & 0x3ff;
+                    if ((words[i] & 0x7ff) == 0x2aa) ++point.fillCount;
+                    ++point.count;
+                }
+                if (++point.groups == 10 && point.count) {
+                    // Delphi UnitM16.pas суммирует все отсчёты за десять
+                    // групп и округляет средний код для индикации.
+                    point.value = std::nearbyint(static_cast<double>(point.sum) / point.count);
+                    point.fillOnly = point.fillCount == point.count;
+                    point.updatedAt = std::chrono::steady_clock::now();
+                    point.groups = 0;
+                    point.count = 0;
+                    point.sum = 0;
+                    point.fillCount = 0;
+                }
+            }
+        }
         if (coverageActive && group >= 1 && group <= 32 && cycle >= 1 && cycle <= 4
             && words.size() == groupWords) {
             const int ordinal = (cycle - 1) * 32 + group - 1;
@@ -1594,21 +1664,36 @@ struct BrpTuWindow::Impl {
             const auto snapshot = decoder->getSnapshot();
             const auto now = std::chrono::steady_clock::now();
             QStringList values;
-            QVector<brp::ui::HistoryPlot::BarValue> bars;
+            QVector<brp::ui::HistoryPlot::NamedSeries> series;
+            QHash<QString, AnalogMonitorPoint> averages;
+            {
+                std::lock_guard<std::mutex> lock(dataMutex);
+                averages = monitorAnalog;
+            }
             for (const auto& channel : snapshot.values) {
                 // Поддерживаемые адреса обновляются хотя бы раз за цикл.
                 // После паузы длиннее кадра старый код скрываем.
-                const bool fresh = channel.valid && now - channel.updatedAt < std::chrono::seconds(1);
                 const auto address = QString::fromStdString(channel.address);
+                const auto average = averages.constFind(address);
+                const bool averaged = average != averages.cend();
+                const bool fresh = averaged
+                    ? average->updatedAt != std::chrono::steady_clock::time_point{}
+                        && now - average->updatedAt < std::chrono::seconds(1)
+                    : channel.valid && now - channel.updatedAt < std::chrono::seconds(1);
+                const double value = averaged ? average->value : channel.value;
+                const bool fillOnly = fresh && averaged && average->fillOnly;
                 const auto name = activeMonitorNames.value(address);
                 const auto label = name.isEmpty() ? address : QStringLiteral("%1 · %2").arg(name, address);
                 values.append(QStringLiteral("%1 = %2").arg(label,
-                    fresh ? QString::number(channel.value) : QStringLiteral("нет отсчёта")));
-                if (plotEnabled->isChecked())
-                    bars.append({name.isEmpty() ? address : name, channel.value, fresh});
+                    fillOnly ? QStringLiteral("заполнение ЯФК 0x2AA")
+                             : fresh ? QString::number(value) : QStringLiteral("нет отсчёта")));
+                auto& trace = monitorHistory[address];
+                trace.append(fresh && !fillOnly ? value : std::numeric_limits<double>::quiet_NaN());
+                if (trace.size() > 200) trace.removeFirst();
+                if (plotEnabled->isChecked()) series.append({name.isEmpty() ? address : name, trace});
             }
             if (plotEnabled->isChecked() && !monitorCounterActive)
-                monitorPlot->setBars(std::move(bars));
+                monitorPlot->setNamedSeries(std::move(series));
             // M16 getErrors() exposes raw counters, not percentages;
             // M8 returns percentages. Never label a raw count as e.g. 112 %.
             const bool m8 = selectedMode() == 2;
@@ -2051,6 +2136,7 @@ struct BrpTuWindow::Impl {
         if (start) start->setEnabled(!stoppingStream);
         if (stop) stop->setEnabled(false);
         if (port) port->setEnabled(true);
+        if (adcChannel) adcChannel->setEnabled(true);
         if (counterToCom) counterToCom->setEnabled(true);
         if (interfaceMode) interfaceMode->setEnabled(true);
         if (yasmCodes) yasmCodes->setEnabled(true);
@@ -2102,6 +2188,17 @@ struct BrpTuWindow::Impl {
     QComboBox* profileCombo = nullptr;
     QCheckBox *combineProfiles = nullptr, *plotEnabled = nullptr, *counterToCom = nullptr;
     brp::ui::HistoryPlot* monitorPlot = nullptr;
+    struct AnalogMonitorPoint {
+        orbita::M16GroupChannel layout;
+        unsigned shift;
+        unsigned groups = 0, count = 0, sum = 0, fillCount = 0;
+        double value = 0;
+        bool fillOnly = false;
+        std::chrono::steady_clock::time_point updatedAt{};
+    };
+    QComboBox* adcChannel = nullptr;
+    QHash<QString, AnalogMonitorPoint> monitorAnalog;
+    int monitorOrdinal = -1;
     QHash<QString, QVector<double>> monitorHistory;
     std::vector<FrameCheck> checks;
     QComboBox *interfaceMode = nullptr, *port = nullptr, *checkList = nullptr,

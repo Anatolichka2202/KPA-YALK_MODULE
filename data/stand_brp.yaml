@@ -1,7 +1,8 @@
 schema: 1
 e2010:
   slot: 0
-  channel: 1
+  # В ACPUnit.pas таблица каналов остаётся нулевой (вход 0).
+  channel: 0
   sample_rate_khz: 10000
   buffer_words: 1048576
 
@@ -9,9 +10,11 @@ e2010:
 isd:
   host: 192.168.0.101
 
-# ИСД и АКИП используют профиль подключения УБСИ.
-akip:
+# COM15 подключён к передатчику RS-485. Порт АКИП задаётся отдельно.
+rs485:
   port: COM15
+akip:
+  port: ""
   expected_idn: AKIP-1160/6
 
 isd_baseline:
