@@ -10,6 +10,12 @@
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
+#include <QDialog>
+#include <QDir>
+#include <QListWidget>
+#include <QJsonArray>
+#include <QProcess>
+#include "app/tu_report_writer.h"
 #include <QHostAddress>
 #include <QLabel>
 #include <QLineEdit>
@@ -426,6 +432,8 @@ void testScenarioAndReport()
         && checkpoint.contains(QStringLiteral("\"attempt_1\"")) == false
         && checkpoint.contains(QStringLiteral(".attempt_1"))
         && checkpoint.contains(QStringLiteral(".attempt_2"))
+        && checkpoint.contains(QStringLiteral("OPERATOR_RETRY"))
+        && checkpoint.contains(QStringLiteral("OPERATOR_CONTINUE"))
         && checkpoint.contains(QStringLiteral("\"finished_ms\":")),
         "durable checkpoint lost a forced verdict or attempt history");
     const auto powerOn = checkpoint.indexOf(QStringLiteral("POWER_ON"));
@@ -438,7 +446,12 @@ void testScenarioAndReport()
         && html.contains(QStringLiteral("A &lt; B; &quot;C&quot;"))
         && txt.contains(QStringLiteral("РЕЗУЛЬТАТЫ КАДРОВЫХ ПРОВЕРОК БРП №BRP-01"))
         && txt.contains(QStringLiteral("Имитация")) && txt.contains(QStringLiteral("ПРИНУДИТЕЛЬНЫЙ ОК"))
+        && html.contains(QStringLiteral("M16P1A10B60C31T01"))
+        && txt.contains(QStringLiteral("M16P1A10B60C31T01"))
         && csv.contains(QStringLiteral("v7_before_v=20.020"))
+        && csv.contains(QStringLiteral("ПРИНУДИТЕЛЬНЫЙ ОК"))
+        && csv.contains(QStringLiteral(".attempt_2"))
+        && csv.contains(QStringLiteral("Итог прогона"))
         && csv.contains(QStringLiteral("M16P1A10B60C31T01")), "reference report lost the BRP results or print layout");
 
     newCheck();
@@ -505,12 +518,78 @@ void testOperatorBuild()
     }, 20000), "report entry is missing after asynchronous stop");
 }
 
+void startHistoryRun(BrpTuWindow& window, const QString& serial)
+{
+    window.show();
+    window.findChild<QLineEdit*>("tuManualSerial")->setText(serial);
+    action(window, "tuStandAction")->click();
+    action(window, "tuStartAction")->click();
+}
+
+void testHistoryAfterCrash()
+{
+    const QTemporaryDir reports;
+    require(reports.isValid(), "history fixture directory was not created");
+    const auto previous = qgetenv("TU_REPORT_DIR");
+    qputenv("TU_REPORT_DIR", reports.path().toLocal8Bit());
+    QProcess child;
+    child.start(QCoreApplication::applicationFilePath(),
+                {QStringLiteral("-platform"), QStringLiteral("offscreen"), QStringLiteral("--checkpoint-child")});
+    require(child.waitForStarted(), "simulator child did not start");
+    require(waitUntil([&] {
+        const auto files = listTuCheckpoints();
+        if (files.size() != 1) return false;
+        const auto saved = readTuCheckpoint(files.first().filePath());
+        const auto steps = saved.value(QStringLiteral("steps")).toArray();
+        return !steps.isEmpty() && steps.first().toObject().value(QStringLiteral("verdict")).toString() == "OK";
+    }, 20000), "child did not save a completed attempt before export");
+    child.kill();
+    require(child.waitForFinished() && child.exitStatus() == QProcess::CrashExit,
+            "checkpoint fixture did not terminate abruptly");
+    const auto savedFile = listTuCheckpoints().first().filePath();
+    const auto savedBytes = readText(savedFile);
+    require(readTuCheckpoint(savedFile).value(QStringLiteral("finished_ms")).isNull(),
+            "killed process produced a terminal verdict");
+    require(QDir(reports.path()).entryList({QStringLiteral("TU_*.html")}, QDir::Files).isEmpty(),
+            "child unexpectedly exported a report");
+
+    BrpTuWindow restarted(true);
+    restarted.show();
+    auto* open = restarted.findChild<QPushButton*>("brpHistoryOpen");
+    require(open && open->isVisible(), "history is inaccessible after restart");
+    open->click();
+    auto* history = restarted.findChild<QListWidget*>("brpHistoryRuns");
+    auto* detail = restarted.findChild<QPlainTextEdit*>("brpHistoryDetail");
+    require(history && detail && history->count() == 1 && detail->toPlainText().contains("BRP-CRASH")
+        && detail->toPlainText().contains(QStringLiteral("Прогон не завершён"))
+        && detail->toPlainText().contains(QStringLiteral("Попытка 1")),
+        "history did not display the interrupted run and its saved attempt");
+    history->window()->close();
+
+    startHistoryRun(restarted, QStringLiteral("BRP-NEW"));
+    const auto files = listTuCheckpoints();
+    require(files.size() == 2 && readText(savedFile) == savedBytes,
+            "a new run overwrote the interrupted run");
+    action(restarted, "tuStopAction")->click();
+    require(waitUntil([&] {
+        return restarted.findChild<QLineEdit*>("tuCompletionOperator")->isVisible();
+    }, 20000), "restarted run did not exit");
+    if (previous.isNull()) qunsetenv("TU_REPORT_DIR");
+    else qputenv("TU_REPORT_DIR", previous);
+}
+
 } // namespace
 
 int main(int argc, char** argv)
 {
     QApplication application(argc, argv);
     try {
+        if (application.arguments().contains(QStringLiteral("--checkpoint-child"))) {
+            BrpTuWindow simulation(true);
+            startHistoryRun(simulation, QStringLiteral("BRP-CRASH"));
+            return application.exec();
+        }
+        testHistoryAfterCrash();
         testIsdPreparation();
 #if BRP_ENABLE_MANUAL_TESTS
         testWindow();

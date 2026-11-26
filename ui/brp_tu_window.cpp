@@ -359,7 +359,8 @@ struct BrpTuWindow::Impl {
             setProgress(QStringLiteral("Принудительный ОК отмечен. Измерение продолжается в штатном режиме."));
         });
         QObject::connect(page, &TestPage::retryStageRequested, &window, [this] {
-            if (!pendingDecision || currentStage < 2) return;
+            if (!pendingDecision || currentStage < 2
+                || !recordOperatorDecision("OPERATOR_RETRY", QStringLiteral("Оператор повторяет текущий пункт."))) return;
             pendingDecision = false;
             forcedOkActive = false;
             page->setRetryAvailable(false);
@@ -380,7 +381,8 @@ struct BrpTuWindow::Impl {
                 : QStringLiteral("Повторная попытка: установите состояние входа %1 и измерьте.").arg(expected));
         });
         QObject::connect(page, &TestPage::continueStageRequested, &window, [this] {
-            if (!pendingDecision || currentStage < 2) return;
+            if (!pendingDecision || currentStage < 2
+                || !recordOperatorDecision("OPERATOR_CONTINUE", QStringLiteral("Оператор продолжает, отказ сохранён."))) return;
             advanceStage();
         });
         QObject::connect(page, &TestPage::stopRequested, &window, [this] {
@@ -539,7 +541,10 @@ struct BrpTuWindow::Impl {
                     QStringLiteral("Выберите исполняемый файл PURUMK"), root.path(),
                     QStringLiteral("Приложение PURUMK (*.exe);;Все файлы (*)"));
             }
-            if (program.isEmpty()) return;
+            if (program.isEmpty()) {
+                appendLog(QStringLiteral("PURUMK не запущена: исполняемый файл не выбран. Остальные проверки доступны."));
+                return;
+            }
             if (!QFileInfo::exists(program)) {
                 appendLog(QStringLiteral("PURUMK: исполняемый файл не найден: %1").arg(program));
                 return;
@@ -1460,6 +1465,21 @@ struct BrpTuWindow::Impl {
         startInterface();
     }
 
+    bool recordOperatorDecision(const char* action, const QString& message)
+    {
+        const auto& step = run.steps[currentStage];
+        const tu::RunEvent event{std::chrono::system_clock::now(), step.nodeId, action,
+            message.toStdString(), step.verdict};
+        run.events.push_back(event);
+        if (persistRun()) {
+            page->appendRunEvent(event);
+            return true;
+        }
+        run.events.pop_back();
+        endSession(QStringLiteral("Не удалось сохранить решение оператора."), RunVerdict::Error);
+        return false;
+    }
+
     bool recordPower(const char* action, const QString& message, RunVerdict result)
     {
         const tu::RunEvent event{std::chrono::system_clock::now(), "akip", action, message.toStdString(), result};
@@ -2289,7 +2309,8 @@ struct BrpTuWindow::Impl {
             finishPoint(pointName() + QStringLiteral(" Полный набор последовательных групп не получен."));
             return;
         }
-        if (codes.fillCount == codes.count || (check.bits == 1 && codes.fillCount)) {
+        // Заполнение нельзя пропускать в оценку экстремумов ЯГР или в проверку бита.
+        if (codes.fillCount) {
             finishPoint(pointName() + QStringLiteral(" В адресе обнаружено заполнение ЯФК 0x2AA. Точка не оценена."));
             return;
         }
@@ -2415,7 +2436,7 @@ struct BrpTuWindow::Impl {
     void meterResult(const MeterReading& result, bool after)
     {
         if (!result.error.isEmpty()) {
-            finishPoint(pointName() + QStringLiteral(" Ошибка В7. %1").arg(result.error));
+            finishPoint(pointName() + QStringLiteral(" Ошибка В7. %1").arg(result.error), RunVerdict::Error);
             return;
         }
         if (!after) {

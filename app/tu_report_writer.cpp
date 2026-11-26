@@ -15,7 +15,6 @@
 #include <QTextStream>
 
 #include <cmath>
-#include <functional>
 #include <stdexcept>
 
 namespace {
@@ -71,17 +70,6 @@ QString reportDirectory()
     return path;
 }
 
-void visitMeasurements(const std::vector<tu::StepRunResult>& steps,
-                       const std::function<void(const tu::StepRunResult&, const tu::MeasurementResult&)>& visitor)
-{
-    for (const auto& step : steps) {
-        // Once attempts exist, parent measurements are the last-result projection.
-        // CSV must contain each physical measurement exactly once.
-        if (step.children.empty())
-            for (const auto& measurement : step.measurements) visitor(step, measurement);
-        visitMeasurements(step.children, visitor);
-    }
-}
 
 QString number(double value, int precision = 3)
 {
@@ -120,7 +108,14 @@ void writeProtocolSteps(QString& output, const std::vector<tu::StepRunResult>& s
         const QString title = text(step.title).toUpper();
         section(output, title, text(step.tuRequirement));
         if (!step.message.empty()) output += text(step.message) + QLatin1Char('\n');
-        writeProtocolSteps(output, step.children);
+        if (step.children.empty()) {
+            for (const auto& measurement : step.measurements)
+                output += QStringLiteral("  %1 · %2 · %3 %4 · %5\n")
+                    .arg(text(measurement.parameterKey), text(measurement.title), number(measurement.measured),
+                         text(measurement.unit), protocolVerdict(measurement.verdict));
+        } else {
+            writeProtocolSteps(output, step.children);
+        }
         output += QStringLiteral("\n%1    %2\n").arg(title, stepVerdict(step));
     }
 }
@@ -148,6 +143,31 @@ QString attributes(const tu::MeasurementResult& measurement)
     for (const auto& [key, value] : measurement.attributes)
         parts << QStringLiteral("%1=%2").arg(text(key), text(value));
     return parts.join(QStringLiteral("; "));
+}
+
+void writeCsvSteps(QTextStream& csv, const std::vector<tu::StepRunResult>& steps)
+{
+    for (const auto& step : steps) {
+        // Пустой параметр обозначает итог пункта или попытки. Это сохраняет
+        // отказ без измерения и принудительный итог рядом с исходными данными.
+        csv << csvCell(text(step.nodeId)) << QStringLiteral(";;") << csvCell(text(step.title))
+            << QStringLiteral(";;;;;") << csvCell(stepVerdict(step)) << QLatin1Char(';')
+            << csvCell(text(step.message)) << QLatin1Char('\n');
+        if (!step.children.empty()) {
+            writeCsvSteps(csv, step.children);
+            continue;
+        }
+        for (const auto& measurement : step.measurements) {
+            csv << csvCell(text(step.nodeId)) << QLatin1Char(';')
+                << csvCell(text(measurement.parameterKey)) << QLatin1Char(';')
+                << csvCell(text(measurement.title)) << QLatin1Char(';')
+                << number(measurement.measured) << QLatin1Char(';')
+                << csvCell(text(measurement.unit)) << QLatin1Char(';')
+                << number(measurement.lowerLimit) << QLatin1Char(';') << number(measurement.upperLimit) << QLatin1Char(';')
+                << csvCell(protocolVerdict(measurement.verdict)) << QLatin1Char(';')
+                << csvCell(attributes(measurement)) << QLatin1Char('\n');
+        }
+    }
 }
 
 } // namespace
@@ -231,6 +251,26 @@ QString writeTuCheckpoint(const tu::ScenarioRunResult& result)
     return path;
 }
 
+QFileInfoList listTuCheckpoints()
+{
+    const QDir directory(QDir(reportDirectory()).filePath(QStringLiteral("runs")));
+    return directory.entryInfoList({QStringLiteral("BRP_*.json")},
+        QDir::Files | QDir::Readable | QDir::NoSymLinks, QDir::Time);
+}
+
+QJsonObject readTuCheckpoint(const QString& path)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly))
+        throw std::runtime_error("Не удалось открыть сохранённый прогон.");
+    const auto checkpoint = QJsonDocument::fromJson(file.readAll()).object();
+    if (checkpoint.value(QStringLiteral("schema")).toInt() != 1
+        || checkpoint.value(QStringLiteral("run_id")).toString().isEmpty()
+        || !checkpoint.value(QStringLiteral("steps")).isArray())
+        throw std::runtime_error("Повреждённый или неподдерживаемый файл прогона.");
+    return checkpoint;
+}
+
 QString writeTuReport(const tu::ScenarioRunResult& result, const QString& operatorName)
 {
     const QString directory = reportDirectory();
@@ -269,16 +309,9 @@ QString writeTuReport(const tu::ScenarioRunResult& result, const QString& operat
     QTextStream csv(&csvFile);
     csv.setEncoding(QStringConverter::Utf8);
     csv << QStringLiteral("Этап;Параметр;Наименование;Измерено;Единица;Нижняя граница;Верхняя граница;Результат;Атрибуты\n");
-    visitMeasurements(result.steps, [&csv](const auto& step, const auto& measurement) {
-        csv << csvCell(text(step.nodeId)) << QLatin1Char(';')
-            << csvCell(text(measurement.parameterKey)) << QLatin1Char(';')
-            << csvCell(text(measurement.title)) << QLatin1Char(';')
-            << number(measurement.measured) << QLatin1Char(';')
-            << csvCell(text(measurement.unit)) << QLatin1Char(';')
-            << number(measurement.lowerLimit) << QLatin1Char(';') << number(measurement.upperLimit) << QLatin1Char(';')
-            << csvCell(protocolVerdict(measurement.verdict)) << QLatin1Char(';')
-            << csvCell(attributes(measurement)) << QLatin1Char('\n');
-    });
+    writeCsvSteps(csv, result.steps);
+    csv << csvCell(text(result.runId)) << QStringLiteral(";;") << csvCell(QStringLiteral("Итог прогона"))
+        << QStringLiteral(";;;;;") << csvCell(protocolVerdict(result.verdict)) << QStringLiteral(";\n");
     csv.flush();
     if (csv.status() != QTextStream::Ok || !csvFile.commit())
         throw std::runtime_error(QStringLiteral("Не удалось сохранить CSV: %1").arg(csvPath).toUtf8().toStdString());

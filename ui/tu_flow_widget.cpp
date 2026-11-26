@@ -4,6 +4,12 @@
 #include "model/run_types.h"
 
 #include <QDateTime>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QJsonArray>
+#include <QListWidget>
+#include <QPlainTextEdit>
+#include <QSplitter>
 #include <QComboBox>
 #include <QSerialPortInfo>
 #include <QDesktopServices>
@@ -61,6 +67,109 @@ QString verdictText(tu::RunVerdict verdict)
     case RunVerdict::NotRun: return QStringLiteral("НЕ ВЫПОЛНЕНО");
     }
     return QStringLiteral("НЕ ВЫПОЛНЕНО");
+}
+
+QString savedVerdict(const QJsonObject& object)
+{
+    const auto value = object.value(QStringLiteral("verdict")).toString();
+    using tu::RunVerdict;
+    for (const auto verdict : {RunVerdict::Ok, RunVerdict::Fail, RunVerdict::Incomplete,
+                               RunVerdict::Error, RunVerdict::Aborted, RunVerdict::NotRun})
+        if (value == QLatin1String(tu::toString(verdict))) return verdictText(verdict);
+    return QStringLiteral("Неизвестный результат");
+}
+
+void appendSavedStep(QStringList& lines, const QJsonObject& step, const QString& indent = {})
+{
+    auto heading = QStringLiteral("%1%2 · %3")
+        .arg(indent, step.value(QStringLiteral("title")).toString(), savedVerdict(step));
+    if (step.value(QStringLiteral("forcedOk")).toBool()) heading += QStringLiteral(" · принудительный ОК");
+    lines.append(heading);
+    const auto message = step.value(QStringLiteral("message")).toString();
+    if (!message.isEmpty()) lines.append(indent + message);
+    const auto attempts = step.value(QStringLiteral("attempts")).toArray();
+    if (!attempts.isEmpty()) {
+        for (const auto value : attempts)
+            appendSavedStep(lines, value.toObject(), indent + QStringLiteral("    "));
+        return;
+    }
+    for (const auto value : step.value(QStringLiteral("measurements")).toArray()) {
+        const auto measurement = value.toObject();
+        const auto measured = measurement.value(QStringLiteral("measured"));
+        lines.append(QStringLiteral("%1    %2 · %3 %4 · %5")
+            .arg(indent, measurement.value(QStringLiteral("title")).toString(),
+                 measured.isDouble() ? QString::number(measured.toDouble()) : QStringLiteral("—"),
+                 measurement.value(QStringLiteral("unit")).toString(), savedVerdict(measurement)));
+    }
+}
+
+QString savedRunText(const QJsonObject& run)
+{
+    const auto started = QDateTime::fromMSecsSinceEpoch(run.value(QStringLiteral("started_ms")).toInteger());
+    QStringList lines{QStringLiteral("БРП · № %1").arg(run.value(QStringLiteral("serial")).toString()),
+                      started.toString(QStringLiteral("dd.MM.yyyy HH:mm:ss"))};
+    if (run.value(QStringLiteral("simulation")).toBool()) lines.append(QStringLiteral("Имитация"));
+    lines.append(run.value(QStringLiteral("finished_ms")).isDouble()
+        ? savedVerdict(run) : QStringLiteral("Прогон не завершён · сохранённые результаты"));
+    for (const auto step : run.value(QStringLiteral("steps")).toArray()) {
+        lines.append(QString());
+        appendSavedStep(lines, step.toObject());
+    }
+    const auto events = run.value(QStringLiteral("events")).toArray();
+    if (!events.isEmpty()) lines.append(QStringLiteral("\nЖурнал прогона"));
+    for (const auto event : events) {
+        const auto entry = event.toObject();
+        if (entry.value(QStringLiteral("stage")).toString() == QStringLiteral("FINISH")) continue;
+        const auto timestamp = QDateTime::fromMSecsSinceEpoch(entry.value(QStringLiteral("at_ms")).toInteger());
+        lines.append(QStringLiteral("%1 · %2").arg(timestamp.toString(QStringLiteral("HH:mm:ss")),
+            entry.value(QStringLiteral("message")).toString()));
+    }
+    return lines.join(QLatin1Char('\n'));
+}
+
+void showRunHistory(QWidget* parent)
+{
+    auto* dialog = new QDialog(parent);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->setWindowTitle(QStringLiteral("История проверок БРП"));
+    dialog->resize(960, 640);
+    auto* layout = new QVBoxLayout(dialog);
+    auto* split = new QSplitter(dialog);
+    auto* runs = new QListWidget(split);
+    runs->setObjectName(QStringLiteral("brpHistoryRuns"));
+    runs->setAccessibleName(QStringLiteral("Сохранённые прогоны"));
+    auto* detail = new QPlainTextEdit(split);
+    detail->setReadOnly(true);
+    detail->setObjectName(QStringLiteral("brpHistoryDetail"));
+    detail->setAccessibleName(QStringLiteral("Результаты выбранного прогона"));
+    split->addWidget(runs);
+    split->addWidget(detail);
+    split->setStretchFactor(1, 1);
+    layout->addWidget(split, 1);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Close, dialog);
+    QObject::connect(buttons, &QDialogButtonBox::rejected, dialog, &QDialog::close);
+    layout->addWidget(buttons);
+    QObject::connect(runs, &QListWidget::currentItemChanged, dialog, [detail](QListWidgetItem* item) {
+        if (!item) return;
+        try {
+            detail->setPlainText(savedRunText(readTuCheckpoint(item->data(Qt::UserRole).toString())));
+        } catch (const std::exception& error) {
+            detail->setPlainText(QString::fromUtf8(error.what()));
+        }
+    });
+    try {
+        for (const auto& file : listTuCheckpoints()) {
+            auto* item = new QListWidgetItem(file.lastModified().toString(QStringLiteral("dd.MM.yyyy HH:mm:ss")), runs);
+            item->setToolTip(file.completeBaseName());
+            item->setData(Qt::UserRole, file.absoluteFilePath());
+        }
+        if (runs->count()) runs->setCurrentRow(0);
+        else detail->setPlainText(QStringLiteral("Сохранённых прогонов пока нет."));
+    } catch (const std::exception& error) {
+        detail->setPlainText(QString::fromUtf8(error.what()));
+    }
+    dialog->setWindowModality(Qt::WindowModal);
+    dialog->show();
 }
 
 QColor verdictColor(tu::RunVerdict verdict)
@@ -146,6 +255,11 @@ TuFlowWidget::TuFlowWidget(QWidget* parent) : QWidget(parent)
         "#tuSerialEntry QLineEdit:focus{border-color:#58a5ff;}"));
 
     auto* footer = new QHBoxLayout;
+    auto* history = new QPushButton(QStringLiteral("История проверок"), serialCard);
+    history->setObjectName(QStringLiteral("brpHistoryOpen"));
+    history->setMinimumHeight(42);
+    connect(history, &QPushButton::clicked, this, [this] { showRunHistory(this); });
+    footer->addWidget(history);
 #if BRP_ENABLE_MANUAL_TESTS
     auto* manual = new QPushButton(QStringLiteral("Ручное управление"), serialCard);
     manual->setObjectName(QStringLiteral("brpManualOpen"));
