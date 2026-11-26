@@ -35,6 +35,8 @@ public:
     // Stops the producer before the decoder so no callback can feed a decoder
     // that is already shutting down.
     void stop() noexcept;
+    // Live monitoring only: never call while recording lossless telemetry.
+    void stopDiscardPending() noexcept;
 
     bool isRunning() const noexcept;
 
