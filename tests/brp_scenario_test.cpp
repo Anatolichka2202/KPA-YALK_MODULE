@@ -166,6 +166,25 @@ void testWindow()
     }, 12000), "M16 monitor did not validate returned RS485 counter");
     stop->click();
     require(waitUntil([&] { return start->isEnabled(); }, 20000), "M16 stop did not release stream");
+    comToggle->setChecked(false);
+    auto* view = window.findChild<QComboBox*>("brpMonitorPlotView");
+    auto* trendChannel = window.findChild<QComboBox*>("brpMonitorTrendChannel");
+    auto* trendPlot = window.findChild<QWidget*>("brpMonitorPlot");
+    require(view && trendChannel && trendPlot && view->count() == 2,
+            "monitor must provide both live bars and a separate time trend");
+    view->setCurrentIndex(1);
+    start->click();
+    require(waitUntil([&] { return trendChannel->count() >= 3; }),
+            "trend channels did not include Eptm");
+    const int eptm = trendChannel->findText(QStringLiteral("Ептм"), Qt::MatchContains);
+    require(eptm >= 0, "Eptm missing from monitor trend selector");
+    trendChannel->setCurrentIndex(eptm);
+    require(waitUntil([&] { return trendPlot->property("brpTrendRawPoints").toInt() >= 12; }, 12000),
+            "M16 data callback did not populate the timestamped Eptm trend");
+    view->setCurrentIndex(0);
+    require(trendPlot->isVisible(), "switching back to bar graph hid the monitor plot");
+    stop->click();
+    require(waitUntil([&] { return start->isEnabled(); }, 20000), "trend monitor stop did not release stream");
     window.findChild<QPushButton*>("brpBrowseDb")->click();
     auto* addressTable = window.findChild<QTableWidget*>("brpAddressTable");
     require(addressTable && addressTable->rowCount() > 0
