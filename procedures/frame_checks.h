@@ -16,6 +16,13 @@ constexpr int counterBaud = 500000;
 constexpr std::size_t groupWords = 2048;
 constexpr std::array<unsigned, 4> simulatedYasmPattern{0x12, 0x1B2, 0x15C, 0x67};
 
+// Decode the returning counter for both real and simulated acquisition.
+// Never gate this check on whether the station is running in simulation.
+constexpr bool shouldObserveCounter(bool yasmMode, bool monitorMode, bool monitorCounter)
+{
+    return (!yasmMode && !monitorMode) || monitorCounter;
+}
+
 // Два байта со взаимно исключающими признаками младшей и старшей частей.
 // Это шаблон стендового воздействия для прозрачного RS-485, а не протокол БРП.
 std::vector<uint8_t> counterBytes(unsigned& next, unsigned count);
