@@ -4,6 +4,9 @@
 #include <QDateTime>
 #include <QDir>
 #include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QLocale>
 #include <QRegularExpression>
 #include <QSaveFile>
@@ -144,6 +147,84 @@ QString attributes(const tu::MeasurementResult& measurement)
 }
 
 } // namespace
+
+namespace {
+QJsonObject measurementJson(const tu::MeasurementResult& m)
+{
+    QJsonObject attrs;
+    for (const auto& [key, value] : m.attributes)
+        attrs.insert(text(key), text(value));
+    return {{QStringLiteral("key"), text(m.parameterKey)},
+            {QStringLiteral("title"), text(m.title)},
+            {QStringLiteral("reference"), m.reference},
+            {QStringLiteral("measured"), m.measured},
+            {QStringLiteral("lower"), m.lowerLimit},
+            {QStringLiteral("upper"), m.upperLimit},
+            {QStringLiteral("unit"), text(m.unit)},
+            {QStringLiteral("verdict"), QString::fromLatin1(tu::toString(m.verdict))},
+            {QStringLiteral("message"), text(m.message)},
+            {QStringLiteral("attributes"), attrs}};
+}
+
+QJsonObject stepJson(const tu::StepRunResult& step)
+{
+    QJsonArray measurements;
+    for (const auto& m : step.measurements) measurements.append(measurementJson(m));
+    QJsonArray children;
+    for (const auto& child : step.children) children.append(stepJson(child));
+    return {{QStringLiteral("id"), text(step.nodeId)},
+            {QStringLiteral("title"), text(step.title)},
+            {QStringLiteral("requirement"), text(step.tuRequirement)},
+            {QStringLiteral("verdict"), QString::fromLatin1(tu::toString(step.verdict))},
+            {QStringLiteral("message"), text(step.message)},
+            {QStringLiteral("operatorSkipped"), step.operatorSkipped},
+            {QStringLiteral("measurements"), measurements},
+            {QStringLiteral("attempts"), children}};
+}
+
+qint64 timeMs(std::chrono::system_clock::time_point at)
+{
+    return std::chrono::duration_cast<std::chrono::milliseconds>(at.time_since_epoch()).count();
+}
+} // namespace
+
+QString writeTuCheckpoint(const tu::ScenarioRunResult& result)
+{
+    if (result.runId.empty()) throw std::invalid_argument("Пустой идентификатор прогона БРП");
+    const QString folder = QDir(reportDirectory()).filePath(QStringLiteral("runs"));
+    if (!QDir().mkpath(folder))
+        throw std::runtime_error("Не удалось создать каталог истории прогонов БРП");
+    const QString path = QDir(folder).filePath(safeFilePart(text(result.runId)) + QStringLiteral(".json"));
+    QJsonArray steps;
+    for (const auto& step : result.steps) steps.append(stepJson(step));
+    QJsonArray events;
+    for (const auto& e : result.events) {
+        QJsonObject data;
+        for (const auto& [key, value] : e.data) data.insert(text(key), text(value));
+        events.append(QJsonObject{{QStringLiteral("at_ms"), timeMs(e.timestamp)},
+                                  {QStringLiteral("step"), text(e.nodeId)},
+                                  {QStringLiteral("stage"), text(e.stage)},
+                                  {QStringLiteral("message"), text(e.message)},
+                                  {QStringLiteral("verdict"), QString::fromLatin1(tu::toString(e.verdict))},
+                                  {QStringLiteral("data"), data}});
+    }
+    const QJsonObject value{{QStringLiteral("schema"), 1},
+                            {QStringLiteral("run_id"), text(result.runId)},
+                            {QStringLiteral("scenario"), text(result.scenarioId)},
+                            {QStringLiteral("serial"), text(result.objectSerial)},
+                            {QStringLiteral("simulation"), result.scenarioId == "brp.m16.sim"},
+                            {QStringLiteral("started_ms"), timeMs(result.startedAt)},
+                            {QStringLiteral("finished_ms"), result.finishedAt == std::chrono::system_clock::time_point{}
+                                ? QJsonValue(QJsonValue::Null) : QJsonValue(timeMs(result.finishedAt))},
+                            {QStringLiteral("verdict"), QString::fromLatin1(tu::toString(result.verdict))},
+                            {QStringLiteral("steps"), steps},
+                            {QStringLiteral("events"), events}};
+    const QByteArray bytes = QJsonDocument(value).toJson(QJsonDocument::Indented);
+    QSaveFile file(path);
+    if (!file.open(QIODevice::WriteOnly) || file.write(bytes) != bytes.size() || !file.commit())
+        throw std::runtime_error(QStringLiteral("Не удалось сохранить прогон: %1").arg(path).toUtf8().toStdString());
+    return path;
+}
 
 QString writeTuReport(const tu::ScenarioRunResult& result, const QString& operatorName)
 {
