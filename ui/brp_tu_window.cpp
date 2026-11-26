@@ -1392,8 +1392,8 @@ struct BrpTuWindow::Impl {
             const bool yasmMode = selectedMode() == 1;
             const bool m8Mode = selectedMode() == 2;
             const bool monitor = selectedMode() >= 2;
-            const bool sendCounter = !simulation && (selectedMode() == 0
-                || (selectedMode() == 3 && counterToCom && counterToCom->isChecked()));
+            const bool monitorCounter = selectedMode() == 3 && counterToCom && counterToCom->isChecked();
+            const bool sendCounter = !simulation && (selectedMode() == 0 || monitorCounter);
             if (stoppingStream) throw std::runtime_error("Орбита завершает предыдущий сеанс. Повторный запуск пока заблокирован.");
             if (probing) throw std::runtime_error("Дождитесь проверки приборов.");
             double sampleRate = 10'000'000;
@@ -1440,7 +1440,8 @@ struct BrpTuWindow::Impl {
             // Состояние обнуляется до подключения callback. Перед любым следующим
             // запуском shutdown ждёт завершения потока, который изменяет эти поля.
             counter = {};
-            observeCounter = simulation && !yasmMode && !monitor;
+            observeCounter = (simulation && !yasmMode && !monitor) || monitorCounter;
+            monitorCounterActive = monitorCounter;
             nextCounter = 0;
             gatePassed = false;
             if (monitor) {
@@ -1463,6 +1464,13 @@ struct BrpTuWindow::Impl {
                 for (const auto& spec : channels)
                     activeMonitorNames.insert(QString::fromStdString(spec.address), QString::fromStdString(spec.name));
                 if (m8Mode) decoder->setInvertSignal(m8Invert->isChecked());
+                if (monitorCounter) {
+                    // This callback validates the return path M16 independently
+                    // from the channels displayed as histogram columns.
+                    decoder->setGroupCallback([this](const auto& words, int group, int cycle) {
+                        consume(words, group, cycle);
+                    });
+                }
             } else {
                 decoder = std::make_unique<orbita::Orbita>();
                 decoder->setGroupCallback([this](const auto& words, int group, int cycle) {
@@ -1474,6 +1482,7 @@ struct BrpTuWindow::Impl {
             if (start) start->setEnabled(false);
             if (stop) stop->setEnabled(true);
             if (port) port->setEnabled(false);
+            if (counterToCom) counterToCom->setEnabled(false);
             if (interfaceMode) interfaceMode->setEnabled(false);
             if (yasmCodes) yasmCodes->setEnabled(false);
             if (yasmFile) yasmFile->setEnabled(false);
@@ -1585,9 +1594,24 @@ struct BrpTuWindow::Impl {
             const auto heading = m8
                 ? QStringLiteral("M8 · групп %1 · ошибки фраз %2 %% · ошибки групп %3 %%")
                 : QStringLiteral("M16 · групп %1 · счётчики ошибок: фразы %2, группы %3");
+            QString counterStatus;
+            if (monitorCounterActive) {
+                unsigned consecutive = 0;
+                bool validated = false;
+                {
+                    std::lock_guard<std::mutex> lock(dataMutex);
+                    consecutive = counter.contiguous();
+                    validated = counter.passed();
+                }
+                counterStatus = QStringLiteral("\nRS-485 %1 → M16: %2 / 2049 подряд; %3")
+                    .arg(simulation ? QStringLiteral("(имитация)") : selectedPort())
+                    .arg(consecutive)
+                    .arg(validated ? QStringLiteral("два периода 0–1023 ПОДТВЕРЖДЕНЫ")
+                                   : QStringLiteral("не подтверждено"));
+            }
             status->setText(heading.arg(snapshot.stats.frames_processed)
                 .arg(snapshot.stats.phrase_error_percent).arg(snapshot.stats.group_error_percent)
-                + QLatin1Char('\n') + values.join(QLatin1Char('\n')));
+                + counterStatus + QLatin1Char('\n') + values.join(QLatin1Char('\n')));
             return;
         }
 
@@ -1943,6 +1967,7 @@ struct BrpTuWindow::Impl {
             yasm.reset(); // consume() accesses this field from the decoder thread.
             reading = gatePassed = false;
             observeCounter = false;
+            monitorCounterActive = false;
             coverageActive = false;
         }
     }
@@ -1956,6 +1981,7 @@ struct BrpTuWindow::Impl {
         if (start) start->setEnabled(!stoppingStream);
         if (stop) stop->setEnabled(false);
         if (port) port->setEnabled(true);
+        if (counterToCom) counterToCom->setEnabled(true);
         if (interfaceMode) interfaceMode->setEnabled(true);
         if (yasmCodes) yasmCodes->setEnabled(true);
         if (yasmFile) yasmFile->setEnabled(true);
@@ -2036,6 +2062,7 @@ struct BrpTuWindow::Impl {
     std::optional<YasmCheck> yasm;
     std::vector<uint16_t> yasmFixture;
     bool observeCounter = false;
+    bool monitorCounterActive = false;
     unsigned nextCounter = 0;
     bool gatePassed = false;
     bool reading = false, groupGap = false;
