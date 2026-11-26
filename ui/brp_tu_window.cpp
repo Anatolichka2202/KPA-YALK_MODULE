@@ -208,8 +208,31 @@ struct BrpTuWindow::Impl {
             [this](const QString& serial) { startScenario(serial); });
         QObject::connect(page, &TestPage::pointReady, &window, [this] { measureStage(); });
         QObject::connect(page, &TestPage::skipCurrentStepRequested, &window, [this] {
-            if (pointCanStart())
-                completeStage(tu::RunVerdict::Incomplete, QStringLiteral("Пропущено оператором."), {}, true);
+            if (currentStage < 2 || pendingDecision || forcedOkActive) return;
+            forcedOkActive = true;
+            const tu::RunEvent event{std::chrono::system_clock::now(),
+                run.steps[currentStage].nodeId, "OPERATOR_OVERRIDE",
+                "Запрошен принудительный ОК; измерение продолжается", RunVerdict::NotRun};
+            run.events.push_back(event);
+            page->appendRunEvent(event);
+            persistRun();
+            setProgress(QStringLiteral("Принудительный ОК отмечен. Измерение продолжается в штатном режиме."));
+        });
+        QObject::connect(page, &TestPage::retryStageRequested, &window, [this] {
+            if (!pendingDecision || currentStage < 2) return;
+            pendingDecision = false;
+            forcedOkActive = false;
+            page->setRetryAvailable(false);
+            const auto [check, channel] = voltagePoints[currentStage - 2];
+            const auto address = QString::fromStdString(checks[check].addresses[channel]);
+            page->setStage(currentStage, QString::fromStdString(run.steps[currentStage].title),
+                address, QStringLiteral("В"), QStringLiteral("ЯГР мин., В"), QStringLiteral("ЯГР макс., В"));
+            waitingForPoint = true;
+            setProgress(QStringLiteral("Повторная попытка: подготовьте воздействие и измерьте точку."));
+        });
+        QObject::connect(page, &TestPage::continueStageRequested, &window, [this] {
+            if (!pendingDecision || currentStage < 2) return;
+            advanceStage();
         });
         QObject::connect(page, &TestPage::stopRequested, &window, [this] {
             if (currentStage < 0) return;
@@ -943,8 +966,17 @@ struct BrpTuWindow::Impl {
             }
         }
 
+        // Save the initial run before any equipment is activated. No silent
+        // fallback to an in-memory-only run if the result directory is unavailable.
+        if (!persistRun()) {
+            page->flow()->setEquipmentStatus(QStringLiteral("Подключение"), false,
+                QStringLiteral("Не удалось открыть историю результатов БРП."));
+            return;
+        }
         currentStage = 0;
         waitingForPoint = false;
+        pendingDecision = false;
+        forcedOkActive = false;
         page->beginRun(run);
         page->setStage(0, QString::fromStdString(run.steps.front().title),
             yasmMode ? QStringLiteral("Последовательность ЯСМ в M16P1A22")
@@ -968,30 +1000,56 @@ struct BrpTuWindow::Impl {
 
     void updateScenario()
     {
-        if (currentStage >= 0) page->setProgress(stageProgress, pointCanStart());
+        if (currentStage >= 0)
+            page->setProgress(stageProgress, pointCanStart(),
+                currentStage >= 2 && !pendingDecision && !forcedOkActive);
+    }
+
+    bool persistRun()
+    {
+        try {
+            writeTuCheckpoint(run);
+            return true;
+        } catch (const std::exception& error) {
+            appendLog(QStringLiteral("ОШИБКА СОХРАНЕНИЯ РЕЗУЛЬТАТОВ: %1")
+                .arg(QString::fromUtf8(error.what())));
+            return false;
+        }
     }
 
     void recordStage(RunVerdict result, const QString& detail,
                      std::vector<tu::MeasurementResult> measurements = {}, bool skipped = false)
     {
         auto& step = run.steps[currentStage];
-        step.verdict = result;
+        tu::StepRunResult attempt;
+        attempt.nodeId = step.nodeId + ".attempt_" + std::to_string(step.children.size() + 1);
+        attempt.title = "Попытка " + std::to_string(step.children.size() + 1);
+        attempt.tuRequirement = step.tuRequirement;
+        attempt.verdict = result; // Always preserve the actual pre-override verdict.
+        attempt.message = detail.toStdString();
+        attempt.measurements = measurements;
+        step.children.push_back(std::move(attempt));
+        step.forcedOk = forcedOkActive && (result == RunVerdict::Fail || result == RunVerdict::Ok);
+        step.verdict = step.forcedOk ? RunVerdict::Ok : result;
         step.message = detail.toStdString();
+        if (step.forcedOk)
+            step.message += " [ПРИНУДИТЕЛЬНЫЙ ОК; фактические измерения сохранены]";
         step.measurements = std::move(measurements);
         step.operatorSkipped = skipped;
+        const tu::RunEvent event{std::chrono::system_clock::now(), step.nodeId,
+            "FINISH", step.message, step.verdict};
+        run.events.push_back(event);
         page->setStageResult(currentStage, step);
-        page->appendRunEvent({std::chrono::system_clock::now(), step.nodeId, "FINISH", step.message, result});
+        page->appendRunEvent(event);
+        persistRun();
     }
 
-    void completeStage(RunVerdict result, const QString& detail,
-                       std::vector<tu::MeasurementResult> measurements = {}, bool skipped = false)
+    void advanceStage()
     {
-        if (currentStage < 2 && result != RunVerdict::Ok) {
-            endSession(detail, result);
-            return;
-        }
-        recordStage(result, detail, std::move(measurements), skipped);
         ++currentStage;
+        forcedOkActive = false;
+        pendingDecision = false;
+        page->setRetryAvailable(false);
         if (static_cast<std::size_t>(currentStage) == run.steps.size()) {
             currentStage = -1;
             endSession(QStringLiteral("Сбор кадров завершён."));
@@ -1013,6 +1071,30 @@ struct BrpTuWindow::Impl {
         }
     }
 
+    void completeStage(RunVerdict result, const QString& detail,
+                       std::vector<tu::MeasurementResult> measurements = {}, bool skipped = false)
+    {
+        if (currentStage < 2 && result != RunVerdict::Ok) {
+            endSession(detail, result);
+            return;
+        }
+        recordStage(result, detail, std::move(measurements), skipped);
+        if (currentStage >= 2 && result == RunVerdict::Fail
+            && !run.steps[currentStage].forcedOk) {
+            pendingDecision = true;
+            waitingForPoint = false;
+            page->setRetryAvailable(true);
+            setProgress(QStringLiteral("НЕ НОРМА: повторите пункт или продолжите с отказом."));
+            return;
+        }
+        // Equipment faults are not DUT failures and cannot be overridden.
+        if (currentStage >= 2 && result == RunVerdict::Error) {
+            endSession(QStringLiteral("Ошибка оборудования: испытание остановлено."), RunVerdict::Error);
+            return;
+        }
+        advanceStage();
+    }
+
     void measureStage()
     {
         if (!pointCanStart()) return;
@@ -1031,6 +1113,7 @@ struct BrpTuWindow::Impl {
         for (const auto& step : run.steps)
             run.verdict = tu::combineVerdicts(run.verdict,
                 step.verdict == RunVerdict::NotRun ? RunVerdict::Incomplete : step.verdict);
+        persistRun();
         page->finishRun(run);
     }
 
@@ -1559,6 +1642,8 @@ struct BrpTuWindow::Impl {
     QVector<double> minimumTrace, maximumTrace;
     int currentStage = -1;
     bool waitingForPoint = false;
+    bool pendingDecision = false;
+    bool forcedOkActive = false;
     QString stageProgress;
     QString scenarioIsdHost;
     MetadataService metadata;
