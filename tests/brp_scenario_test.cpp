@@ -142,10 +142,15 @@ void testWindow()
     auto* comToggle = window.findChild<QCheckBox*>("brpMonitorCounterToCom");
     require(graphToggle && graphToggle->isChecked(), "M16 bar graph must be on by default");
     require(comToggle && !comToggle->isChecked(), "COM stimulus cannot be enabled silently");
+    // Simulation verifies the M16 receive path without opening any physical COM.
+    comToggle->setChecked(true);
     start->click();
     require(waitUntil([&] {
         return status->text().contains(QStringLiteral("M16P1A10B60C11T01 = 512"));
     }), "passive M16 monitor did not show the decoded BRP address");
+    require(waitUntil([&] {
+        return status->text().contains(QStringLiteral("два периода 0–1023 ПОДТВЕРЖДЕНЫ"));
+    }, 12000), "M16 monitor did not validate returned RS485 counter");
     stop->click();
     require(waitUntil([&] { return start->isEnabled(); }, 20000), "M16 stop did not release stream");
     window.findChild<QPushButton*>("brpBrowseDb")->click();
