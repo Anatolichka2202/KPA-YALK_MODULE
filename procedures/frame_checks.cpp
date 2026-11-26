@@ -188,6 +188,16 @@ std::vector<FrameCheck> loadFrameChecks(const std::string& yaml)
                 throw std::runtime_error("Неверная шкала строки № " + std::to_string(check.number));
             check.scale = scale;
         }
+        if (node["point_targets_v"]) {
+            check.pointTargets = node["point_targets_v"].as<std::vector<double>>();
+            check.targetWindowVolts = node["point_target_window_v"].as<double>(0.5);
+            if (!check.scale || check.pointTargets.size() < 2 || !std::isfinite(check.targetWindowVolts)
+                || check.targetWindowVolts <= 0.0 || check.targetWindowVolts > 2.0
+                || std::any_of(check.pointTargets.begin(), check.pointTargets.end(), [&check](double value) {
+                    return !std::isfinite(value) || value < check.scale->minVolts || value > check.scale->maxVolts;
+                }))
+                throw std::runtime_error("Неверная сетка измерительных точек строки № " + std::to_string(check.number));
+        }
         if (!check.voltagePointRequirement.empty()
             && (!check.scale || !check.scale->tolerancePercent || check.addresses.empty()))
             throw std::runtime_error("Для проверки точки нужны адрес, шкала и допуск строки № "
