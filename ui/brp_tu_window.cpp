@@ -57,6 +57,7 @@
 #include <mutex>
 #include <limits>
 #include <stdexcept>
+#include <thread>
 
 namespace {
 using namespace miltech::brp;
@@ -116,6 +117,40 @@ IsdPreparation prepareIsd(const QDir& root, const QString& host)
                     baseline["command_gap_ms"].as<unsigned>()), {}};
     } catch (const std::exception& error) {
         return {0, QString::fromUtf8(error.what())};
+    }
+}
+
+struct BbPrCommandResult {
+    bool acknowledged = false;
+    QString message;
+};
+
+BbPrCommandResult issueBbPrPulse(const QDir& root)
+{
+    std::unique_ptr<tu::hardware::IsdRouter> router;
+    try {
+        const auto profile = loadStand(root);
+        const auto route = profile["bb_pr_signal"];
+        if (!route || !route.IsMap())
+            return {false, QStringLiteral("ББ ПР: маршрут выдачи не задан в stand_brp.yaml; команда не отправлена.")};
+        const unsigned type = route["type"].as<unsigned>();
+        const unsigned channel = route["channel"].as<unsigned>();
+        const unsigned milliseconds = route["pulse_ms"].as<unsigned>();
+        if ((type != 2 && type != 3) || channel == 0
+            || channel > (type == 2 ? 40u : 96u)
+            || milliseconds < 20 || milliseconds > 5000)
+            throw std::invalid_argument("Неверные параметры выхода ББ ПР в профиле стенда");
+        router = std::make_unique<tu::hardware::IsdRouter>(tu::hardware::IsdConfig{
+            profile["isd"]["host"].as<std::string>()});
+        router->setSwitch(type, channel, true);
+        std::this_thread::sleep_for(std::chrono::milliseconds(milliseconds));
+        router->setSwitch(type, channel, false);
+        return {true, QStringLiteral("ББ ПР: ИСД подтвердил ON и OFF контакта %1/%2; физическую реакцию сверяйте по M16.")
+            .arg(type).arg(channel)};
+    } catch (const std::exception& error) {
+        if (router) router->safeStop();
+        return {false, QStringLiteral("ББ ПР: отказ выдачи или снятия воздействия: %1. Проверьте безопасное состояние стенда.")
+            .arg(QString::fromUtf8(error.what()))};
     }
 }
 
@@ -457,6 +492,28 @@ struct BrpTuWindow::Impl {
             if (!bridge) interfaceMode->setCurrentIndex(3);
         });
         interfaceActions->addWidget(monitorButton);
+        bbPrButton = new QPushButton(QStringLiteral("ББ ПР · выдать сигнал"), interfaceBox);
+        bbPrButton->setObjectName(QStringLiteral("brpIssueBbPr"));
+        bbPrButton->setToolTip(QStringLiteral("Выдача через заданный в профиле контакт ИСД; без карты контакта команда не отправляется."));
+        QObject::connect(bbPrButton, &QPushButton::clicked, &window, [this] {
+            if (bbPrBusy || currentStage >= 0 || bridge || preparingIsd || probing) return;
+            if (simulation) {
+                appendLog(QStringLiteral("ББ ПР: ИМИТАЦИЯ запроса выдачи. Аппаратная команда не отправлялась."));
+                return;
+            }
+            bbPrBusy = true;
+            bbPrButton->setEnabled(false);
+            auto* watcher = new QFutureWatcher<BbPrCommandResult>(&window);
+            QObject::connect(watcher, &QFutureWatcherBase::finished, &window, [this, watcher] {
+                const auto reply = watcher->result();
+                watcher->deleteLater();
+                bbPrBusy = false;
+                bbPrButton->setEnabled(true);
+                appendLog(reply.message);
+            });
+            watcher->setFuture(QtConcurrent::run(issueBbPrPulse, root));
+        });
+        interfaceActions->addWidget(bbPrButton);
         interfaceActions->addWidget(start);
         interfaceActions->addWidget(stop);
         interfaceActions->addWidget(plotEnabled);
@@ -1811,6 +1868,8 @@ struct BrpTuWindow::Impl {
     QLineEdit *isdHost = nullptr, *yasmCodes = nullptr, *m8Addresses = nullptr;
     QCheckBox* m8Invert = nullptr;
     QGroupBox* checksPanel = nullptr;
+    QPushButton *bbPrButton = nullptr;
+    bool bbPrBusy = false;
     QPushButton *start = nullptr, *stop = nullptr, *capture = nullptr, *prepare = nullptr,
                 *yasmFile = nullptr, *purumk = nullptr;
     QString purumkProgram;
