@@ -578,7 +578,8 @@ void TuFlowWidget::populateReportRows(const tu::ScenarioRunResult& result)
         reportTable_->insertRow(row);
         auto* requirement = new QTableWidgetItem(step.tuRequirement.empty() ? QString::fromStdString(step.title) : QStringLiteral("ТУ %1 — %2")
             .arg(QString::fromStdString(step.tuRequirement), QString::fromStdString(step.title)));
-        auto* status = new QTableWidgetItem(step.operatorSkipped ? QStringLiteral("ПРОПУЩЕНО") : verdictText(verdict));
+        auto* status = new QTableWidgetItem(step.forcedOk ? QStringLiteral("НОРМА · ПРИНУД.")
+            : step.operatorSkipped ? QStringLiteral("ПРОПУЩЕНО") : verdictText(verdict));
         requirement->setToolTip(QString::fromStdString(step.message).toHtmlEscaped());
         status->setTextAlignment(Qt::AlignCenter);
         status->setForeground(verdictColor(verdict));
