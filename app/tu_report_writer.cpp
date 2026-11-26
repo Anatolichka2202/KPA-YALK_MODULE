@@ -75,7 +75,10 @@ void visitMeasurements(const std::vector<tu::StepRunResult>& steps,
                        const std::function<void(const tu::StepRunResult&, const tu::MeasurementResult&)>& visitor)
 {
     for (const auto& step : steps) {
-        for (const auto& measurement : step.measurements) visitor(step, measurement);
+        // Once attempts exist, parent measurements are the last-result projection.
+        // CSV must contain each physical measurement exactly once.
+        if (step.children.empty())
+            for (const auto& measurement : step.measurements) visitor(step, measurement);
         visitMeasurements(step.children, visitor);
     }
 }
@@ -107,6 +110,7 @@ void sectionResult(QString& output, const QString& title, tu::RunVerdict verdict
 
 QString stepVerdict(const tu::StepRunResult& step)
 {
+    if (step.forcedOk) return QStringLiteral("НОРМА · ПРИНУДИТЕЛЬНЫЙ ОК");
     return step.operatorSkipped ? QStringLiteral("ПРОПУЩЕНО") : protocolVerdict(step.verdict);
 }
 
@@ -178,6 +182,7 @@ QJsonObject stepJson(const tu::StepRunResult& step)
             {QStringLiteral("verdict"), QString::fromLatin1(tu::toString(step.verdict))},
             {QStringLiteral("message"), text(step.message)},
             {QStringLiteral("operatorSkipped"), step.operatorSkipped},
+            {QStringLiteral("forcedOk"), step.forcedOk},
             {QStringLiteral("measurements"), measurements},
             {QStringLiteral("attempts"), children}};
 }
