@@ -2,12 +2,15 @@
 #include "hardware/isd_router.h"
 
 #include <QApplication>
+#include <QAction>
+#include <QCheckBox>
 #include <QComboBox>
 #include <QElapsedTimer>
 #include <QFile>
 #include <QHostAddress>
 #include <QLabel>
 #include <QLineEdit>
+#include <QInputDialog>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QTableWidget>
@@ -15,6 +18,7 @@
 #include <QTcpSocket>
 #include <QTemporaryDir>
 #include <QThread>
+#include <QTimer>
 #include <QtConcurrentRun>
 
 #include <iostream>
@@ -146,6 +150,28 @@ void testWindow()
     require(waitUntil([&] {
         return status->text().contains(QStringLiteral("ББ СУ · M16P1A10B60C11T01 = 512"));
     }), "monitor did not display the selected parameter by name");
+    stop->click();
+
+    QTimer::singleShot(0, &window, [] {
+        auto* dialog = qobject_cast<QInputDialog*>(QApplication::activeModalWidget());
+        if (dialog) {
+            dialog->setTextValue(QStringLiteral("Второй профиль"));
+            dialog->accept();
+        }
+    });
+    window.findChild<QAction*>("brpAddMonitorProfile")->trigger();
+    auto* profiles = window.findChild<QComboBox*>("brpMonitorProfiles");
+    require(profiles && profiles->count() == 2, "second monitor profile was not created");
+    window.findChild<QLineEdit*>("brpM8Addresses")->setText(QStringLiteral("M16P1A10B60C21T01"));
+    window.findChild<QCheckBox*>("brpMonitorGraphToggle")->setChecked(true);
+    start->click();
+    require(waitUntil([&] {
+        const auto text = status->text();
+        return text.contains(QStringLiteral("ББ СУ · M16P1A10B60C11T01 = 512"))
+            && text.contains(QStringLiteral("M16P1A10B60C21T01 = 512"));
+    }), "combined monitor did not show channels from both profiles");
+    require(window.findChild<QWidget*>("brpMonitorPlot")->isVisible(), "combined monitor graph is hidden");
+    stop->click();
 }
 
 QString readText(const QString& path)

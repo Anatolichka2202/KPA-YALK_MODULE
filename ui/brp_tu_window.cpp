@@ -1,6 +1,7 @@
 #include "brp_tu_window.h"
 
 #include "history_plot.h"
+#include "address_set_model.h"
 #include "test_page.h"
 #include "tu_flow_widget.h"
 #include "frame_checks.h"
@@ -19,6 +20,10 @@
 #include <QDateTime>
 #include <QDir>
 #include <QDialog>
+#include <QInputDialog>
+#include <QMenu>
+#include <QSaveFile>
+#include <QSignalBlocker>
 #include <QHeaderView>
 #include <QSqlDatabase>
 #include <QSqlError>
@@ -49,6 +54,7 @@
 #include <array>
 #include <cmath>
 #include <mutex>
+#include <limits>
 #include <stdexcept>
 
 namespace {
@@ -325,6 +331,69 @@ struct BrpTuWindow::Impl {
         m8Controls->addWidget(m8Addresses, 1);
         m8Controls->addWidget(m8Invert);
         interfaceLayout->addLayout(m8Controls);
+        profileBar = new QWidget(interfaceBox);
+        auto* profileLayout = new QHBoxLayout(profileBar);
+        profileLayout->setContentsMargins(0, 0, 0, 0);
+        profileCombo = new QComboBox(profileBar);
+        profileCombo->setObjectName(QStringLiteral("brpMonitorProfiles"));
+        auto* profileActions = new QPushButton(QStringLiteral("Профили"), profileBar);
+        auto* menu = new QMenu(profileActions);
+        profileActions->setMenu(menu);
+        auto* addProfile = menu->addAction(QStringLiteral("Создать профиль…"));
+        addProfile->setObjectName(QStringLiteral("brpAddMonitorProfile"));
+        auto* renameProfile = menu->addAction(QStringLiteral("Переименовать…"));
+        auto* deleteProfile = menu->addAction(QStringLiteral("Удалить текущий профиль"));
+        menu->addSeparator();
+        auto* loadProfiles = menu->addAction(QStringLiteral("Загрузить наборы…"));
+        auto* saveProfiles = menu->addAction(QStringLiteral("Сохранить наборы…"));
+        combineProfiles = new QCheckBox(QStringLiteral("Объединить"), profileBar);
+        combineProfiles->setChecked(true);
+        combineProfiles->setToolTip(QStringLiteral("Показать каналы выбранной информативности из всех профилей"));
+        profileLayout->addWidget(profileCombo, 1);
+        profileLayout->addWidget(profileActions);
+        profileLayout->addWidget(combineProfiles);
+        interfaceLayout->addWidget(profileBar);
+        profileBar->hide();
+        profiles.addToActive({{"M16P1A10B60C11T01", "ББ СУ", "ЯГР1"},
+                              {"M16P1A10B60C21T01", "ББ ПР", "ЯГР1"}});
+        if (simulation)
+            profiles.addToActive({{"M08A10T01", {}, {}}, {"M08A20T01", {}, {}}});
+        refreshProfiles();
+        QObject::connect(profileCombo, &QComboBox::currentIndexChanged, &window, [this](int index) {
+            if (index < 0) return;
+            profiles.setActiveIndex(index);
+            showProfileAddresses();
+        });
+        QObject::connect(m8Addresses, &QLineEdit::editingFinished, &window, [this] {
+            if (selectedMode() < 2 || bridge || !m8Addresses->isModified()) return;
+            try { storeProfileAddresses(); }
+            catch (const std::exception& error) { status->setText(QString::fromUtf8(error.what())); }
+        });
+        QObject::connect(addProfile, &QAction::triggered, &window, [this] {
+            const auto name = QInputDialog::getText(&this->window, QStringLiteral("Новый профиль"),
+                QStringLiteral("Название"));
+            if (name.trimmed().isEmpty()) return;
+            profiles.addSet(name);
+            refreshProfiles();
+            showProfileAddresses();
+        });
+        QObject::connect(renameProfile, &QAction::triggered, &window, [this] {
+            const auto name = QInputDialog::getText(&this->window, QStringLiteral("Имя профиля"),
+                QStringLiteral("Название"), QLineEdit::Normal, profiles.at(profiles.activeIndex()).title);
+            profiles.renameSet(profiles.activeIndex(), name);
+            refreshProfiles();
+        });
+        QObject::connect(deleteProfile, &QAction::triggered, &window, [this] {
+            if (profiles.removeSet(profiles.activeIndex())) {
+                refreshProfiles();
+                showProfileAddresses();
+            }
+        });
+        QObject::connect(loadProfiles, &QAction::triggered, &window, [this] { profileFile(false); });
+        QObject::connect(saveProfiles, &QAction::triggered, &window, [this] { profileFile(true); });
+        plotEnabled = new QCheckBox(QStringLiteral("График"), interfaceBox);
+        plotEnabled->setObjectName(QStringLiteral("brpMonitorGraphToggle"));
+        plotEnabled->hide();
         auto* interfaceActions = new QHBoxLayout;
         auto* monitorButton = new QPushButton(QStringLiteral("Монитор Орбиты"), interfaceBox);
         QObject::connect(monitorButton, &QPushButton::clicked, interfaceMode, [this] {
@@ -333,6 +402,7 @@ struct BrpTuWindow::Impl {
         interfaceActions->addWidget(monitorButton);
         interfaceActions->addWidget(start);
         interfaceActions->addWidget(stop);
+        interfaceActions->addWidget(plotEnabled);
         interfaceActions->addStretch();
         interfaceLayout->addLayout(interfaceActions);
         QObject::connect(yasmCodes, &QLineEdit::textEdited, &window, [this] { yasmFixture.clear(); });
@@ -363,6 +433,13 @@ struct BrpTuWindow::Impl {
         graph = new brp::ui::HistoryPlot(interfaceBox);
         graph->configure(QStringLiteral("Счётчик RS-485"), QStringLiteral("код"), QStringLiteral("Орбита M16"));
         interfaceLayout->addWidget(graph, 1);
+        monitorPlot = new brp::ui::HistoryPlot(interfaceBox);
+        monitorPlot->setObjectName(QStringLiteral("brpMonitorPlot"));
+        monitorPlot->configure(QStringLiteral("История кодов · последние 200 обновлений"), QStringLiteral("код"), {});
+        monitorPlot->setMinimumHeight(240);
+        monitorPlot->hide();
+        interfaceLayout->addWidget(monitorPlot, 1);
+        QObject::connect(plotEnabled, &QCheckBox::toggled, monitorPlot, &QWidget::setVisible);
         interfaceLayout->addStretch();
         QObject::connect(interfaceMode, &QComboBox::currentIndexChanged, &window, [this, columns, interfaceBox](int index) {
             port->setVisible(!this->simulation && index == 0);
@@ -374,10 +451,14 @@ struct BrpTuWindow::Impl {
             if (index >= 2) {
                 m8Addresses->setPlaceholderText(index == 2 ? QStringLiteral("Адреса M08… через пробел")
                                                          : QStringLiteral("Адреса M16… через пробел"));
-                m8Addresses->setText(index == 3 ? QStringLiteral("M16P1A10B60C11T01 M16P1A10B60C21T01")
-                    : this->simulation ? QStringLiteral("M08A10T01 M08A20T01") : QString());
+                showProfileAddresses();
             }
             m8Invert->setVisible(index == 2);
+            profileBar->setVisible(index >= 2);
+            plotEnabled->setVisible(index >= 2);
+            monitorPlot->setVisible(index >= 2 && plotEnabled->isChecked());
+            if (index >= 2 && plotEnabled->isChecked()) columns->setAlignment(interfaceBox, Qt::Alignment{});
+
             checksPanel->setVisible(index < 2);
             start->setText(index >= 2 ? QStringLiteral("Начать приём Орбиты")
                                      : QStringLiteral("Проверить интерфейс"));
@@ -484,6 +565,87 @@ struct BrpTuWindow::Impl {
     }
 
     ~Impl() { shutdown(); }
+
+    void refreshProfiles()
+    {
+        const QSignalBlocker blocker(profileCombo);
+        profileCombo->clear();
+        for (int i = 0; i < profiles.count(); ++i)
+            profileCombo->addItem(profiles.at(i).title);
+        profileCombo->setCurrentIndex(profiles.activeIndex());
+    }
+
+    QString monitorPrefix() const
+    {
+        return selectedMode() == 2 ? QStringLiteral("M08") : QStringLiteral("M16");
+    }
+
+    void showProfileAddresses()
+    {
+        const auto prefix = monitorPrefix().toStdString();
+        QStringList addresses;
+        for (const auto& spec : profiles.at(profiles.activeIndex()).specs)
+            if (spec.address.rfind(prefix, 0) == 0) addresses.append(QString::fromStdString(spec.address));
+        m8Addresses->setText(addresses.join(QLatin1Char(' ')));
+    }
+
+    void storeProfileAddresses()
+    {
+        const auto prefix = monitorPrefix().toStdString();
+        const auto previous = profiles.at(profiles.activeIndex()).specs;
+        auto channels = previous;
+        channels.erase(std::remove_if(channels.begin(), channels.end(), [&prefix](const auto& spec) {
+            return spec.address.rfind(prefix, 0) == 0;
+        }), channels.end());
+        for (const auto& token : m8Addresses->text().split(QRegularExpression(QStringLiteral("[\\s,]+")), Qt::SkipEmptyParts)) {
+            const auto address = encoding::normalizeAddress(token.toStdString());
+            if (address.rfind(prefix, 0) != 0 || !orbita::isValidChannelAddress(address))
+                throw std::invalid_argument("Некорректный адрес для формата " + prefix + ": " + address);
+            if (std::any_of(channels.begin(), channels.end(), [&address](const auto& spec) {
+                return spec.address == address;
+            })) continue;
+            const auto found = std::find_if(previous.begin(), previous.end(), [&address](const auto& spec) {
+                return spec.address == address;
+            });
+            const auto name = monitorNames.value(QString::fromStdString(address),
+                metadata.name(QString::fromStdString(address)));
+            if (found == previous.end()) channels.push_back({address, name.toStdString(), {}});
+            else {
+                auto spec = *found;
+                if (monitorNames.contains(QString::fromStdString(address))) spec.name = name.toStdString();
+                channels.push_back(std::move(spec));
+            }
+        }
+        profiles.replaceActive(channels);
+    }
+
+    void profileFile(bool save)
+    {
+        if (bridge) return;
+        const auto pattern = QStringLiteral("Наборы параметров (*.json)");
+        const auto path = save
+            ? QFileDialog::getSaveFileName(&window, QStringLiteral("Сохранить профили"), {}, pattern)
+            : QFileDialog::getOpenFileName(&window, QStringLiteral("Загрузить профили"), {}, pattern);
+        if (path.isEmpty()) return;
+        if (save) {
+            QSaveFile file(path);
+            const auto bytes = profiles.serialize();
+            if (!file.open(QIODevice::WriteOnly) || file.write(bytes) != bytes.size() || !file.commit())
+                status->setText(file.errorString());
+            else status->setText(QStringLiteral("Профили сохранены."));
+            return;
+        }
+        QFile file(path);
+        QString error;
+        if (!file.open(QIODevice::ReadOnly)) error = file.errorString();
+        else if (profiles.restore(file.readAll(), &error)) {
+            refreshProfiles();
+            showProfileAddresses();
+            status->setText(QStringLiteral("Профили загружены."));
+            return;
+        }
+        status->setText(error);
+    }
 
     void browseDatabase(const QString& databasePath = {})
     {
@@ -629,6 +791,7 @@ struct BrpTuWindow::Impl {
             m8Addresses->setText(addresses.join(QLatin1Char(' ')));
             for (auto it = names.cbegin(); it != names.cend(); ++it)
                 monitorNames.insert(it.key(), it.value());
+            storeProfileAddresses();
             status->setText(QStringLiteral("Выбрано параметров: %1. Нажмите «Начать приём Орбиты».").arg(addresses.size()));
             dialog->accept();
         });
@@ -1003,19 +1166,22 @@ struct BrpTuWindow::Impl {
             if (monitor) {
                 decoder = std::make_unique<orbita::Orbita>(
                     m8Mode ? orbita::Informativity::M8 : orbita::Informativity::M16, sampleRate);
-                const std::string prefix = m8Mode ? "M08" : "M16";
-                std::vector<orbita::ChannelSpec> channels;
-                for (const auto& item : m8Addresses->text().split(
-                        QRegularExpression(QStringLiteral("[\\s,]+")), Qt::SkipEmptyParts)) {
-                    const auto address = encoding::normalizeAddress(item.toStdString());
-                    if (address.rfind(prefix, 0) != 0 || !orbita::isValidChannelAddress(address))
-                        throw std::invalid_argument("Адрес должен начинаться с " + prefix + ": " + address);
-                    channels.push_back({address, {}, {}});
-                }
-                if (channels.empty()) throw std::invalid_argument("Задайте хотя бы один адрес");
+                storeProfileAddresses();
+                const auto prefix = monitorPrefix().toStdString();
+                auto channels = combineProfiles->isChecked() ? profiles.combinedSpecs()
+                                                            : profiles.at(profiles.activeIndex()).specs;
+                channels.erase(std::remove_if(channels.begin(), channels.end(), [&prefix](const auto& spec) {
+                    return spec.address.rfind(prefix, 0) != 0;
+                }), channels.end());
+                if (channels.empty()) throw std::invalid_argument("В выбранных профилях нет адресов " + prefix);
                 decoder->setChannels(channels);
                 if (decoder->getChannels().size() != channels.size())
-                    throw std::invalid_argument("В списке есть адреса за пределами кадра");
+                    throw std::invalid_argument("В профилях есть адреса за пределами кадра");
+                activeMonitorNames.clear();
+                monitorHistory.clear();
+                monitorPlot->clear();
+                for (const auto& spec : channels)
+                    activeMonitorNames.insert(QString::fromStdString(spec.address), QString::fromStdString(spec.name));
                 if (m8Mode) decoder->setInvertSignal(m8Invert->isChecked());
             } else {
                 decoder = std::make_unique<orbita::Orbita>();
@@ -1032,6 +1198,7 @@ struct BrpTuWindow::Impl {
             if (yasmCodes) yasmCodes->setEnabled(false);
             if (yasmFile) yasmFile->setEnabled(false);
             if (m8Addresses) m8Addresses->setEnabled(false);
+            if (profileBar) profileBar->setEnabled(false);
             if (m8Invert) m8Invert->setEnabled(false);
             if (graph) graph->clear();
             if (status) status->setText(monitor ? QStringLiteral("Ожидание синхронизации Орбиты") : yasmMode
@@ -1104,16 +1271,24 @@ struct BrpTuWindow::Impl {
             const auto snapshot = decoder->getSnapshot();
             const auto now = std::chrono::steady_clock::now();
             QStringList values;
+            QVector<brp::ui::HistoryPlot::NamedSeries> traces;
             for (const auto& channel : snapshot.values) {
                 // Поддерживаемые адреса обновляются хотя бы раз за цикл.
                 // После паузы длиннее кадра старый код скрываем.
                 const bool fresh = channel.valid && now - channel.updatedAt < std::chrono::seconds(1);
                 const auto address = QString::fromStdString(channel.address);
-                const auto name = monitorNames.value(address);
+                const auto name = activeMonitorNames.value(address);
                 const auto label = name.isEmpty() ? address : QStringLiteral("%1 · %2").arg(name, address);
                 values.append(QStringLiteral("%1 = %2").arg(label,
                     fresh ? QString::number(channel.value) : QStringLiteral("нет отсчёта")));
+                auto& history = monitorHistory[address];
+                history.append(fresh ? channel.value : std::numeric_limits<double>::quiet_NaN());
+                if (history.size() > 200) history.removeFirst();
+                if (plotEnabled->isChecked())
+                    traces.append({name.isEmpty() ? address : name, history});
+
             }
+            if (plotEnabled->isChecked()) monitorPlot->setNamedSeries(std::move(traces));
             status->setText(QStringLiteral("%1 · групп %2 · ошибки фраз %3 % · ошибки групп %4 %\n%5")
                 .arg(selectedMode() == 2 ? QStringLiteral("M8") : QStringLiteral("M16"))
                 .arg(snapshot.stats.frames_processed).arg(snapshot.stats.phrase_error_percent)
@@ -1362,6 +1537,7 @@ struct BrpTuWindow::Impl {
         if (yasmCodes) yasmCodes->setEnabled(true);
         if (yasmFile) yasmFile->setEnabled(true);
         if (m8Addresses) m8Addresses->setEnabled(true);
+        if (profileBar) profileBar->setEnabled(true);
         if (m8Invert) m8Invert->setEnabled(true);
         if (checkList) checkList->setEnabled(true);
         if (channelList) channelList->setEnabled(true);
@@ -1386,7 +1562,13 @@ struct BrpTuWindow::Impl {
     QString stageProgress;
     QString scenarioIsdHost;
     MetadataService metadata;
-    QHash<QString, QString> monitorNames;
+    QHash<QString, QString> monitorNames, activeMonitorNames;
+    AddressSetModel profiles;
+    QWidget* profileBar = nullptr;
+    QComboBox* profileCombo = nullptr;
+    QCheckBox *combineProfiles = nullptr, *plotEnabled = nullptr;
+    brp::ui::HistoryPlot* monitorPlot = nullptr;
+    QHash<QString, QVector<double>> monitorHistory;
     std::vector<FrameCheck> checks;
     QComboBox *interfaceMode = nullptr, *port = nullptr, *checkList = nullptr,
               *channelList = nullptr, *expectedState = nullptr;

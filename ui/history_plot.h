@@ -28,6 +28,11 @@ inline const QColor cyan{"#61d5e8"};
 class HistoryPlot final : public QWidget
 {
 public:
+    struct NamedSeries {
+        QString name;
+        QVector<double> values;
+    };
+
     explicit HistoryPlot(QWidget* parent = nullptr) : QWidget(parent)
     {
         setMinimumHeight(120);
@@ -49,10 +54,17 @@ public:
         update();
     }
 
+    void setNamedSeries(QVector<NamedSeries> series)
+    {
+        named_ = std::move(series);
+        update();
+    }
+
     void clear()
     {
         first_.clear();
         second_.clear();
+        named_.clear();
         update();
     }
 
@@ -79,6 +91,8 @@ protected:
         QVector<double> finite;
         for (double value : first_) if (std::isfinite(value)) finite.push_back(value);
         for (double value : second_) if (std::isfinite(value)) finite.push_back(value);
+        for (const auto& series : named_)
+            for (double value : series.values) if (std::isfinite(value)) finite.push_back(value);
         if (finite.isEmpty()) {
             p.setPen(palette::dim);
             p.setFont(QFont(QStringLiteral("Segoe UI"), 9));
@@ -107,7 +121,8 @@ protected:
                        QString::number(value, 'f', unit_ == QStringLiteral("А") ? 3 : 2));
         }
 
-        const int count = std::max(first_.size(), second_.size());
+        auto count = std::max(first_.size(), second_.size());
+        for (const auto& series : named_) count = std::max(count, series.values.size());
         const auto drawSeries = [&](const QVector<double>& values, const QColor& color) {
             if (values.isEmpty()) return;
             QPainterPath path;
@@ -125,6 +140,18 @@ protected:
         };
         drawSeries(first_, palette::blue2);
         drawSeries(second_, palette::cyan);
+        int legendRight = width() - 12;
+        p.setFont(QFont(QStringLiteral("Segoe UI"), 8));
+        for (int i = 0; i < named_.size(); ++i) {
+            const auto color = QColor::fromHsv((207 + 137 * (i % 360)) % 360, 135, 247);
+            drawSeries(named_[i].values, color);
+            if (legendRight < width() / 2) continue;
+            const auto name = p.fontMetrics().elidedText(named_[i].name, Qt::ElideRight, 110);
+            const int width = p.fontMetrics().horizontalAdvance(name) + 10;
+            legendRight -= width;
+            p.setPen(color);
+            p.drawText(QRectF(legendRight, 6, width, 18), Qt::AlignRight | Qt::AlignVCenter, name);
+        }
 
         if (!firstName_.isEmpty()) {
             p.setFont(QFont(QStringLiteral("Segoe UI"), 8));
@@ -139,6 +166,7 @@ protected:
 private:
     QString title_, unit_, firstName_, secondName_;
     QVector<double> first_, second_;
+    QVector<NamedSeries> named_;
 };
 
 
