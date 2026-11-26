@@ -269,6 +269,13 @@ void testScenarioAndReport()
     require(stop->isVisible() && graph->isVisible() && !manual->isVisible() && !measure->isVisible(),
         "runtime did not show the interface graph and lock unattended measurements");
     require(waitUntil([&] { return measure->isVisible(); }), "scenario did not reach operator confirmation");
+    auto* bbPrRuntime = window.findChild<QPushButton*>("brpIssueBbPrRuntime");
+    require(bbPrRuntime && bbPrRuntime->isVisible() && bbPrRuntime->isEnabled(),
+            "BB PR output action missing from main TU runner");
+    bbPrRuntime->click();
+    require(window.findChild<QPlainTextEdit*>("brpLog")->toPlainText().contains(
+                QStringLiteral("ИМИТАЦИЯ запроса выдачи")),
+            "BB PR runtime action failed to record simulated request");
     auto* interfaceStage = window.findChild<QLabel*>("tuRequirementStatus_yasm");
     auto* isdStage = window.findChild<QLabel*>("tuRequirementStatus_isd_off");
     auto* coverage = window.findChild<QLabel*>("tuRequirementStatus_m16_coverage");
