@@ -26,6 +26,7 @@ public:
     void setStageResult(int index, const tu::StepRunResult& result);
     void setProgress(const QString& detail, bool pointCanStart, bool canForceOk = false);
     void setRetryAvailable(bool available);
+    void setBbPrSignalAvailable(bool available);
     void setSeries(const QVector<double>& first, const QVector<double>& second = {});
     void setVoltage(const QString& before, const QString& after, const QString& error);
     void appendRunEvent(const tu::RunEvent& event);
@@ -36,6 +37,7 @@ signals:
     void skipCurrentStepRequested(); // Ctrl+Shift+Q now requests verdict override, not a skip.
     void retryStageRequested();
     void continueStageRequested();
+    void bbPrSignalRequested();
     void pointReady();
 
 private:
