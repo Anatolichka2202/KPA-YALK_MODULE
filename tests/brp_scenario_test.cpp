@@ -125,6 +125,8 @@ void testWindow()
             "simulated contact state did not match");
 
     stop->click();
+    require(!start->isEnabled(), "start was enabled while Orbita decoder was still stopping");
+    require(waitUntil([&] { return start->isEnabled(); }, 20000), "async stop did not release stream");
     mode->setCurrentIndex(2);
     start->click();
     require(waitUntil([&] {
@@ -134,12 +136,18 @@ void testWindow()
     }), "M8 monitor did not display decoded channels");
     require(!capture->isEnabled(), "M16 acceptance was enabled from the M8 monitor");
     stop->click();
+    require(waitUntil([&] { return start->isEnabled(); }, 20000), "M8 stop did not release stream");
     mode->setCurrentIndex(3);
+    auto* graphToggle = window.findChild<QCheckBox*>("brpMonitorGraphToggle");
+    auto* comToggle = window.findChild<QCheckBox*>("brpMonitorCounterToCom");
+    require(graphToggle && graphToggle->isChecked(), "M16 bar graph must be on by default");
+    require(comToggle && !comToggle->isChecked(), "COM stimulus cannot be enabled silently");
     start->click();
     require(waitUntil([&] {
         return status->text().contains(QStringLiteral("M16P1A10B60C11T01 = 512"));
     }), "passive M16 monitor did not show the decoded BRP address");
     stop->click();
+    require(waitUntil([&] { return start->isEnabled(); }, 20000), "M16 stop did not release stream");
     window.findChild<QPushButton*>("brpBrowseDb")->click();
     auto* addressTable = window.findChild<QTableWidget*>("brpAddressTable");
     require(addressTable && addressTable->rowCount() > 0
@@ -158,6 +166,7 @@ void testWindow()
         return status->text().contains(QStringLiteral("ББ СУ · M16P1A10B60C11T01 = 512"));
     }), "monitor did not display the selected parameter by name");
     stop->click();
+    require(waitUntil([&] { return start->isEnabled(); }, 20000), "address monitor stop did not finish");
 
     QTimer::singleShot(0, &window, [] {
         auto* dialog = qobject_cast<QInputDialog*>(QApplication::activeModalWidget());
@@ -179,6 +188,7 @@ void testWindow()
     }), "combined monitor did not show channels from both profiles");
     require(window.findChild<QWidget*>("brpMonitorPlot")->isVisible(), "combined monitor graph is hidden");
     stop->click();
+    require(waitUntil([&] { return start->isEnabled(); }, 20000), "combined monitor stop did not finish");
 }
 
 QString readText(const QString& path)
