@@ -102,6 +102,12 @@ void testWindow()
     auto* manual = window.findChild<QPushButton*>("brpManualOpen");
     require(mode && list && start && stop && capture && log && status && manual, "BRP controls are missing");
     manual->click();
+    auto* bbPr = window.findChild<QPushButton*>("brpIssueBbPr");
+    auto* purumk = window.findChild<QPushButton*>("brpLaunchPurumk");
+    require(bbPr && purumk, "BB PR signal action or PURUMK launcher missing");
+    bbPr->click();
+    require(log->toPlainText().contains(QStringLiteral("ИМИТАЦИЯ запроса выдачи")),
+            "BB PR simulator incorrectly claimed physical output");
     require(!capture->isEnabled(), "measurement was available before interface validation");
     mode->setCurrentIndex(1);
     start->click();
