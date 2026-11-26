@@ -1,5 +1,6 @@
 #include "ktma_mainwindow.h"
 #include "operator_confirmation.h"
+#include "test_page.h"
 
 #include "ktma/ubsi/equipment_readiness.h"
 #include "orbita_stand/catalog.h"
@@ -83,6 +84,7 @@ void KtmaMainWindow::integrationPrepareEquipmentForScenario(
     availableCapabilities.insert("operator.manual_input");
     const auto selectedEquipment = orbita::stand::selectScenarioEquipment(
         profile, scenario, availableServices, availableCapabilities);
+    if (auto* page = integrationTestPage()) page->invalidateEquipmentReadiness();
     preparation.clearPhysicalEquipment();
 
     // Application-level services survive clearPhysicalEquipment(), but these two

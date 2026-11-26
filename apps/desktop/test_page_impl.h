@@ -3,7 +3,7 @@
 struct TestPage::Impl
 {
     struct EquipmentRow { int row=-1; bool ready=false; bool operatorConfirmation=false; QString connection; };
-    struct ScenarioInfo { bool available=false; bool diagnostic=false; QStringList required; QString detail; };
+    struct ScenarioInfo { bool available=false; bool diagnostic=false; QStringList required; QString detail; bool requiresPreflight=false; };
 
     explicit Impl(TestPage* q) : q(q)
     {
@@ -511,7 +511,7 @@ struct TestPage::Impl
 
     bool equipmentReady() const
     {
-        const auto info=scenarios.value(testCombo->currentData().toString());if(!info.available)return false;for(const auto& code:info.required){if(code==QStringLiteral("SCHEME")||code==QStringLiteral("R4831"))continue;const auto row=equipmentRows.constFind(code);if(row==equipmentRows.cend()||!row->ready)return false;}return true;
+        const auto selected=testCombo->currentData().toString();const auto info=scenarios.value(selected);if(!info.available||preflightErrors.contains(selected)||(info.requiresPreflight&&!preflightPassed.contains(selected)))return false;for(const auto& code:info.required){if(code==QStringLiteral("SCHEME")||code==QStringLiteral("R4831"))continue;const auto row=equipmentRows.constFind(code);if(row==equipmentRows.cend()||!row->ready)return false;}return true;
     }
 
     void selectNextWaiting()
@@ -560,6 +560,6 @@ struct TestPage::Impl
     QLabel* ytpPhaseTitle=nullptr;QLabel* ytpOperatorBanner=nullptr;QStackedWidget* ytpStack=nullptr;YtpPhase ytpPhase=YtpPhase::Init;QLabel* ytpStream=nullptr;QLabel* ytpEndpoint=nullptr;QLabel* ytpCalZero=nullptr;QLabel* ytpCalFull=nullptr;TrendPlot* ytpCalTrend=nullptr;QLabel* ytpChannel=nullptr;QLabel* ytpReference=nullptr;QLabel* ytpMeasured=nullptr;ChannelOverview* ytpOverview=nullptr;StepPlot* ytpResistanceSteps=nullptr;
     QLabel* yvpStatus=nullptr;QLabel* yvpChannel=nullptr;QLabel* yvpFrequency=nullptr;QLabel* yvpGain=nullptr;QLabel* yvpResult=nullptr;TrendPlot* yvpTrend=nullptr;
     QLabel* finishPower=nullptr;QLabel* finishYalk=nullptr;QLabel* finishYtp=nullptr;QLabel* finishYvp=nullptr;QLabel* finishVerdict=nullptr;QLabel* finishDetail=nullptr;QPushButton* nextProduct=nullptr;QPushButton* backToSession=nullptr;QPushButton* reportButton=nullptr;
-    EquipmentInvoke equipmentInvoke;QHash<QString,EquipmentRow> equipmentRows;QHash<QString,ScenarioInfo> scenarios;
+    EquipmentInvoke equipmentInvoke;QHash<QString,EquipmentRow> equipmentRows;QHash<QString,ScenarioInfo> scenarios;QHash<QString,QString> preflightErrors;QSet<QString> preflightPassed;
     bool engineerMode=false;bool productionMode=false;bool runInProgress=false;QTimer* runClockTimer=nullptr;QElapsedTimer runClock;TopStage topStage=TopStage::Preparation;int activeRow=-1;QString activeSerial;QString activeOperator;QString tuReportPath;QString productionReportPath;
 };

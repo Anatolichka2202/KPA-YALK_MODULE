@@ -25,6 +25,7 @@
 #include <QElapsedTimer>
 #include <QEventLoop>
 #include <QLabel>
+#include <QLibrary>
 #include <QInputDialog>
 #include <QLineEdit>
 #include <QJsonDocument>
@@ -200,6 +201,94 @@ private:
 
 class ProfileWindow final : public UniversalMainWindow {
 public:
+    bool rejectsMissingRoleBeforePreparation()
+    {
+        orbita::stand::StandProfile profile;
+        profile.id = "readiness-preflight-test";
+        profile.version = "1";
+        profile.components.push_back({"supply", "equipment", "orbita.tcp_scpi_bench", true,
+            {"power.dut"}, {{"host", "127.0.0.1"}, {"port", "9"}, {"timeout_ms", "1"}}, {"power.dc_supply"}});
+        integrationConfigureStandProfile(profile, {});
+        integrationEnsureStandRuntime();
+        if (!integrationStandRuntimeReady() || !integrationTestPage()) return false;
+        auto device = integrationStationSession().createEquipmentComponent("supply");
+        integrationStationSession().bindEquipmentComponent("supply", device);
+        if (integrationStationSession().equipmentDevices().size() != 1) return false;
+        orbita::stand::ScenarioDefinition scenario;
+        orbita::stand::ScenarioNode node;
+        node.requiredResources = {{"power.dut", "power.dc_supply"}, {"missing.role", "example"}};
+        scenario.steps.push_back(node);
+        integrationScenarios()[integrationTestPage()->currentScenarioCode()] = scenario;
+        if (!QMetaObject::invokeMethod(this, "checkSelectedEquipment", Qt::DirectConnection)) return false;
+        for (const auto* log : findChildren<QTextEdit*>())
+            if (log->toPlainText().contains(QStringLiteral("Ресурс сценария недоступен: missing.role")))
+                return integrationStationSession().equipmentDevices().empty();
+        return false;
+    }
+    bool rejectsUnmappedEquipmentFailure()
+    {
+        orbita::stand::StandProfile profile;
+        profile.id = "unknown-capability-test";
+        profile.version = "1";
+        profile.components.push_back({"unknown-device", "equipment", "missing.test.plugin", true,
+            {"device.unknown"}, {}, {"custom.measure"}});
+        integrationConfigureStandProfile(profile, {});
+        integrationEnsureStandRuntime();
+        auto* page = integrationTestPage();
+        auto* start = page ? page->findChild<QPushButton*>(QStringLiteral("startTestButton")) : nullptr;
+        if (!integrationStandRuntimeReady() || !page || !start) return false;
+        orbita::stand::ScenarioDefinition scenario;
+        orbita::stand::ScenarioNode node;
+        node.requiredResources = {{"device.unknown", "custom.measure"}};
+        scenario.steps.push_back(node);
+        const auto code = page->currentScenarioCode();
+        integrationScenarios()[code] = scenario;
+        page->setScenarioInfo(code, true, false, {}, QStringLiteral("ready"), true);
+        page->invalidateEquipmentReadiness();
+        if (start->isEnabled()) return false;
+        if (!QMetaObject::invokeMethod(this, "checkSelectedEquipment", Qt::DirectConnection)) return false;
+        return !start->isEnabled() && integrationStationSession().equipmentDevices().empty();
+    }
+    bool freePreparationInvalidatesReadiness()
+    {
+        auto* page = integrationTestPage();
+        auto* start = page ? page->findChild<QPushButton*>(QStringLiteral("startTestButton")) : nullptr;
+        if (!page || !start) return false;
+        const auto code = page->currentScenarioCode();
+        page->setScenarioInfo(code, true, false, {}, QStringLiteral("ready"), true);
+        page->setScenarioPreflightError(code, {});
+        if (!start->isEnabled()) return false;
+        auto activity = integrationStationSession().beginActivity();
+        if (!activity) return false;
+        KtmaMainWindow::integrationPrepareEquipmentForScenario({}, activity);
+        return !start->isEnabled();
+    }
+    bool rejectedLaunchStopsPreparedEquipment()
+    {
+        orbita::stand::StandProfile profile;
+        profile.id = "rejected-launch-test";
+        profile.version = "1";
+        profile.components.push_back({"supply", "equipment", "orbita.tcp_scpi_bench", true,
+            {"power.dut"}, {{"host", "127.0.0.1"}, {"port", "9"}, {"timeout_ms", "1"}}, {"power.dc_supply"}});
+        integrationConfigureStandProfile(profile, {});
+        integrationEnsureStandRuntime();
+        auto* page = integrationTestPage();
+        auto* start = page ? page->findChild<QPushButton*>(QStringLiteral("startTestButton")) : nullptr;
+        if (!integrationStandRuntimeReady() || !page || !start) return false;
+        auto device = integrationStationSession().createEquipmentComponent("supply");
+        integrationStationSession().bindEquipmentComponent("supply", device);
+        const auto code = page->currentScenarioCode();
+        page->setScenarioInfo(code, true, false, {}, QStringLiteral("ready"), true);
+        page->setScenarioPreflightError(code, {});
+        if (!start->isEnabled()) return false;
+        QTimer::singleShot(0, [] {
+            if (auto* dialog = qobject_cast<QMessageBox*>(QApplication::activeModalWidget())) dialog->accept();
+        });
+        if (!QMetaObject::invokeMethod(this, "runScenario", Qt::DirectConnection,
+                Q_ARG(QString, QStringLiteral("not-a-scenario")), Q_ARG(QString, QStringLiteral("SN")), Q_ARG(bool, false)))
+            return false;
+        return !start->isEnabled() && integrationStationSession().equipmentDevices().empty();
+    }
     bool simulatorSelected()
     {
         const auto* source = orbita::stand::findComponentByBinding(
@@ -711,6 +800,18 @@ private:
 
 int runChild(const QString& mode)
 {
+    if (mode == "--readiness-preflight") {
+        ProfileWindow window;
+        require(window.rejectsMissingRoleBeforePreparation(),
+                "specialized readiness opened equipment before rejecting missing role");
+        require(window.rejectsUnmappedEquipmentFailure(),
+                "unmapped equipment preparation failure allowed the scenario to start");
+        require(window.freePreparationInvalidatesReadiness(),
+                "free-scenario preparation retained previous specialized readiness");
+        require(window.rejectedLaunchStopsPreparedEquipment(),
+                "rejected specialized launch retained equipment or readiness");
+        return 0;
+    }
     if (mode == "--manual-dialog-stop") {
         const auto comma = parseOperatorNumber(QStringLiteral("1,234"));
         require(comma && *comma == 1.234 && !parseOperatorNumber(QStringLiteral("1,234.5")),
@@ -1717,6 +1818,13 @@ int runParent()
     }
     require(QFile::copy(source.filePath("orbita/config/address/parameters.db"), root.filePath("parameters.db")),
             "cannot copy test parameters database");
+    const QDir pluginSource(QDir(QCoreApplication::applicationDirPath()).filePath("plugins"));
+    const auto pluginFiles = pluginSource.entryList({QStringLiteral("orbita_plugin_tcp_scpi_bench.*")}, QDir::Files);
+    const auto plugin = std::find_if(pluginFiles.begin(), pluginFiles.end(),
+        [](const QString& file) { return QLibrary::isLibrary(file); });
+    require(plugin != pluginFiles.end() && QDir().mkpath(root.filePath("plugins"))
+                && QFile::copy(pluginSource.filePath(*plugin), root.filePath("plugins/" + *plugin)),
+            "cannot copy simulated equipment plugin");
     require(QFile::copy(source.filePath("data/profiles/stand_ktma.yaml"), root.filePath("profiles/stand_ktma.yaml"))
                 && QFile::copy(source.filePath("data/profiles/stand_ktma_simulator.yaml"),
                                root.filePath("profiles/stand_ktma_simulator.yaml")),
@@ -1771,6 +1879,7 @@ int runParent()
         }
     };
     execute("--manual-dialog-stop", 0);
+    execute("--readiness-preflight", 0);
     execute("--profile-selection", 0);
     execute("--reference-project", 0);
     execute("--monitor-page", 0);

@@ -537,6 +537,7 @@ void UniversalMainWindow::runGenericScenario(
     } catch (const std::exception& error) {
         integrationSetScenarioParameterSubscriptions({});
         integrationSetMonitorLocked(false);
+        if (auto* page = integrationTestPage()) page->invalidateEquipmentReadiness();
         integrationStationSession().safeStopAll(activity);
         if (initialRun.persistenceStarted) {
             initialRun.verdict = orbita::stand::RunVerdict::Error;
@@ -656,6 +657,7 @@ void UniversalMainWindow::stopGenericScenario()
 
 void UniversalMainWindow::finishGenericScenario()
 {
+    if (auto* page = integrationTestPage()) page->invalidateEquipmentReadiness();
     integrationSetScenarioParameterSubscriptions({});
     integrationSetMonitorLocked(false);
     if (!genericDialog_) return;

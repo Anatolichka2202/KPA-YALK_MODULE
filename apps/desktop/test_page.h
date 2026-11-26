@@ -29,9 +29,11 @@ public:
     void setEquipmentConnection(const QString& code, const QString& connection);
     void setEquipmentMissingPlugin(const QString& code, const QString& detail);
     void setEquipmentChecking(const QString& code, const QString& detail);
+    void invalidateEquipmentReadiness();
+    void setScenarioPreflightError(const QString& code, const QString& error);
     void setScenarioInfo(const QString& code, bool available, bool diagnostic,
                          const QStringList& requiredEquipment,
-                         const QString& detail);
+                         const QString& detail, bool requiresPreflight = false);
     void setEngineerMode(bool enabled);
     bool isEngineerMode() const;
     void setProductionMode(bool enabled);

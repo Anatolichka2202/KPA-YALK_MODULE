@@ -520,7 +520,8 @@ void KtmaMainWindow::loadTuScenarios()
                 integrationScenarioPaths().insert(code, file.absoluteFilePath());
                 loaded.insert(code);
             }
-            page->setScenarioInfo(code, available, diagnosticCodes.contains(code), required, detail);
+            page->setScenarioInfo(code, available, diagnosticCodes.contains(code), required, detail,
+                                  !scenarioCapabilities(scenario).empty());
         } catch (const std::exception& error) {
             integrationLog(QStringLiteral("TU scenario %1: %2")
                 .arg(file.fileName(), QString::fromUtf8(error.what())));
@@ -584,7 +585,7 @@ void KtmaMainWindow::loadProductionScenarios()
                 loaded.insert(code);
             }
             page->setScenarioInfo(code, available, false,
-                                  equipmentRoles(scenario), detail);
+                                  equipmentRoles(scenario), detail, !scenarioCapabilities(scenario).empty());
         } catch (const std::exception& error) {
             integrationLog(QStringLiteral("Production scenario %1: %2")
                 .arg(file.fileName(), QString::fromUtf8(error.what())));
@@ -712,6 +713,35 @@ void KtmaMainWindow::checkSelectedEquipment()
     auto& session = integrationStationSession();
     auto& profile = integrationStandProfile();
 
+    // Проверяем все требования до открытия приборов и активной подготовки.
+    // Встроенные сервисы сохраняются при очистке физических маршрутов.
+    std::vector<orbita::stand::ResourceRequirement> availableServices;
+    for (const auto& resource : registry->resources()) {
+        if (!resource.builtin) continue;
+        for (const auto& capability : resource.capabilities)
+            availableServices.push_back({resource.id, capability});
+    }
+    auto availableCapabilities = registry->builtinCapabilities();
+    availableCapabilities.insert("catalog.parameter_resolver");
+    availableCapabilities.insert("operator.manual_input");
+    ktma::ubsi::EquipmentReadinessPlan plan;
+    try {
+        plan = ktma::ubsi::buildScenarioEquipmentReadinessPlan(
+            profile, scenario.value(), availableServices, availableCapabilities);
+    } catch (const std::exception& error) {
+        auto detail = QString::fromUtf8(error.what());
+        if (detail.isEmpty()) detail = QStringLiteral("Ошибка предварительной проверки оборудования");
+        // Ранее подготовленные устройства могут оставаться включёнными.
+        // Убираем физические маршруты и снимаем старую готовность под Activity.
+        page->invalidateEquipmentReadiness();
+        session.clearPhysicalEquipment(activity);
+        page->setScenarioPreflightError(scenarioCode, detail);
+        integrationLog(QStringLiteral("Проверка оборудования отклонена: %1").arg(detail));
+        return;
+    }
+
+    page->invalidateEquipmentReadiness();
+    page->setScenarioPreflightError(scenarioCode, QStringLiteral("Проверка оборудования выполняется"));
     session.prepare(activity, [&](orbita::stand::StationSession::Preparation& preparation) {
     // Сбрасываются только физические маршруты. Встроенные сервисы оболочки,
     // включая orbita.parameter_source, сохраняются после этой проверки готовности.
@@ -811,8 +841,6 @@ void KtmaMainWindow::checkSelectedEquipment()
             return response.str();
         });
 
-    const auto plan = ktma::ubsi::buildEquipmentReadinessPlan(
-        profile, scenarioCapabilities(scenario.value()));
     for (const auto& item : plan.items) {
         const auto* component = orbita::stand::findComponentById(profile, item.componentId);
         if (!component) continue;
@@ -838,7 +866,7 @@ void KtmaMainWindow::checkSelectedEquipment()
                     setStatus(false, detail);
                     integrationLog(QStringLiteral("%1: %2")
                         .arg(QString::fromStdString(component.id), detail));
-                    return;
+                    throw std::runtime_error(detail.toUtf8().toStdString());
                 }
 
                 for (const auto& code : codes) {
@@ -858,6 +886,8 @@ void KtmaMainWindow::checkSelectedEquipment()
                     const std::string response = device->invoke(probeCapability, "probe", {});
                     const bool passiveReady = response.find("alive=0") == std::string::npos
                         && response.find("alive=false") == std::string::npos;
+                    if (!passiveReady)
+                        throw std::runtime_error("Оборудование не подтвердило готовность");
 
                     const bool activeComponent = armSupply
                         || std::find(capabilities.begin(), capabilities.end(), "stand.switch_matrix")
@@ -873,13 +903,8 @@ void KtmaMainWindow::checkSelectedEquipment()
                     const bool activeAllowed = !activeComponent || (!explicitlyBlocked
                         && (profile.activeOutputsConfirmed || deviceConfirmed));
                     if (!activeAllowed) {
-                        device->safeStop();
-                        const QString detail = QStringLiteral(
+                        throw std::runtime_error(
                             "Связь есть, но активные воздействия заблокированы профилем стенда");
-                        setStatus(false, detail);
-                        integrationLog(QStringLiteral("%1: %2")
-                            .arg(QString::fromStdString(component.id), detail));
-                        return;
                     }
 
                     std::string finalResponse = response;
@@ -902,15 +927,13 @@ void KtmaMainWindow::checkSelectedEquipment()
                     setStatus(passiveReady, detail);
                     integrationLog(QStringLiteral("%1: %2")
                         .arg(QString::fromStdString(component.id), detail));
-                    if (!passiveReady && armSupply)
-                        throw std::runtime_error("Источник питания не подтвердил готовность");
                 } catch (const std::exception& error) {
                     if (device) device->safeStop();
                     const QString detail = QString::fromUtf8(error.what());
                     setStatus(false, detail);
                     integrationLog(QStringLiteral("%1 не готов: %2")
                         .arg(QString::fromStdString(component.id), detail));
-                    if (armSupply) throw;
+                    throw;
                 }
             },
             [this, page](unsigned milliseconds) {
@@ -925,8 +948,13 @@ void KtmaMainWindow::checkSelectedEquipment()
                 delay.exec(QEventLoop::ExcludeUserInputEvents);
             },
         });
+        page->setScenarioPreflightError(scenarioCode, {});
     } catch (const std::exception& error) {
         preparation.clearPhysicalEquipment();
+        page->invalidateEquipmentReadiness();
+        auto detail = QString::fromUtf8(error.what());
+        if (detail.isEmpty()) detail = QStringLiteral("Ошибка подготовки оборудования");
+        page->setScenarioPreflightError(scenarioCode, detail);
         integrationLog(QStringLiteral("Подготовка оборудования остановлена: %1")
             .arg(QString::fromUtf8(error.what())));
     }
@@ -1131,6 +1159,12 @@ void KtmaMainWindow::runScenario(
                 return result;
              }));
     } catch (const std::exception& error) {
+        page->invalidateEquipmentReadiness();
+        try { integrationStationSession().clearPhysicalEquipment(activity); }
+        catch (const std::exception& cleanupError) {
+            integrationLog(QStringLiteral("Не удалось завершить подготовку оборудования: %1")
+                .arg(QString::fromUtf8(cleanupError.what())));
+        }
         if (!pendingProductionRunId_.empty() && productionLedger_) {
             try {
                 productionLedger_->finish(pendingProductionRunId_,

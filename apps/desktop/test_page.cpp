@@ -206,13 +206,40 @@ void TestPage::setEquipmentChecking(const QString& code, const QString& detail)
     updateStartAvailability();
 }
 
+void TestPage::invalidateEquipmentReadiness()
+{
+    // Физические привязки пересоздаются целиком; старая готовность не должна
+    // сохраняться при переключении на другой сценарий и обратно.
+    impl_->preflightPassed.clear();
+    for (auto it = impl_->equipmentRows.begin(); it != impl_->equipmentRows.end(); ++it) {
+        if (it->operatorConfirmation) continue;
+        it->ready = false;
+        impl_->equipmentTable->item(it->row, 3)->setText(QStringLiteral("НЕ ПРОВЕРЕНО"));
+        impl_->equipmentTable->item(it->row, 4)->setText(QStringLiteral("Требуется проверка"));
+    }
+    updateStartAvailability();
+}
+
+void TestPage::setScenarioPreflightError(const QString& code, const QString& error)
+{
+    if (error.isEmpty()) {
+        impl_->preflightErrors.remove(code);
+        impl_->preflightPassed.insert(code);
+    } else {
+        impl_->preflightPassed.remove(code);
+        impl_->preflightErrors.insert(code, error);
+    }
+    updateStartAvailability();
+}
+
 void TestPage::setScenarioInfo(const QString& code,
                                bool available,
                                bool diagnostic,
                                const QStringList& requiredEquipment,
-                               const QString& detail)
+                               const QString& detail, bool requiresPreflight)
 {
-    impl_->scenarios.insert(code, {available, diagnostic, requiredEquipment, detail});
+    impl_->preflightPassed.remove(code);
+    impl_->scenarios.insert(code, {available, diagnostic, requiredEquipment, detail, requiresPreflight});
     updateSelectionSummary();
 }
 
@@ -446,7 +473,9 @@ void TestPage::updateStartAvailability()
     const auto info = impl_->scenarios.value(code);
     const bool available = info.available;
 
-    bool ready = available;
+    const auto preflightError = impl_->preflightErrors.value(code);
+    bool ready = available && preflightError.isEmpty()
+        && (!info.requiresPreflight || impl_->preflightPassed.contains(code));
     if (ready) {
         for (const auto& equipmentCode : info.required) {
             if (equipmentCode == QStringLiteral("SCHEME") || equipmentCode == QStringLiteral("R4831"))
@@ -469,6 +498,9 @@ void TestPage::updateStartAvailability()
         impl_->readiness->setText(info.detail.isEmpty()
             ? QStringLiteral("Исполняемый сценарий не готов")
             : info.detail);
+        impl_->readiness->setStyleSheet(QStringLiteral("color:#e1766d;font-weight:700;"));
+    } else if (!preflightError.isEmpty()) {
+        impl_->readiness->setText(preflightError);
         impl_->readiness->setStyleSheet(QStringLiteral("color:#e1766d;font-weight:700;"));
     } else if (!ready) {
         impl_->readiness->setText(QStringLiteral("Проверьте оборудование, требуемое выбранным сценарием"));
@@ -770,6 +802,7 @@ void TestPage::setRunResult(const orbita::stand::ScenarioRunResult& result,
                             const QString& tuReportPath,
                             const QString& productionReportPath)
 {
+    invalidateEquipmentReadiness();
     impl_->runInProgress = false;
     impl_->runClockTimer->stop();
     impl_->tuReportPath = tuReportPath;

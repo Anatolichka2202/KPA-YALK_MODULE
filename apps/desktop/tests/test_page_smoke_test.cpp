@@ -858,6 +858,17 @@ int main(int argc, char** argv)
                 && visualScenario.steps[1].arguments.at("sample_count") == "4",
             "visual editor must save the same scenario YAML schema without losing procedure policy");
 
+    {
+        TestPage readinessPage;
+        const auto code = readinessPage.currentScenarioCode();
+        auto* start = readinessPage.findChild<QPushButton*>(QStringLiteral("startTestButton"));
+        readinessPage.setScenarioInfo(code, true, false, {}, QStringLiteral("ready"), true);
+        require(start && !start->isEnabled(), "untested scenario was marked ready");
+        readinessPage.setScenarioPreflightError(code, {});
+        require(start->isEnabled(), "successful readiness was not retained");
+        readinessPage.setRunResult({});
+        require(!start->isEnabled(), "completed run retained equipment readiness");
+    }
     TestPage page;
     const QString screenshot = qEnvironmentVariable("ORBITA_UI_SCREENSHOT");
     const QString scene = qEnvironmentVariable("MILTECH_UI_SCENE", QStringLiteral("YALK"));
@@ -947,6 +958,26 @@ int main(int argc, char** argv)
 
     page.registerEquipmentRow(QStringLiteral("RIGOL"), QStringLiteral("Rigol"),
                               QStringLiteral("USB"), QStringLiteral("not checked"));
+    page.setEquipmentStatus(QStringLiteral("AKIP"), true, QStringLiteral("27.0 V"));
+    page.setEquipmentStatus(QStringLiteral("RS485"), true, QStringLiteral("stream ready"));
+    page.setEquipmentStatus(QStringLiteral("ISD"), true, QStringLiteral("ready"));
+    page.setEquipmentStatus(QStringLiteral("V7"), true, QStringLiteral("ready"));
+
+    auto* startTest = page.findChild<QPushButton*>(QStringLiteral("startTestButton"));
+    require(startTest && startTest->isEnabled(), "ready equipment did not enable the selected scenario");
+    page.invalidateEquipmentReadiness();
+    require(!startTest->isEnabled(), "cleared equipment retained stale ready status");
+    page.setScenarioInfo(QStringLiteral("PROD_FULL"), true, false, {}, QStringLiteral("ready"), true);
+    require(!startTest->isEnabled(), "scenario with unknown equipment was ready before its first preflight");
+    page.setScenarioPreflightError(QStringLiteral("PROD_FULL"), QStringLiteral("Неизвестная возможность"));
+    require(!startTest->isEnabled(), "unknown capability preflight failure left start enabled");
+    page.setScenarioPreflightError(QStringLiteral("PROD_FULL"), {});
+    require(startTest->isEnabled(), "successful preflight did not clear its failure");
+    page.invalidateEquipmentReadiness();
+    require(!startTest->isEnabled(), "successful preflight survived another equipment reset");
+    page.setScenarioInfo(QStringLiteral("PROD_FULL"), true, false,
+        {QStringLiteral("AKIP"), QStringLiteral("RS485"), QStringLiteral("ISD"),
+         QStringLiteral("V7"), QStringLiteral("R4831")}, QStringLiteral("ready"));
     page.setEquipmentStatus(QStringLiteral("AKIP"), true, QStringLiteral("27.0 V"));
     page.setEquipmentStatus(QStringLiteral("RS485"), true, QStringLiteral("stream ready"));
     page.setEquipmentStatus(QStringLiteral("ISD"), true, QStringLiteral("ready"));

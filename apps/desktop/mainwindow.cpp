@@ -188,6 +188,7 @@ void MainWindow::setupUi()
             if (!equipmentRegistry_ || !equipmentRegistry_->hasCapability(capability)) {
                 throw std::runtime_error("Оборудование не готово: " + capability);
             }
+            if (testPage_) testPage_->invalidateEquipmentReadiness();
             return stationSession_.invokeManual(capability, operation, arguments);
         });
     centralStack_->addWidget(testPage_);
@@ -836,6 +837,7 @@ void MainWindow::setupToolBar()
         auto* control = new EquipmentControlWidget([this](
             const std::string& capability, const std::string& operation,
             const std::map<std::string, std::string>& arguments) {
+                if (testPage_) testPage_->invalidateEquipmentReadiness();
                 return stationSession_.invokeManual(capability, operation, arguments);
             }, this);
         control->show();
@@ -944,6 +946,7 @@ void MainWindow::onOpenStandProfile()
 
 void MainWindow::initializeStandRuntime()
 {
+    if (testPage_) testPage_->invalidateEquipmentReadiness();
     try {
         const QDir root(QCoreApplication::applicationDirPath());
         if (standProfile_.id.empty())
@@ -1489,6 +1492,7 @@ void MainWindow::openFreeCommandConsole()
             if (!equipmentRegistry_ || !equipmentRegistry_->hasCapability(capability)) {
                 throw std::runtime_error("Выбранная capability недоступна в текущем профиле");
             }
+            if (testPage_) testPage_->invalidateEquipmentReadiness();
             return stationSession_.invokeManual(capability, operation, arguments);
         }, {}, this);
     connect(console, &FreeWorkspaceWidget::adapterMonitoringRequested,
