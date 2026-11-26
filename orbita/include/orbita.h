@@ -130,6 +130,9 @@ public:
     // ----- Жизненный цикл декодера -----
     void start();
     void stop();
+    // Fast stop for live display only: pending unprocessed samples are discarded.
+    // Never use for acquisition sessions requiring lossless recording.
+    void stopDiscardPending();
     void pause();           ///< заморозить значения без остановки декодера
     void resume();
     bool isRunning() const;
