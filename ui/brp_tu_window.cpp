@@ -40,6 +40,7 @@
 #include <yaml-cpp/yaml.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <mutex>
 #include <stdexcept>
@@ -194,6 +195,8 @@ struct BrpTuWindow::Impl {
             endSession(message, tu::RunVerdict::Aborted);
         });
 
+        flow->setRs485Selection(!simulation);
+#if BRP_ENABLE_MANUAL_TESTS
         auto* manual = page->manualPage();
         manual->setObjectName(QStringLiteral("brpManualPage"));
         manual->setStyleSheet(QStringLiteral(R"QSS(
@@ -315,9 +318,9 @@ struct BrpTuWindow::Impl {
                 (void)YasmCheck::fromBusWords(words);
                 yasmFixture = std::move(words);
                 yasmCodes->setText(QFileInfo(path).fileName());
-                log->appendPlainText(QStringLiteral("ЯСМ: загружено %1 слов эталонных данных.").arg(yasmFixture.size()));
+                appendLog(QStringLiteral("ЯСМ: загружено %1 слов эталонных данных.").arg(yasmFixture.size()));
             } catch (const std::exception& error) {
-                log->appendPlainText(QStringLiteral("Файл ЯСМ: %1").arg(QString::fromUtf8(error.what())));
+                appendLog(QStringLiteral("Файл ЯСМ: %1").arg(QString::fromUtf8(error.what())));
             }
         });
 
@@ -410,7 +413,7 @@ struct BrpTuWindow::Impl {
                 const auto supplyPort = akipPort->text().trimmed();
                 if (host.isEmpty() && supplyPort.isEmpty()) return;
                 if (!supplyPort.isEmpty() && supplyPort.compare(port->currentText().trimmed(), Qt::CaseInsensitive) == 0) {
-                    log->appendPlainText(QStringLiteral("АКИП и RS-485 требуют разных COM-портов."));
+                    appendLog(QStringLiteral("АКИП и RS-485 требуют разных COM-портов."));
                     return;
                 }
                 probing = true;
@@ -418,7 +421,7 @@ struct BrpTuWindow::Impl {
                 updateCaptureControls();
                 auto* watcher = new QFutureWatcher<QString>(&this->window);
                 QObject::connect(watcher, &QFutureWatcherBase::finished, &this->window, [this, watcher, probe] {
-                    log->appendPlainText(watcher->result());
+                    appendLog(watcher->result());
                     watcher->deleteLater();
                     probe->setEnabled(true);
                     probing = false;
@@ -448,6 +451,7 @@ struct BrpTuWindow::Impl {
             [this](int index) { displayCheck(index); });
         QObject::connect(expectedState, &QComboBox::currentIndexChanged, &window,
             [this] { updateCaptureControls(); });
+#endif
         QObject::connect(&refresh, &QTimer::timeout, &window, [this] { update(); });
         QObject::connect(&send, &QTimer::timeout, &window, [this] { writeCounter(); });
 
@@ -456,23 +460,40 @@ struct BrpTuWindow::Impl {
             if (!config.open(QIODevice::ReadOnly)) throw std::runtime_error("Файл кадровых проверок БРП не открыт");
             checks = loadFrameChecks(config.readAll().toStdString());
 
+#if BRP_ENABLE_MANUAL_TESTS
             const auto dbPath = root.filePath(QStringLiteral("data/parameters.db"));
             if (!QFileInfo::exists(dbPath) || !metadata.open(dbPath))
-                log->appendPlainText(QStringLiteral("База параметров Орбита недоступна. Показаны адреса из списка БРП."));
+                appendLog(QStringLiteral("База параметров Орбита недоступна. Показаны адреса из списка БРП."));
             for (const auto& check : checks) {
                 checkList->addItem(QStringLiteral("%1. %2 · %3")
                     .arg(check.number).arg(QString::fromStdString(check.title),
                                            QString::fromStdString(check.cell)));
             }
+#endif
         } catch (const std::exception& error) {
-            start->setEnabled(false);
+            if (start) start->setEnabled(false);
             page->flow()->setScenarioAvailable(false, QString::fromUtf8(error.what()));
-            log->appendPlainText(QString::fromUtf8(error.what()));
+            appendLog(QString::fromUtf8(error.what()));
         }
         updateScenario();
     }
 
     ~Impl() { shutdown(); }
+
+    void appendLog(const QString& message)
+    {
+        if (log) log->appendPlainText(message);
+    }
+
+    int selectedMode() const
+    {
+        return interfaceMode ? interfaceMode->currentIndex() : 0;
+    }
+
+    QString selectedPort() const
+    {
+        return currentStage >= 0 || !port ? page->flow()->rs485Port() : port->currentText().trimmed();
+    }
 
     void checkStand(const QString& serialNumber)
     {
@@ -480,17 +501,17 @@ struct BrpTuWindow::Impl {
         const auto connection = QStringLiteral("Подключение");
         const auto isd = QStringLiteral("ИСД");
         const auto meter = QStringLiteral("В7");
-        flow->beginStandCheck(serialNumber, {connection, isd, meter});
+        const auto supply = QStringLiteral("АКИП");
+        const auto adc = QStringLiteral("Е20-10");
+        flow->beginStandCheck(serialNumber, {connection, isd, meter, supply, adc});
         QString error;
-        const int mode = interfaceMode->currentIndex();
+        const int mode = selectedMode();
         if (mode == 2)
             error = QStringLiteral("Выберите RS-485 или ЯСМ в ручном управлении.");
-        else if (!simulation && mode == 0 && port->currentText().trimmed().isEmpty())
-            error = QStringLiteral("Укажите COM-порт RS-485 в ручном управлении.");
+        else if (!simulation && mode == 0 && page->flow()->rs485Port().isEmpty())
+            error = QStringLiteral("Выберите COM-порт RS-485 на стартовом экране.");
         else if (mode == 1 && yasmFixture.empty() && yasmCodes->text().trimmed().isEmpty())
             error = QStringLiteral("Загрузите тест ЯСМ или укажите ожидаемые коды.");
-        else if (!simulation && isdHost->text().trimmed().isEmpty())
-            error = QStringLiteral("Укажите адрес ИСД в ручном управлении.");
         else if (bridge || preparingIsd || probing || meterBusy)
             error = QStringLiteral("Дождитесь завершения обращения к оборудованию.");
         if (!error.isEmpty()) {
@@ -501,31 +522,43 @@ struct BrpTuWindow::Impl {
         if (simulation) {
             flow->setEquipmentStatus(isd, true);
             flow->setEquipmentStatus(meter, true);
+            flow->setEquipmentStatus(supply, true);
+            flow->setEquipmentStatus(adc, true);
             return;
         }
 
         // Проверка доступности только читает приборы. Адресные команды OFF
         // посылаются после проверки интерфейса в самом испытании.
-        const auto host = isdHost->text().trimmed();
-        using Readiness = std::pair<QString, QString>;
+        YAML::Node profile;
+        try {
+            profile = loadStand(root);
+            scenarioIsdHost = QString::fromStdString(profile["isd"]["host"].as<std::string>()).trimmed();
+            if (scenarioIsdHost.isEmpty()) throw std::runtime_error("В профиле отсутствует адрес ИСД.");
+        } catch (const std::exception& exception) {
+            flow->setEquipmentStatus(isd, false, QString::fromUtf8(exception.what()));
+            return;
+        }
+        const auto host = scenarioIsdHost;
+        using Readiness = std::array<QString, 4>;
         probing = true;
         updateCaptureControls();
         auto* watcher = new QFutureWatcher<Readiness>(&window);
-        QObject::connect(watcher, &QFutureWatcherBase::finished, &window, [this, watcher, isd, meter] {
+        QObject::connect(watcher, &QFutureWatcherBase::finished, &window, [this, watcher, isd, meter, supply, adc] {
             const auto result = watcher->result();
             watcher->deleteLater();
             probing = false;
-            page->flow()->setEquipmentStatus(isd, result.first.isEmpty(), result.first);
-            page->flow()->setEquipmentStatus(meter, result.second.isEmpty(), result.second);
+            const std::array codes{isd, meter, supply, adc};
+            for (std::size_t i = 0; i < codes.size(); ++i)
+                page->flow()->setEquipmentStatus(codes[i], result[i].isEmpty(), result[i]);
             updateCaptureControls();
         });
-        watcher->setFuture(QtConcurrent::run([host, root = root] {
+        watcher->setFuture(QtConcurrent::run([host, root = root, profile, rs485 = flow->rs485Port(), mode] {
             Readiness result;
             try {
                 tu::hardware::IsdRouter router({host.toStdString()});
                 router.probe();
             } catch (const std::exception& exception) {
-                result.first = QString::fromUtf8(exception.what());
+                result[0] = QString::fromUtf8(exception.what());
             }
             try {
                 tu::hardware::VisaInstrument meter(loadV7(root).visa);
@@ -533,7 +566,26 @@ struct BrpTuWindow::Impl {
                 if (identity.find_first_not_of(" \t\r\n") == std::string::npos)
                     throw std::runtime_error("Пустой ответ на *IDN?");
             } catch (const std::exception& exception) {
-                result.second = QString::fromUtf8(exception.what());
+                result[1] = QString::fromUtf8(exception.what());
+            }
+            try {
+                const auto supply = profile["akip"];
+                tu::hardware::AkipConfig config;
+                config.portName = supply["port"].as<std::string>();
+                config.expectedIdentity = supply["expected_idn"].as<std::string>();
+                if (mode == 0 && rs485.compare(QString::fromStdString(config.portName), Qt::CaseInsensitive) == 0)
+                    throw std::runtime_error("АКИП и RS-485 требуют разных COM-портов.");
+                tu::hardware::Akip1160 instrument(config);
+                instrument.probe();
+            } catch (const std::exception& exception) {
+                result[2] = QString::fromUtf8(exception.what());
+            }
+            try {
+                auto adc = createE2010SampleSource(profile["e2010"].as<std::map<std::string, std::string>>());
+                if (!adc->open()) throw std::runtime_error("АЦП не открылся по профилю стенда.");
+                adc->close();
+            } catch (const std::exception& exception) {
+                result[3] = QString::fromUtf8(exception.what());
             }
             return result;
         }));
@@ -542,7 +594,7 @@ struct BrpTuWindow::Impl {
     void startScenario(const QString& serialNumber)
     {
         if (currentStage >= 0 || bridge || preparingIsd || probing || meterBusy) return;
-        const bool yasmMode = interfaceMode->currentIndex() == 1;
+        const bool yasmMode = selectedMode() == 1;
         const int interfaceRow = yasmMode ? 13 : 12;
         const auto input = std::find_if(checks.begin(), checks.end(), [interfaceRow](const auto& check) {
             return check.number == interfaceRow;
@@ -672,6 +724,7 @@ struct BrpTuWindow::Impl {
 
     void updateCaptureControls()
     {
+        if (!checkList) { updateScenario(); return; }
         const int index = checkList->currentIndex();
         bool ready = false;
         if (index >= 0 && channelList->currentIndex() >= 0) {
@@ -695,12 +748,12 @@ struct BrpTuWindow::Impl {
 
     void startIsdPreparation()
     {
-        const auto host = isdHost->text().trimmed();
+        const auto host = currentStage >= 0 ? scenarioIsdHost : isdHost->text().trimmed();
         if (preparingIsd || pointActive || probing || host.isEmpty()) return;
         isdReady = false;
         preparingIsd = true;
         updateCaptureControls();
-        log->appendPlainText(QStringLiteral("ИСД: выполняются адресные OFF для реле и ЦАП."));
+        appendLog(QStringLiteral("ИСД: выполняются адресные OFF для реле и ЦАП."));
         const auto session = interfaceSessionId;
         auto* watcher = new QFutureWatcher<IsdPreparation>(&window);
         QObject::connect(watcher, &QFutureWatcherBase::finished, &window, [this, watcher, session] {
@@ -712,7 +765,7 @@ struct BrpTuWindow::Impl {
             const auto message = confirmed
                 ? QStringLiteral("ИСД: подтверждены %1 адресных OFF, включая ЦАП.").arg(result.acknowledged)
                 : QStringLiteral("ИСД не подготовлен. %1").arg(result.error);
-            log->appendPlainText(message);
+            appendLog(message);
             if (session == interfaceSessionId && currentStage == 1)
                 completeStage(confirmed ? RunVerdict::Ok : RunVerdict::Error, message);
             updateCaptureControls();
@@ -722,7 +775,7 @@ struct BrpTuWindow::Impl {
 
     void displayCheck(int index)
     {
-        channelList->clear();
+        if (channelList) channelList->clear();
         if (index < 0) return;
         const auto& check = checks.at(index);
         for (std::size_t i = 0; i < check.addresses.size(); ++i) {
@@ -748,8 +801,8 @@ struct BrpTuWindow::Impl {
     void startInterface()
     {
         try {
-            const bool yasmMode = interfaceMode->currentIndex() == 1;
-            const bool m8Mode = interfaceMode->currentIndex() == 2;
+            const bool yasmMode = selectedMode() == 1;
+            const bool m8Mode = selectedMode() == 2;
             double sampleRate = 10'000'000;
             if (yasmMode && !yasmFixture.empty()) {
                 yasm.emplace(YasmCheck::fromBusWords(yasmFixture));
@@ -764,7 +817,7 @@ struct BrpTuWindow::Impl {
                 }
                 yasm.emplace(std::move(expected));
             } else if (!simulation && !m8Mode) {
-                const auto portName = port->currentText().trimmed();
+                const auto portName = selectedPort();
                 if (portName.isEmpty()) throw std::runtime_error("Выберите COM-порт RS-485");
                 serial.setPortName(portName);
                 if (!serial.setBaudRate(counterBaud) || !serial.setDataBits(QSerialPort::Data8)
@@ -819,16 +872,16 @@ struct BrpTuWindow::Impl {
             }
             bridge = std::make_unique<miltech::integration::OrbitaSampleBridge>(*source, *decoder);
             if (!bridge->start()) throw std::runtime_error(bridge->lastError());
-            start->setEnabled(false);
-            stop->setEnabled(true);
-            port->setEnabled(false);
-            interfaceMode->setEnabled(false);
-            yasmCodes->setEnabled(false);
-            yasmFile->setEnabled(false);
-            m8Addresses->setEnabled(false);
-            m8Invert->setEnabled(false);
-            graph->clear();
-            status->setText(m8Mode ? QStringLiteral("M8: поиск маркеров фразы и цикла") : yasmMode
+            if (start) start->setEnabled(false);
+            if (stop) stop->setEnabled(true);
+            if (port) port->setEnabled(false);
+            if (interfaceMode) interfaceMode->setEnabled(false);
+            if (yasmCodes) yasmCodes->setEnabled(false);
+            if (yasmFile) yasmFile->setEnabled(false);
+            if (m8Addresses) m8Addresses->setEnabled(false);
+            if (m8Invert) m8Invert->setEnabled(false);
+            if (graph) graph->clear();
+            if (status) status->setText(m8Mode ? QStringLiteral("M8: поиск маркеров фразы и цикла") : yasmMode
                 ? QStringLiteral("Ожидание кодов внешнего теста ЯСМ в M16P1A22")
                 : QStringLiteral("Ожидание двух непрерывных периодов счётчика 0–1023"));
             gateClock.start();
@@ -894,7 +947,7 @@ struct BrpTuWindow::Impl {
             return;
         }
 
-        if (interfaceMode->currentIndex() == 2) {
+        if (selectedMode() == 2) {
             const auto snapshot = decoder->getSnapshot();
             const auto now = std::chrono::steady_clock::now();
             QStringList values;
@@ -921,16 +974,17 @@ struct BrpTuWindow::Impl {
             }
             const QVector<double> series(trace.begin(), trace.end());
             if (currentStage == 0) page->setSeries(series);
-            if (!yasmMode) graph->setSeries(series);
+            if (!yasmMode && graph) graph->setSeries(series);
             if (gatePassed) {
                 send.stop();
                 if (serial.isOpen()) serial.close();
                 const auto result = yasmMode
                     ? QStringLiteral("ЯСМ: ожидаемая последовательность получена в кадре.")
                     : QStringLiteral("RS-485: получены два непрерывных периода счётчика.");
-                status->setText(simulation ? QStringLiteral("Имитатор. ") + result : result);
-                log->appendPlainText(status->text());
-                if (currentStage == 0) completeStage(RunVerdict::Ok, status->text());
+                const auto message = simulation ? QStringLiteral("Имитатор. ") + result : result;
+                if (status) status->setText(message);
+                appendLog(message);
+                if (currentStage == 0) completeStage(RunVerdict::Ok, message);
                 updateCaptureControls();
             } else if (gateClock.elapsed() >= counterTimeoutMs) {
                 endSession(yasmMode ? QStringLiteral("Последовательность ЯСМ за 5 с не найдена.")
@@ -998,9 +1052,9 @@ struct BrpTuWindow::Impl {
         state = expected;
         pointActive = true;
         ++pointId;
-        checkList->setEnabled(false);
-        channelList->setEnabled(false);
-        expectedState->setEnabled(false);
+        if (checkList) checkList->setEnabled(false);
+        if (channelList) channelList->setEnabled(false);
+        if (expectedState) expectedState->setEnabled(false);
         updateCaptureControls();
         if (checks.at(activeCheck).scale) requestMeter(false);
         else beginFrameCapture();
@@ -1030,11 +1084,11 @@ struct BrpTuWindow::Impl {
     void finishPoint(const QString& message, RunVerdict result = RunVerdict::Incomplete,
                      std::vector<tu::MeasurementResult> measurements = {})
     {
-        log->appendPlainText(message);
+        appendLog(message);
         pointActive = false;
-        checkList->setEnabled(true);
-        channelList->setEnabled(true);
-        expectedState->setEnabled(true);
+        if (checkList) checkList->setEnabled(true);
+        if (channelList) channelList->setEnabled(true);
+        if (expectedState) expectedState->setEnabled(true);
         if (currentStage >= 2) completeStage(result, message, std::move(measurements));
         updateCaptureControls();
     }
@@ -1142,19 +1196,19 @@ struct BrpTuWindow::Impl {
     void endSession(const QString& message, RunVerdict result = RunVerdict::Error)
     {
         shutdown();
-        status->setText(message);
-        log->appendPlainText(message);
-        start->setEnabled(true);
-        stop->setEnabled(false);
-        port->setEnabled(true);
-        interfaceMode->setEnabled(true);
-        yasmCodes->setEnabled(true);
-        yasmFile->setEnabled(true);
-        m8Addresses->setEnabled(true);
-        m8Invert->setEnabled(true);
-        checkList->setEnabled(true);
-        channelList->setEnabled(true);
-        expectedState->setEnabled(true);
+        if (status) status->setText(message);
+        appendLog(message);
+        if (start) start->setEnabled(true);
+        if (stop) stop->setEnabled(false);
+        if (port) port->setEnabled(true);
+        if (interfaceMode) interfaceMode->setEnabled(true);
+        if (yasmCodes) yasmCodes->setEnabled(true);
+        if (yasmFile) yasmFile->setEnabled(true);
+        if (m8Addresses) m8Addresses->setEnabled(true);
+        if (m8Invert) m8Invert->setEnabled(true);
+        if (checkList) checkList->setEnabled(true);
+        if (channelList) channelList->setEnabled(true);
+        if (expectedState) expectedState->setEnabled(true);
         isdReady = false;
         if (currentStage >= 0) {
             recordStage(result, message);
@@ -1173,6 +1227,7 @@ struct BrpTuWindow::Impl {
     int currentStage = -1;
     bool waitingForPoint = false;
     QString stageProgress;
+    QString scenarioIsdHost;
     MetadataService metadata;
     std::vector<FrameCheck> checks;
     QComboBox *interfaceMode = nullptr, *port = nullptr, *checkList = nullptr,

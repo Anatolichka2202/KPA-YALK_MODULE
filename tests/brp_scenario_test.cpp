@@ -268,6 +268,31 @@ void testScenarioAndReport()
     require(readText(failureHtml).contains(QStringLiteral("за 5 с не найдена")), "interface failure is missing from report");
 }
 
+void testOperatorBuild()
+{
+    BrpTuWindow stand(false);
+    stand.show();
+    require(stand.findChild<QComboBox*>("brpRs485Port")->isVisible(), "RS-485 port is missing");
+    require(!stand.findChild<QPushButton*>("brpManualOpen"), "diagnostics leaked into production");
+    auto* serial = stand.findChild<QLineEdit*>("tuManualSerial");
+    serial->setText(QStringLiteral("BRP-01"));
+    action(stand, "tuStandAction")->click();
+    require(stand.findChild<QLabel*>("tuReadyDetail")->text().contains(QStringLiteral("COM-порт RS-485")),
+            "missing port did not block stand readiness");
+
+    BrpTuWindow simulation(true);
+    simulation.show();
+    simulation.findChild<QLineEdit*>("tuManualSerial")->setText(QStringLiteral("BRP-02"));
+    action(simulation, "tuStandAction")->click();
+    action(simulation, "tuStartAction")->click();
+    auto* measure = action(simulation, "brpPointAction");
+    require(waitUntil([&] { return measure->isVisible(); }), "RS-485 scenario did not reach the first point");
+    measure->click();
+    require(waitUntil([&] { return measure->isVisible(); }), "RS-485 scenario did not advance after V7");
+    action(simulation, "tuStopAction")->click();
+    require(simulation.findChild<QLineEdit*>("tuCompletionOperator")->isVisible(), "report entry is missing");
+}
+
 } // namespace
 
 int main(int argc, char** argv)
@@ -275,8 +300,12 @@ int main(int argc, char** argv)
     QApplication application(argc, argv);
     try {
         testIsdPreparation();
+#if BRP_ENABLE_MANUAL_TESTS
         testWindow();
         testScenarioAndReport();
+#else
+        testOperatorBuild();
+#endif
         return 0;
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';

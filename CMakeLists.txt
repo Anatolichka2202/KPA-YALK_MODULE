@@ -6,6 +6,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 include(CTest)
+option(BRP_ENABLE_MANUAL_TESTS "Include the BRP diagnostics screen" OFF)
 find_package(Qt6 6.8 REQUIRED COMPONENTS Core Widgets SerialPort Network Sql Concurrent)
 qt_standard_project_setup()
 
@@ -59,6 +60,7 @@ qt_add_library(brp_ui STATIC
     ui/metadata_service.h
     ui/encoding_utils.cpp
 )
+target_compile_definitions(brp_ui PUBLIC BRP_ENABLE_MANUAL_TESTS=$<BOOL:${BRP_ENABLE_MANUAL_TESTS}>)
 target_include_directories(brp_ui PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/ui")
 target_link_libraries(brp_ui
     PUBLIC Qt6::Widgets

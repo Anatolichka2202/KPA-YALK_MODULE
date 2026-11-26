@@ -115,11 +115,13 @@ struct TestPage::Impl {
         root->addWidget(pages);
         tuFlow = new TuFlowWidget(pages);
         pages->addWidget(tuFlow);
+#if BRP_ENABLE_MANUAL_TESTS
         manualPage = new QWidget(pages);
         pages->addWidget(manualPage);
         QObject::connect(tuFlow, &TuFlowWidget::manualRequested, q, [this] {
             pages->setCurrentWidget(manualPage);
         });
+#endif
         buildRuntime();
     }
 

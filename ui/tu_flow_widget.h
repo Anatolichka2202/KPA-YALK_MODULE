@@ -7,6 +7,7 @@
 #include "model/run_types.h"
 
 class QLabel;
+class QComboBox;
 class QLineEdit;
 class QPushButton;
 class QStackedWidget;
@@ -24,6 +25,8 @@ public:
     void setEquipmentStatus(const QString& code, bool ready, const QString& detail = {});
     void completeRun(const tu::ScenarioRunResult& result);
     void resetToSelection();
+    void setRs485Selection(bool visible);
+    QString rs485Port() const;
 
 signals:
     void manualRequested();
@@ -45,6 +48,8 @@ private:
     QWidget* readinessPage_ = nullptr;
     QWidget* operatorPage_ = nullptr;
     QWidget* reportPage_ = nullptr;
+    QComboBox* rs485_ = nullptr;
+    QLabel* rs485Label_ = nullptr;
     QLineEdit* manualSerial_ = nullptr;
     QPushButton* check_ = nullptr;
     QLabel* scenarioState_ = nullptr;

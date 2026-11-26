@@ -4,6 +4,8 @@
 #include "model/run_types.h"
 
 #include <QDateTime>
+#include <QComboBox>
+#include <QSerialPortInfo>
 #include <QDesktopServices>
 #include <QFile>
 #include <QFrame>
@@ -132,15 +134,24 @@ TuFlowWidget::TuFlowWidget(QWidget* parent) : QWidget(parent)
     manualSerial_->setClearButtonEnabled(true);
     serialLabel->setBuddy(manualSerial_);
     serialLayout->addWidget(manualSerial_);
+    rs485_ = new QComboBox(serialCard);
+    rs485_->setObjectName(QStringLiteral("brpRs485Port"));
+    rs485_->setEditable(true);
+    rs485Label_ = new QLabel(QStringLiteral("COM-порт RS-485"), serialCard);
+    rs485Label_->setBuddy(rs485_);
+    serialLayout->addWidget(rs485Label_);
+    serialLayout->addWidget(rs485_);
     serialCard->setStyleSheet(QStringLiteral(
         "#tuSerialEntry QPushButton#primary:disabled{background:#0e1e2c;color:#8ea6b7;border-color:#264257;}"
         "#tuSerialEntry QLineEdit:focus{border-color:#58a5ff;}"));
 
     auto* footer = new QHBoxLayout;
+#if BRP_ENABLE_MANUAL_TESTS
     auto* manual = new QPushButton(QStringLiteral("Ручное управление"), serialCard);
     manual->setObjectName(QStringLiteral("brpManualOpen"));
     connect(manual, &QPushButton::clicked, this, &TuFlowWidget::manualRequested);
     footer->addWidget(manual);
+#endif
     footer->addStretch();
     scenarioState_ = muted(QString(), serialCard);
     scenarioState_->setObjectName(QStringLiteral("tuScenarioState"));
@@ -151,7 +162,9 @@ TuFlowWidget::TuFlowWidget(QWidget* parent) : QWidget(parent)
     check_->setProperty("tuStandAction", true);
     check_->setMinimumWidth(190);
     check_->setMinimumHeight(42);
+#if BRP_ENABLE_MANUAL_TESTS
     manual->setMinimumHeight(42);
+#endif
     footer->addWidget(check_);
     serialLayout->addLayout(footer);
     auto* cardRow = new QHBoxLayout;
@@ -576,4 +589,20 @@ void TuFlowWidget::populateReportRows(const tu::ScenarioRunResult& result)
         reportTable_->setItem(row, 1, status);
         reportTable_->setRowHeight(row, 42);
     }
+}
+
+
+void TuFlowWidget::setRs485Selection(bool visible)
+{
+    rs485_->setVisible(visible);
+    rs485Label_->setVisible(visible);
+    if (!visible) return;
+    for (const auto& entry : QSerialPortInfo::availablePorts()) rs485_->addItem(entry.portName());
+    rs485_->setCurrentIndex(-1);
+    rs485_->lineEdit()->setPlaceholderText(QStringLiteral("Выберите или введите COM-порт"));
+}
+
+QString TuFlowWidget::rs485Port() const
+{
+    return rs485_->currentText().trimmed();
 }

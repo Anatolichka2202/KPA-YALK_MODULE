@@ -6,7 +6,14 @@ e2010:
   buffer_words: 1048576
 
 # Адресные OFF и пауза взяты из isd_startup_baseline в tu-minimal-clean.
-# Целевой ИСД оператор выбирает в окне БРП.
+isd:
+  host: 192.168.0.101
+
+# ИСД и АКИП используют профиль подключения УБСИ.
+akip:
+  port: COM15
+  expected_idn: AKIP-1160/6
+
 isd_baseline:
   type2_last: 40
   type3_last: 96
