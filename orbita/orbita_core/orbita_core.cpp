@@ -173,6 +173,24 @@ void Context::start() {
     LOG_INFO("Orbita decoder started; raw samples are supplied through pushSamples()");
 }
 
+void Context::stopDiscardPending() {
+    if (!is_running_.load()) return;
+    // Called only after the station sample producer has stopped. A recording
+    // requires the lossless drain path, even if fast-stop was requested.
+    if (isRecording()) {
+        stop();
+        return;
+    }
+    {
+        std::lock_guard<std::mutex> lock(queue_mutex_);
+        std::queue<std::vector<int16_t>> empty;
+        sample_queue_.swap(empty);
+        processed_count_ = queued_count_;
+    }
+    processed_cv_.notify_all();
+    stop();
+}
+
 void Context::stop() {
     if (!is_running_.load()) return;
 
