@@ -960,17 +960,28 @@ struct BrpTuWindow::Impl {
         run.steps.push_back({"m16_coverage", "M16 · наличие адресов БРП за два цикла",
             "3.2.1.6–3.2.1.13"});
         voltagePoints.clear();
+        pointTargets.clear();
         for (std::size_t index = 0; index < checks.size(); ++index) {
             const auto& check = checks[index];
             if (check.voltagePointRequirement.empty()) continue;
             for (std::size_t channel = 0; channel < check.addresses.size(); ++channel) {
                 const auto& name = check.channelNames.empty() ? check.title : check.channelNames[channel];
-                run.steps.push_back({
-                    QStringLiteral("row_%1_%2").arg(check.number).arg(channel + 1).toStdString(),
-                    QStringLiteral("Строка %1 · %2 · одна точка с В7").arg(check.number)
-                        .arg(QString::fromStdString(name)).toStdString(),
-                    check.voltagePointRequirement});
-                voltagePoints.emplace_back(index, channel);
+                const std::size_t passes = check.pointTargets.empty() ? 1 : check.pointTargets.size();
+                for (std::size_t point = 0; point < passes; ++point) {
+                    const bool targeted = !check.pointTargets.empty();
+                    const auto title = targeted
+                        ? QStringLiteral("Строка %1 · %2 · точка %3 В, В7")
+                            .arg(check.number).arg(QString::fromStdString(name))
+                            .arg(check.pointTargets[point], 0, 'f', 1)
+                        : QStringLiteral("Строка %1 · %2 · сравнение с В7")
+                            .arg(check.number).arg(QString::fromStdString(name));
+                    run.steps.push_back({
+                        QStringLiteral("row_%1_%2_point_%3").arg(check.number).arg(channel + 1)
+                            .arg(point + 1).toStdString(), title.toStdString(), check.voltagePointRequirement});
+                    voltagePoints.emplace_back(index, channel);
+                    pointTargets.push_back(targeted ? std::optional<double>(check.pointTargets[point])
+                                                    : std::nullopt);
+                }
             }
         }
 
@@ -1648,6 +1659,20 @@ struct BrpTuWindow::Impl {
         } else {
             detail += QStringLiteral(" Диагностическое сравнение.");
         }
+        // A nominal setpoint label is not proof of applying that stimulus.
+        // Reject a repeated centre-point reading as evidence of ±6 V coverage.
+        if (currentStage >= 3 && static_cast<std::size_t>(currentStage - 3) < pointTargets.size()) {
+            const auto& target = pointTargets[currentStage - 3];
+            if (target) {
+                const double window = checks.at(activeCheck).targetWindowVolts;
+                if (std::abs(referenceBefore - *target) > window
+                    || std::abs(result.volts - *target) > window) {
+                    verdict = RunVerdict::Incomplete;
+                    detail += QStringLiteral(" В7 не подтвердил воздействие %1 В (окно ±%2 В); точка не оценена.")
+                        .arg(format(*target), format(window));
+                }
+            }
+        }
         std::vector<tu::MeasurementResult> measurements;
         if (currentStage >= 2) {
             const auto voltage = [](const QString& value) { return value + QStringLiteral(" В"); };
@@ -1730,6 +1755,7 @@ struct BrpTuWindow::Impl {
     };
     std::vector<CoveragePoint> coverage;
     std::vector<std::pair<std::size_t, std::size_t>> voltagePoints;
+    std::vector<std::optional<double>> pointTargets;
     int coverageGroups = 0;
     int coverageGapGroups = 0;
     int coverageLastOrdinal = -1;
