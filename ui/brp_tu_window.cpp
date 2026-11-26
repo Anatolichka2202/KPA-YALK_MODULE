@@ -1479,6 +1479,12 @@ struct BrpTuWindow::Impl {
             // Состояние обнуляется до подключения callback. Перед любым следующим
             // запуском shutdown ждёт завершения потока, который изменяет эти поля.
             counter = {};
+            {
+                std::lock_guard<std::mutex> lock(trendMutex);
+                trendSamples.clear();
+                trendLastUpdate.clear();
+                trendOrigin = std::chrono::steady_clock::now();
+            }
             // The real RS-485 mode must decode the response just like the
             // simulator. Previously the real branch only wrote bytes to COM.
             observeCounter = shouldObserveCounter(yasmMode, monitor, monitorCounter);
@@ -1510,8 +1516,45 @@ struct BrpTuWindow::Impl {
                     ? QStringLiteral("Счётчик RS-485 · полученные коды 0–1023")
                     : QStringLiteral("Коды M16 / M8 · текущие значения по адресам"),
                     QStringLiteral("код"), {});
-                for (const auto& spec : channels)
-                    activeMonitorNames.insert(QString::fromStdString(spec.address), QString::fromStdString(spec.name));
+                {
+                    QSignalBlocker block(trendChannel);
+                    const QString previously = trendChannel->currentData().toString();
+                    trendChannel->clear();
+                    for (const auto& spec : channels) {
+                        activeMonitorNames.insert(QString::fromStdString(spec.address), QString::fromStdString(spec.name));
+                        const QString address = QString::fromStdString(spec.address);
+                        trendChannel->addItem(spec.name.empty() ? address
+                            : QStringLiteral("%1 · %2").arg(QString::fromStdString(spec.name), address), address);
+                    }
+                    int selected = trendChannel->findData(previously);
+                    if (selected < 0) {
+                        for (int i = 0; i < trendChannel->count(); ++i)
+                            if (trendChannel->itemText(i).contains(QStringLiteral("Ептм"), Qt::CaseInsensitive)) {
+                                selected = i;
+                                break;
+                            }
+                    }
+                    if (selected >= 0) trendChannel->setCurrentIndex(selected);
+                }
+                // Capture decoded values on each group; GUI may redraw at 5 Hz.
+                // Exactly the codes returned by liborbita; no smoothing or reinterpretation.
+                decoder->setDataCallback([this](const orbita::Snapshot& frame) {
+                    std::lock_guard<std::mutex> lock(trendMutex);
+                    for (const auto& channel : frame.values) {
+                        if (!channel.valid || channel.updatedAt == std::chrono::steady_clock::time_point{}
+                            || !std::isfinite(channel.value)) continue;
+                        auto& last = trendLastUpdate[channel.address];
+                        if (last == channel.updatedAt) continue;
+                        last = channel.updatedAt;
+                        const double t = std::chrono::duration<double>(
+                            channel.updatedAt - trendOrigin).count();
+                        if (t < 0) continue;
+                        auto& series = trendSamples[channel.address];
+                        series.emplace_back(t, channel.value);
+                        while (!series.empty() && (series.size() > 2560
+                            || series.front().x() < t - 15.0)) series.pop_front();
+                    }
+                });
                 if (m8Mode) decoder->setInvertSignal(m8Invert->isChecked());
                 if (monitorCounter) {
                     // This callback validates the return path M16 independently
@@ -1543,7 +1586,7 @@ struct BrpTuWindow::Impl {
                 ? QStringLiteral("Ожидание кодов внешнего теста ЯСМ в M16P1A22")
                 : QStringLiteral("Ожидание двух непрерывных периодов счётчика 0–1023"));
             gateClock.start();
-            refresh.start(60);
+            refresh.start(monitor ? 200 : 60);
             if (sendCounter) {
                 appendLog(QStringLiteral("RS-485: счётчик 0–1023 передаётся в %1; обратная телеметрия принимается только через Е20-10.")
                     .arg(selectedPort()));
@@ -1627,17 +1670,39 @@ struct BrpTuWindow::Impl {
             for (const auto& channel : snapshot.values) {
                 // Поддерживаемые адреса обновляются хотя бы раз за цикл.
                 // После паузы длиннее кадра старый код скрываем.
-                const bool fresh = channel.valid && now - channel.updatedAt < std::chrono::seconds(1);
+                const bool fresh = channel.valid && now - channel.updatedAt < std::chrono::seconds(2);
                 const auto address = QString::fromStdString(channel.address);
                 const auto name = activeMonitorNames.value(address);
                 const auto label = name.isEmpty() ? address : QStringLiteral("%1 · %2").arg(name, address);
-                values.append(QStringLiteral("%1 = %2").arg(label,
-                    fresh ? QString::number(channel.value) : QStringLiteral("нет отсчёта")));
+                // Preserve the last real value when the decoder falls behind;
+                // do not flash an empty plot. Stale is explicitly labeled.
+                const QString measurement = !channel.valid ? QStringLiteral("нет отсчёта")
+                    : QString::number(channel.value, 'f', 0)
+                        + (fresh ? QString() : QStringLiteral(" (УСТАРЕЛ, %1 с)")
+                             .arg(std::chrono::duration<double>(now - channel.updatedAt).count(), 0, 'f', 1));
+                values.append(QStringLiteral("%1 = %2").arg(label, measurement));
                 if (plotEnabled->isChecked())
-                    bars.append({name.isEmpty() ? address : name, channel.value, fresh});
+                    bars.append({name.isEmpty() ? address : name, channel.value, channel.valid, !fresh});
             }
-            if (plotEnabled->isChecked() && !monitorCounterActive)
-                monitorPlot->setBars(std::move(bars));
+            if (plotEnabled->isChecked() && !monitorCounterActive) {
+                if (plotView->currentIndex() == 1) {
+                    const QString selectedAddress = trendChannel->currentData().toString();
+                    QVector<QPointF> raw;
+                    double elapsed = 0.0;
+                    {
+                        std::lock_guard<std::mutex> lock(trendMutex);
+                        elapsed = std::chrono::duration<double>(
+                            std::chrono::steady_clock::now() - trendOrigin).count();
+                        auto it = trendSamples.find(selectedAddress.toStdString());
+                        if (it != trendSamples.end())
+                            raw = QVector<QPointF>(it->second.begin(), it->second.end());
+                    }
+                    monitorPlot->setTimedSeries({trendChannel->currentText(),
+                                                std::move(raw), elapsed, 15.0});
+                } else {
+                    monitorPlot->setBars(std::move(bars));
+                }
+            }
             // M16 getErrors() exposes raw counters, not percentages;
             // M8 returns percentages. Never label a raw count as e.g. 112 %.
             const bool m8 = selectedMode() == 2;
