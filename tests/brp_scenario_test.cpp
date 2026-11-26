@@ -134,6 +134,18 @@ void testWindow()
     require(addressTable && addressTable->rowCount() > 0
         && addressTable->editTriggers() == QAbstractItemView::NoEditTriggers,
         "read-only address catalog did not load");
+    int row = 0;
+    while (row < addressTable->rowCount()
+        && addressTable->item(row, 1)->text() != QStringLiteral("M16P1A10B60C11T01")) ++row;
+    require(row < addressTable->rowCount(), "named BRP parameter is missing");
+    addressTable->selectRow(row);
+    window.findChild<QPushButton*>("brpApplyMonitorParameters")->click();
+    require(window.findChild<QLineEdit*>("brpM8Addresses")->text() == QStringLiteral("M16P1A10B60C11T01"),
+        "selected parameter did not replace the monitor address list");
+    start->click();
+    require(waitUntil([&] {
+        return status->text().contains(QStringLiteral("ББ СУ · M16P1A10B60C11T01 = 512"));
+    }), "monitor did not display the selected parameter by name");
 }
 
 QString readText(const QString& path)

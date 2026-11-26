@@ -246,7 +246,7 @@ struct BrpTuWindow::Impl {
         manualTitle->setFont(manualFont);
         header->addWidget(manualTitle);
         header->addStretch();
-        auto* database = new QPushButton(QStringLiteral("База адресов Орбиты"), manual);
+        auto* database = new QPushButton(QStringLiteral("Параметры Орбиты…"), manual);
         database->setObjectName(QStringLiteral("brpBrowseDb"));
         header->addWidget(database);
         QObject::connect(database, &QPushButton::clicked, &window, [this] { browseDatabase(); });
@@ -485,32 +485,51 @@ struct BrpTuWindow::Impl {
 
     ~Impl() { shutdown(); }
 
-    void browseDatabase()
+    void browseDatabase(const QString& databasePath = {})
     {
         auto* dialog = new QDialog(&window);
         dialog->setAttribute(Qt::WA_DeleteOnClose);
-        dialog->setWindowTitle(QStringLiteral("База адресов Орбиты"));
+        dialog->setWindowTitle(QStringLiteral("Параметры Орбиты"));
         dialog->resize(940, 540);
         auto* layout = new QVBoxLayout(dialog);
-        const auto path = root.filePath(QStringLiteral("data/parameters.db"));
+        const auto path = databasePath.isEmpty() ? root.filePath(QStringLiteral("data/parameters.db")) : databasePath;
         auto* summary = new QLabel(path, dialog);
         summary->setTextFormat(Qt::PlainText);
         summary->setTextInteractionFlags(Qt::TextSelectableByMouse);
         layout->addWidget(summary);
         auto* filter = new QLineEdit(dialog);
-        filter->setPlaceholderText(QStringLiteral("Поиск по адресу, названию или типу"));
+        filter->setPlaceholderText(QStringLiteral("Поиск по имени, адресу, категории или типу"));
         layout->addWidget(filter);
-        auto* table = new QTableWidget(0, 5, dialog);
+        auto* table = new QTableWidget(0, 6, dialog);
         table->setObjectName(QStringLiteral("brpAddressTable"));
-        table->setHorizontalHeaderLabels({QStringLiteral("Адрес / компоненты"), QStringLiteral("Параметр"),
+        table->setHorizontalHeaderLabels({QStringLiteral("Параметр"), QStringLiteral("Адрес / компоненты"), QStringLiteral("Категория"),
             QStringLiteral("Тип"), QStringLiteral("Ед."), QStringLiteral("Источник")});
         table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+        table->setSelectionMode(QAbstractItemView::ExtendedSelection);
         table->setSelectionBehavior(QAbstractItemView::SelectRows);
         table->setAlternatingRowColors(true);
         table->verticalHeader()->hide();
         table->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
-        table->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+        table->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
         layout->addWidget(table);
+
+        const auto addRow = [table](const QStringList& fields, const QString& fullAddress) {
+            const int row = table->rowCount();
+            table->insertRow(row);
+            for (int column = 0; column < fields.size(); ++column)
+                table->setItem(row, column, new QTableWidgetItem(fields[column]));
+            table->item(row, 0)->setData(Qt::UserRole, fullAddress);
+        };
+        for (const auto& check : checks) {
+            for (std::size_t channel = 0; channel < check.addresses.size(); ++channel) {
+                const auto address = QString::fromStdString(check.addresses[channel]);
+                const auto name = QString::fromStdString(
+                    check.channelNames.empty() ? check.title : check.channelNames[channel]);
+                addRow({name, address, QString::fromStdString(check.cell),
+                    check.bits == 1 ? QStringLiteral("Бит") : QStringLiteral("Код"),
+                    {}, QStringLiteral("БРП · таблица 1")}, address);
+            }
+        }
 
         const auto connection = QUuid::createUuid().toString(QUuid::WithoutBraces);
         QString error;
@@ -524,12 +543,10 @@ struct BrpTuWindow::Impl {
                 QSqlQuery query(db);
                 if (!query.exec(QStringLiteral(
                         "SELECT a.full_address, p.name, p.signal_type, p.units, a.is_zu, "
-                        "a.stream, a.a, a.b, a.c, a.d, a.e, a.x, a.t, a.p "
+                        "a.stream, a.a, a.b, a.c, a.d, a.e, a.x, a.t, a.p, p.category "
                         "FROM addresses a JOIN parameters p ON p.id=a.param_id "
-                        "ORDER BY a.full_address, a.id"))) error = query.lastError().text();
+                        "ORDER BY p.category, p.name, a.id"))) error = query.lastError().text();
                 while (query.next()) {
-                    const int row = table->rowCount();
-                    table->insertRow(row);
                     auto address = query.value(0).toString();
                     if (address.isEmpty()) {
                         address = query.value(5).toString();
@@ -539,16 +556,19 @@ struct BrpTuWindow::Impl {
                             if (!value.isEmpty()) address += QLatin1Char(components[i]) + value.rightJustified(2, QLatin1Char('0'));
                         }
                     }
-                    table->setItem(row, 0, new QTableWidgetItem(address));
-                    for (int column = 1; column < 4; ++column)
-                        table->setItem(row, column, new QTableWidgetItem(query.value(column).toString()));
-                    table->setItem(row, 4, new QTableWidgetItem(query.value(4).toBool()
-                        ? QStringLiteral("ЗУ") : QStringLiteral("Кадр")));
+                    const bool storage = query.value(4).toBool();
+                    const auto full = QString::fromStdString(encoding::normalizeAddress(query.value(0).toString().toStdString()));
+                    const auto value = full.toStdString();
+                    const bool usable = !storage && (value.rfind("M08", 0) == 0 || value.rfind("M16", 0) == 0)
+                        && orbita::isValidChannelAddress(value);
+                    addRow({query.value(1).toString(), address, query.value(14).toString(),
+                        query.value(2).toString(), query.value(3).toString(),
+                        storage ? QStringLiteral("ЗУ") : QStringLiteral("База Орбиты")}, usable ? full : QString());
                 }
             }
         }
         QSqlDatabase::removeDatabase(connection);
-        summary->setText(error.isEmpty() ? QStringLiteral("%1 · %2 адресов").arg(path).arg(table->rowCount())
+        summary->setText(error.isEmpty() ? QStringLiteral("%1 · %2 строк · БРП и каталог Орбиты").arg(path).arg(table->rowCount())
                                          : QStringLiteral("%1 · %2").arg(path, error));
         QObject::connect(filter, &QLineEdit::textChanged, table, [table](const QString& text) {
             const auto needle = text.trimmed();
@@ -558,6 +578,59 @@ struct BrpTuWindow::Impl {
                     matches = table->item(row, column)->text().contains(needle, Qt::CaseInsensitive);
                 table->setRowHidden(row, !matches);
             }
+        });
+        auto* actions = new QHBoxLayout;
+        auto* changeDatabase = new QPushButton(QStringLiteral("Открыть другую БД…"), dialog);
+        auto* apply = new QPushButton(QStringLiteral("Показать выбранные параметры"), dialog);
+        apply->setObjectName(QStringLiteral("brpApplyMonitorParameters"));
+        actions->addWidget(changeDatabase);
+        actions->addStretch();
+        actions->addWidget(apply);
+        layout->addLayout(actions);
+        auto* selectionStatus = new QLabel(dialog);
+        selectionStatus->setWordWrap(true);
+        layout->addWidget(selectionStatus);
+
+        QObject::connect(changeDatabase, &QPushButton::clicked, dialog, [this, dialog, path] {
+            const auto file = QFileDialog::getOpenFileName(dialog, QStringLiteral("Открыть SQLite"),
+                QFileInfo(path).absolutePath(), QStringLiteral("SQLite (*.db *.sqlite *.sqlite3);;Все файлы (*)"));
+            if (!file.isEmpty()) {
+                dialog->close();
+                browseDatabase(file);
+            }
+        });
+        QObject::connect(apply, &QPushButton::clicked, dialog, [this, dialog, table, selectionStatus] {
+            if (bridge) {
+                selectionStatus->setText(QStringLiteral("Остановите текущий приём, чтобы сменить параметры."));
+                return;
+            }
+            QStringList addresses;
+            QHash<QString, QString> names;
+            QString prefix;
+            for (const auto& index : table->selectionModel()->selectedRows()) {
+                if (table->isRowHidden(index.row())) continue;
+                const auto* item = table->item(index.row(), 0);
+                const auto address = item->data(Qt::UserRole).toString();
+                if (address.isEmpty() || (!prefix.isEmpty() && !address.startsWith(prefix))) {
+                    selectionStatus->setText(QStringLiteral("Выберите параметры одного формата с полными адресами кадра."));
+                    return;
+                }
+                prefix = address.left(3);
+                if (!names.contains(address)) {
+                    addresses.append(address);
+                    names.insert(address, item->text());
+                }
+            }
+            if (addresses.isEmpty()) {
+                selectionStatus->setText(QStringLiteral("Выберите хотя бы один параметр."));
+                return;
+            }
+            interfaceMode->setCurrentIndex(prefix == QStringLiteral("M08") ? 2 : 3);
+            m8Addresses->setText(addresses.join(QLatin1Char(' ')));
+            for (auto it = names.cbegin(); it != names.cend(); ++it)
+                monitorNames.insert(it.key(), it.value());
+            status->setText(QStringLiteral("Выбрано параметров: %1. Нажмите «Начать приём Орбиты».").arg(addresses.size()));
+            dialog->accept();
         });
         dialog->open();
     }
@@ -1035,7 +1108,10 @@ struct BrpTuWindow::Impl {
                 // Поддерживаемые адреса обновляются хотя бы раз за цикл.
                 // После паузы длиннее кадра старый код скрываем.
                 const bool fresh = channel.valid && now - channel.updatedAt < std::chrono::seconds(1);
-                values.append(QStringLiteral("%1 = %2").arg(QString::fromStdString(channel.address),
+                const auto address = QString::fromStdString(channel.address);
+                const auto name = monitorNames.value(address);
+                const auto label = name.isEmpty() ? address : QStringLiteral("%1 · %2").arg(name, address);
+                values.append(QStringLiteral("%1 = %2").arg(label,
                     fresh ? QString::number(channel.value) : QStringLiteral("нет отсчёта")));
             }
             status->setText(QStringLiteral("%1 · групп %2 · ошибки фраз %3 % · ошибки групп %4 %\n%5")
@@ -1310,6 +1386,7 @@ struct BrpTuWindow::Impl {
     QString stageProgress;
     QString scenarioIsdHost;
     MetadataService metadata;
+    QHash<QString, QString> monitorNames;
     std::vector<FrameCheck> checks;
     QComboBox *interfaceMode = nullptr, *port = nullptr, *checkList = nullptr,
               *channelList = nullptr, *expectedState = nullptr;
