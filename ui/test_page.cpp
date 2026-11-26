@@ -8,6 +8,7 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QShortcut>
+#include <QScrollArea>
 #include <QStackedWidget>
 #include <QStyle>
 #include <QVBoxLayout>
@@ -211,10 +212,17 @@ struct TestPage::Impl {
         tuSerial->setObjectName(QStringLiteral("tuRuntimeSerial"));
         tuLayout->addWidget(tuSerial);
         tuLayout->addSpacing(4);
-        tuRequirementLayout = new QVBoxLayout;
+        auto* stepScroll = new QScrollArea(tuSidebar);
+        stepScroll->setObjectName(QStringLiteral("brpStepScroll"));
+        stepScroll->setWidgetResizable(true);
+        stepScroll->setFrameShape(QFrame::NoFrame);
+        stepScroll->setStyleSheet(QStringLiteral("QScrollArea{background:transparent;border:0;}"));
+        auto* stepContent = new QWidget(stepScroll);
+        tuRequirementLayout = new QVBoxLayout(stepContent);
+        tuRequirementLayout->setContentsMargins(0, 0, 0, 0);
         tuRequirementLayout->setSpacing(5);
-        tuLayout->addLayout(tuRequirementLayout);
-        tuLayout->addStretch();
+        stepScroll->setWidget(stepContent);
+        tuLayout->addWidget(stepScroll, 1);
         sidebarStack->addWidget(tuSidebar);
 
         body->addWidget(sidebarStack);
