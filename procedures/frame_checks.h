@@ -79,6 +79,8 @@ struct FrameCheck {
     unsigned bits;
     std::optional<VoltageScale> scale;
     std::string voltagePointRequirement;
+    std::vector<double> pointTargets; // Optional multi-point sweep from the profile.
+    double targetWindowVolts = 0.5; // Setup validation, not an acceptance tolerance.
 };
 
 std::vector<FrameCheck> loadFrameChecks(const std::string& yaml);
