@@ -7,6 +7,7 @@
 #include <QComboBox>
 #include <QElapsedTimer>
 #include <QFile>
+#include <QFileInfo>
 #include <QHostAddress>
 #include <QLabel>
 #include <QLineEdit>
@@ -281,15 +282,22 @@ void testScenarioAndReport()
     const auto completeHtml = exportReport();
     const auto base = completeHtml.chopped(5);
     require(rows->rowCount() == 5 && stageResult(2) == QStringLiteral("НОРМА")
-        && stageResult(3) == QStringLiteral("ПРОПУЩЕНО") && stageResult(4) == QStringLiteral("НОРМА"),
-        "report summary did not preserve the stage verdicts");
+        && stageResult(3) == QStringLiteral("НОРМА · ПРИНУД.") && stageResult(4) == QStringLiteral("НОРМА"),
+        "report summary did not preserve the forced verdict");
+    const auto runId = QFileInfo(completeHtml).completeBaseName().mid(3); // TU_<run-id>.html
+    const auto checkpoint = readText(reports.path() + QStringLiteral("/runs/") + runId + QStringLiteral(".json"));
+    require(checkpoint.contains(QStringLiteral("\"forcedOk\": true"))
+        && checkpoint.contains(QStringLiteral("\"attempt_1\"")) == false
+        && checkpoint.contains(QStringLiteral(".attempt_1"))
+        && checkpoint.contains(QStringLiteral("\"finished_ms\":")),
+        "durable checkpoint lost a forced verdict or attempt history");
     const auto html = readText(completeHtml);
     const auto txt = readText(base + QStringLiteral(".txt"));
     const auto csv = readText(base + QStringLiteral(".csv"));
     require(html.contains(QStringLiteral("@page{size:A4;margin:16mm}"))
         && html.contains(QStringLiteral("A &lt; B; &quot;C&quot;"))
         && txt.contains(QStringLiteral("РЕЗУЛЬТАТЫ КАДРОВЫХ ПРОВЕРОК БРП №BRP-01"))
-        && txt.contains(QStringLiteral("Имитация")) && txt.contains(QStringLiteral("ПРОПУЩЕНО"))
+        && txt.contains(QStringLiteral("Имитация")) && txt.contains(QStringLiteral("ПРИНУДИТЕЛЬНЫЙ ОК"))
         && csv.contains(QStringLiteral("v7_before_v=20.020"))
         && csv.contains(QStringLiteral("M16P1A10B60C31T01")), "reference report lost the BRP results or print layout");
 
