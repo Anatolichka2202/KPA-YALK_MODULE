@@ -620,11 +620,11 @@ struct BrpTuWindow::Impl {
         side->addWidget(checksBox);
 
         if (!simulation) {
-            auto* instruments = new QGroupBox(QStringLiteral("Оборудование стенда"), manual);
+            auto* instruments = new QGroupBox(QStringLiteral("Оборудование · питание БРП внешнее"), manual);
             auto* instrumentsLayout = new QFormLayout(instruments);
             isdHost = new QLineEdit(instruments);
             isdHost->setReadOnly(true);
-            auto* probe = new QPushButton(QStringLiteral("Обновить состояние приборов"), instruments);
+            auto* probe = new QPushButton(QStringLiteral("Проверить Е20-10 (без ИСД/АКИП)"), instruments);
             prepare = new QPushButton(QStringLiteral("Подготовить ИСД · ЦАП OFF"), instruments);
             instrumentsLayout->addRow(QStringLiteral("ИСД"), isdHost);
             instrumentsLayout->addRow(probe);
@@ -934,27 +934,33 @@ struct BrpTuWindow::Impl {
         if (bridge || stoppingStream || preparingIsd || probing || meterBusy) return;
         try {
             const auto profile = loadStand(root);
-            const auto host = QString::fromStdString(profile["isd"]["host"].as<std::string>()).trimmed();
-            isdHost->setText(host);
             probing = true;
             updateCaptureControls();
-            appendLog(QStringLiteral("Проверка приборов по профилю стенда…"));
-            auto* watcher = new QFutureWatcher<Readiness>(&window);
+            appendLog(QStringLiteral("Диагностика Е20-10. ИСД, АКИП, В7 и COM здесь не опрашиваются."));
+            auto* watcher = new QFutureWatcher<QString>(&window);
             QObject::connect(watcher, &QFutureWatcherBase::finished, &window, [this, watcher] {
-                const auto result = watcher->result();
+                const auto error = watcher->result();
                 watcher->deleteLater();
                 probing = false;
-                const std::array names{QStringLiteral("ИСД"), QStringLiteral("В7"),
-                                       QStringLiteral("АКИП"), QStringLiteral("Е20-10")};
-                for (std::size_t i = 0; i < names.size(); ++i)
-                    appendLog(QStringLiteral("%1 · %2").arg(names[i], result[i].isEmpty()
-                        ? QStringLiteral("доступен") : result[i]));
+                appendLog(error.isEmpty() ? QStringLiteral("Е20-10: доступен по профилю.")
+                                          : QStringLiteral("Е20-10: %1").arg(error));
                 updateCaptureControls();
             });
-            const auto rs485 = port->currentText().trimmed();
-            watcher->setFuture(QtConcurrent::run(probeStand, root, profile, host, rs485));
+            watcher->setFuture(QtConcurrent::run([profile]() -> QString {
+                try {
+                    auto adc = createE2010SampleSource(
+                        profile["e2010"].as<std::map<std::string, std::string>>());
+                    if (!adc->open()) return QStringLiteral("Не удалось открыть АЦП.");
+                    adc->close();
+                    return {};
+                } catch (const std::exception& error) {
+                    return QString::fromUtf8(error.what());
+                }
+            }));
         } catch (const std::exception& error) {
+            probing = false;
             appendLog(QString::fromUtf8(error.what()));
+            updateCaptureControls();
         }
     }
 
