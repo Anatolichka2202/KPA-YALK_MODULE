@@ -144,6 +144,9 @@ struct TestPage::Impl {
         stopButton = new QPushButton(QStringLiteral("Остановить"), header);
         stopButton->setObjectName(QStringLiteral("danger"));
         stopButton->setProperty("tuStopAction", true);
+        bbPrSignal = new QPushButton(QStringLiteral("ББ ПР · выдать сигнал"), header);
+        bbPrSignal->setObjectName(QStringLiteral("brpIssueBbPrRuntime"));
+        bbPrSignal->setEnabled(false);
         skipHotspot = new QPushButton(header);
         skipHotspot->setObjectName(QStringLiteral("tuSkipRevealHotspot"));
         skipHotspot->setFixedSize(24, 24);
@@ -159,6 +162,7 @@ struct TestPage::Impl {
         headerLayout->addWidget(runTitle);
         headerLayout->addWidget(runSubtitle);
         headerLayout->addStretch();
+        headerLayout->addWidget(bbPrSignal);
         headerLayout->addWidget(skipHotspot);
         headerLayout->addWidget(skipButton);
         headerLayout->addWidget(stopButton);
@@ -243,6 +247,7 @@ struct TestPage::Impl {
         QObject::connect(runtimeBack, &QPushButton::clicked, q, [this] {
             if (!stopButton->isEnabled()) pages->setCurrentWidget(tuFlow);
         });
+        QObject::connect(bbPrSignal, &QPushButton::clicked, q, &TestPage::bbPrSignalRequested);
         QObject::connect(stopButton, &QPushButton::clicked, q, &TestPage::stopRequested);
         QObject::connect(skipHotspot, &QPushButton::clicked, q, [this] {
             if (skipButton->isEnabled()) skipButton->setVisible(!skipButton->isVisible());
@@ -379,7 +384,8 @@ struct TestPage::Impl {
     QWidget *manualPage = nullptr, *runtimePageWidget = nullptr;
     QFrame *runtimeContextStrip = nullptr, *tuSidebar = nullptr;
     QPushButton *runtimeBack = nullptr, *stopButton = nullptr, *skipHotspot = nullptr,
-                *skipButton = nullptr, *confirm = nullptr, *retry = nullptr, *proceed = nullptr;
+                *skipButton = nullptr, *confirm = nullptr, *retry = nullptr, *proceed = nullptr,
+                *bbPrSignal = nullptr;
     QLabel *runTitle = nullptr, *runSubtitle = nullptr, *contextCaption = nullptr, *context = nullptr,
            *progressCaption = nullptr, *progressText = nullptr, *tuTitle = nullptr, *tuSerial = nullptr,
            *stageHeading = nullptr, *referenceBefore = nullptr, *referenceAfter = nullptr, *maximumError = nullptr;
@@ -472,6 +478,11 @@ void TestPage::setRetryAvailable(bool available)
 {
     impl_->retry->setVisible(available);
     impl_->proceed->setVisible(available);
+}
+
+void TestPage::setBbPrSignalAvailable(bool available)
+{
+    impl_->bbPrSignal->setEnabled(available);
 }
 
 void TestPage::setSeries(const QVector<double>& first, const QVector<double>& second)
