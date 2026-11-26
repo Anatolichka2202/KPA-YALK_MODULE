@@ -71,8 +71,9 @@ int main(int argc, char** argv)
         require(counter.trace().at(1023) == 1023 && counter.trace().at(1024) == 0,
                 "graph must show the wrap");
         require(counter.recent().size() == 512 && counter.latestValue()
-                && *counter.latestValue() == 0 && counter.decodedValues() == 2049,
-                "live counter must preserve only the latest 512 codes");
+                && *counter.latestValue() == 511 && counter.decodedValues() == 2560
+                && counter.recent().front() == 0 && counter.recent().back() == 511,
+                "live counter must retain the final 512 codes after the two-period verdict");
         counter.consume(groupWordsAt(5), 6, 1);
         require(counter.passed() && counter.trace().size() == 2049
                 && counter.recent().size() == 512 && counter.decodedValues() > 2049,
