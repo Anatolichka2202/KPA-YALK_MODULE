@@ -397,7 +397,7 @@ struct BrpTuWindow::Impl {
             if (program.isEmpty()) {
                 const auto bundled = root.filePath(QStringLiteral("PURUMK.exe"));
                 if (QFileInfo::exists(bundled)) program = bundled;
-                else program = QFileDialog::getOpenFileName(&window,
+                else program = QFileDialog::getOpenFileName(&this->window,
                     QStringLiteral("Выберите исполняемый файл PURUMK"), root.path(),
                     QStringLiteral("Приложение PURUMK (*.exe);;Все файлы (*)"));
             }
@@ -498,7 +498,7 @@ struct BrpTuWindow::Impl {
         bbPrButton->setToolTip(QStringLiteral("Выдача через заданный в профиле контакт ИСД; без карты контакта команда не отправляется."));
         QObject::connect(bbPrButton, &QPushButton::clicked, &window, [this] {
             if (bbPrBusy || currentStage >= 0 || bridge || preparingIsd || probing) return;
-            if (simulation) {
+            if (this->simulation) {
                 appendLog(QStringLiteral("ББ ПР: ИМИТАЦИЯ запроса выдачи. Аппаратная команда не отправлялась."));
                 return;
             }
@@ -508,8 +508,8 @@ struct BrpTuWindow::Impl {
             }
             bbPrBusy = true;
             bbPrButton->setEnabled(false);
-            auto* watcher = new QFutureWatcher<BbPrCommandResult>(&window);
-            QObject::connect(watcher, &QFutureWatcherBase::finished, &window, [this, watcher] {
+            auto* watcher = new QFutureWatcher<BbPrCommandResult>(&this->window);
+            QObject::connect(watcher, &QFutureWatcherBase::finished, &this->window, [this, watcher] {
                 const auto reply = watcher->result();
                 watcher->deleteLater();
                 bbPrBusy = false;
