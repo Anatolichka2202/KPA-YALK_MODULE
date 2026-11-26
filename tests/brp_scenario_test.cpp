@@ -445,8 +445,10 @@ void testScenarioAndReport()
             "manual M8 selection blocked formal M16 acceptance");
     start->click();
     auto* runTime = window.findChild<QLabel*>("brpRunBoardTime");
-    require(runTime && waitUntil([&] { return runTime->text() == QStringLiteral("Бортовое время · 0 с"); }),
-            "automatic route did not receive or show M16 time with manual M8 selected");
+    // Останавливаем именно интерфейсный этап. Ожидание первого МТВ
+    // могло позволить имитатору уже подтвердить два периода счётчика.
+    require(runTime && runTime->text().contains(QStringLiteral("ожидание маркера M16")),
+            "formal route with M8 selected did not start a M16 session");
     stop->click();
     require(waitUntil([&] { return name->isVisible(); }, 20000),
             "aborted run did not finish background Orbita teardown");

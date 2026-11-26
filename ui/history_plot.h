@@ -7,7 +7,6 @@
 #include <QWidget>
 
 #include <algorithm>
-#include <array>
 #include <cmath>
 #include <functional>
 #include <optional>
@@ -210,7 +209,7 @@ protected:
             bool any = false;
             double low = 0.0, high = 0.0;
             for (const auto& point : trend.points) {
-                if (point.x() < left || !std::isfinite(point.y())) continue;
+                if (point.x() < left || point.x() > right || !std::isfinite(point.y())) continue;
                 if (!any) { low = high = point.y(); any = true; }
                 else { low = std::min(low, point.y()); high = std::max(high, point.y()); }
             }
@@ -242,60 +241,62 @@ protected:
                 p.drawText(QRectF(x - 25, area.bottom() + 1, 50, 16),
                            Qt::AlignCenter, QString::number(second, 'f', 1) + QStringLiteral(" c"));
             }
-            QPainterPath curve;
-            curve.reserve(int(area.width()) * 4);
-            bool connected = false;
+            QVector<QLineF> lines;
+            lines.reserve(int(area.width()) * 2);
+            std::optional<QPointF> previousEnd;
             double previousTime = 0.0;
             int column = -1;
-            qsizetype first = -1, minimum = -1, maximum = -1, last = -1;
+            const QPointF* first = nullptr;
+            const QPointF* last = nullptr;
+            double minimum = 0.0, maximum = 0.0;
             const auto xFor = [&](double second) {
                 return area.left() + (second - left) * area.width() / window;
             };
-            const auto flushColumn = [&] {
-                if (first < 0) return;
-                // Рисуем границы и экстремумы пикселя в порядке отсчётов.
-                // Так короткий пик не исчезает, а график не меняет направление времени.
-                std::array indices{first, minimum, maximum, last};
-                std::sort(indices.begin(), indices.end());
-                qsizetype lastDrawn = -1;
-                for (const auto index : indices) {
-                    if (index == lastDrawn) continue;
-                    const auto& point = trend.points[index];
-                    const QPointF position(xFor(point.x()), ordinate(point.y()));
-                    if (connected) curve.lineTo(position);
-                    else curve.moveTo(position);
-                    connected = true;
-                    lastDrawn = index;
-                }
-                first = -1;
+            const auto mapPoint = [&](const QPointF& point) {
+                return QPointF(xFor(point.x()), ordinate(point.y()));
             };
-            for (qsizetype i = 0; i < trend.points.size(); ++i) {
-                const auto& point = trend.points[i];
+            const auto flushColumn = [&] {
+                if (!first) return;
+                const auto start = mapPoint(*first);
+                if (previousEnd) lines.append(QLineF(*previousEnd, start));
+                // У плотного участка сохраняем огибающую в каждом пикселе.
+                // Отдельный вертикальный штрих избегает дорогой обводки самопересекающейся линии.
+                if (maximum > minimum) {
+                    const double x = area.left() + column + 0.5;
+                    lines.append(QLineF(x, ordinate(maximum), x, ordinate(minimum)));
+                } else if (!previousEnd) {
+                    lines.append(QLineF(start, start + QPointF(1, 0)));
+                }
+                previousEnd = mapPoint(*last);
+                first = nullptr;
+            };
+            for (const auto& point : trend.points) {
                 if (point.x() < left || point.x() > right) continue;
                 const bool valid = std::isfinite(point.y());
-                const bool gap = first >= 0 && point.x() - previousTime > 0.5;
-                if (!valid || gap) {
+                if (!valid || (first && point.x() - previousTime > 0.5)) {
                     flushColumn();
-                    connected = false;
+                    previousEnd.reset();
                     if (!valid) continue;
                 }
                 const int nextColumn = int(xFor(point.x()) - area.left());
                 if (nextColumn != column) flushColumn();
-                if (first < 0) {
-                    first = minimum = maximum = i;
+                if (!first) {
+                    first = &point;
                     column = nextColumn;
+                    minimum = maximum = point.y();
                 } else {
-                    if (point.y() < trend.points[minimum].y()) minimum = i;
-                    if (point.y() > trend.points[maximum].y()) maximum = i;
+                    minimum = std::min(minimum, point.y());
+                    maximum = std::max(maximum, point.y());
                 }
-                last = i;
+                last = &point;
                 previousTime = point.x();
             }
             flushColumn();
             p.save();
             p.setClipRect(area.adjusted(1, 1, -1, -1));
-            p.setPen(QPen(palette::cyan, 1.6));
-            p.drawPath(curve);
+            p.setRenderHint(QPainter::Antialiasing, false);
+            p.setPen(QPen(palette::cyan, 0));
+            p.drawLines(lines.constData(), lines.size());
             p.restore();
             p.setPen(palette::muted);
             p.drawText(QRectF(area.right() - 195, 6, 185, 20), Qt::AlignRight,
