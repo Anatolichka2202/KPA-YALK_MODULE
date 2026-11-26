@@ -109,6 +109,19 @@ void testWindow()
     require(log->toPlainText().contains(QStringLiteral("ИМИТАЦИЯ запроса выдачи")),
             "BB PR simulator incorrectly claimed physical output");
     require(!capture->isEnabled(), "measurement was available before interface validation");
+    // Live counter is a monitor, not a 5-second acceptance gate.
+    mode->setCurrentIndex(0);
+    auto* counterPlot = window.findChild<QWidget*>("brpCounterPlot");
+    require(counterPlot && counterPlot->isVisible(), "dedicated RS485 waveform is hidden");
+    start->click();
+    require(waitUntil([&] {
+        return status->text().contains(QStringLiteral("ДВА ПЕРИОДА ПОДТВЕРЖДЕНЫ"));
+    }, 12000), "live counter did not show two received cycles");
+    require(stop->isEnabled() && !start->isEnabled(),
+            "live counter incorrectly stopped as soon as two cycles passed");
+    stop->click();
+    require(waitUntil([&] { return start->isEnabled(); }, 20000),
+            "live RS485 counter did not release stream on operator stop");
     mode->setCurrentIndex(1);
     start->click();
     require(waitUntil([&] { return log->toPlainText().contains(QStringLiteral("ЯСМ: ожидаемая последовательность")); }),
