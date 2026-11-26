@@ -270,8 +270,8 @@ void testScenarioAndReport()
         && isdStage->text() == QStringLiteral("НОРМА")
         && coverage->text() == QStringLiteral("НОРМА"),
         "interface, ISD preparation or M16 coverage stage is wrong");
-    require(window.findChild<QLabel*>("brpStageHeading")->text() == QStringLiteral("M16P1A10B60C11T01"),
-        "active stage is missing its address");
+    require(window.findChild<QLabel*>("brpStageHeading")->text() == QStringLiteral("M16P1A10B20T01"),
+        "active POS stage is missing its address");
 
     measure->click();
     require(!measure->isVisible() && !skip->isEnabled(), "a running measurement could be restarted or skipped");
@@ -280,13 +280,22 @@ void testScenarioAndReport()
     require(skip->isVisible(), "skip action did not reveal");
     skip->click();
     measure->click();
-    require(waitUntil([&] { return name->isVisible(); }), "scenario did not finish after last measurement");
+    // Four POS channels, three configured points each, plus BB SU/PR/Eptm.
+    // The first three points were handled above; complete the remaining twelve.
+    for (int point = 3; point < 15; ++point) {
+        require(waitUntil([&] { return measure->isVisible(); }, 12000),
+                "scenario did not reach the next multi-point measurement");
+        measure->click();
+    }
+    require(waitUntil([&] { return name->isVisible(); }, 12000),
+            "scenario did not finish after all multi-point measurements");
 
     const auto completeHtml = exportReport();
     const auto base = completeHtml.chopped(5);
-    require(rows->rowCount() == 6 && stageResult(2) == QStringLiteral("НОРМА")
-        && stageResult(3) == QStringLiteral("НОРМА")
-        && stageResult(4) == QStringLiteral("НОРМА · ПРИНУД.") && stageResult(5) == QStringLiteral("НОРМА"),
+    require(rows->rowCount() == 18 && stageResult(2) == QStringLiteral("НОРМА")
+        && stageResult(3) == QStringLiteral("НЕПОЛНАЯ")
+        && stageResult(4) == QStringLiteral("НОРМА · ПРИНУД.")
+        && stageResult(5) == QStringLiteral("НЕПОЛНАЯ"),
         "report summary did not preserve the forced verdict");
     const auto runId = QFileInfo(completeHtml).completeBaseName().mid(3); // TU_<run-id>.html
     const auto checkpoint = readText(reports.path() + QStringLiteral("/runs/") + runId + QStringLiteral(".json"));
