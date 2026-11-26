@@ -280,7 +280,8 @@ void testScenarioAndReport()
         "active POS stage is missing its address");
 
     measure->click();
-    require(!measure->isVisible() && !skip->isEnabled(), "a running measurement could be restarted or skipped");
+    require(!measure->isVisible() && skip->isEnabled(),
+            "measurement must not be restarted while Ctrl+Shift+Q remains available");
     require(waitUntil([&] { return measure->isVisible(); }), "scenario did not advance after first V7 comparison");
     revealSkip->click();
     require(skip->isVisible(), "skip action did not reveal");
