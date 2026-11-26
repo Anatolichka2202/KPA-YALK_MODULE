@@ -53,6 +53,7 @@ struct StepRunResult {
     std::vector<MeasurementResult> measurements;
     std::vector<StepRunResult> children;
     bool operatorSkipped = false;
+    bool forcedOk = false; // Operator override; raw attempt verdicts and measurements remain unchanged.
 };
 
 struct ScenarioRunResult {
