@@ -1062,6 +1062,7 @@ struct BrpTuWindow::Impl {
             "3.2.1.6–3.2.1.13"});
         voltagePoints.clear();
         pointTargets.clear();
+        digitalExpectations.clear();
         for (std::size_t index = 0; index < checks.size(); ++index) {
             const auto& check = checks[index];
             if (check.voltagePointRequirement.empty()) continue;
@@ -1082,6 +1083,27 @@ struct BrpTuWindow::Impl {
                     voltagePoints.emplace_back(index, channel);
                     pointTargets.push_back(targeted ? std::optional<double>(check.pointTargets[point])
                                                     : std::nullopt);
+                    digitalExpectations.push_back(-1);
+                }
+            }
+        }
+
+        // A discrete input has two observable states. Missing ISD wiring is
+        // an explicit operator action, followed by automated fresh M16 capture.
+        for (std::size_t index = 0; index < checks.size(); ++index) {
+            const auto& check = checks[index];
+            if (check.bits != 1) continue;
+            for (std::size_t channel = 0; channel < check.addresses.size(); ++channel) {
+                const auto& name = check.channelNames.empty() ? check.title : check.channelNames[channel];
+                for (int state = 0; state <= 1; ++state) {
+                    run.steps.push_back({
+                        QStringLiteral("bit_%1_%2_%3").arg(check.number).arg(channel + 1).arg(state).toStdString(),
+                        QStringLiteral("Строка %1 · %2 · состояние %3")
+                            .arg(check.number).arg(QString::fromStdString(name)).arg(state).toStdString(),
+                        check.requirement});
+                    voltagePoints.emplace_back(index, channel);
+                    pointTargets.push_back(std::nullopt);
+                    digitalExpectations.push_back(state);
                 }
             }
         }
@@ -1192,10 +1214,16 @@ struct BrpTuWindow::Impl {
         } else {
             const auto [check, channel] = voltagePoints[currentStage - 3];
             const auto address = QString::fromStdString(checks[check].addresses[channel]);
+            const int expectedBit = digitalExpectations[currentStage - 3];
             page->setStage(currentStage, QString::fromStdString(run.steps[currentStage].title),
-                address, QStringLiteral("В"), QStringLiteral("ЯГР мин., В"), QStringLiteral("ЯГР макс., В"));
+                address, expectedBit < 0 ? QStringLiteral("В") : QStringLiteral("бит"),
+                expectedBit < 0 ? QStringLiteral("ЯГР мин., В") : QStringLiteral("M16"),
+                expectedBit < 0 ? QStringLiteral("ЯГР макс., В") : QStringLiteral("Ожидаемое состояние"));
             waitingForPoint = true;
-            setProgress(QStringLiteral("Подайте стабильное напряжение и подключите В7 к той же точке."));
+            setProgress(expectedBit >= 0
+                ? QStringLiteral("Установите физическое состояние входа %1, затем нажмите «Измерить».")
+                    .arg(expectedBit)
+                : QStringLiteral("Подайте стабильное напряжение и подключите В7 к той же точке."));
         }
     }
 
@@ -1228,8 +1256,10 @@ struct BrpTuWindow::Impl {
         if (!pointCanStart()) return;
         const auto [check, channel] = voltagePoints[currentStage - 3];
         waitingForPoint = false;
-        setProgress(QStringLiteral("Считываются В7 и кадр M16."));
-        beginPoint(check, channel, 0);
+        const int expectedBit = digitalExpectations[currentStage - 3];
+        setProgress(expectedBit < 0 ? QStringLiteral("Считываются В7 и кадр M16.")
+                                   : QStringLiteral("Проверяется состояние дискретного входа M16."));
+        beginPoint(check, channel, expectedBit < 0 ? 0u : static_cast<unsigned>(expectedBit));
     }
 
     void finishScenario()
@@ -1626,9 +1656,24 @@ struct BrpTuWindow::Impl {
         if (check.scale) {
             requestMeter(true);
         } else if (check.bits == 1) {
+            const bool matched = codes.matches(state, state);
+            tu::MeasurementResult value;
+            value.parameterKey = check.addresses.at(activeChannel);
+            value.title = "Состояние дискретного входа";
+            value.reference = state;
+            value.measured = codes.minimum;
+            value.lowerLimit = state;
+            value.upperLimit = state;
+            value.unit = "бит";
+            value.verdict = matched ? RunVerdict::Ok : RunVerdict::Fail;
+            value.message = matched ? "Состояние соответствует воздействию" : "Состояние не соответствует";
+            value.attributes = {{ "min", std::to_string(codes.minimum) },
+                                { "max", std::to_string(codes.maximum) },
+                                { "samples", std::to_string(codes.count) }};
             finishPoint(pointName() + QStringLiteral(" %1 отсч., состояния %2–%3, ожидалось %4. %5.")
                 .arg(codes.count).arg(codes.minimum).arg(codes.maximum).arg(state)
-                .arg(codes.matches(state, state) ? QStringLiteral("Совпало") : QStringLiteral("Расхождение")));
+                .arg(matched ? QStringLiteral("Совпало") : QStringLiteral("Расхождение")),
+                value.verdict, {std::move(value)});
         } else {
             finishPoint(pointName() + QStringLiteral(" %1 отсч., коды %2–%3. Шкала пересчёта в вольты не задана.")
                 .arg(codes.count).arg(codes.minimum).arg(codes.maximum));
@@ -1861,6 +1906,7 @@ struct BrpTuWindow::Impl {
     std::vector<CoveragePoint> coverage;
     std::vector<std::pair<std::size_t, std::size_t>> voltagePoints;
     std::vector<std::optional<double>> pointTargets;
+    std::vector<int> digitalExpectations;
     int coverageGroups = 0;
     int coverageGapGroups = 0;
     int coverageLastOrdinal = -1;
