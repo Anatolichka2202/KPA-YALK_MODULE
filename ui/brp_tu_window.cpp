@@ -1,4 +1,5 @@
 #include "brp_tu_window.h"
+#include "app/tu_report_writer.h"
 
 #include "history_plot.h"
 #include "address_set_model.h"
