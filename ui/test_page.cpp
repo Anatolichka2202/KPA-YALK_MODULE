@@ -338,6 +338,9 @@ struct TestPage::Impl {
         if (row.active) {
             text = QStringLiteral("ВЫПОЛНЯЕТСЯ");
             color = palette::blue2;
+        } else if (row.forcedOk) {
+            text = QStringLiteral("ОК · ПРИНУД.");
+            color = palette::amber;
         } else if (row.skipped) {
             text = QStringLiteral("ПРОПУЩЕНО");
             color = palette::amber;
@@ -359,6 +362,7 @@ struct TestPage::Impl {
         tu::RunVerdict verdict = tu::RunVerdict::NotRun;
         bool active = false;
         bool skipped = false;
+        bool forcedOk = false;
     };
 
     TestPage* q;
@@ -442,6 +446,7 @@ void TestPage::setStageResult(int index, const tu::StepRunResult& result)
     row.active = false;
     row.verdict = result.verdict;
     row.skipped = result.operatorSkipped;
+    row.forcedOk = result.forcedOk;
     row.frame->setToolTip(QString::fromStdString(result.message).toHtmlEscaped());
     impl_->refreshTuRow(index);
 }
