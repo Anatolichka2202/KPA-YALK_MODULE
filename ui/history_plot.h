@@ -94,6 +94,7 @@ public:
         bars_.clear();
         named_.clear();
         timed_ = std::move(series);
+        setProperty("brpTrendRawPoints", timed_->points.size());
         update();
     }
 
