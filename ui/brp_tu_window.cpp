@@ -214,7 +214,7 @@ ManualIsdResult manualIsdProbe(QString host)
     try {
         tu::hardware::IsdRouter isd({host.toStdString()});
         const auto response = QString::fromStdString(isd.probe());
-        return {true, QStringLiteral("ИСД %1: HTTP-связь установлена, ответ: %2")
+        return {true, QStringLiteral("ИСД %1: %2")
             .arg(host, response)};
     } catch (const std::exception& error) {
         return {false, QStringLiteral("ИСД %1: ошибка соединения: %2")
