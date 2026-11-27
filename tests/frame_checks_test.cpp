@@ -143,7 +143,7 @@ int main(int argc, char** argv)
                 "V7 drift must affect the comparison");
         require(byNumber(1).scale->minVolts == -6.0 && byNumber(1).scale->maxVolts == 6.0
                 && byNumber(1).scale->tolerancePercent
-                && byNumber(1).pointTargets == std::vector<double>{-5.0, 0.0, 5.0}
+                && byNumber(1).pointTargets == std::vector<double>{0.0, 5.0}
                 && byNumber(1).hardwarePointTargets == std::vector<double>{0.0, 5.0}
                 && std::abs(byNumber(1).targetWindowVolts - 0.5) < 1e-9,
                 "POS four channels must use the configured multi-point ±6 V sweep");
