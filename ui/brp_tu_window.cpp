@@ -1390,9 +1390,18 @@ struct BrpTuWindow::Impl {
                             break;
                         }
                 }
-                appendLog(QStringLiteral("ББ ПР: выбран маршрут аналогового входа X5, "
-                    "но отдельный выход bb_pr_signal не задан. Автоматическая выдача запрещена; "
-                    "проверьте пару реле в ручном пульте ИСД и фактический отклик M16."));
+                if (currentStage < 0 && manualIsdArm && manualIsdArm->isChecked()
+                    && isdReady && manualIsdRoute && manualIsdRoute->currentIndex() >= 0
+                    && manualIsdRoute->currentText().startsWith(QStringLiteral("ББ ПР"))) {
+                    appendLog(QStringLiteral("ББ ПР: ручная коммутация известной аналоговой пары X5 "
+                        "на 200 мс. Это не управление напряжением отдельного источника."));
+                    startManualIsdRoute(true);
+                } else {
+                    appendLog(QStringLiteral("ББ ПР: выбран известный маршрут аналогового входа X5. "
+                        "Отдельный выход bb_pr_signal не задан. Подготовьте ИСД, подтвердите "
+                        "питание/подключение и повторно нажмите для ручной проверки пары; "
+                        "напряжение на входе контролируйте отдельно."));
+                }
                 return;
             }
         } catch (const std::exception& error) {
