@@ -117,10 +117,47 @@ struct IsdPreparation {
     QString error;
 };
 
+QString canonicalComPort(QString port)
+{
+    port = port.trimmed();
+    if (port.startsWith(QStringLiteral(R"(\\.\)"))) port.remove(0, 4);
+    return port;
+}
+
+void verifyStimulusSupplyOff(const YAML::Node& profile, const QString& rs485)
+{
+    const auto stimulus = profile["stimulus_akip"];
+    if (!stimulus) return;
+    const auto portFor = [](const YAML::Node& device) {
+        return canonicalComPort(QString::fromStdString(device["port"].as<std::string>("")));
+    };
+    const auto port = portFor(stimulus);
+    const auto mainPort = portFor(profile["akip"]);
+    const auto identity = stimulus["expected_idn"].as<std::string>();
+    if (port.isEmpty() || identity.empty() || port.compare(mainPort, Qt::CaseInsensitive) == 0
+        || port.compare(canonicalComPort(rs485), Qt::CaseInsensitive) == 0)
+        throw std::runtime_error("Для активного АКИП требуется отдельный COM-порт и модель прибора.");
+
+    tu::hardware::Akip1160 supply({port.toStdString(), 115200, 1200, identity});
+    supply.probe();
+    const auto state = supply.readState();
+    if (state.outputEnabled)
+        throw std::runtime_error("Перед коммутацией выключите выход активного АКИП.");
+    const auto ovp = stimulus["ovp_v"].as<double>();
+    const auto ocp = stimulus["ocp_a"].as<double>();
+    const auto actualOcp = supply.overcurrentProtection();
+    if (!(ovp > 0 && ocp > 0
+          && std::abs(state.overvoltageLimitV - ovp) <= supply.config().voltageSetpointToleranceV
+          && std::abs(actualOcp - ocp) <= supply.config().currentSetpointToleranceA))
+        throw std::runtime_error("Активный АКИП: прочитанные OVP/OCP расходятся с профилем стенда.");
+}
+
 IsdPreparation prepareIsd(const QDir& root, const QString& host)
 {
     try {
-        const auto baseline = loadStand(root)["isd_baseline"];
+        const auto profile = loadStand(root);
+        verifyStimulusSupplyOff(profile, QString::fromStdString(profile["rs485"]["port"].as<std::string>("")));
+        const auto baseline = profile["isd_baseline"];
         tu::hardware::IsdRouter isd({host.toStdString()});
         return {isd.prepareYagr(baseline["type2_last"].as<unsigned>(),
                     baseline["type3_last"].as<unsigned>(), baseline["dac_last"].as<unsigned>(),
@@ -203,24 +240,24 @@ struct BrpPowerProfile {
     double voltage;
     double currentLimit;
     unsigned settleMs;
+    bool external;
 };
 
 BrpPowerProfile loadPowerProfile(const YAML::Node& stand, const QString& rs485)
 {
     const auto power = stand["akip"];
     BrpPowerProfile profile{};
-    const auto canonicalPort = [](QString port) {
-        port = port.trimmed();
-        if (port.startsWith(QStringLiteral(R"(\\.\)"))) port.remove(0, 4);
-        return port;
-    };
-    const auto port = canonicalPort(QString::fromStdString(power["port"].as<std::string>("")));
+    const auto port = canonicalComPort(QString::fromStdString(power["port"].as<std::string>("")));
     if (port.isEmpty()) throw std::runtime_error("Укажите COM-порт АКИП в профиле БРП.");
-    if (canonicalPort(rs485).compare(port, Qt::CaseInsensitive) == 0)
+    if (canonicalComPort(rs485).compare(port, Qt::CaseInsensitive) == 0)
         throw std::runtime_error("АКИП и RS-485 требуют разных COM-портов.");
     profile.device.portName = port.toStdString();
     profile.device.expectedIdentity = power["expected_idn"].as<std::string>();
     if (profile.device.expectedIdentity.empty()) throw std::runtime_error("В профиле АКИП отсутствует модель прибора.");
+    profile.external = power["external"].as<bool>(false);
+    // Внешнее питание проверяем по фактическому выходу. Программа не владеет
+    // этим выходом и не должна менять его уставки либо отключать при остановке.
+    if (profile.external) return profile;
     profile.voltage = power["voltage_v"].as<double>(0.0);
     profile.currentLimit = power["current_limit_a"].as<double>(0.0);
     profile.device.overvoltageLimitV = power["ovp_v"].as<double>(0.0);
@@ -249,6 +286,14 @@ PowerStartResult startBrpPower(const BrpPowerProfile& profile, const std::atomic
         tu::hardware::Akip1160 supply(profile.device);
         supply.probe();
         if (cancelled.load()) return result;
+        if (profile.external) {
+            result.state = supply.readState();
+            if (!result.state.outputEnabled || !(result.state.measuredVoltageV >= 24
+                && result.state.measuredVoltageV <= 35 && result.state.measuredCurrentA >= 0
+                && result.state.measuredCurrentA <= 1.5))
+                throw std::runtime_error("Внешнее питание БРП: проверьте включённый выход, 24–35 В и ток до 1,5 А.");
+            return result;
+        }
         // Сначала выключаем и подтверждаем выход. Затем задаём обе уставки
         // и включаем по той же последовательности, что в процедуре УБСИ.
         result.needsOff = true;
@@ -299,10 +344,7 @@ Readiness probeStand(const QDir& root, const YAML::Node& profile, const QString&
         result[0] = QString::fromUtf8(exception.what());
     }
     try {
-        tu::hardware::VisaInstrument meter(loadV7(root).visa);
-        const auto identity = meter.query("*IDN?");
-        if (identity.find_first_not_of(" \t\r\n") == std::string::npos)
-            throw std::runtime_error("Пустой ответ на *IDN?");
+        tu::hardware::readV7Voltage(loadV7(root));
     } catch (const std::exception& exception) {
         result[1] = QString::fromUtf8(exception.what());
     }
@@ -310,6 +352,7 @@ Readiness probeStand(const QDir& root, const YAML::Node& profile, const QString&
         const auto power = loadPowerProfile(profile, rs485);
         tu::hardware::Akip1160 supply(power.device);
         supply.probe();
+        verifyStimulusSupplyOff(profile, rs485);
         if (unconfirmedDevice) {
             tu::hardware::Akip1160 previous(*unconfirmedDevice);
             previous.probe();
@@ -1358,22 +1401,24 @@ struct BrpTuWindow::Impl {
         for (std::size_t index = 0; index < checks.size(); ++index) {
             const auto& check = checks[index];
             if (check.voltagePointRequirement.empty()) continue;
+            const auto& targets = !simulation && !check.hardwarePointTargets.empty()
+                ? check.hardwarePointTargets : check.pointTargets;
             for (std::size_t channel = 0; channel < check.addresses.size(); ++channel) {
                 const auto& name = check.channelNames.empty() ? check.title : check.channelNames[channel];
-                const std::size_t passes = check.pointTargets.empty() ? 1 : check.pointTargets.size();
+                const std::size_t passes = targets.empty() ? 1 : targets.size();
                 for (std::size_t point = 0; point < passes; ++point) {
-                    const bool targeted = !check.pointTargets.empty();
+                    const bool targeted = !targets.empty();
                     const auto title = targeted
                         ? QStringLiteral("Строка %1 · %2 · точка %3 В, В7")
                             .arg(check.number).arg(QString::fromStdString(name))
-                            .arg(check.pointTargets[point], 0, 'f', 1)
+                            .arg(targets[point], 0, 'f', 1)
                         : QStringLiteral("Строка %1 · %2 · сравнение с В7")
                             .arg(check.number).arg(QString::fromStdString(name));
                     run.steps.push_back({
                         QStringLiteral("row_%1_%2_point_%3").arg(check.number).arg(channel + 1)
                             .arg(point + 1).toStdString(), title.toStdString(), check.voltagePointRequirement});
                     voltagePoints.emplace_back(index, channel);
-                    pointTargets.push_back(targeted ? std::optional<double>(check.pointTargets[point])
+                    pointTargets.push_back(targeted ? std::optional<double>(targets[point])
                                                     : std::nullopt);
                     digitalExpectations.push_back(-1);
                 }
@@ -1426,7 +1471,10 @@ struct BrpTuWindow::Impl {
                 endSession(QStringLiteral("Не удалось сохранить состояние питания БРП."), RunVerdict::Error);
             return;
         }
-        if (!recordPower("POWER_PREPARE", QStringLiteral("Запрошена подготовка выхода АКИП."), RunVerdict::NotRun)) {
+        const auto powerAction = runPowerProfile->external
+            ? QStringLiteral("Запрошен замер уже включённого основного АКИП.")
+            : QStringLiteral("Запрошена подготовка выхода АКИП.");
+        if (!recordPower("POWER_PREPARE", powerAction, RunVerdict::NotRun)) {
             endSession(QStringLiteral("Не удалось сохранить запрос на подготовку питания БРП."), RunVerdict::Error);
             return;
         }
@@ -1454,7 +1502,8 @@ struct BrpTuWindow::Impl {
                 const auto message = QStringLiteral("АКИП подтвердил выход. Измерено %1 В, %2 А.")
                     .arg(result.state.measuredVoltageV, 0, 'f', 3)
                     .arg(result.state.measuredCurrentA, 0, 'f', 3);
-                if (recordPower("POWER_ON", message, RunVerdict::Ok)) startFormalInterface();
+                const auto event = runPowerProfile->external ? "POWER_EXTERNAL" : "POWER_ON";
+                if (recordPower(event, message, RunVerdict::Ok)) startFormalInterface();
                 else endSession(QStringLiteral("Не удалось сохранить состояние питания БРП."), RunVerdict::Error);
             }
         });
@@ -1585,10 +1634,16 @@ struct BrpTuWindow::Impl {
                 expectedBit < 0 ? QStringLiteral("ЯГР мин., В") : QStringLiteral("M16"),
                 expectedBit < 0 ? QStringLiteral("ЯГР макс., В") : QStringLiteral("Ожидаемое состояние"));
             waitingForPoint = true;
-            setProgress(expectedBit >= 0
+            auto instruction = expectedBit >= 0
                 ? QStringLiteral("Установите физическое состояние входа %1, затем нажмите «Измерить».")
                     .arg(expectedBit)
-                : QStringLiteral("Подайте стабильное напряжение и подключите В7 к той же точке."));
+                : QStringLiteral("Подайте стабильное напряжение и проверьте подключение В7.");
+            if (!simulation && !checks[check].relayRoutes.empty()) {
+                const auto& route = checks[check].relayRoutes[channel];
+                instruction += QStringLiteral(" Маршрут X%1 · ИСД type=2 · сигнал %2, возврат %3.")
+                    .arg(route.connector).arg(route.signalRelay).arg(route.returnRelay);
+            }
+            setProgress(instruction);
         }
     }
 

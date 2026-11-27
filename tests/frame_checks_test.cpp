@@ -144,8 +144,22 @@ int main(int argc, char** argv)
         require(byNumber(1).scale->minVolts == -6.0 && byNumber(1).scale->maxVolts == 6.0
                 && byNumber(1).scale->tolerancePercent
                 && byNumber(1).pointTargets == std::vector<double>{-5.0, 0.0, 5.0}
+                && byNumber(1).hardwarePointTargets == std::vector<double>{0.0, 5.0}
                 && std::abs(byNumber(1).targetWindowVolts - 0.5) < 1e-9,
                 "POS four channels must use the configured multi-point ±6 V sweep");
+        const auto requireRelayRoute = [&](int row, std::size_t channel, unsigned connector,
+                                           unsigned signal, unsigned returnRelay) {
+            const auto& route = byNumber(row).relayRoutes.at(channel);
+            require(route.connector == connector && route.signalRelay == signal
+                && route.returnRelay == returnRelay, "frame address has the wrong YAGR relay pair");
+        };
+        for (unsigned channel = 0; channel < 4; ++channel)
+            requireRelayRoute(1, channel, 5, 1 + channel, 5 + channel);
+        requireRelayRoute(2, 0, 6, 34, 38);
+        requireRelayRoute(3, 0, 5, 9, 13);
+        requireRelayRoute(4, 0, 5, 10, 14);
+        requireRelayRoute(5, 0, 6, 41, 45);
+        require(byNumber(10).relayRoutes.empty(), "unverified dry-contact route must remain manual");
 
         auto discrete = groupWordsAt(0);
         const auto& contacts = byNumber(10);

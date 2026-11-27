@@ -389,7 +389,7 @@ std::string IsdRouter::probe()
 unsigned IsdRouter::prepareYagr(unsigned type2Last, unsigned type3Last, unsigned dacLast,
                                unsigned commandGapMs)
 {
-    if (!type2Last || type2Last > 40 || !type3Last || type3Last > 96
+    if (!type2Last || type2Last > 64 || !type3Last || type3Last > 96
         || !dacLast || dacLast > 96 || commandGapMs < 20 || commandGapMs > 50)
         throw std::invalid_argument("Некорректный диапазон адресной подготовки ИСД");
     const std::lock_guard<std::recursive_mutex> lock(impl_->requestMutex);

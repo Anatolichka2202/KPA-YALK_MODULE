@@ -94,6 +94,18 @@ void testIsdPreparation()
     require(paths == expected, "ISD used the wrong baseline commands");
 
     paths.clear();
+    auto fullContactRange = QtConcurrent::run([port = server.serverPort()] {
+        tu::hardware::IsdRouter isd({"127.0.0.1", port, 500});
+        return isd.prepareYagr(64, 1, 1, 20);
+    });
+    require(waitUntil([&] { return fullContactRange.isFinished(); }), "full ISD baseline timed out");
+    require(fullContactRange.result() == 66
+        && paths.at(41) == "/type=2num=41val=0"
+        && paths.at(46) == "/type=2num=46val=0"
+        && paths.at(64) == "/type=2num=64val=0"
+        && paths.back() == "/type=1num=1val=0work=0", "ISD omitted the YAGR-4 relays");
+
+    paths.clear();
     reject = true;
     auto failure = QtConcurrent::run(run);
     require(waitUntil([&] { return failure.isFinished(); }), "rejected preparation timed out");

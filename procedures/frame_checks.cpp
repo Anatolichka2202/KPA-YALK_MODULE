@@ -205,10 +205,40 @@ std::vector<FrameCheck> loadFrameChecks(const std::string& yaml)
                 }))
                 throw std::runtime_error("Неверная сетка измерительных точек строки № " + std::to_string(check.number));
         }
+        if (const auto targets = node["hardware_point_targets_v"]) {
+            check.hardwarePointTargets = targets.as<std::vector<double>>();
+            const std::set<double> available(check.pointTargets.begin(), check.pointTargets.end());
+            std::set<double> unique;
+            if (check.hardwarePointTargets.empty()
+                || std::any_of(check.hardwarePointTargets.begin(), check.hardwarePointTargets.end(),
+                    [&available, &unique](double target) {
+                        return !std::isfinite(target) || !available.count(target)
+                            || !unique.insert(target).second;
+                    }))
+                throw std::runtime_error("Неверные стендовые точки строки № " + std::to_string(check.number));
+        }
         if (!check.voltagePointRequirement.empty()
             && (!check.scale || !check.scale->tolerancePercent || check.addresses.empty()))
             throw std::runtime_error("Для проверки точки нужны адрес, шкала и допуск строки № "
                                      + std::to_string(check.number));
+        if (const auto wiring = node["isd_relay_routes"]) {
+            if (!wiring.IsSequence() || wiring.size() != check.addresses.size())
+                throw std::runtime_error("Число пар реле ИСД не совпадает с числом адресов строки № "
+                                         + std::to_string(check.number));
+            for (const auto& route : wiring) {
+                const YagrRelayRoute mapped{route["connector"].as<unsigned>(),
+                    route["signal"].as<unsigned>(), route["return"].as<unsigned>()};
+                const auto validRelay = [&mapped](unsigned relay) {
+                    return mapped.connector == 5 ? relay >= 1 && relay <= 24
+                        : mapped.connector == 6 && relay >= 25 && relay <= 48;
+                };
+                if (!validRelay(mapped.signalRelay) || !validRelay(mapped.returnRelay)
+                    || mapped.signalRelay == mapped.returnRelay)
+                    throw std::runtime_error("Неверная пара контактных реле ИСД строки № "
+                                             + std::to_string(check.number));
+                check.relayRoutes.push_back(mapped);
+            }
+        }
         std::set<std::string> addresses;
         for (const auto& address : check.addresses) {
             const auto layout = orbita::m16GroupChannel(address);

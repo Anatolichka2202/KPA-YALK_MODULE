@@ -26,6 +26,7 @@ public:
 
     std::string probe() const;
     PowerState readState() const;
+    double overcurrentProtection() const;
 
     void setVoltage(double volts);
     void setCurrentLimit(double amperes);

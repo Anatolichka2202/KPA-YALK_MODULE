@@ -16,14 +16,24 @@ rs485:
 akip:
   port: COM9
   expected_idn: AKIP-1160/6
+  external: true
   # Указать утверждённые уставки конкретного стенда до запуска реального ТУ.
   voltage_v: null
   current_limit_a: null
   ovp_v: null
   settle_ms: 300
 
+# Активный БП проверяется перед сбросом реле. OVP и OCP читаются отдельно
+# от рабочих уставок VOLT и CURR. Профиль пока не включает его выход.
+stimulus_akip:
+  port: COM16
+  expected_idn: AKIP-1160/6
+  ovp_v: 42
+  ocp_a: 4.7
+
 isd_baseline:
-  type2_last: 40
+  # Прошивка ИСД принимает 1–64. X6 для ЯГР-4 использует в том числе 41–46.
+  type2_last: 64
   type3_last: 96
   dac_last: 96
   command_gap_ms: 30

@@ -86,6 +86,12 @@ struct VoltageScale {
     double volts(unsigned code) const;
 };
 
+struct YagrRelayRoute {
+    unsigned connector;
+    unsigned signalRelay;
+    unsigned returnRelay;
+};
+
 struct FrameCheck {
     int number;
     std::string title;
@@ -94,12 +100,14 @@ struct FrameCheck {
     std::string note;
     std::vector<std::string> addresses;
     std::vector<std::string> channelNames;
+    std::vector<YagrRelayRoute> relayRoutes;
     std::vector<orbita::M16GroupChannel> layouts;
     std::vector<unsigned> shifts;
     unsigned bits;
     std::optional<VoltageScale> scale;
     std::string voltagePointRequirement;
     std::vector<double> pointTargets; // Optional multi-point sweep from the profile.
+    std::vector<double> hardwarePointTargets; // Подмножество точек, доступных на стенде.
     double targetWindowVolts = 0.5; // Setup validation, not an acceptance tolerance.
 };
 

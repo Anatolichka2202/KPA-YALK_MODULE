@@ -121,6 +121,7 @@ public:
     double voltageSetpoint() const { return number("VOLT?", "voltage setpoint"); }
     double overvoltageLimit() const { return number("VOLT:LIM?", "overvoltage limit"); }
     double currentSetpoint() const { return number("CURR?", "current setpoint"); }
+    double overcurrentProtection() const { return number("CURR:LIM?", "overcurrent protection"); }
     double measuredVoltage() const { return number("MEAS:VOLT?", "measured voltage"); }
     double measuredCurrent() const { return number("MEAS:CURR?", "measured current"); }
 
@@ -173,6 +174,11 @@ PowerState Akip1160::readState() const
     state.currentSetpointA = serial_->currentSetpoint();
     state.outputEnabled = serial_->outputEnabled();
     return state;
+}
+
+double Akip1160::overcurrentProtection() const
+{
+    return serial_->overcurrentProtection();
 }
 
 void Akip1160::verifyNear(double actual, double expected, double tolerance,

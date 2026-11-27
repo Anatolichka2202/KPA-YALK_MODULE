@@ -8,11 +8,19 @@ checks:
     cell: ЯГР1
     addresses: [M16P1A10B20T01, M16P1A10B30T01, M16P1A10B40T01, M16P1A10B50T01]
     channel_names: [ПОС1, ПОС2, ПОС3, ПОС4]
+    # Схема кабеля ЯГР-3, распиновка БРП v1.2, ИСД Э3 и KMTable.
+    isd_relay_routes:
+      - {connector: 5, signal: 1, return: 5}
+      - {connector: 5, signal: 2, return: 6}
+      - {connector: 5, signal: 3, return: 7}
+      - {connector: 5, signal: 4, return: 8}
     voltage_point_tu: 3.2.1.6.3
     scale: {min_v: -6, max_v: 6, min_code: 20, max_code: 1003, tolerance_percent: 1}
     # Временная инженерная сетка точек: внешние воздействия задаёт оператор.
     # Если методика задаёт иную сетку, редактируется YAML, а не измерительный код.
     point_targets_v: [-5, 0, 5]
+    # Активный БП с фиксированной полярностью. Отрицательная точка остаётся в имитаторе.
+    hardware_point_targets_v: [0, 5]
     point_target_window_v: 0.5
     note: Многоточечная сверка ПОС1–ПОС4 с В7 по стендовой шкале ±6 В; точки настраиваются в YAML.
   - number: 2
@@ -21,6 +29,8 @@ checks:
     cell: ЯГР2
     bits: 1
     addresses: [M16P1A30B31T05P08]
+    # ЯГР-4: Ch9 / 0V3. Уровни и источник сигнала задаёт методика ПНА.
+    isd_relay_routes: [{connector: 6, signal: 34, return: 38}]
     note: Проверка состояния ПНА в кадре. Физические пороги входа проверяются отдельными воздействиями.
   - number: 3
     title: ББ СУ
@@ -28,6 +38,7 @@ checks:
     voltage_point_tu: 3.2.1.7.3
     cell: ЯГР1
     addresses: [M16P1A10B60C11T01]
+    isd_relay_routes: [{connector: 5, signal: 9, return: 13}]
     scale: {min_v: 0, max_v: 40, min_code: 0, max_code: 1023, tolerance_percent: 1}
     note: Сравнение одной точки с В7. Шкала кода из РЭ. Разрядность и фактическая частота опроса требуют отдельных проверок.
   - number: 4
@@ -36,6 +47,7 @@ checks:
     voltage_point_tu: 3.2.1.7.3
     cell: ЯГР1
     addresses: [M16P1A10B60C21T01]
+    isd_relay_routes: [{connector: 5, signal: 10, return: 14}]
     scale: {min_v: 0, max_v: 40, min_code: 0, max_code: 1023, tolerance_percent: 1}
     note: Сравнение одной точки с В7 по шкале кода из РЭ.
   - number: 5
@@ -44,6 +56,8 @@ checks:
     voltage_point_tu: 3.2.1.7.3
     cell: ЯГР2
     addresses: [M16P1A10B60C31T01]
+    # ЯГР-4: Ch7 / 0V6.
+    isd_relay_routes: [{connector: 6, signal: 41, return: 45}]
     scale: {min_v: 0, max_v: 40, min_code: 0, max_code: 1023, tolerance_percent: 1}
     note: Сравнение одной точки с В7 по шкале кода из РЭ.
   - number: 6
