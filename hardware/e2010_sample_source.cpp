@@ -246,9 +246,9 @@ bool E2010SampleSource::start()
     }
 
     requestNumber_ = 0;
-    // Оба буфера должны быть выданы драйверу до начала непрерывного захвата.
-    if (!module_->ReadData(&requests_[0]) || !module_->ReadData(&requests_[1])) {
-        module_->STOP_ADC();
+    // Восстановлена схема захвата, на которой работала аппаратная проверка:
+    // один первый запрос, второй выдаётся до ожидания предыдущего.
+    if (!module_->ReadData(&requests_[requestNumber_])) {
         notifyError("E2010: initial ReadData failed");
         closeIoEvents();
         return false;
@@ -292,46 +292,35 @@ void E2010SampleSource::readerLoop()
     DWORD bytesTransferred = 0;
 
     while (!stopRequested_.load()) {
-        auto& request = requests_[requestNumber_];
-        HANDLE waitObjects[2] = {stopEvent_, request.Overlapped->hEvent};
-        const DWORD waitResult = WaitForMultipleObjects(2, waitObjects, FALSE, request.TimeOut);
-        if (waitResult == WAIT_OBJECT_0 + 1) {
+        requestNumber_ ^= 1;
+
+        if (!module_->ReadData(&requests_[requestNumber_])) {
+            notifyError("E2010: ReadData failed");
+            break;
+        }
+
+        HANDLE waitObjects[2] = {
+            requests_[requestNumber_ ^ 1].Overlapped->hEvent,
+            stopEvent_
+        };
+        const DWORD waitResult = WaitForMultipleObjects(
+            2, waitObjects, FALSE, requests_[requestNumber_ ^ 1].TimeOut);
+
+        if (waitResult == WAIT_OBJECT_0) {
             if (!GetOverlappedResult(
-                    moduleHandle_, request.Overlapped,
+                    moduleHandle_, requests_[requestNumber_ ^ 1].Overlapped,
                     &bytesTransferred, FALSE)) {
                 notifyError("E2010: GetOverlappedResult failed, code="
                             + std::to_string(GetLastError()));
                 break;
             }
 
-            if (bytesTransferred % sizeof(int16_t) || bytesTransferred / sizeof(int16_t) != bufferWords_) {
-                notifyError("E2010: incomplete ADC block, received bytes=" + std::to_string(bytesTransferred));
-                break;
+            const auto words = static_cast<std::size_t>(bytesTransferred / sizeof(int16_t));
+            if (words > 0 && samplesCallback_) {
+                const auto* begin = buffers_[requestNumber_ ^ 1].data();
+                samplesCallback_(std::vector<int16_t>(begin, begin + words));
             }
-            const auto& completed = buffers_[requestNumber_];
-            std::vector<int16_t> samples(completed.begin(), completed.end());
-            // Ставим освобождённый буфер обратно в очередь до опроса состояния
-            // и передачи блока декодеру.
-            request.NumberOfWordsPassed = 0;
-            if (!module_->ReadData(&request)) {
-                notifyError("E2010: ReadData failed");
-                break;
-            }
-            requestNumber_ ^= 1;
-
-            // Проверяем состояние буфера, как в ACPUnit.pas: завершение чтения
-            // само по себе не подтверждает непрерывность отсчётов.
-            DATA_STATE_E2010 state{};
-            if (!module_->GET_DATA_STATE(&state)) {
-                notifyError("E2010: GET_DATA_STATE failed");
-                break;
-            }
-            if (state.BufferOverrun & (1u << BUFFER_OVERRUN_E2010)) {
-                notifyError("E2010: ADC buffer overrun, samples lost");
-                break;
-            }
-            if (samplesCallback_) samplesCallback_(std::move(samples));
-        } else if (waitResult == WAIT_OBJECT_0) {
+        } else if (waitResult == WAIT_OBJECT_0 + 1) {
             break;
         } else if (waitResult == WAIT_TIMEOUT) {
             notifyError("E2010: data wait timeout");
