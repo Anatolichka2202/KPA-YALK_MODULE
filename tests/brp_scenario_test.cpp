@@ -467,9 +467,9 @@ void testScenarioAndReport()
     require(skip->isVisible(), "skip action did not reveal");
     skip->click();
     measure->click();
-    // Four POS channels x three points, plus BB SU/PR/Eptm: 15 total.
-    // Two measurements were triggered above; complete the remaining 13.
-    for (int point = 2; point < 15; ++point) {
+    // Four POS channels x two nonnegative points, plus BB SU/PR/Eptm: 11 total.
+    // Two measurements were triggered above; complete the remaining 9.
+    for (int point = 2; point < 11; ++point) {
         require(waitUntil([&] { return measure->isVisible(); }, 12000),
                 "scenario did not reach the next multi-point measurement");
         measure->click();
@@ -505,7 +505,7 @@ void testScenarioAndReport()
 
     const auto completeHtml = exportReport();
     const auto base = completeHtml.chopped(5);
-    require(rows->rowCount() == 34 && stageResult(2) == QStringLiteral("НОРМА")
+    require(rows->rowCount() == 30 && stageResult(2) == QStringLiteral("НОРМА")
         && stageResult(3) == QStringLiteral("НЕПОЛНАЯ")
         && stageResult(4) == QStringLiteral("НОРМА · ПРИНУД.")
         && stageResult(5) == QStringLiteral("НЕПОЛНАЯ"),
@@ -623,7 +623,6 @@ void testPosVoltageSweep()
     bool failCentre = true;
     BrpTuWindow::SimulatedVoltageSource sweep = [&](const std::string&, double target) -> std::optional<Point> {
         // Фиксированные коды из шкалы −6…+6 В при кодах 20…1003.
-        if (target == -5.0) return Point{102, -5.0, -4.99};
         if (target ==  5.0) return Point{921,  5.0,  5.01};
         if (std::exchange(failCentre, false)) return Point{540, 0.0, 0.01};
         return Point{512, 0.0, 0.01};
@@ -644,35 +643,33 @@ void testPosVoltageSweep()
         require(waitUntil([&] { return measure->isVisible(); }, 20000), "POS point did not become available");
     };
     waitForPoint();
-    measure->click(); // ПОС1, отрицательная точка.
-    waitForPoint();
     measure->click(); // ПОС1, нулевая точка с заведомо неверным кодом.
     require(retry && waitUntil([&] { return retry->isVisible(); }), "out-of-tolerance POS point was not rejected");
-    require(saved().at(4).toObject().value("verdict").toString() == "FAIL", "failed POS point was not persisted");
+    require(saved().at(3).toObject().value("verdict").toString() == "FAIL", "failed POS point was not persisted");
     retry->click();
-    for (int i = 1; i < 12; ++i) {
+    for (int i = 1; i < 8; ++i) {
         waitForPoint();
         measure->click();
     }
-    waitForPoint(); // Следующий этап после 12 точек ПОС.
+    waitForPoint(); // Следующий этап после 8 точек ПОС.
     const auto steps = saved();
     const std::array<QString, 4> addresses{
         "M16P1A10B20T01", "M16P1A10B30T01", "M16P1A10B40T01", "M16P1A10B50T01"};
-    const std::array<QString, 3> codes{"102", "512", "921"};
-    for (int i = 0; i < 12; ++i) {
+    const std::array<QString, 2> codes{"512", "921"};
+    for (int i = 0; i < 8; ++i) {
         const auto step = steps.at(3 + i).toObject();
         require(step.value("verdict").toString() == "OK", "confirmed POS point did not pass");
         const auto measurements = step.value("measurements").toArray();
         require(measurements.size() == 1, "POS point did not persist a single measurement");
         const auto measurement = measurements.first().toObject();
-        require(measurement.value("key").toString() == addresses[i / 3], "POS result used the wrong channel address");
+        require(measurement.value("key").toString() == addresses[i / 2], "POS result used the wrong channel address");
         const auto attributes = measurement.value("attributes").toObject();
-        require(attributes.value("code_min").toString() == codes[i % 3]
+        require(attributes.value("code_min").toString() == codes[i % 2]
             && attributes.value("code_max").toString() == codes[i % 3]
             && attributes.value("v7_before_v").toString() != attributes.value("v7_after_v").toString(),
             "POS result lost its independent V7 readings or captured code");
     }
-    const auto attempts = steps.at(4).toObject().value("attempts").toArray();
+    const auto attempts = steps.at(3).toObject().value("attempts").toArray();
     require(attempts.size() == 2 && attempts.first().toObject().value("verdict").toString() == "FAIL"
         && attempts.last().toObject().value("verdict").toString() == "OK", "successful POS retry lost the failed attempt");
     stop->click();
@@ -680,7 +677,7 @@ void testPosVoltageSweep()
             "completed sweep did not stop");
 
     BrpTuWindow::SimulatedVoltageSource fault = [](const std::string&, double) -> std::optional<Point> {
-        return Point{102, -5.0, std::nullopt};
+        return Point{512, 0.0, std::nullopt};
     };
     BrpTuWindow failure(std::move(fault));
     startHistoryRun(failure, QStringLiteral("BRP-V7-FAIL"));
