@@ -127,7 +127,7 @@ QString canonicalComPort(QString port)
 void verifyStimulusSupplyOff(const YAML::Node& profile, const QString& rs485)
 {
     const auto stimulus = profile["stimulus_akip"];
-    if (!stimulus) return;
+    if (!stimulus || !stimulus["enabled"].as<bool>(true)) return;
     const auto portFor = [](const YAML::Node& device) {
         return canonicalComPort(QString::fromStdString(device["port"].as<std::string>("")));
     };
