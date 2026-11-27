@@ -969,6 +969,7 @@ struct BrpTuWindow::Impl {
             side->addWidget(instruments);
             QObject::connect(isdHost, &QLineEdit::textChanged, &window, [this] {
                 isdReady = false;
+                if (manualIsdArm) manualIsdArm->setChecked(false);
                 updateCaptureControls();
             });
             QObject::connect(prepare, &QPushButton::clicked, &window, [this] { startIsdPreparation(); });
@@ -978,7 +979,11 @@ struct BrpTuWindow::Impl {
             QObject::connect(manualIsdPulseButton, &QPushButton::clicked, &window, [this] { startManualIsdRoute(true); });
             QObject::connect(manualIsdArm, &QCheckBox::toggled, &window, [this] { updateCaptureControls(); });
             QObject::connect(manualIsdRoute, &QComboBox::currentIndexChanged, &window,
-                [this] { updateCaptureControls(); });
+                [this] {
+                    // Confirmation applies to one physical route, never to all relays.
+                    if (manualIsdArm) manualIsdArm->setChecked(false);
+                    updateCaptureControls();
+                });
             QObject::connect(flow, &TuFlowWidget::manualRequested, &window, [this] {
             appendLog(QStringLiteral("Ручной режим: питание БРП внешнее. ИСД, АКИП и В7 не опрашиваются автоматически; контроль RS-485/Орбиты запускается отдельно."));
         });
@@ -1885,6 +1890,10 @@ struct BrpTuWindow::Impl {
             const auto result = watcher->result();
             watcher->deleteLater();
             manualIsdBusy = false;
+            if (!result.confirmed) {
+                isdReady = false;
+                if (manualIsdArm) manualIsdArm->setChecked(false);
+            }
             appendLog(result.message);
             updateCaptureControls();
         });
@@ -1919,10 +1928,9 @@ struct BrpTuWindow::Impl {
             const auto result = watcher->result();
             watcher->deleteLater();
             manualIsdBusy = false;
-            if (!result.confirmed) {
-                isdReady = false;
-                if (manualIsdArm) manualIsdArm->setChecked(false);
-            }
+            if (!result.confirmed) isdReady = false;
+            // Pulse and OFF both require renewed confirmation before another ON.
+            if (manualIsdArm) manualIsdArm->setChecked(false);
             appendLog(result.message);
             updateCaptureControls();
         });
