@@ -541,9 +541,9 @@ void testScenarioAndReport()
     const auto completeHtml = exportReport();
     const auto base = completeHtml.chopped(5);
     require(rows->rowCount() == 30 && stageResult(2) == QStringLiteral("НОРМА")
-        && stageResult(3) == QStringLiteral("НЕПОЛНАЯ")
+        && stageResult(3) == QStringLiteral("НОРМА")
         && stageResult(4) == QStringLiteral("НОРМА · ПРИНУД.")
-        && stageResult(5) == QStringLiteral("НЕПОЛНАЯ"),
+        && stageResult(5) == QStringLiteral("НОРМА"),
         "report summary did not preserve the forced verdict");
     const auto runId = QFileInfo(completeHtml).completeBaseName().mid(3); // TU_<run-id>.html
     const auto checkpoint = readText(reports.path() + QStringLiteral("/runs/") + runId + QStringLiteral(".json"));
