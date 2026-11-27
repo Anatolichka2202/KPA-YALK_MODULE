@@ -508,13 +508,18 @@ void testScenarioAndReport()
     require(!measure->isVisible() && skip->isEnabled(),
             "measurement must not be restarted while Ctrl+Shift+Q remains available");
     require(waitUntil([&] { return measure->isVisible(); }), "scenario did not advance after first V7 comparison");
+    // This is the +5 V point; the default simulator supplies only 0 V,
+    // so this point is intentionally INCOMPLETE and must not be force-passed.
+    measure->click();
+    require(waitUntil([&] { return measure->isVisible(); }),
+            "scenario did not reach the second POS zero-voltage point");
     revealSkip->click();
     require(skip->isVisible(), "skip action did not reveal");
     skip->click();
-    measure->click();
+    measure->click(); // POS2 zero point: valid measurement with audited forced OK.
     // Four POS channels x two nonnegative points, plus BB SU/PR/Eptm: 11 total.
-    // Two measurements were triggered above; complete the remaining 9.
-    for (int point = 2; point < 11; ++point) {
+    // Three measurements were triggered above; complete the remaining 8.
+    for (int point = 3; point < 11; ++point) {
         require(waitUntil([&] { return measure->isVisible(); }, 12000),
                 "scenario did not reach the next multi-point measurement");
         measure->click();
