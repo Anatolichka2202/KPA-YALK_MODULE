@@ -678,7 +678,8 @@ void testPosVoltageSweep()
     require(retry && waitUntil([&] { return retry->isVisible(); }), "out-of-tolerance POS point was not rejected");
     require(saved().at(3).toObject().value("verdict").toString() == "FAIL", "failed POS point was not persisted");
     retry->click();
-    for (int i = 1; i < 8; ++i) {
+    // The failed first point was not accepted: retest it, then finish all 7 others.
+    for (int i = 0; i < 8; ++i) {
         waitForPoint();
         measure->click();
     }
