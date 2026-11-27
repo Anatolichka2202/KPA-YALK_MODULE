@@ -184,7 +184,7 @@ BbPrCommandResult issueBbPrPulse(const QDir& root)
         const unsigned channel = route["channel"].as<unsigned>();
         const unsigned milliseconds = route["pulse_ms"].as<unsigned>();
         if ((type != 2 && type != 3) || channel == 0
-            || channel > (type == 2 ? 40u : 96u)
+            || channel > (type == 2 ? 64u : 96u)
             || milliseconds < 20 || milliseconds > 5000)
             throw std::invalid_argument("Неверные параметры выхода ББ ПР в профиле стенда");
         router = std::make_unique<tu::hardware::IsdRouter>(tu::hardware::IsdConfig{
@@ -222,7 +222,7 @@ ManualIsdResult manualIsdProbe(QString host)
     }
 }
 
-ManualIsdResult manualIsdRoute(QString host, YagrRelayRoute route, bool pulse)
+ManualIsdResult executeManualIsdRoute(QString host, YagrRelayRoute route, bool pulse)
 {
     std::unique_ptr<tu::hardware::IsdRouter> isd;
     try {
@@ -1365,11 +1365,34 @@ struct BrpTuWindow::Impl {
 
     void triggerBbPr()
     {
-        if (bbPrBusy || preparingIsd || probing || pointActive || meterBusy || coverageActive
-            || reading || (currentStage >= 0 && currentStage < 3)
-            || (currentStage < 0 && bridge)) return;
+        if (bbPrBusy || manualIsdBusy || preparingIsd || probing || pointActive
+            || meterBusy || coverageActive || reading || stoppingStream
+            || (currentStage >= 0 && currentStage < 3)) return;
         if (simulation) {
             appendLog(QStringLiteral("ББ ПР: ИМИТАЦИЯ запроса выдачи. Аппаратная команда не отправлялась."));
+            return;
+        }
+        // The documented BB PR analog relay pair is NOT an independently
+        // proven pulse-output channel. Offer its manual route rather than
+        // inventing the missing bb_pr_signal mapping.
+        try {
+            const auto profile = loadStand(root);
+            if (!profile["bb_pr_signal"] || !profile["bb_pr_signal"].IsMap()) {
+                if (manualIsdRoute) {
+                    for (int i = 0; i < manualIsdRoute->count(); ++i)
+                        if (manualIsdRoute->itemText(i).startsWith(QStringLiteral("ББ ПР"))) {
+                            manualIsdRoute->setCurrentIndex(i);
+                            break;
+                        }
+                }
+                appendLog(QStringLiteral("ББ ПР: выбран маршрут аналогового входа X5, "
+                    "но отдельный выход bb_pr_signal не задан. Автоматическая выдача запрещена; "
+                    "проверьте пару реле в ручном пульте ИСД и фактический отклик M16."));
+                return;
+            }
+        } catch (const std::exception& error) {
+            appendLog(QStringLiteral("ББ ПР: ошибка профиля: %1")
+                .arg(QString::fromUtf8(error.what())));
             return;
         }
         if (!isdReady) {
@@ -1903,7 +1926,7 @@ struct BrpTuWindow::Impl {
             appendLog(result.message);
             updateCaptureControls();
         });
-        watcher->setFuture(QtConcurrent::run(manualIsdRoute, host, route, pulse));
+        watcher->setFuture(QtConcurrent::run(executeManualIsdRoute, host, route, pulse));
     }
 
     void startIsdPreparation()
