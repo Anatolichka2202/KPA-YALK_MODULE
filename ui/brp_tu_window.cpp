@@ -331,8 +331,9 @@ Readiness probeStand(const QDir& root, const YAML::Node& profile, const QString&
 } // namespace
 
 struct BrpTuWindow::Impl {
-    Impl(BrpTuWindow& window, bool simulation)
-        : window(window), simulation(simulation), root(QCoreApplication::applicationDirPath())
+    Impl(BrpTuWindow& window, bool simulation, SimulatedVoltageSource voltageSource = {})
+        : window(window), simulation(simulation), root(QCoreApplication::applicationDirPath()),
+          simulatedVoltageSource(std::move(voltageSource))
     {
         window.setWindowTitle(QStringLiteral("БРП · проверка ТУ"));
         auto* rootLayout = new QVBoxLayout(&window);
@@ -2032,7 +2033,20 @@ struct BrpTuWindow::Impl {
         ++groupCount;
         const auto& check = checks.at(activeCheck);
         CodeRange groupCodes;
-        groupCodes.consume(words, check, activeChannel);
+        if (simulatedVoltagePoint) {
+            // Меняются только полезные биты выбранного канала в уже принятой группе.
+            // Проверка номеров, полноты и сбор экстремумов идут обычным путём.
+            auto groupWordsForPoint = words;
+            const auto layout = check.layouts[activeChannel];
+            const auto shift = check.shifts[activeChannel];
+            const auto mask = ((1u << check.bits) - 1u) << shift;
+            const auto data = (simulatedVoltagePoint->frameCode << shift) & mask;
+            for (auto slot = layout.firstWord; slot < words.size(); slot += layout.stride)
+                groupWordsForPoint[slot] = static_cast<uint16_t>((words[slot] & ~mask) | data);
+            groupCodes.consume(groupWordsForPoint, check, activeChannel);
+        } else {
+            groupCodes.consume(words, check, activeChannel);
+        }
         codes.merge(groupCodes);
         // Один элемент на группу. Кривые показывают реальные крайние
         // отсчёты этого адреса, а В7 остаётся двумя отдельными показаниями.
@@ -2363,9 +2377,17 @@ struct BrpTuWindow::Impl {
 
     void beginPoint(std::size_t check, std::size_t channel, unsigned expected)
     {
-        activeCheck = check;
-        activeChannel = channel;
-        state = expected;
+        std::optional<SimulatedVoltagePoint> simulatedPoint;
+        if (simulatedVoltageSource && currentStage >= 3 && pointTargets[currentStage - 3])
+            simulatedPoint = simulatedVoltageSource(checks.at(check).addresses.at(channel),
+                *pointTargets[currentStage - 3]);
+        {
+            std::lock_guard<std::mutex> lock(dataMutex);
+            activeCheck = check;
+            activeChannel = channel;
+            state = expected;
+            simulatedVoltagePoint = simulatedPoint;
+        }
         pointActive = true;
         ++pointId;
         if (checkList) checkList->setEnabled(false);
@@ -2427,7 +2449,14 @@ struct BrpTuWindow::Impl {
     void requestMeter(bool after)
     {
         if (simulation) {
-            meterResult({checks.at(activeCheck).scale->volts(512), {}}, after);
+            if (simulatedVoltagePoint) {
+                const auto& volts = after ? simulatedVoltagePoint->referenceAfter
+                                          : simulatedVoltagePoint->referenceBefore;
+                meterResult(volts ? MeterReading{*volts, {}}
+                                  : MeterReading{0, QStringLiteral("Имитация отказа чтения В7.")}, after);
+            } else {
+                meterResult({checks.at(activeCheck).scale->volts(512), {}}, after);
+            }
             return;
         }
         // В7 опрашивается вне GUI. Номер точки не даёт запоздалому ответу
@@ -2644,6 +2673,8 @@ struct BrpTuWindow::Impl {
     BrpTuWindow& window;
     const bool simulation;
     const QDir root;
+    const SimulatedVoltageSource simulatedVoltageSource;
+    std::optional<SimulatedVoltagePoint> simulatedVoltagePoint;
     TestPage* page = nullptr;
     tu::ScenarioRunResult run;
     struct CoveragePoint {
@@ -2755,6 +2786,10 @@ struct BrpTuWindow::Impl {
 
 BrpTuWindow::BrpTuWindow(bool simulation, QWidget* parent)
     : QWidget(parent), impl_(std::make_unique<Impl>(*this, simulation))
+{}
+
+BrpTuWindow::BrpTuWindow(SimulatedVoltageSource voltageSource, QWidget* parent)
+    : QWidget(parent), impl_(std::make_unique<Impl>(*this, true, std::move(voltageSource)))
 {}
 
 BrpTuWindow::~BrpTuWindow() = default;

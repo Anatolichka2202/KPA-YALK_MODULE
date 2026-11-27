@@ -32,7 +32,9 @@
 #include <QTimer>
 #include <QtConcurrentRun>
 
+#include <array>
 #include <iostream>
+#include <utility>
 #include <stdexcept>
 
 namespace {
@@ -598,6 +600,97 @@ void startHistoryRun(BrpTuWindow& window, const QString& serial)
     action(window, "tuStartAction")->click();
 }
 
+void testPosVoltageSweep()
+{
+    using Point = BrpTuWindow::SimulatedVoltagePoint;
+    const QTemporaryDir reports;
+    require(reports.isValid(), "POS fixture directory was not created");
+    const auto previous = qgetenv("TU_REPORT_DIR");
+    qputenv("TU_REPORT_DIR", reports.path().toLocal8Bit());
+
+    bool failCentre = true;
+    BrpTuWindow::SimulatedVoltageSource sweep = [&](const std::string&, double target) -> std::optional<Point> {
+        // Фиксированные коды из шкалы −6…+6 В при кодах 20…1003.
+        if (target == -5.0) return Point{102, -5.0, -4.99};
+        if (target ==  5.0) return Point{921,  5.0,  5.01};
+        if (std::exchange(failCentre, false)) return Point{540, 0.0, 0.01};
+        return Point{512, 0.0, 0.01};
+    };
+    BrpTuWindow window(std::move(sweep));
+    startHistoryRun(window, QStringLiteral("BRP-POS-SWEEP"));
+    auto* measure = action(window, "brpPointAction");
+    auto* retry = window.findChild<QPushButton*>("brpRetryStage");
+    auto* stop = action(window, "tuStopAction");
+    const auto saved = [&] {
+        const auto files = listTuCheckpoints();
+        require(files.size() == 1, "POS run did not produce exactly one checkpoint");
+        const auto run = readTuCheckpoint(files.first().absoluteFilePath());
+        require(run.value("serial").toString() == "BRP-POS-SWEEP", "POS checkpoint belongs to a different run");
+        return run.value("steps").toArray();
+    };
+    const auto waitForPoint = [&] {
+        require(waitUntil([&] { return measure->isVisible(); }, 20000), "POS point did not become available");
+    };
+    waitForPoint();
+    measure->click(); // ПОС1, отрицательная точка.
+    waitForPoint();
+    measure->click(); // ПОС1, нулевая точка с заведомо неверным кодом.
+    require(retry && waitUntil([&] { return retry->isVisible(); }), "out-of-tolerance POS point was not rejected");
+    require(saved().at(4).toObject().value("verdict").toString() == "FAIL", "failed POS point was not persisted");
+    retry->click();
+    for (int i = 1; i < 12; ++i) {
+        waitForPoint();
+        measure->click();
+    }
+    waitForPoint(); // Следующий этап после 12 точек ПОС.
+    const auto steps = saved();
+    const std::array<QString, 4> addresses{
+        "M16P1A10B20T01", "M16P1A10B30T01", "M16P1A10B40T01", "M16P1A10B50T01"};
+    const std::array<QString, 3> codes{"102", "512", "921"};
+    for (int i = 0; i < 12; ++i) {
+        const auto step = steps.at(3 + i).toObject();
+        require(step.value("verdict").toString() == "OK", "confirmed POS point did not pass");
+        const auto measurements = step.value("measurements").toArray();
+        require(measurements.size() == 1, "POS point did not persist a single measurement");
+        const auto measurement = measurements.first().toObject();
+        require(measurement.value("key").toString() == addresses[i / 3], "POS result used the wrong channel address");
+        const auto attributes = measurement.value("attributes").toObject();
+        require(attributes.value("code_min").toString() == codes[i % 3]
+            && attributes.value("code_max").toString() == codes[i % 3]
+            && attributes.value("v7_before_v").toString() != attributes.value("v7_after_v").toString(),
+            "POS result lost its independent V7 readings or captured code");
+    }
+    const auto attempts = steps.at(4).toObject().value("attempts").toArray();
+    require(attempts.size() == 2 && attempts.first().toObject().value("verdict").toString() == "FAIL"
+        && attempts.last().toObject().value("verdict").toString() == "OK", "successful POS retry lost the failed attempt");
+    stop->click();
+    require(waitUntil([&] { return window.findChild<QLineEdit*>("tuCompletionOperator")->isVisible(); }, 20000),
+            "completed sweep did not stop");
+
+    BrpTuWindow::SimulatedVoltageSource fault = [](const std::string&, double) -> std::optional<Point> {
+        return Point{102, -5.0, std::nullopt};
+    };
+    BrpTuWindow failure(std::move(fault));
+    startHistoryRun(failure, QStringLiteral("BRP-V7-FAIL"));
+    auto* faultMeasure = action(failure, "brpPointAction");
+    require(waitUntil([&] { return faultMeasure->isVisible(); }, 20000), "V7 fault fixture never reached capture");
+    faultMeasure->click();
+    require(waitUntil([&] { return failure.findChild<QLineEdit*>("tuCompletionOperator")->isVisible(); }, 20000),
+            "V7 fault did not stop the scenario");
+    QJsonObject faultRun;
+    for (const auto& file : listTuCheckpoints()) {
+        const auto run = readTuCheckpoint(file.filePath());
+        if (run.value("serial").toString() == "BRP-V7-FAIL") faultRun = run;
+    }
+    const auto faultSteps = faultRun.value("steps").toArray();
+    require(faultRun.value("verdict").toString() == "ERROR" && faultSteps.at(3).toObject().value("verdict").toString() == "ERROR"
+        && faultSteps.at(3).toObject().value("message").toString().contains(QStringLiteral("Ошибка В7"))
+        && faultSteps.at(4).toObject().value("verdict").toString() == "NOT_RUN",
+        "V7 fault was reported as DUT failure or advanced the scenario");
+    if (previous.isNull()) qunsetenv("TU_REPORT_DIR");
+    else qputenv("TU_REPORT_DIR", previous);
+}
+
 void testHistoryAfterCrash()
 {
     const QTemporaryDir reports;
@@ -663,6 +756,7 @@ int main(int argc, char** argv)
             return application.exec();
         }
         testHistoryAfterCrash();
+        testPosVoltageSweep();
         testIsdPreparation();
 #if BRP_ENABLE_MANUAL_TESTS
         testMissingPurumk();
