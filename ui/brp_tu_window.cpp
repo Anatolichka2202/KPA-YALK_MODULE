@@ -1825,19 +1825,91 @@ struct BrpTuWindow::Impl {
             ? QStringLiteral("Перед измерениями подтвердите адресные OFF ИСД и ЦАП.")
             : QString());
         if (prepare) {
-            prepare->setEnabled(!preparingIsd && !pointActive && !probing
-                && !isdHost->text().trimmed().isEmpty());
+            const bool free = !preparingIsd && !manualIsdBusy && !pointActive
+                && !probing && currentStage < 0;
+            prepare->setEnabled(free && !isdHost->text().trimmed().isEmpty());
             prepare->setText(isdReady ? QStringLiteral("ИСД подготовлен · повторить")
                                       : QStringLiteral("Подготовить ИСД · ЦАП OFF"));
-            isdHost->setEnabled(!preparingIsd && !pointActive && !probing);
+            isdHost->setEnabled(free);
+            if (manualIsdProbeButton)
+                manualIsdProbeButton->setEnabled(free && !isdHost->text().trimmed().isEmpty());
+            if (manualIsdRoute) manualIsdRoute->setEnabled(free);
+            if (manualIsdOffButton)
+                manualIsdOffButton->setEnabled(free && manualIsdRoute
+                    && manualIsdRoute->currentIndex() >= 0);
+            if (manualIsdPulseButton)
+                manualIsdPulseButton->setEnabled(free && isdReady && manualIsdArm
+                    && manualIsdArm->isChecked() && manualIsdRoute
+                    && manualIsdRoute->currentIndex() >= 0);
+            if (manualIsdArm) manualIsdArm->setEnabled(free && isdReady);
         }
         updateScenario();
+    }
+
+    void startManualIsdProbe()
+    {
+        if (simulation || currentStage >= 0 || manualIsdBusy || preparingIsd || probing) return;
+        const QString host = isdHost->text().trimmed();
+        if (host.isEmpty()) {
+            appendLog(QStringLiteral("ИСД: укажите IP адрес контроллера."));
+            return;
+        }
+        manualIsdBusy = true;
+        updateCaptureControls();
+        appendLog(QStringLiteral("ИСД: проверяется HTTP-связь %1 без переключения реле.").arg(host));
+        auto* watcher = new QFutureWatcher<ManualIsdResult>(&window);
+        QObject::connect(watcher, &QFutureWatcherBase::finished, &window, [this, watcher] {
+            const auto result = watcher->result();
+            watcher->deleteLater();
+            manualIsdBusy = false;
+            appendLog(result.message);
+            updateCaptureControls();
+        });
+        watcher->setFuture(QtConcurrent::run(manualIsdProbe, host));
+    }
+
+    void startManualIsdRoute(bool pulse)
+    {
+        if (simulation || currentStage >= 0 || manualIsdBusy || preparingIsd
+            || probing || pointActive || meterBusy) return;
+        const QString host = isdHost->text().trimmed();
+        const int selected = manualIsdRoute ? manualIsdRoute->currentIndex() : -1;
+        if (host.isEmpty() || selected < 0
+            || static_cast<std::size_t>(selected) >= manualIsdRoutes.size()) {
+            appendLog(QStringLiteral("ИСД: IP адрес или подтверждённая карта реле отсутствуют."));
+            return;
+        }
+        if (pulse && (!isdReady || !manualIsdArm->isChecked())) {
+            appendLog(QStringLiteral("ИСД: импульс заблокирован. "
+                "Сначала выполните адресную подготовку OFF, затем подтвердите безопасное подключение."));
+            return;
+        }
+        const auto route = manualIsdRoutes.at(static_cast<std::size_t>(selected));
+        const QString label = manualIsdRoute->currentText();
+        manualIsdBusy = true;
+        updateCaptureControls();
+        appendLog(QStringLiteral("ИСД: %1, %2")
+            .arg(label, pulse ? QStringLiteral("коммутация на 200 мс")
+                              : QStringLiteral("снятие реле OFF")));
+        auto* watcher = new QFutureWatcher<ManualIsdResult>(&window);
+        QObject::connect(watcher, &QFutureWatcherBase::finished, &window, [this, watcher, pulse] {
+            const auto result = watcher->result();
+            watcher->deleteLater();
+            manualIsdBusy = false;
+            if (!result.confirmed) {
+                isdReady = false;
+                if (manualIsdArm) manualIsdArm->setChecked(false);
+            }
+            appendLog(result.message);
+            updateCaptureControls();
+        });
+        watcher->setFuture(QtConcurrent::run(manualIsdRoute, host, route, pulse));
     }
 
     void startIsdPreparation()
     {
         const auto host = currentStage >= 0 ? scenarioIsdHost : isdHost->text().trimmed();
-        if (preparingIsd || pointActive || probing || host.isEmpty()) return;
+        if (preparingIsd || manualIsdBusy || pointActive || probing || host.isEmpty()) return;
         isdReady = false;
         preparingIsd = true;
         updateCaptureControls();
@@ -2966,6 +3038,12 @@ BrpTuWindow::~BrpTuWindow() = default;
 
 void BrpTuWindow::closeEvent(QCloseEvent* event)
 {
+    if (impl_->manualIsdBusy || impl_->preparingIsd) {
+        // A command may still be active. Closing is allowed only after its
+        // worker has returned both relays to OFF or reported a fault.
+        event->ignore();
+        return;
+    }
     if (impl_->stoppingStream) {
         impl_->closeWhenStopped = true;
         event->ignore();
