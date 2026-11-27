@@ -9,6 +9,7 @@
 #include <QNetworkRequest>
 #include <QObject>
 #include <QThread>
+#include <QTcpSocket>
 #include <QTimer>
 #include <QUrl>
 
@@ -382,8 +383,22 @@ IsdRouter::~IsdRouter() = default;
 
 std::string IsdRouter::probe()
 {
+    // The ISD firmware command protocol is HTTP GET /type=... .
+    // There is no confirmed read-only HTTP '/' endpoint on this stand.
+    // Test TCP reachability only: do not energize a contact to probe the ISD.
+    // This is NOT proof that the firmware accepted commands or that relay
+    // hardware and internal buses are operational.
     const std::lock_guard<std::recursive_mutex> lock(impl_->requestMutex);
-    return impl_->get(QStringLiteral("/"), false).left(200).toStdString();
+    QTcpSocket socket;
+    socket.connectToHost(QString::fromStdString(impl_->config.host), impl_->config.port);
+    const auto timeout = static_cast<int>(std::min(impl_->config.timeoutMilliseconds, 5000u));
+    if (!socket.waitForConnected(timeout)) {
+        throw std::runtime_error("ИСД TCP "
+            + impl_->config.host + ":" + std::to_string(impl_->config.port)
+            + " недоступен: " + socket.errorString().toUtf8().toStdString());
+    }
+    socket.disconnectFromHost();
+    return "TCP-соединение с ИСД установлено; HTTP-команды и реле не проверены";
 }
 
 unsigned IsdRouter::prepareYagr(unsigned type2Last, unsigned type3Last, unsigned dacLast,
