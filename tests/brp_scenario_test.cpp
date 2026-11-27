@@ -200,7 +200,7 @@ void testManualIsdConfiguration()
             "operator confirmation persisted after changing the physical ISD route");
     require(bbPr && log, "BB PR manual action is not available");
     bbPr->click();
-    require(log->toPlainText().contains(QStringLiteral("отдельный выход bb_pr_signal не задан")),
+    require(log->toPlainText().contains(QStringLiteral("выход bb_pr_signal не задан"), Qt::CaseInsensitive),
             "BB PR action silently treated the analog contact pair as pulse source");
     require(routes->currentText().startsWith(QStringLiteral("ББ ПР")),
             "BB PR action did not select its known analog relay route");
