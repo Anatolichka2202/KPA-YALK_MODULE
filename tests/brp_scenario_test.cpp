@@ -78,6 +78,16 @@ void testIsdPreparation()
         });
     });
 
+    // Firmware need not implement GET /. A read-only probe must establish
+    // TCP reachability without sending any HTTP mutation or GET /.
+    {
+        tu::hardware::IsdRouter isd({"127.0.0.1", server.serverPort(), 500});
+        require(isd.probe().find("TCP-") != std::string::npos,
+                "non-mutating ISD connectivity probe did not report TCP status");
+        QCoreApplication::processEvents();
+        require(paths.isEmpty(), "ISD probe incorrectly issued an HTTP request to /");
+    }
+
     const auto run = [port = server.serverPort()] {
         try {
             tu::hardware::IsdRouter isd({"127.0.0.1", port, 500});
