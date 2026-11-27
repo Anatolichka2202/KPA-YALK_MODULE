@@ -194,6 +194,10 @@ void testManualIsdConfiguration()
             "manual ISD probe, route map or controlled relays are missing");
     require(probe->isEnabled() && off->isEnabled() && !pulse->isEnabled(),
             "manual ISD relay must never energize without preparation and operator arm");
+    arm->setChecked(true);
+    routes->setCurrentIndex(1);
+    require(!arm->isChecked() && !pulse->isEnabled(),
+            "operator confirmation persisted after changing the physical ISD route");
     require(bbPr && log, "BB PR manual action is not available");
     bbPr->click();
     require(log->toPlainText().contains(QStringLiteral("отдельный выход bb_pr_signal не задан")),
