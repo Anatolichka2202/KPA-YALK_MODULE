@@ -697,7 +697,7 @@ void testPosVoltageSweep()
         require(measurement.value("key").toString() == addresses[i / 2], "POS result used the wrong channel address");
         const auto attributes = measurement.value("attributes").toObject();
         require(attributes.value("code_min").toString() == codes[i % 2]
-            && attributes.value("code_max").toString() == codes[i % 3]
+            && attributes.value("code_max").toString() == codes[i % 2]
             && attributes.value("v7_before_v").toString() != attributes.value("v7_after_v").toString(),
             "POS result lost its independent V7 readings or captured code");
     }
