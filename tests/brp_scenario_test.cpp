@@ -171,6 +171,37 @@ void testMissingPurumk()
     require(start->isVisible() && start->isEnabled(), "missing PURUMK blocked the RS485 controls");
 }
 
+void testManualIsdConfiguration()
+{
+    // This checks only the HMI and the route map. No network access,
+    // relay command or physical output is performed by this test.
+    BrpTuWindow real(false);
+    real.show();
+    auto* manual = real.findChild<QPushButton*>("brpManualOpen");
+    require(manual, "manual engineering mode is missing");
+    manual->click();
+    auto* host = real.findChild<QLineEdit*>("brpIsdHost");
+    auto* routes = real.findChild<QComboBox*>("brpIsdRoute");
+    auto* probe = real.findChild<QPushButton*>("brpIsdProbe");
+    auto* off = real.findChild<QPushButton*>("brpIsdRouteOff");
+    auto* pulse = real.findChild<QPushButton*>("brpIsdRoutePulse");
+    auto* arm = real.findChild<QCheckBox*>("brpIsdArm");
+    auto* log = real.findChild<QPlainTextEdit*>("brpLog");
+    auto* bbPr = real.findChild<QPushButton*>("brpIssueBbPr");
+    require(host && host->text() == QStringLiteral("192.168.0.101"),
+            "ISD host was not initialized from the stand profile");
+    require(routes && routes->count() >= 8 && probe && off && pulse && arm,
+            "manual ISD probe, route map or controlled relays are missing");
+    require(probe->isEnabled() && off->isEnabled() && !pulse->isEnabled(),
+            "manual ISD relay must never energize without preparation and operator arm");
+    require(bbPr && log, "BB PR manual action is not available");
+    bbPr->click();
+    require(log->toPlainText().contains(QStringLiteral("отдельный выход bb_pr_signal не задан")),
+            "BB PR action silently treated the analog contact pair as pulse source");
+    require(routes->currentText().startsWith(QStringLiteral("ББ ПР")),
+            "BB PR action did not select its known analog relay route");
+}
+
 void testWindow()
 {
     BrpTuWindow window(true);
@@ -769,6 +800,7 @@ int main(int argc, char** argv)
         testIsdPreparation();
 #if BRP_ENABLE_MANUAL_TESTS
         testMissingPurumk();
+        testManualIsdConfiguration();
         testWindow();
         testScenarioAndReport();
 #else
