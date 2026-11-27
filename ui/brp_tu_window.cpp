@@ -516,6 +516,7 @@ struct BrpTuWindow::Impl {
         yasmCodes->setPlaceholderText(QStringLiteral("Коды M16 из внешнего теста ЯСМ, HEX через пробел"));
         yasmCodes->setVisible(false);
         yasmFile = new QPushButton(QStringLiteral("Открыть тест .bcfrm"), interfaceBox);
+        yasmFile->setObjectName(QStringLiteral("brpOpenYasmFixture"));
         yasmFile->setVisible(false);
         if (simulation) {
             QStringList example;
@@ -709,6 +710,8 @@ struct BrpTuWindow::Impl {
                 appendLog(QStringLiteral("ЯСМ: загружено %1 слов эталонных данных.").arg(yasmFixture.size()));
             } catch (const std::exception& error) {
                 appendLog(QStringLiteral("Файл ЯСМ: %1").arg(QString::fromUtf8(error.what())));
+                if (!yasmFixture.empty())
+                    appendLog(QStringLiteral("Действующий эталон ЯСМ: %1.").arg(yasmCodes->text()));
             }
         });
 
@@ -1758,6 +1761,15 @@ struct BrpTuWindow::Impl {
                 if (m8Mode) {
                     source = miltech::integration::createOrbitaM8SampleSimulator([](std::size_t word) {
                         return static_cast<uint16_t>(((word / 1024 + word % 1024) & 1023) << 1);
+                    });
+                } else if (yasmMode && !yasmFixture.empty()) {
+                    source = miltech::integration::createOrbitaSampleSimulator([](std::size_t word) {
+                        if (word % 4 != 2) return simulatedWord(word);
+                        // Независимый от загруженного эталона поток байтов МКО.
+                        // При импорте .bcfrm ЯСМ сравнивает биты данных 9:2,
+                        // а simulatedWord() выдаёт эталон ручного ввода 10-битных кодов.
+                        constexpr std::array<unsigned, 4> busBytes{0x12, 0xB2, 0x5C, 0x67};
+                        return static_cast<uint16_t>(busBytes[word / 4 % busBytes.size()] << 3);
                     });
                 } else {
                     source = miltech::integration::createOrbitaSampleSimulator(simulatedWord);

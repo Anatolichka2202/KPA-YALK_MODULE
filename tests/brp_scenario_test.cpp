@@ -10,6 +10,7 @@
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
+#include <QFileDialog>
 #include <QDialog>
 #include <QDir>
 #include <QListWidget>
@@ -97,6 +98,65 @@ void testIsdPreparation()
     require(failure.result() == 0 && paths.size() == 2, "ISD continued after a rejected OFF");
 }
 
+template <typename Action>
+void useFileDialog(QPushButton& button, Action action)
+{
+    // Таймер живёт столько же, сколько локальные параметры теста.
+    bool handled = false;
+    QTimer timer;
+    QObject::connect(&timer, &QTimer::timeout, &timer, [&] {
+        auto* dialog = qobject_cast<QFileDialog*>(QApplication::activeModalWidget());
+        if (!dialog) return;
+        handled = true;
+        action(*dialog);
+        if (dialog->isVisible()) dialog->reject();
+        timer.stop();
+    });
+    timer.start(10);
+    button.click();
+    require(handled, "test did not reach the file dialog");
+}
+
+void chooseYasmFile(BrpTuWindow& window, const QString& path)
+{
+    auto* button = window.findChild<QPushButton*>("brpOpenYasmFixture");
+    require(button && button->isVisible(), "YASM import is not available");
+    useFileDialog(*button, [&](QFileDialog& dialog) {
+        if (auto* fileName = dialog.findChild<QLineEdit*>("fileNameEdit")) fileName->setText(path);
+        QMetaObject::invokeMethod(&dialog, "accept", Qt::DirectConnection);
+    });
+}
+
+QString writeYasmFixture(const QTemporaryDir& directory, const QString& name, const QByteArray& data)
+{
+    require(directory.isValid(), "YASM fixture directory not created");
+    QFile file(directory.filePath(name));
+    require(file.open(QIODevice::WriteOnly) && file.write(data) == data.size(), "YASM fixture not saved");
+    return file.fileName();
+}
+
+void testMissingPurumk()
+{
+    BrpTuWindow window(false);
+    window.show();
+    window.findChild<QPushButton*>("brpManualOpen")->click();
+    auto* mode = window.findChild<QComboBox*>("brpInterfaceMode");
+    auto* start = window.findChild<QPushButton*>("brpInterfaceStart");
+    auto* button = window.findChild<QPushButton*>("brpLaunchPurumk");
+    auto* log = window.findChild<QPlainTextEdit*>("brpLog");
+    require(mode && start && button && log, "PURUMK controls missing");
+    if (QFileInfo::exists(QDir(QCoreApplication::applicationDirPath()).filePath("PURUMK.exe"))) {
+        std::cerr << "Skipping missing-PURUMK scenario: a real executable is deployed next to CTest\n";
+        return;
+    }
+    mode->setCurrentIndex(1);
+    useFileDialog(*button, [](QFileDialog& dialog) { dialog.reject(); });
+    require(log->toPlainText().contains(QStringLiteral("PURUMK не запущена")),
+            "missing external executable was not reported");
+    mode->setCurrentIndex(0);
+    require(start->isVisible() && start->isEnabled(), "missing PURUMK blocked the RS485 controls");
+}
+
 void testWindow()
 {
     BrpTuWindow window(true);
@@ -132,6 +192,16 @@ void testWindow()
     require(waitUntil([&] { return start->isEnabled(); }, 20000),
             "live RS485 counter did not release stream on operator stop");
     mode->setCurrentIndex(1);
+    const QTemporaryDir yasmFiles;
+    chooseYasmFile(window, writeYasmFixture(yasmFiles, "matched.bcfrm",
+        "<FRAME TYPE='BC'><data><sequence>B212 675C</sequence></data></FRAME>"));
+    require(log->toPlainText().contains(QStringLiteral("ЯСМ: загружено 2 слов")),
+            "valid XML fixture was not imported");
+    chooseYasmFile(window, writeYasmFixture(yasmFiles, "malformed.bcfrm",
+        "<FRAME TYPE='BC'><data><sequence>ZZZZ</sequence>"));
+    require(log->toPlainText().contains(QStringLiteral("Файл ЯСМ:"))
+        && log->toPlainText().contains(QStringLiteral("Действующий эталон ЯСМ: matched.bcfrm")),
+            "malformed fixture replaced the active reference or did not report an error");
     start->click();
     require(waitUntil([&] { return log->toPlainText().contains(QStringLiteral("ЯСМ: ожидаемая последовательность")); }),
             "YASM mode did not validate the external pattern");
@@ -479,7 +549,9 @@ void testScenarioAndReport()
     newCheck();
     manual->click();
     mode->setCurrentIndex(1);
-    yasmCodes->setText(QStringLiteral("1 2"));
+    const QTemporaryDir yasmFiles;
+    chooseYasmFile(window, writeYasmFixture(yasmFiles, "different.bcfrm",
+        "<FRAME TYPE='BC'><data><sequence>2211 4433</sequence></data></FRAME>"));
     back->click();
     check->click();
     start->click();
@@ -582,6 +654,7 @@ void testHistoryAfterCrash()
 
 int main(int argc, char** argv)
 {
+    QCoreApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
     QApplication application(argc, argv);
     try {
         if (application.arguments().contains(QStringLiteral("--checkpoint-child"))) {
@@ -592,6 +665,7 @@ int main(int argc, char** argv)
         testHistoryAfterCrash();
         testIsdPreparation();
 #if BRP_ENABLE_MANUAL_TESTS
+        testMissingPurumk();
         testWindow();
         testScenarioAndReport();
 #else
