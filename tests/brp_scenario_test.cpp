@@ -547,8 +547,17 @@ void testScenarioAndReport()
             reportHasForcedOk = true;
             break;
         }
-    require(rows->rowCount() == 30 && stageResult(2) == QStringLiteral("НОРМА")
-        && reportHasForcedOk, "report summary did not preserve the forced verdict");
+    if (rows->rowCount() != 30 || stageResult(2) != QStringLiteral("НОРМА")
+        || !reportHasForcedOk) {
+        QStringList verdicts;
+        for (int row = 0; row < rows->rowCount(); ++row) {
+            const auto* item = rows->item(row, 1);
+            verdicts.append(QStringLiteral("%1:%2").arg(row).arg(item ? item->text() : QStringLiteral("<null>")));
+        }
+        throw std::runtime_error(QStringLiteral("report summary: rows=%1, forced=%2, statuses=[%3]")
+            .arg(rows->rowCount()).arg(reportHasForcedOk)
+            .arg(verdicts.join(QStringLiteral(", "))).toStdString());
+    }
     const auto runId = QFileInfo(completeHtml).completeBaseName().mid(3); // TU_<run-id>.html
     const auto checkpoint = readText(reports.path() + QStringLiteral("/runs/") + runId + QStringLiteral(".json"));
     require(checkpoint.contains(QStringLiteral("\"forcedOk\": true"))
