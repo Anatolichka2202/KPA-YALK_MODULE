@@ -929,15 +929,56 @@ struct BrpTuWindow::Impl {
             auto* instruments = new QGroupBox(QStringLiteral("Оборудование · питание БРП внешнее"), manual);
             auto* instrumentsLayout = new QFormLayout(instruments);
             isdHost = new QLineEdit(instruments);
-            isdHost->setReadOnly(true);
+            isdHost->setObjectName(QStringLiteral("brpIsdHost"));
+            isdHost->setPlaceholderText(QStringLiteral("IP адрес ИСД"));
+            // Never leave an editable controller address blank when it already
+            // exists in the station profile. An edited address invalidates OFF.
+            try {
+                const auto config = loadStand(root);
+                isdHost->setText(QString::fromStdString(config["isd"]["host"].as<std::string>()));
+            } catch (const std::exception&) {
+                isdHost->setPlaceholderText(QStringLiteral("Ошибка профиля: укажите IP ИСД"));
+            }
             auto* probe = new QPushButton(QStringLiteral("Проверить Е20-10 (без ИСД/АКИП)"), instruments);
             prepare = new QPushButton(QStringLiteral("Подготовить ИСД · ЦАП OFF"), instruments);
+            manualIsdProbeButton = new QPushButton(QStringLiteral("Связь ИСД"), instruments);
+            manualIsdProbeButton->setObjectName(QStringLiteral("brpIsdProbe"));
+            manualIsdRoute = new QComboBox(instruments);
+            manualIsdRoute->setObjectName(QStringLiteral("brpIsdRoute"));
+            manualIsdRoute->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+            manualIsdRoute->setToolTip(QStringLiteral("Пары реле type=2 из frame_checks.yaml. Не подменяют измерение M16."));
+            manualIsdArm = new QCheckBox(QStringLiteral("Питание и подключение маршрута проверены оператором"), instruments);
+            manualIsdArm->setObjectName(QStringLiteral("brpIsdArm"));
+            manualIsdOffButton = new QPushButton(QStringLiteral("OFF пары"), instruments);
+            manualIsdOffButton->setObjectName(QStringLiteral("brpIsdRouteOff"));
+            manualIsdPulseButton = new QPushButton(QStringLiteral("Проверить пару · 200 мс"), instruments);
+            manualIsdPulseButton->setObjectName(QStringLiteral("brpIsdRoutePulse"));
+            manualIsdPulseButton->setToolTip(QStringLiteral("Замкнуть только выбранные реле на 200 мс и вернуть OFF. Без подачи напряжения. Требует подготовки ИСД и подтверждения оператора."));
+            auto* routeButtons = new QWidget(instruments);
+            auto* routeLayout = new QHBoxLayout(routeButtons);
+            routeLayout->setContentsMargins(0, 0, 0, 0);
+            routeLayout->addWidget(manualIsdOffButton);
+            routeLayout->addWidget(manualIsdPulseButton, 1);
             instrumentsLayout->addRow(QStringLiteral("ИСД"), isdHost);
-            instrumentsLayout->addRow(probe);
+            instrumentsLayout->addRow(manualIsdProbeButton);
             instrumentsLayout->addRow(prepare);
+            instrumentsLayout->addRow(QStringLiteral("Маршрут ЯГР"), manualIsdRoute);
+            instrumentsLayout->addRow(manualIsdArm);
+            instrumentsLayout->addRow(routeButtons);
+            instrumentsLayout->addRow(probe);
             side->addWidget(instruments);
+            QObject::connect(isdHost, &QLineEdit::textChanged, &window, [this] {
+                isdReady = false;
+                updateCaptureControls();
+            });
             QObject::connect(prepare, &QPushButton::clicked, &window, [this] { startIsdPreparation(); });
             QObject::connect(probe, &QPushButton::clicked, &window, [this] { checkManualEquipment(); });
+            QObject::connect(manualIsdProbeButton, &QPushButton::clicked, &window, [this] { startManualIsdProbe(); });
+            QObject::connect(manualIsdOffButton, &QPushButton::clicked, &window, [this] { startManualIsdRoute(false); });
+            QObject::connect(manualIsdPulseButton, &QPushButton::clicked, &window, [this] { startManualIsdRoute(true); });
+            QObject::connect(manualIsdArm, &QCheckBox::toggled, &window, [this] { updateCaptureControls(); });
+            QObject::connect(manualIsdRoute, &QComboBox::currentIndexChanged, &window,
+                [this] { updateCaptureControls(); });
             QObject::connect(flow, &TuFlowWidget::manualRequested, &window, [this] {
             appendLog(QStringLiteral("Ручной режим: питание БРП внешнее. ИСД, АКИП и В7 не опрашиваются автоматически; контроль RS-485/Орбиты запускается отдельно."));
         });
@@ -971,6 +1012,22 @@ struct BrpTuWindow::Impl {
             QFile config(root.filePath(QStringLiteral("data/frame_checks.yaml")));
             if (!config.open(QIODevice::ReadOnly)) throw std::runtime_error("Файл кадровых проверок БРП не открыт");
             checks = loadFrameChecks(config.readAll().toStdString());
+            if (manualIsdRoute) {
+                manualIsdRoutes.clear();
+                manualIsdRoute->clear();
+                for (const auto& check : checks) {
+                    for (std::size_t n = 0; n < check.relayRoutes.size(); ++n) {
+                        const auto& route = check.relayRoutes[n];
+                        const QString name = check.channelNames.empty()
+                            ? QString::fromStdString(check.title)
+                            : QString::fromStdString(check.channelNames.at(n));
+                        manualIsdRoutes.push_back(route);
+                        manualIsdRoute->addItem(QStringLiteral("%1 · X%2 · реле %3/%4")
+                            .arg(name).arg(route.connector).arg(route.signalRelay).arg(route.returnRelay));
+                    }
+                }
+                updateCaptureControls();
+            }
 
 #if BRP_ENABLE_MANUAL_TESTS
             const auto dbPath = root.filePath(QStringLiteral("data/parameters.db"));
@@ -2830,6 +2887,12 @@ struct BrpTuWindow::Impl {
     QComboBox *interfaceMode = nullptr, *port = nullptr, *checkList = nullptr,
               *channelList = nullptr, *expectedState = nullptr;
     QLineEdit *isdHost = nullptr, *yasmCodes = nullptr, *m8Addresses = nullptr;
+    QComboBox* manualIsdRoute = nullptr;
+    QCheckBox* manualIsdArm = nullptr;
+    QPushButton *manualIsdProbeButton = nullptr, *manualIsdOffButton = nullptr,
+                *manualIsdPulseButton = nullptr;
+    std::vector<YagrRelayRoute> manualIsdRoutes;
+    bool manualIsdBusy = false;
     QCheckBox* m8Invert = nullptr;
     QGroupBox* checksPanel = nullptr;
     QPushButton *bbPrButton = nullptr;
