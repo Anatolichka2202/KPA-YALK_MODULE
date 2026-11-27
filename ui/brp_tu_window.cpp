@@ -201,6 +201,58 @@ BbPrCommandResult issueBbPrPulse(const QDir& root)
     }
 }
 
+// Manual wiring checkout. Only routes grounded by frame_checks.yaml are offered.
+// The pulse switches the documented contact pair; it does not synthesize
+// a voltage or claim that a BRP output was physically measured.
+struct ManualIsdResult {
+    bool confirmed = false;
+    QString message;
+};
+
+ManualIsdResult manualIsdProbe(QString host)
+{
+    try {
+        tu::hardware::IsdRouter isd({host.toStdString()});
+        const auto response = QString::fromStdString(isd.probe());
+        return {true, QStringLiteral("ИСД %1: HTTP-связь установлена, ответ: %2")
+            .arg(host, response)};
+    } catch (const std::exception& error) {
+        return {false, QStringLiteral("ИСД %1: ошибка соединения: %2")
+            .arg(host, QString::fromUtf8(error.what()))};
+    }
+}
+
+ManualIsdResult manualIsdRoute(QString host, YagrRelayRoute route, bool pulse)
+{
+    std::unique_ptr<tu::hardware::IsdRouter> isd;
+    try {
+        if ((route.connector != 5 && route.connector != 6)
+            || !route.signalRelay || !route.returnRelay
+            || route.signalRelay == route.returnRelay)
+            throw std::invalid_argument("Отсутствует подтверждённая пара контактных реле");
+        isd = std::make_unique<tu::hardware::IsdRouter>(
+            tu::hardware::IsdConfig{host.toStdString()});
+        if (pulse) {
+            // Close return first, then signal. No automatic DAC/AKIP commands.
+            isd->setSwitch(2, route.returnRelay, true);
+            isd->setSwitch(2, route.signalRelay, true);
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        }
+        isd->setSwitch(2, route.signalRelay, false);
+        isd->setSwitch(2, route.returnRelay, false);
+        return {true, QStringLiteral("ИСД X%1: type=2 реле %2/%3, %4; обе команды OFF подтверждены. "
+             "Физический отклик отдельно сверяйте по M16.")
+            .arg(route.connector).arg(route.signalRelay).arg(route.returnRelay)
+            .arg(pulse ? QStringLiteral("импульс 200 мс") : QStringLiteral("адресный OFF"))};
+    } catch (const std::exception& error) {
+        if (isd) isd->safeStop();
+        return {false, QStringLiteral("ИСД X%1: ошибка коммутации %2/%3: %4. "
+            "При потере ACK физическое состояние НЕ подтверждено; проверьте стенд.")
+            .arg(route.connector).arg(route.signalRelay).arg(route.returnRelay)
+            .arg(QString::fromUtf8(error.what()))};
+    }
+}
+
 std::vector<uint16_t> readYasmFixture(const QString& path)
 {
     QFile file(path);
